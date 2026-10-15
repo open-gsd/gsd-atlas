@@ -71,7 +71,7 @@ Requirements: FND-01..FND-11, LNG-01, LNG-06. No indexing, watching, queries, MC
 - `docs/DESIGN.md` — assumptions A1..A63 referenced by ADRs
 - `docs/DESIGN-REVIEW.md` — adversarial review that shaped the ADRs
 - `docs/adr/README.md` — ADR naming, status vocabulary, append-only rule
-- `docs/GLOSSARY.md` — project vocabulary (see also `GLOSSARY.md` at repo root)
+- `GLOSSARY.md` — project vocabulary
 
 ### ADRs to ratify in this phase (`docs/adr/`)
 - `docs/adr/draft-product-boundary.md`
