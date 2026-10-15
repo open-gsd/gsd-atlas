@@ -85,7 +85,11 @@ Scope is the full PRD 1.0 (milestones M0–M6, 21 acceptance criteria). Source o
 | Roadmap covers full 1.0 (M0-M6) | User chose full PRD scope for v1 | — Pending |
 | Single npm package for the MVP | Simplest; split into workspaces only if needed | — Pending |
 | Free-alternatives evaluation before the M2 eval | Gives the eval a baseline without gating build start | — Pending |
-| Ratify all 14 ADRs in Phase 1 | PRD M0 gate; issues opened, files renamed, Proposed to Accepted | — Pending |
+| Walking skeleton first; ratify each ADR before the first phase that needs it (supersedes "ratify all 14 in Phase 1") | Research: M0 as written has no running slice; amend 5 ADR gaps when ratifying | — Pending |
+| TypeScript: 6.x adapter is the MVP, feature-detect 7.x subpaths at runtime, bundle typescript@6.0.3 fallback | TS 7.0 has no supported API; 7.1 will change it | — Pending |
+| Stateless Host, stdio shim is the default client path | MCP 2026-07-28 spec removed sessions; HTTP re-initialize bugs in Claude Code | — Pending |
+| Keep M0-M6 but split M4 into SDK facts, agent integration, dashboard/eval; default MCP profile about 6 tools | M4 too large for a solo builder; tool-list weight | — Pending |
+| Vertical-slice (MVP) project mode | Each phase delivers a runnable end-to-end capability | — Pending |
 | Swift reference app: pick an open-source app during M3 | PRD leaves it unnamed; defer the choice until needed | — Pending |
 | ADR open questions resolved in phase discuss | None blocks planning | — Pending |
 
