@@ -12,7 +12,7 @@ Agents get correct, cited, current answers about the code and the platform they 
 
 - **Customer**: Developers and coding agents in the open-gsd ecosystem; anyone replacing paid code-memory/code-graph tools (Memtrace and others) with a free, local one.
 - **Revenue model**: None. Open source (MIT).
-- **Success metric**: Agents using atlas answer the 50-question-per-corpus eval correctly with a verifiable file:line citation at least 80% of the time and beat a grep-only baseline outside run-to-run interval.
+- **Success metric**: Agents using atlas answer the 50-question-per-corpus eval correctly with a verifiable file:line citation at least 80% of the time and "beat" a grep-only baseline. **"Beat" means consume fewer tokens (not faster wall-clock)**, at accuracy no worse than grep outside run-to-run interval (user clarification, 2026-10-15).
 - **Strategy notes**: `docs/PRD.md` §1.1 (why build it), `docs/adr/draft-product-boundary.md`.
 
 ## Requirements
@@ -81,6 +81,7 @@ Scope is the full PRD 1.0 (milestones M0–M6, 21 acceptance criteria). Source o
 | Languages are data (manifest + WASM grammar + queries) | Bring-your-own language with no core change or release | — Pending |
 | Two-layer fact model: local facts by blob id, resolved edges by overlay + context | Same file can resolve differently per branch; sharing resolved edges would cite wrong code | — Pending |
 | One host per user and major version, repos as isolated tenants | Expensive runtime state once per machine; one bad repo doesn't take atlas down | — Pending |
+| "Beats grep" = fewer tokens consumed, not speed | User clarified the eval's intent; accuracy is a non-inferiority floor, token cost is the win | — Pending |
 | Roadmap covers full 1.0 (M0-M6) | User chose full PRD scope for v1 | — Pending |
 | Single npm package for the MVP | Simplest; split into workspaces only if needed | — Pending |
 | Free-alternatives evaluation before the M2 eval | Gives the eval a baseline without gating build start | — Pending |
