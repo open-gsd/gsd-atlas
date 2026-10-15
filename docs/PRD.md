@@ -110,8 +110,7 @@ Example (Python, the bring‑your‑own proof):
   "grammar": { "wasm": "grammar.wasm", "source": "tree-sitter-python@<pinned>" },
   "queries": { "tags": "queries/tags.scm", "refs": "queries/refs.scm", "imports": "queries/imports.scm" },
   "project": { "markers": ["pyproject.toml", "setup.cfg"] },
-  "precise": { "scip": { "command": ["scip-python", "index", "."], "output": "index.scip" } },
-  "platform": null
+  "precise": { "scip": { "command": ["scip-python", "index", "."], "output": "index.scip" } }
 }
 ```
 
@@ -122,7 +121,6 @@ Example (Python, the bring‑your‑own proof):
 | `queries.refs`, `queries.imports` | no | References and module edges. |
 | `project.markers` | no | Files that mark a project root. |
 | `precise` | no | A SCIP file, a command that makes one, or a built‑in adapter (`"adapter": "typescript"`). |
-| `platform` | no | An SDK provider id and how to read the project's target versions. |
 
 ### 4.3 Tiers
 | Tier | Contributor supplies | Facts | Confidence | Runs |
@@ -144,21 +142,28 @@ First match per `id` wins:
 
 ### 4.5 Runtime interface
 ```ts
+// A language module is data (manifest, grammar, queries, fixtures). The shared Grammar Engine
+// runs it: parsing, queries, normalizing and name-matched (INFERRED) resolution.
 interface LanguageModule {
-  manifest: LanguageManifest;
-  init(ctx: ModuleContext): Promise<void>;                              // load grammar once
-  extractFile(path: string, content: string, hash: string): LocalFacts;  // local facts, keyed by content hash
-  resolve(overlay: OverlaySnapshot, context: ResolutionContext, sites: RefSite[]): AsyncIterable<ResolvedEdge>;
-                                                                        // grammar-tier (INFERRED) or precise (EXTRACTED)
-  testGlobs?: string[];                                                 // for tested_by
-  platform?: SdkProvider;
+  manifest: LanguageManifest;     // includes import-path and project-marker rules used by the Grammar Engine
+  testGlobs?: string[];           // for tested_by
+  precise?: PreciseResolver;      // optional; the only code a language module may add
 }
 
-interface SdkProvider {
-  id: string;                                                           // "apple" | "node" | ...
-  detect(root: string): Promise<PlatformTarget[]>;                      // installed SDKs + project targets
-  extract(target: PlatformTarget, modules: string[]): AsyncIterable<SdkFact>;
+interface PreciseResolver {       // adapters: SCIP import, TypeScript 6 / 7 compiler, IndexStoreDB
+  resolve(overlay: OverlaySnapshot, context: ResolutionContext, sites: RefSite[]): AsyncIterable<ResolvedEdge>;
+                                  // EXTRACTED; supersedes name-matched edges at the same span
 }
+
+// SDK providers are registered by id and selected by project targets, not by language.
+interface SdkProvider {
+  id: string;                     // "apple" | "node" | ...
+  detect(root: string): Promise<PlatformTarget[]>;     // installed SDKs + project targets
+  extract(target: PlatformTarget, symbols: string[]): AsyncIterable<SdkFact>;  // keyed by a provider-native symbol_key
+}
+
+// Every external program starts through the CommandRunner (command-runner ADR).
+interface CommandSpec { executable: string; args: string[]; builtinId?: string }
 ```
 
 ### 4.6 Safety
@@ -174,18 +179,17 @@ Full model: trust‑boundaries ADR.
 | Predicate | Subject → Object | Tier |
 |-----------|------------------|------|
 | `defines`, `contains` | File/Symbol → Symbol | Grammar |
-| `imports` | File → Module/File | Grammar |
+| `imports` | File → Package/File | Grammar |
 | `calls`, `references` | Symbol → Symbol | Grammar (`INFERRED`), Precise (`EXTRACTED`) |
-| `reexports` | File → Module/File | Grammar |
+| `reexports` | File → Package/File | Grammar |
 | `extends`, `extension_of`, `implements`, `conforms_to`, `overrides` | Symbol → Symbol | Grammar / Precise |
 | `tested_by` | Symbol → Test file/Symbol | Module test globs + references (`INFERRED`) |
 | `emitted_as` | Source file → Emitted file | TypeScript adapter |
 | `cites_adr` | Symbol/File → ADR id | Comment scan (pattern configurable, default `ADR-\d+`) |
 | `uses_sdk_symbol` | Symbol → SdkSymbol | Precise / Platform |
-| `available_since`, `deprecated_in` | Symbol/SdkSymbol → Platform version | Platform |
 | `targets_platform` | Target → Platform version | Platform |
 
-Entity kinds: `File`, `Module`, `Symbol` (with `kind`), `SdkSymbol`, `Sdk` (e.g. `sdk:ios-27.0-27A266a-device`), `Target`. The vocabulary is fixed per release; modules map their captures onto it.
+Entity kinds: `File`, `Package`, `Symbol` (with `kind`), `SdkSymbol`, `Sdk` (e.g. `sdk:ios-27.0-27A266a-device`), `Target`. \1 Availability (introduced, deprecated, obsoleted, renamed, per axis) is data on SDK symbols, not predicates; storage is typed tables.
 
 **Two layers (fact‑model ADR):** *local facts* (definitions, containment, imports and reference sites as written) are keyed by file content and shared across branches; *resolved edges* (a reference bound to its target) depend on the rest of the project and are keyed by the overlay snapshot plus the resolution context (config files and lockfile). Symbol identity is (repo, path, qualified name, kind, overload discriminator), so edits don't break references. ADR ids resolve against the repo's ADR directory; ambiguous ids point at every candidate as `INFERRED`.
 
@@ -214,7 +218,7 @@ Entity kinds: `File`, `Module`, `Symbol` (with `kind`), `SdkSymbol`, `Sdk` (e.g.
 
 - **Grammar tier:** tree‑sitter‑swift as WebAssembly. Upstream `tags.scm` captures definitions but no call references (spike, 2026‑10‑15), so the module ships its own `refs.scm`. Grammar and queries are pinned together (upstream npm 0.7.1, June 2025); fixtures cover Swift 6.x syntax (macros, typed throws, noncopyable types).
 - **Project model:** SwiftPM `Package.swift` (targets, products, `platforms:`); Xcode build settings per target/configuration (`IPHONEOS_DEPLOYMENT_TARGET`, `MACOSX_DEPLOYMENT_TARGET`, `SWIFT_VERSION`, `SDKROOT`) from `project.pbxproj` on any OS, or `xcodebuild -showBuildSettings -json` on a Mac when commands are allowed.
-- **Availability:** `@available` / `#available` in user code become `available_since` facts checked against the deployment target; `import <Framework>` links to the SDK module.
+- **Availability:** `@available` / `#available` in user code become availability facts checked against the deployment target; `import <Framework>` links to the SDK module.
 - **Precise tier (optional, macOS after a build):** a small first‑party helper over IndexStoreDB (spike first), or import any SCIP index made from Xcode's index store. No hard dependency on a community indexer.
 - **Quality target:** grammar‑tier resolved references ≥ 85 % precise on a reference app, measured before Swift launches.
 - **Platform:** Apple provider (§7.2).
@@ -413,13 +417,13 @@ Full design: `DIAGNOSTICS.md`.
 ## 14. Roadmap
 | Milestone | Scope | Gate |
 |-----------|-------|------|
-| **M0** – Repo & seams | Repo, borrowed gsd‑graph modules, ADRs ratified, manifest schema, grammar build pipeline, module resolution, two‑layer store schema, trust model | `lang test` runs a fixture module end to end on all three OSes |
-| **M1** – Grammar tier + store + host (MVP part 1) | WebAssembly runtime with self‑built grammars, local facts, overlays, SQLite store, single‑tenant host over stdio MCP, watcher with Reconcile, CLI, read tools with the full response envelope | gsd‑core local facts on all three OSes; criteria 2, 10, 12 |
-| **M2** – TypeScript module (**MVP: gsd‑core development**) | Compiler adapter (6.x and 7.x), resolved edges, emit mapping, ADR citations, `explain`, skill, ↑ ↔ ↓ ratings, manual diagnostics reports, flight recorder and `gsd-atlas bug` | gsd‑core build < 30 s; criteria 1, 4, 7, 17; 50‑question gsd‑core eval beats grep‑only |
-| **M2.5** – Host hardening | Diagnostics auto‑submit and the repo intake workflow; repo tenants, versioned protocol, socket/HTTP transport with endpoint security, supervisor and watchdogs, queues, scheduler, governor, shared public SDK/package stores | Criteria 14, 16, 18, 20 |
-| **M3** – Swift module | Swift grammar + `refs.scm`, SwiftPM/Xcode project model, availability facts | Criterion 5 met on Linux CI |
-| **M4** – Platform SDK facts + agent integration | Apple provider, SDK packs, `platform_card`, `sdk_lookup`, `sdk_check`, `sdk_diff`, `syntax_check`; skill, `atlas-scout`, hooks R0–R4 (advise + enforce), pre‑commit check | Criteria 6 and 15 met with Xcode 27 |
-| **M5** – Precise imports, BYO proof, bridge | SCIP importer, Swift precise helper, Python example module, authoring guide, `bridge export` | Criteria 3 and 9 met; eval beats grep‑only on gsd‑core, gsd‑pi, gsd‑path and the Swift app |
+| **M0** – Repo & seams | Repo, borrowed gsd‑graph modules, ADRs ratified, manifest schema, grammar build pipeline, module resolution, trust model. Module interfaces fixed with their test doubles: Fact Store (fact‑level seam; one conformance suite over both SQL drivers), Source Tree (real temp git repos), CommandRunner (real and recording fake; Source Tree runs git through it), Grammar Engine, PreciseResolver seam, Governor interface | `lang test` runs a fixture module end to end on all three OSes; Fact Store and CommandRunner interface tests green |
+| **M1** – Grammar tier + store + host (MVP part 1) | Grammar Engine with self‑built grammars, Source Tree, Indexer (watcher, coalescing queue, Reconcile, `ensureFresh`), Fact Store (local facts, overlays, lifecycle, maintenance), Query with the full response envelope and the read tools, CLI as an adapter over Query, single‑tenant Host over stdio MCP, Governor with priority classes and `busy` | gsd‑core local facts on all three OSes; criteria 2, 10, 12 |
+| **M2** – TypeScript module (**MVP: gsd‑core development**) | PreciseResolver adapters for TypeScript 6.x and 7.x (sandboxed, started through the CommandRunner), resolved edges, emit mapping, ADR citations, `explain`, skill, ↑ ↔ ↓ ratings, manual diagnostics reports, flight recorder and `gsd-atlas bug` | gsd‑core build < 30 s; criteria 1, 4, 7, 17; 50‑question gsd‑core eval beats grep‑only |
+| **M2.5** – Host hardening | Diagnostics auto‑submit and the repo intake workflow; Host composing a Tenant per repo, versioned protocol, socket/HTTP transport with endpoint security, supervisor and watchdogs; full Governor (weighted round‑robin across tenants, memory budget, parser and compiler pools); shared public SDK/package stores | Criteria 14, 16, 18, 20 |
+| **M3** – Swift module | Swift language module (data for the Grammar Engine, including `refs.scm`), SwiftPM/Xcode project model, availability facts | Criterion 5 met on Linux CI |
+| **M4** – Platform SDK facts + agent integration | Apple SDK provider (registered by id, per‑axis availability table), SDK packs, `platform_card`, `sdk_lookup`, `sdk_check`, `sdk_diff`, `syntax_check`; Policy module with skill, `atlas-scout`, hooks R0–R4 (advise + enforce), pre‑commit check | Criteria 6 and 15 met with Xcode 27 |
+| **M5** – Precise imports, BYO proof, bridge | SCIP importer and the Swift IndexStoreDB helper (both PreciseResolver adapters), Python example module, authoring guide, `bridge export` | Criteria 3 and 9 met; eval beats grep‑only on gsd‑core, gsd‑pi, gsd‑path and the Swift app |
 | **M6** – 1.0 | Docs, install and upgrade guide, performance pass, free‑alternatives re‑check | All criteria green |
 
 ---

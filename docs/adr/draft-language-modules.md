@@ -23,24 +23,24 @@ The design review measured grammar drift: the third‑party `tree-sitter-wasms` 
 2. **Three tiers:**
    - **Grammar** (required): always on, no build, every branch; produces local facts and `INFERRED` name resolution.
    - **Precise** (optional): any SCIP index, or a built‑in compiler adapter; produces `EXTRACTED` resolved edges.
-   - **Platform** (optional): an SDK provider.
+   - **Platform** (optional): an SDK provider, registered by id and selected by project targets rather than by language.
 3. **Runtime interface:**
-   - `init()`: async; loads the grammar once.
-   - `extractFile()`: local facts.
-   - `resolve(overlay, context)`: resolved edges.
-   - `platform`: optional provider.
+   - A language module is data. The shared **Grammar Engine** loads its grammar, runs its queries, normalizes captures and does name‑matched (`INFERRED`) resolution from module data (import‑path rules, project markers). A data‑only module (such as Python) needs no code.
+   - The only code a module may add is an optional `PreciseResolver` (`resolve(overlay, context, sites)` → `EXTRACTED` edges). Adapters: SCIP import, TypeScript 6 and 7 compilers, IndexStoreDB.
+   - The Fact Store's injected resolver runs the Grammar Engine, then precise edges, which supersede at the same span.
+   - SDK providers are not part of a module; see SDK‑PROVIDERS.
 4. **Resolution order:** repo `.gsd-atlas/languages/` → user `~/.config/gsd-atlas/languages/` → npm `gsd-atlas-lang-*` / `@opengsd/atlas-lang-*` → built‑ins. Extension collisions fail loudly unless `replace`.
 5. **Who may run commands** (with the trust‑boundaries ADR):
    - Grammars (sandboxed WebAssembly) and queries (data) are always allowed.
    - Built‑in first‑party providers with fixed command lines run by default and can be turned off. Examples: the TypeScript adapter loading the project's `typescript` package; `git`; on macOS, `xcrun` and `swift symbolgraph-extract`.
-   - Any other command (a module's `precise.command`, a third‑party SCIP indexer) runs only when allowed in user‑level config, per repo and per command. Repo‑committed config and repo modules can never grant it.
+\1\n   - All of it runs through the one CommandRunner ([draft-command-runner](draft-command-runner.md)).
 6. **Grammar supply:**
    - Grammars are built by gsd‑atlas's own build from pinned upstream tree‑sitter releases, never taken from third‑party WASM bundles.
    - Each module has a parse‑error budget (≤ 0.5 % of files) checked in CI on the reference corpora.
    - Files with parse errors are reported in `status` and use the precise tier where it exists.
 7. **What counts as source:** `git ls-files` plus untracked, non‑ignored files; honour `linguist-generated` and `linguist-vendored`; skip binaries and LFS pointers; per‑repo excludes in user config.
 8. **TypeScript module (MVP):**
-   - Uses the project's own `typescript` package.
+   - Uses the project's own `typescript` package, loaded in a worker with no network, ignoring tsconfig `plugins`, only from the repo's installed `node_modules` (command‑runner ADR).
    - One adapter for 6.x (classic API) and one for 7.x (native `unstable/sync` API).
    - tsconfig‑driven emit mapping (`.cts` → `.cjs`), generic and not specific to any project.
    - ADR citations.

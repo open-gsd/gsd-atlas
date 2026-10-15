@@ -21,7 +21,7 @@ gsd‑atlas indexes code the user didn't write: cloned repos, dependencies, SDKs
    | Repo or npm language modules | No. Grammars (sandboxed WebAssembly) and queries are data; their commands need user approval per repo and per command |
    | Agents | No. Policy overrides come only from the user |
 
-2. **Commands.** Built‑in first‑party providers with fixed command lines run by default and can be turned off. Examples: `git`; the TypeScript adapter loading the project's `typescript`; on macOS, `xcrun` and `swift symbolgraph-extract`. Everything else needs user‑level permission. Arguments are passed as argument arrays, never through a shell.
+\1 All of them start through one CommandRunner that alone decides permission from a provider's `CommandSpec` ([draft-command-runner](draft-command-runner.md)). The TypeScript adapter's in‑process load of the project's `typescript` is a sandboxed built‑in: worker, no network, tsconfig `plugins` ignored.
 3. **Endpoint.**
    - Unix socket or named pipe preferred; loopback HTTP at a fixed port otherwise.
    - A token is required on every route.
