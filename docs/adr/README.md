@@ -25,6 +25,7 @@ These decisions shape the MVP's code and data, and are expensive to reverse once
 | [draft-query-and-policy](draft-query-and-policy.md) | One Query module behind MCP, CLI and hooks; a separate pure Policy module with the session ledger | A11, A12, A26, A32–A37, A44, A51, A58 | Proposed |
 | [draft-tenant-composition](draft-tenant-composition.md) | Host composes per‑repo Tenants; Source Tree, Indexer and Governor modules; read‑your‑writes via the Indexer | A4, A19, A22, A24–A28, A40, A47, A49, A59–A62 | Proposed |
 | [draft-command-runner](draft-command-runner.md) | One CommandRunner for every child process; providers declare a CommandSpec, the runner alone decides; sandboxed TypeScript adapter | A9, A44, A54 | Proposed |
+| [draft-value-dashboard](draft-value-dashboard.md) | Local dashboard: separate Metrics module and database; every figure labeled measured/estimated/A/B; no single score; no telemetry | A16, A18, A32, A36, A50, A52, A63 | Proposed |
 | [draft-trust-boundaries](draft-trust-boundaries.md) | Permissions only from user config; built‑in providers on by default; endpoint security; untrusted text fenced | A9, A16, A27, A44 | Proposed |
 
 ## Before M4 (not needed for the MVP)

@@ -71,6 +71,7 @@ The motivation is replacing paid code‑memory and code‑graph tools (Memtrace 
 - MCP server, CLI, Agent Skill, `atlas-scout` subagent, enforcement hooks and pre‑commit check.
 - Python example module (proof of bring‑your‑own), validated on gsd‑path.
 - Bridge export to gsd‑graph.
+- Local value dashboard (`gsd-atlas status` panels, `gsd-atlas dashboard`, `gsd-atlas eval`): honest, labeled metrics of what atlas delivers and costs; nothing leaves the machine (§8.4).
 
 ### Out‑of‑Scope (1.0)
 - Data‑flow, taint or type inference beyond what compilers and indexers provide.
@@ -78,7 +79,7 @@ The motivation is replacing paid code‑memory and code‑graph tools (Memtrace 
 - Fetching documentation from the web.
 - Embedding/vector search (planned post‑1.0, opt‑in, local models; see DESIGN.md A15).
 - Network sharing (pending privacy review).
-- GUI.
+- GUI. (The dashboard's generated, static, read-only HTML report is not a GUI.)
 
 ### Post‑1.0
 - **Open Knowledge Format (OKF) export:** `gsd-atlas export --format okf` writes a readable bundle per repo at module level: one markdown concept per module with a summary, the ADRs it implements, its dependencies and platform targets, linked to each other. OKF is a v0.1 spec (June 2026) from Google Cloud's Data Cloud team: markdown files with YAML frontmatter where only `type` is required, and plain links forming the graph. It can't carry typed edges, spans, confidence or availability, so it stays an export, never the store. Before building: confirm the spec's license is compatible with MIT and re‑check maturity (v1, governance).
@@ -292,7 +293,7 @@ All tools are served by one gsd‑atlas host per user and major version, with ea
 Every response carries `schema`, citations with `debug` handles, a watermark, a `degraded` flag and an `untrusted_text` field that fences repo and package prose. A `fresh` option makes the host index named files first; under saturation it answers `busy` with `retry_after`. Ranking per tool is defined in the MCP‑contract ADR; `code_impact` expands only `EXTRACTED` edges by default.
 
 ### 8.2 CLI
-Same machine contract as gsd‑graph: JSON on stdout, reasons on stderr, exit codes 0/1/2/3. Commands: `init`, `build`, `watch`, `status`, `find`, `refs`, `context`, `history`, `maintain <reconcile|resolve|refresh|collect|compact|check>`, `lang list|test`, `sdk detect|extract|export|import|diff|check`, `bridge export`.
+Same machine contract as gsd‑graph: JSON on stdout, reasons on stderr, exit codes 0/1/2/3. Commands: `init`, `build`, `watch`, `status`, `find`, `refs`, `context`, `history`, `maintain <reconcile|resolve|refresh|collect|compact|check>`, `lang list|test`, `sdk detect|extract|export|import|diff|check`, `bridge export`, `dashboard [--since 7d] [--html]`, `eval`.
 
 Every tool takes `budget_tokens` (default 2,000) and returns ranked, cited results with a `more` cursor, so atlas answers stay far below hosts' tool‑output limits and cost less than reading files.
 
@@ -313,6 +314,13 @@ Full design: `AGENT-INTEGRATION.md`.
 - Gates only ever demand one cheap atlas call, open whenever atlas can't answer or facts are stale, and can be overridden only by the user. On hosts that don't provide session and agent ids, gates run in advise mode only.
 - Hook and session context fences repo‑derived text as untrusted data.
 - **Backstop for every host and for humans:** `gsd-atlas check --staged` as a git pre‑commit hook and CI step.
+
+### 8.4 Value dashboard
+Full design: [draft-value-dashboard](adr/draft-value-dashboard.md); research: `DASHBOARD-METRICS.md`.
+- **Surfaces:** `gsd-atlas status` (always; basic panels) and `gsd-atlas dashboard [--since 7d] [--html]`. The HTML output is a generated, static, self-contained file; the Host serves no dashboard route.
+- **Headline panels:** answers and tokens delivered; atlas vs raw search share; context kept out; problems caught before commit (raised / fixed / overridden / open at commit); gate behaviour; freshness; atlas's own cost; index health and answer quality. An optional A/B panel shows the last `gsd-atlas eval` result (hooks off / advise / enforce).
+- **Honesty rules:** every figure is labeled `measured`, `estimated`, or `A/B` with its method, denominator and interval; the low bound is the headline; no single score; atlas's own cost sits beside its savings; no value statistics reach agent context.
+- **Local only:** a per‑Tenant Metrics module with its own database file; no source text, paths, symbol names or prompts; nothing is uploaded except a diagnostics report the user approves (§11.2).
 
 ---
 
@@ -361,6 +369,7 @@ gsd‑atlas does not write into gsd‑graph's store. `gsd-atlas bridge export` w
 18. **Version skew:** two repos pinned to different gsd‑atlas majors run side by side; an older host refuses a newer store with a clear message.
 19. **Platforms:** criteria 1, 2, 4, 7, 10 and 12 pass on macOS, Linux and Windows.
 20. **Diagnostics and forensics:** every acceptance test in `DIAGNOSTICS.md` §8 and §9.6 passes: nothing collected or sent by default, per‑type consent enforced, new types off until approved, fixture secrets and names never appear in a report, repo config can't enable it, the intake bot validates and redacts.
+21. **Dashboard:** `gsd-atlas dashboard` on the eval fixtures labels every figure `measured`, `estimated` or `A/B`; no total adds values of different classes; an estimate always shows its range and denominator; a fixture agent that makes needless calls does not raise the context‑kept‑out headline; no value statistic appears in `atlas_status`, hook briefs or MCP output; the report contains no fixture secret, path, symbol name or prompt; a metrics write failure never blocks an answer or a gate; deleting a Tenant deletes its metrics.
 
 ---
 
@@ -418,11 +427,11 @@ Full design: `DIAGNOSTICS.md`.
 | Milestone | Scope | Gate |
 |-----------|-------|------|
 | **M0** – Repo & seams | Repo, borrowed gsd‑graph modules, ADRs ratified, manifest schema, grammar build pipeline, module resolution, trust model. Module interfaces fixed with their test doubles: Fact Store (fact‑level seam; one conformance suite over both SQL drivers), Source Tree (real temp git repos), CommandRunner (real and recording fake; Source Tree runs git through it), Grammar Engine, PreciseResolver seam, Governor interface | `lang test` runs a fixture module end to end on all three OSes; Fact Store and CommandRunner interface tests green |
-| **M1** – Grammar tier + store + host (MVP part 1) | Grammar Engine with self‑built grammars, Source Tree, Indexer (watcher, coalescing queue, Reconcile, `ensureFresh`), Fact Store (local facts, overlays, lifecycle, maintenance), Query with the full response envelope and the read tools, CLI as an adapter over Query, single‑tenant Host over stdio MCP, Governor with priority classes and `busy` | gsd‑core local facts on all three OSes; criteria 2, 10, 12 |
+| **M1** – Grammar tier + store + host (MVP part 1) | Metrics module recording answers, tokens, freshness and index health, with `status` panels; Grammar Engine with self‑built grammars, Source Tree, Indexer (watcher, coalescing queue, Reconcile, `ensureFresh`), Fact Store (local facts, overlays, lifecycle, maintenance), Query with the full response envelope and the read tools, CLI as an adapter over Query, single‑tenant Host over stdio MCP, Governor with priority classes and `busy` | gsd‑core local facts on all three OSes; criteria 2, 10, 12 |
 | **M2** – TypeScript module (**MVP: gsd‑core development**) | PreciseResolver adapters for TypeScript 6.x and 7.x (sandboxed, started through the CommandRunner), resolved edges, emit mapping, ADR citations, `explain`, skill, ↑ ↔ ↓ ratings, manual diagnostics reports, flight recorder and `gsd-atlas bug` | gsd‑core build < 30 s; criteria 1, 4, 7, 17; 50‑question gsd‑core eval beats grep‑only |
 | **M2.5** – Host hardening | Diagnostics auto‑submit and the repo intake workflow; Host composing a Tenant per repo, versioned protocol, socket/HTTP transport with endpoint security, supervisor and watchdogs; full Governor (weighted round‑robin across tenants, memory budget, parser and compiler pools); shared public SDK/package stores | Criteria 14, 16, 18, 20 |
 | **M3** – Swift module | Swift language module (data for the Grammar Engine, including `refs.scm`), SwiftPM/Xcode project model, availability facts | Criterion 5 met on Linux CI |
-| **M4** – Platform SDK facts + agent integration | Apple SDK provider (registered by id, per‑axis availability table), SDK packs, `platform_card`, `sdk_lookup`, `sdk_check`, `sdk_diff`, `syntax_check`; Policy module with skill, `atlas-scout`, hooks R0–R4 (advise + enforce), pre‑commit check | Criteria 6 and 15 met with Xcode 27 |
+| **M4** – Platform SDK facts + agent integration | Apple SDK provider (registered by id, per‑axis availability table), SDK packs, `platform_card`, `sdk_lookup`, `sdk_check`, `sdk_diff`, `syntax_check`; Policy module with skill, `atlas-scout`, hooks R0–R4 (advise + enforce), pre‑commit check; dashboard (gate and findings panels, static HTML report), `gsd-atlas eval` and the A/B panel | Criteria 6 and 15 met with Xcode 27 |
 | **M5** – Precise imports, BYO proof, bridge | SCIP importer and the Swift IndexStoreDB helper (both PreciseResolver adapters), Python example module, authoring guide, `bridge export` | Criteria 3 and 9 met; eval beats grep‑only on gsd‑core, gsd‑pi, gsd‑path and the Swift app |
 | **M6** – 1.0 | Docs, install and upgrade guide, performance pass, free‑alternatives re‑check | All criteria green |
 

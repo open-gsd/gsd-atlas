@@ -72,6 +72,7 @@ gsd‑atlas keeps a live, local map of a codebase and the platform SDKs it targe
 | **A60 — Indexer** | One module owns file and git events, the (worktree, path) coalescing queue (A24), parsing through the Grammar Engine, commits to the Fact Store and `ensureFresh` (read‑your‑writes, A26). It is the Fact Store's only writer client. | The path from event to stored facts has one owner; the store never waits on work it can't see. |
 | **A61 — Governor** | One machine‑wide module owns scheduling and budgets (A25, A28, A40, A49): `run(job{tenant, class, cost}) → result \| busy(retry_after)`, with the parser and compiler pools inside. | Fairness and memory budgets are testable with a fake clock. |
 | **A62 — Host composes Tenants** | The Host is the composition root: transport, auth, tenant routing. Per repo it builds one Tenant (Source Tree, Fact Store, Indexer, Query, Policy); the Grammar Engine, CommandRunner, SDK providers and Governor are shared. Adapters call `host.handle(request)`. | A22's tenant isolation has a concrete shape; unloading a tenant drops one composition. |
+| **A63 — Local value dashboard** | A per‑Tenant Metrics module with its own database file (metrics aren't derivable, so a store rebuild can't wipe them). Every figure is labeled measured, estimated (with range) or A/B; no single score; atlas's cost shown beside its savings; value statistics never reach agent context. The HTML report is a generated static file (A27 unchanged). | Users can see net value honestly without telemetry (value‑dashboard ADR, `DASHBOARD-METRICS.md`). |
 ---
 
 ## Architecture
@@ -93,6 +94,7 @@ gsd‑atlas keeps a live, local map of a codebase and the platform SDKs it targe
 - **SDK providers:** registered by id and selected by project targets (A56).
 - **Source Tree / Indexer / Fact Store / Query / Policy:** the per‑repo **Tenant** (A59, A60, A58, A62). Source Tree supplies git‑derived facts; the Indexer turns events into committed facts; the Fact Store holds them; Query answers; Policy decides gates.
 - **Governor:** one machine‑wide scheduler and budget owner with the parser and compiler pools (A61).
+- **Metrics:** best‑effort local recorder for answers, gates, freshness and cost; separate database file; feeds `status` and `dashboard` (A63).
 - **Host:** the composition root. Adapters (MCP, CLI, hooks, stdio shim) call `host.handle(request)` after transport and auth (A62).
 
 ```

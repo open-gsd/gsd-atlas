@@ -115,3 +115,21 @@ _Avoid_: enforcement, rules engine
 **Workspace**:
 A set of repos the user has declared may be queried together.
 _Avoid_: monorepo, project group
+
+## Value measurement
+
+**Metrics**:
+The module that records, locally and best-effort, what atlas did and what it cost, and builds the dashboard report from it.
+_Avoid_: telemetry, analytics
+
+**Dashboard**:
+The local report of what atlas delivered and cost, where every figure is labeled by how it was obtained.
+_Avoid_: scoreboard, ROI report
+
+**Measured / Estimated / A/B**:
+The three classes of figure. Measured is observed directly; estimated is modelled from a stated method with a range; A/B is a difference observed between runs with hooks off, advise and enforce.
+_Avoid_: savings (unqualified)
+
+**Context kept out**:
+An estimate of how much file content an agent did not have to read because an atlas answer replaced a search or read.
+_Avoid_: tokens saved
