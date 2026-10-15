@@ -1,6 +1,6 @@
 # gsd‑atlas — Agent integration: skill, MCP and enforcement hooks
 
-**Status:** Draft · 2026‑10‑15 · companion to `PRD.md` §8 and `DESIGN.md` A32–A38
+**Status:** Draft · 2026‑10‑15 · companion to `PRD.md` §8 and `DESIGN.md` A32–A38, A58 and the query‑and‑policy ADR
 
 gsd‑atlas only helps if agents use it. Left alone, an agent will often decide "I can just do it": grep its way around the repo, edit a function without checking its callers, write iOS 18 code from memory, and declare the job done. This document covers three layers that make atlas the path of least resistance and, where it matters, the required path:
 
@@ -55,7 +55,7 @@ gsd‑atlas only helps if agents use it. Left alone, an agent will often decide 
 
 ### Rules
 - **Token budget per call:** every tool takes `budget_tokens` (default 2,000). Results are ranked and cut to fit, with a `more` cursor. Claude Code warns at 10,000 tokens and moves anything over 25,000 to a file, so atlas never comes near either.
-- **Freshness is explicit:** `watermark` and `stale_paths` on every answer; `fresh: [paths]` on any call makes the daemon index those first (A26).
+- **Freshness is explicit:** `watermark` and `stale_paths` on every answer; `fresh: [paths]` on any call makes Query bring those paths up to date through `Indexer.ensureFresh` before it reads (A26, A58).
 - **Worktree identity:** taken from MCP roots when the client provides them, otherwise from a `worktree` argument or the server's working directory.
 - **Read tools are marked read‑only** (`readOnlyHint`); only `atlas_build` writes.
 - **Short server instructions** in the MCP initialize result carry the routing table. Whether every client shows them to the model isn't verified, so the same routing also lives in the skill and the SessionStart context.
@@ -91,10 +91,19 @@ gsd‑atlas only helps if agents use it. Left alone, an agent will often decide 
 ### Principles
 - **Answer, don't just refuse.** When the agent greps for something atlas knows, the hook hands it the atlas answer. A refusal costs a round trip; an answer saves one.
 - **Gates only demand cheap things.** A gate asks for one atlas call, never something the agent can't do. If atlas can't answer (unsupported language, stale index, daemon down), the gate opens.
-- **Never block on stale facts.** Before any gate decides, the daemon indexes the touched files (`fresh`, short timeout). Still stale → advise instead of deny.
+- **Never block on stale facts.** Before any gate decides, the hook adapter's Query call passes the touched files as `fresh` (short timeout). Still stale → advise instead of deny.
 - **Escalation, not walls.** Modes per repo: `off`, `advise` (default), `enforce`, `strict` (swarms). Each rule can be set on its own.
 - **Declared crash policy.** Every hook declares fail‑open or fail‑closed, as gsd‑core's `hook-exit.js` requires. All atlas hooks fail **open**: atlas being down must never stop work.
 - **Agents can't override themselves.** Overrides come from the user (`/atlas allow <rule> once`) or the policy file.
+
+### Where the pieces live
+Answering and enforcing are separate modules (query‑and‑policy ADR):
+1. The **hook adapter** turns a host event into (a) a Query request for the one cheap answer the rule needs and (b) a Policy event.
+2. **Query** returns the same envelope MCP and the CLI return, including `watermark` and `degraded`.
+3. **Policy** runs the pure `decide(event, ledgerEntry, answer) → allow | deny | attach(text)`. It owns the session ledger, the modes and the loop guards, and it never calls Query.
+4. The adapter translates the decision into the host's hook response, or fails open if either call errors or times out.
+
+Rules R1–R4 below are rows in Policy's table; the "attach" text in each is built from the Query answer. R0 (brief) is a Query request kind (`platform_card` + status + routing); Policy only decides whether to inject it.
 
 ### Event map
 Built on the portable event floor gsd‑core already uses across runtimes (SessionStart, PreToolUse, PostToolUse, Stop, SessionEnd), plus SubagentStart/SubagentStop where the host has them.
@@ -108,7 +117,7 @@ Built on the portable event floor gsd‑core already uses across runtimes (Sessi
 | **Stop**, **SubagentStop** | R4 Done gate | Summarise open findings as context | Block stopping while this session's changes have open `sdk_check`/`syntax_check` findings or references broken by the edits (a removed or renamed symbol still referenced) |
 | **SessionEnd** | R5 Close | Drop the session ledger | Same |
 
-**Loop guards:** R2 allows the retry once context has been delivered, so an agent can never be denied twice for the same symbol. R4 blocks at most 3 times per session, then degrades to advise. This guard is atlas's own (a counter in the daemon's ledger), so it doesn't depend on any host's loop‑guard field.
+**Loop guards:** R2 allows the retry once context has been delivered, so an agent can never be denied twice for the same symbol. R4 blocks at most 3 times per session, then degrades to advise. This guard is atlas's own (a counter in the Policy ledger), so it doesn't depend on any host's loop‑guard field.
 
 ### Hook transport and cost
 At hundreds of agents, a hook that starts a Node process per tool call (about 40 ms and 44 MB each) becomes the bottleneck. So:
@@ -117,6 +126,7 @@ At hundreds of agents, a hook that starts a Node process per tool call (about 40
 - Budget: hook p99 ≤ 20 ms; timeout 2 s; failure is non‑blocking.
 
 ### Session ledger
+- Owned by the Policy module; Query never reads it.
 - Per (session, agent): symbols consulted, files edited, open findings, gate counters.
 - Small, in memory, and expiring: dropped at SessionEnd or after 1 hour idle, evicted under memory pressure.
 - Never needed for correctness: if an entry is gone, gates fall back to advise. This is the one piece of per‑agent state, and it is bounded and disposable, so A23 still holds.

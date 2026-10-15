@@ -9,7 +9,7 @@
 The store must answer in milliseconds, update per file save, survive crashes, stay small and never corrupt, on macOS, Linux and Windows. Other local tools have shown multi‑GB stores and frequent corruption (MemPalace keeps verbatim text in ChromaDB by default; Chroma's own maintenance guide describes index growth and fragmentation). The design review found that the benchmarks didn't cover fuzzy search or real reference distributions, and that refusing synced folders would strand common setups.
 
 ## Decision
-1. **Engine:** SQLite through `node:sqlite`, WAL mode, `synchronous=NORMAL`, behind a small driver interface. `better-sqlite3` is kept working, not just listed, and the driver is tested on every supported Node minor in CI.
+1. **Engine:** SQLite through `node:sqlite`, WAL mode, `synchronous=NORMAL`, behind the Fact Store module ([draft-fact-store-interface](draft-fact-store-interface.md)), whose interface is fact‑level. The SQL driver is internal to it. `better-sqlite3` is kept working, not just listed, and one conformance suite runs against both drivers on every supported Node minor in CI.
 2. **Runtime and platforms:** TypeScript, Node ≥ 24; macOS, Linux and Windows.
 3. **Location:** per‑repo store in `$(git rev-parse --git-common-dir)/gsd-atlas/`. It moves automatically (one notice, never a refusal) to `${XDG_CACHE_HOME:-~/.cache}/gsd-atlas/<repo-id>` for non‑git roots, a read‑only `.git`, or a repo inside iCloud Drive, Dropbox, OneDrive, Google Drive or a network mount. `store.dir` overrides. Never committed.
 4. **Derived, rebuildable:** source is the truth. A failed `quick_check` moves the file aside and rebuilds. A schema change rebuilds each repo lazily at low priority on first use, serving still‑valid facts marked stale meanwhile.
@@ -27,7 +27,7 @@ The store must answer in milliseconds, update per file save, survive crashes, st
 ## Consequences
 - Zero‑ops embedded store, no server to run.
 - Writes serialize through one writer per store (host ADR handles throughput).
-- Deep multi‑hop traversal over millions of edges would be slow; atlas queries are one or two hops. The driver interface allows a swap if a budget is missed on a real corpus.
+- Deep multi‑hop traversal over millions of edges would be slow; atlas queries are one or two hops. The Fact Store's fact‑level interface allows an engine swap if a budget is missed on a real corpus.
 - Repos in synced folders work, with their store in the cache location.
 
 ## Alternatives considered

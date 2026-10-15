@@ -26,11 +26,12 @@ Agents choose the cheapest path. gsd‑atlas has to be cheaper than grep and fil
    Ranking quality is part of the answer‑quality eval.
 5. **Impact expansion:** `code_impact` follows `EXTRACTED` edges transitively; `INFERRED` hops are listed but not expanded unless asked.
 6. **Untrusted prose:** doc comments, ADR excerpts, package and SDK documentation are returned inside a fenced, length‑capped `untrusted_text` field, redacted, and never mixed into `hints`.
-7. **Freshness:** any call may pass `fresh: [paths]` to have them indexed before answering (read your own writes).
+7. **Freshness:** any call may pass `fresh: [paths]` to have them indexed before answering (read your own writes). Implemented by Query calling `Indexer.ensureFresh`.
 8. **Worktree identity:** from MCP roots, else a `worktree` argument, else the connection's working directory.
 9. **Read tools marked `readOnlyHint`.** Short server instructions carry the routing table (also repeated in the skill and session context, since not every host shows them).
 10. **CLI parity:** every MCP tool has a CLI command returning the identical JSON, under gsd‑graph's machine contract (JSON on stdout, reasons on stderr, exit codes 0/1/2/3).
 11. **Versioning:** breaking changes need a new `schema` major, an ADR amendment and a new host major (host ADR).
+12. **Query module:** every tool is a request kind of the one Query module, and MCP, CLI and hooks are adapters over it ([draft-query-and-policy](draft-query-and-policy.md)).
 
 ## Consequences
 - Hooks, skills and other tools build on one stable shape.

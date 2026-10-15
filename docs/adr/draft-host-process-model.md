@@ -22,18 +22,19 @@ Developers run several repos at once, each with its own sessions, and agent tool
    - Requests are stateless; per‑agent cost is a connection, an MCP session and a bounded ledger entry.
    - Zero extra processes on hosts with HTTP MCP and HTTP hooks. Stdio‑only clients pay one thin shim; hosts without HTTP hooks pay one thin forwarder per tool call.
    - No per‑agent index, cache or compiler; no hard‑coded limits. Limits are configurable back‑pressure, never caps.
-6. **Work scales with change, not agents:** index queue keyed by (worktree, path) holding the latest hash; events coalesce; writes group‑committed.
-7. **One machine‑wide resource governor:** memory budget (default 25 % of RAM) for compilers, plus parser and compiler pools.
-8. **Scheduling:** per‑tenant queues with weighted round‑robin across tenants and a per‑tenant concurrency cap derived from the governor; inside a tenant, priority classes: interactive reads > fresh requests > indexing > maintenance. Per‑query time limits; `busy` with `retry_after` when saturated.
+6. **Work scales with change, not agents:** index queue keyed by (worktree, path) holding the latest hash; events coalesce; writes group‑committed. The queue is owned by the Indexer.
+7. **One machine‑wide resource governor:** memory budget (default 25 % of RAM) for compilers, plus parser and compiler pools. It is one Governor module, which also owns scheduling.
+8. **Scheduling:** per‑tenant queues with weighted round‑robin across tenants and a per‑tenant concurrency cap derived from the governor; inside a tenant, priority classes: interactive reads > fresh requests > indexing > maintenance. Per‑query time limits; `busy` with `retry_after` when saturated. Implemented by the Governor (`run(job) → result | busy`).
 9. **Transport and endpoint security:**
    - **Endpoints:** a Unix domain socket (macOS, Linux) or named pipe (Windows) where the client supports it; otherwise 127.0.0.1 at a fixed, configurable per‑user port, so static hook settings can find it.
    - **Authentication:** every route, including hooks and health, requires the token from a `0600` file.
    - **Browser defence:** `Host` and `Origin` are validated and browser‑style requests rejected.
    - **Hooks:** hook configs read the token from an allowed environment variable or the token file.
-10. **Read your own writes:** every response carries a watermark; `fresh` paths are indexed before answering.
+10. **Read your own writes:** every response carries a watermark; `fresh` paths are indexed before answering. Query calls `Indexer.ensureFresh` before reading.
 11. **Isolation by default:** cross‑repo queries only within a workspace declared in user config (submodules join automatically), by fan‑out across stores (never `ATTACH`, which stops at 10).
 12. **Disk budgets:** per‑repo and workstation (default 2 GB); cold repo stores dropped after 30 days and rebuilt on use.
 13. **Visibility:** `status` and the SessionStart brief report when atlas is down or a tenant is degraded.
+14. **Composition:** the Host is the composition root. It builds one Tenant per repo (Source Tree, Fact Store, Indexer, Query, Policy) and shares the Grammar Engine, CommandRunner, SDK providers and Governor; adapters call `host.handle(request)` ([draft-tenant-composition](draft-tenant-composition.md)).
 
 ## Evidence (2026‑10‑15, prototype; re‑measured with the MCP SDK at M1)
 - Per‑agent processes: 44 MB per read‑only process; 357 MB for a TypeScript program over gsd‑core.

@@ -29,6 +29,8 @@ Agents work across many branches and short‑lived worktrees. The store must ref
    Each is also a CLI command and reported in `status`.
 6. **File watching:** watch tracked directories only. When the OS runs out of watches (e.g. Linux inotify limits), fall back to Reconcile polling and say so in `status`.
 
+7. **Who does what:** Source Tree supplies each worktree's snapshot and `hasObject`; Reconcile compares it with the Fact Store's overlay and hands the re‑index list to the Indexer; the Fact Store applies the lifecycle and collection ([draft-tenant-composition](draft-tenant-composition.md), [draft-fact-store-interface](draft-fact-store-interface.md)).
+
 ## Evidence (2026‑10‑15)
 20,000 edits to a 10,000‑file store (fresh 69 MB):
 - keep old versions: 212 MB;
