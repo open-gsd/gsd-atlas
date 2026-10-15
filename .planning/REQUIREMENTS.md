@@ -91,6 +91,7 @@ Scope is the full PRD 1.0 (M0-M6), with M4 split into SDK facts, agent integrati
 - [ ] **EVL-01**: A free-alternatives evaluation (LSP-wrapping MCP servers, agent repo-maps, colbymchenry/codegraph, Claude Code LSP, Memtrace) records the gap each leaves, done before the M2 eval
 - [ ] **EVL-02**: The eval design is pre-registered: >= 50 questions per corpus including abstain cases, >= 3 runs per configuration, an independent oracle, paired analysis pooled across corpora, accuracy non-inferiority margin, and tool-call rate logged
 - [ ] **EVL-03**: On gsd-core, agents using atlas consume fewer tokens than the grep-only baseline at non-inferior accuracy, with verifiable file:line citations >= 80% of the time
+- [ ] **EVL-04**: The pooled eval beats the grep-only baseline on tokens at non-inferior accuracy across gsd-core, gsd-pi, gsd-path and the Swift reference app (PRD M5 gate)
 
 ### Skill, Ratings and Diagnostics (SKL)
 
@@ -192,12 +193,112 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| (filled by roadmapper) | | Pending |
+| FND-01 | Phase 1 | Pending |
+| FND-02 | Phase 1 | Pending |
+| FND-03 | Phase 1 | Pending |
+| FND-04 | Phase 1 | Pending |
+| FND-05 | Phase 1 | Pending |
+| FND-06 | Phase 1 | Pending |
+| FND-07 | Phase 1 | Pending |
+| FND-08 | Phase 1 | Pending |
+| FND-09 | Phase 1 | Pending |
+| FND-10 | Phase 1 | Pending |
+| FND-11 | Phase 1 | Pending |
+| STO-01 | Phase 2 | Pending |
+| STO-02 | Phase 2 | Pending |
+| STO-03 | Phase 2 | Pending |
+| STO-04 | Phase 2 | Pending |
+| STO-05 | Phase 2 | Pending |
+| STO-06 | Phase 2 | Pending |
+| STO-07 | Phase 2 | Pending |
+| STO-08 | Phase 2 | Pending |
+| STO-09 | Phase 2 | Pending |
+| STO-10 | Phase 2 | Pending |
+| LNG-01 | Phase 1 | Pending |
+| LNG-02 | Phase 2 | Pending |
+| LNG-03 | Phase 2 | Pending |
+| LNG-04 | Phase 2 | Pending |
+| LNG-05 | Phase 2 | Pending |
+| LNG-06 | Phase 1 | Pending |
+| LNG-07 | Phase 2 | Pending |
+| LNG-08 | Phase 2 | Pending |
+| IDX-01 | Phase 2 | Pending |
+| IDX-02 | Phase 2 | Pending |
+| IDX-03 | Phase 2 | Pending |
+| IDX-04 | Phase 2 | Pending |
+| QRY-01 | Phase 2 | Pending |
+| QRY-02 | Phase 2 | Pending |
+| QRY-03 | Phase 2 | Pending |
+| QRY-04 | Phase 2 | Pending |
+| QRY-05 | Phase 2 | Pending |
+| QRY-06 | Phase 2 | Pending |
+| QRY-07 | Phase 3 | Pending |
+| HST-01 | Phase 2 | Pending |
+| HST-02 | Phase 2 | Pending |
+| HST-03 | Phase 2 | Pending |
+| HST-04 | Phase 2 | Pending |
+| MET-01 | Phase 2 | Pending |
+| MET-02 | Phase 2 | Pending |
+| TSM-01 | Phase 3 | Pending |
+| TSM-02 | Phase 3 | Pending |
+| TSM-03 | Phase 3 | Pending |
+| TSM-04 | Phase 3 | Pending |
+| TSM-05 | Phase 3 | Pending |
+| TSM-06 | Phase 3 | Pending |
+| TSM-07 | Phase 3 | Pending |
+| EVL-01 | Phase 3 | Pending |
+| EVL-02 | Phase 3 | Pending |
+| EVL-03 | Phase 3 | Pending |
+| SKL-01 | Phase 3 | Pending |
+| SKL-02 | Phase 3 | Pending |
+| SKL-03 | Phase 3 | Pending |
+| SKL-04 | Phase 3 | Pending |
+| HRD-01 | Phase 4 | Pending |
+| HRD-02 | Phase 4 | Pending |
+| HRD-03 | Phase 4 | Pending |
+| HRD-04 | Phase 4 | Pending |
+| HRD-05 | Phase 4 | Pending |
+| HRD-06 | Phase 4 | Pending |
+| HRD-07 | Phase 4 | Pending |
+| HRD-08 | Phase 4 | Pending |
+| SWF-01 | Phase 5 | Pending |
+| SWF-02 | Phase 5 | Pending |
+| SWF-03 | Phase 5 | Pending |
+| SWF-04 | Phase 5 | Pending |
+| SWF-05 | Phase 5 | Pending |
+| SDK-01 | Phase 6 | Pending |
+| SDK-02 | Phase 6 | Pending |
+| SDK-03 | Phase 6 | Pending |
+| SDK-04 | Phase 6 | Pending |
+| SDK-05 | Phase 6 | Pending |
+| SDK-06 | Phase 6 | Pending |
+| SDK-07 | Phase 6 | Pending |
+| SDK-08 | Phase 6 | Pending |
+| AGT-01 | Phase 7 | Pending |
+| AGT-02 | Phase 7 | Pending |
+| AGT-03 | Phase 7 | Pending |
+| AGT-04 | Phase 7 | Pending |
+| AGT-05 | Phase 8 | Pending |
+| DSH-01 | Phase 8 | Pending |
+| DSH-02 | Phase 8 | Pending |
+| DSH-03 | Phase 8 | Pending |
+| INT-01 | Phase 9 | Pending |
+| INT-02 | Phase 9 | Pending |
+| INT-03 | Phase 9 | Pending |
+| INT-04 | Phase 9 | Pending |
+| INT-05 | Phase 9 | Pending |
+| SEC-01 | Phase 3 | Pending |
+| SEC-02 | Phase 3 | Pending |
+| REL-01 | Phase 9 | Pending |
+| REL-02 | Phase 9 | Pending |
+| REL-03 | Phase 9 | Pending |
+| EVL-04 | Phase 9 | Pending |
+| REL-04 | Phase 9 | Pending |
 
 **Coverage:**
-- v1 requirements: 100 total
-- Mapped to phases: 0
-- Unmapped: 100 ⚠️
+- v1 requirements: 101 total
+- Mapped to phases: 101
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-10-15*
