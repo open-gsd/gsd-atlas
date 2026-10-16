@@ -74,7 +74,7 @@ Scope is the full PRD 1.0 (M0-M6), with M4 split into SDK facts, agent integrati
 
 ### Metrics (MET)
 
-- [ ] **MET-01**: A separate Metrics module with its own database file and real migrations records answers, tokens, freshness and index health locally, with no source text, paths, symbols or prompts
+- [x] **MET-01**: A separate Metrics module with its own database file and real migrations records answers, tokens, freshness and index health locally, with no source text, paths, symbols or prompts
 - [ ] **MET-02**: `gsd-atlas status` shows basic panels; a metrics write failure never blocks an answer
 
 ### TypeScript Module (TSM)
@@ -239,7 +239,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | HST-02 | Phase 2 | Pending |
 | HST-03 | Phase 2 | Complete |
 | HST-04 | Phase 2 | Pending |
-| MET-01 | Phase 2 | Pending |
+| MET-01 | Phase 2 | Complete |
 | MET-02 | Phase 2 | Pending |
 | TSM-01 | Phase 3 | Pending |
 | TSM-02 | Phase 3 | Pending |

@@ -3,16 +3,16 @@ gsd_state_version: "1.0"
 current_phase: 02
 current_phase_name: Grammar Tier, Store and stdio Host
 status: executing
-stopped_at: Completed 02-09-PLAN.md
-last_updated: "2026-10-16T19:43:39.160Z"
+stopped_at: Completed 02-10-PLAN.md
+last_updated: "2026-10-16T19:57:36.267Z"
 last_activity: 2026-10-16
-last_activity_desc: Completed 02-09 real Governor
-state_head: fe1d12b29cd2772ad6f7b18ba36784c9af0cdda4
+last_activity_desc: Completed 02-10 Metrics module
+state_head: 821325512253b5f65ef1c5f69926aa6789e215c1
 progress:
   total_phases: 9
   completed_phases: 1
   total_plans: 48
-  completed_plans: 30
+  completed_plans: 31
   percent: 11
 ---
 
@@ -28,9 +28,9 @@ See: .planning/PROJECT.md (updated 2026-10-15)
 ## Current Position
 
 Phase: 02 (Grammar Tier, Store and stdio Host) — EXECUTING
-Plan: 10 of 28 complete (plans 02-01 to 02-09 and 02-21 complete; they ran out of order, next is the lowest-numbered incomplete plan, 02-10)
+Plan: 11 of 28 complete (plans 02-01 to 02-10 and 02-21 complete; they ran out of order, next is the lowest-numbered incomplete plan, 02-11)
 Status: Ready to execute
-Last activity: 2026-10-16 — Completed 02-09 (real Governor: priority classes, per-class bounded queues with busy and retry_after, cancellable job timers, file-set lease pool)
+Last activity: 2026-10-16 — Completed 02-10 (Metrics module: migrated metrics.db, allow-listed events, bounded non-blocking recorder, rollups with 30-day retention, estimate-labelled report)
 
 Progress: [█░░░░░░░░░] 11%
 
@@ -46,7 +46,7 @@ Progress: [█░░░░░░░░░] 11%
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 01 | 20 | - | - |
-| 02 | 9 of 28 | - | - |
+| 02 | 11 of 28 | - | - |
 
 **Recent Trend:**
 - Last 5 plans: -
@@ -67,6 +67,7 @@ Progress: [█░░░░░░░░░] 11%
 | Phase 02 P06 | 22 min | 3 tasks | 11 files |
 | Phase 02 P07 | 20 min | 3 tasks | 21 files |
 | Phase 02 P09 | 25min | 2 tasks | 5 files |
+| Phase 02 P10 | 9 min | 3 tasks | 9 files |
 
 ## Accumulated Context
 
@@ -101,6 +102,9 @@ Recent decisions affecting current work:
 - [Phase 02]: Plan 02-07: matchLimit bounds new capture-list allocation only (web-tree-sitter reuses lists allocated earlier in the process), so every engine of one process must use the same limit — Observed: a limit lower than an earlier unlimited run had no effect; documented on GrammarEngineOptions
 - [Phase 02]: 02-09: Governor queue bounds are per class and must be finite non-negative integers; Infinity is rejected so no configuration can make a queue unbounded
 - [Phase 02]: 02-09: A lease that cannot be granted answers busy with the interactive class retry delay (leases serve reads; the interface has no lease class)
+- [Phase 02]: [02-10] A failed metrics batch is requeued ahead of newer events (bounded by metrics.queueMax, overflow dropped and counted) and the flush timer re-arms, so an outage loses nothing within the bound.
+- [Phase 02]: [02-10] Report percentiles that fall in the overflow bucket report the largest finite edge with overflow: true (a lower bound); Infinity was rejected because JSON turns it into null. report() flushes first and returns the all-zero report on a database error. Plan 02-22 must render both honestly.
+- [Phase 02]: [02-10] Metrics events accept no caller-supplied time or free text: an 'at' key is an unknown key and rejects the event; openMetrics never throws and returns a noop instance with a fixed reason (open_failed, newer_schema, invalid_migrations, invalid_options). Plan 02-28 owns calling rollup() from the idle loop.
 
 ### Pending Todos
 
@@ -127,6 +131,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-10-16T19:43:39.104Z
-Stopped at: Completed 02-09-PLAN.md
+Last session: 2026-10-16T19:57:36.082Z
+Stopped at: Completed 02-10-PLAN.md
 Resume file: None
