@@ -47,6 +47,9 @@ Requirements: FND-01..FND-11, LNG-01, LNG-06. No indexing, watching, queries, MC
   - **File watcher location:** inside the **Indexer** (events are its input); Source Tree only supplies git events.
   - **Governor / `ensureFresh`:** takes **one `fresh` priority slot per request**, not per call; the compiler-program LRU keys on the **file set**, not (tenant, overlay) (compiler programs are per file set, A25).
 
+### Amendments
+- **D-13 amended 2026-10-15 (user decision, plan 01-08):** the Node floor is **24.16.0**, not 24.15.0. Why: `node:sqlite` on 24.15.0 truncates TEXT at an embedded NUL (verified; fixed in 24.16.0), so source-derived text would be cut silently. The CI matrix is now **ubuntu, macos, windows x Node 24.16.0 (floor) + Node 26 latest**; every other part of D-13 stands. The D-13 line above is left unedited as the record of the original decision. The sqlite-store ADR carries the matching dated amendment, and driver open runs a NUL round-trip self-test.
+
 ### Claude's Discretion
 - Exact toy-grammar design, fixture file contents beyond the required CRLF/BOM/emoji cases, internal naming inside each seam, and CI workflow file organisation, provided D-01..D-17 hold.
 

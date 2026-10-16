@@ -62,7 +62,7 @@ Scope is the full PRD 1.0 (milestones M0–M6, 21 acceptance criteria). Source o
 
 ## Constraints
 
-- **Tech stack**: TypeScript, Node >= 24, SQLite via `node:sqlite` with `better-sqlite3` kept working as fallback — A13, A3
+- **Tech stack**: TypeScript, Node >= 24.16, SQLite via `node:sqlite` with `better-sqlite3` kept working as fallback — A13, A3
 - **Repo layout**: Single npm package `@opengsd/gsd-atlas` with bins `gsd-atlas` and `gsd-atlas-mcp`; language modules under `modules/` and publishable later — chosen for MVP simplicity
 - **Platforms**: macOS, Linux and Windows are 1.0 platforms, in every budget's CI run from M1 — GSD users run all three, and gsd-core's Windows CI is a known pain point
 - **Privacy**: No network by default, no telemetry; permissions only from user-level config (`~/.config/gsd-atlas/`); repo text fenced as untrusted — trust-boundaries ADR
@@ -92,6 +92,7 @@ Scope is the full PRD 1.0 (milestones M0–M6, 21 acceptance criteria). Source o
 | Vertical-slice (MVP) project mode | Each phase delivers a runnable end-to-end capability | — Pending |
 | Swift reference app: pick an open-source app during M3 | PRD leaves it unnamed; defer the choice until needed | — Pending |
 | ADR open questions resolved in phase discuss | None blocks planning | — Pending |
+| Node floor 24.16.0 | `node:sqlite` on 24.15.0 truncates TEXT at an embedded NUL (verified) | Decided 2026-10-15 |
 
 ## Evolution
 

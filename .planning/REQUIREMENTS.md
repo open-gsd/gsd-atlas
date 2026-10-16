@@ -12,7 +12,7 @@ Scope is the full PRD 1.0 (M0-M6), with M4 split into SDK facts, agent integrati
 ### Foundations (FND)
 
 - [ ] **FND-01**: CI builds and tests every PR on macOS, Linux and Windows
-- [ ] **FND-02**: Repo is one npm package `@opengsd/gsd-atlas` (Node >= 24.15, tsc emit) exposing bins `gsd-atlas` and `gsd-atlas-mcp`
+- [ ] **FND-02**: Repo is one npm package `@opengsd/gsd-atlas` (Node >= 24.16, tsc emit) exposing bins `gsd-atlas` and `gsd-atlas-mcp`
 - [ ] **FND-03**: A language-module manifest is validated against a JSON Schema generated from Zod; an invalid module is skipped with a diagnostic
 - [ ] **FND-04**: Grammar WASM is built reproducibly from pinned upstream releases with a pinned tree-sitter CLI, on all three OSes
 - [ ] **FND-05**: Each module seam (Fact Store, Source Tree, CommandRunner, Grammar Engine, PreciseResolver, Governor) has a fixed interface and a test double or conformance suite
