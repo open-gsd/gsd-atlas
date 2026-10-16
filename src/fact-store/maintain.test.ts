@@ -217,7 +217,7 @@ for (const driver of ['node:sqlite', 'better-sqlite3'] as const satisfies readon
         const full = await store.compact({ budgetMs: 60_000, full: true });
         assert.equal(vacuums.length, 1);
         assert.equal(full.complete, true);
-        assert.equal(full.processed, heavyFree);
+        assert.ok(full.processed >= heavyFree, 'processed counts the pages the file gave back, the free ones and the space packed out of used ones');
         assert.equal(Number(await rig.pragma('freelist_count')), 0);
       });
     });
@@ -243,17 +243,22 @@ for (const driver of ['node:sqlite', 'better-sqlite3'] as const satisfies readon
       await withRig(driver, async (rig) => {
         const store = await rig.open();
         const writer = store.writer();
-        await seed(writer, 600);
-        // Retire two files of every three: the survivors stay scattered through every table, so collecting the
-        // rest empties few pages and leaves most of them two thirds empty.
-        for (let index = 0; index < 600; index += 1) {
-          if (index % 3 === 0) continue;
-          const hash = generatedHash(1000 + index);
+        await seed(writer, 300);
+        // Edit random files under new hashes (a seeded counter, so the run is the same every time). The live
+        // versions stay scattered through every table, so collecting the old ones empties few pages and leaves
+        // most of the others about half empty.
+        const versions = new Array<number>(300).fill(0);
+        let state = 7;
+        for (let edit = 0; edit < 1500; edit += 1) {
+          state = (Math.imul(state, 1_664_525) + 1_013_904_223) >>> 0;
+          const index = state % 300;
+          versions[index] = (versions[index] ?? 0) + 1;
+          const hash = generatedHash(1000 + (versions[index] ?? 0) * 300 + index);
           await writer.commitFile({ worktree: 'main', path: generatedPath(index), hash, facts: { ...generatedFacts(index), contentHash: hash } });
         }
         writer.release();
         const collected = await store.collect({ budgetMs: 60_000 });
-        assert.equal(collected.processed, 400);
+        assert.equal(collected.processed, 1500);
         await store.compact({ budgetMs: 60_000 });
         assert.equal(Number(await rig.pragma('freelist_count')), 0, 'the setup leaves no free page');
         const pagesBefore = Number(await rig.pragma('page_count'));
@@ -273,7 +278,7 @@ for (const driver of ['node:sqlite', 'better-sqlite3'] as const satisfies readon
         assert.ok(full.processed > 0, 'processed counts the pages the vacuum gave back');
         const pagesAfter = Number(await rig.pragma('page_count'));
         assert.ok(pagesAfter < pagesBefore * 0.8, `the file shrank from ${pagesBefore} to ${pagesAfter} pages`);
-        assert.equal((await store.at('main').find('sym0')).data.length, 600, 'every live file is still there');
+        assert.equal((await store.at('main').find('sym0')).data.length, 300, 'every live file is still there');
 
         const again = await store.compact({ budgetMs: 60_000, full: true });
         assert.equal(vacuums, 1, 'idempotent: a packed file is not vacuumed again');

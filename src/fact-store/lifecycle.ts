@@ -185,6 +185,36 @@ const MAX_SLICE_GROWTH = 4;
 /** What a slice is sized to take: half the pause the plan allows, so noise does not push it over. */
 const SLICE_FRACTION = 0.5;
 
+/**
+ * A file whose b-tree pages are more than this fraction empty inside is worth a full VACUUM on request even with
+ * no free page. Incremental vacuum only returns pages that are empty; scattered deletes (a heavily edited store
+ * whose old versions were collected) leave pages two thirds empty that nothing returns, and measured on the
+ * size gate that costs 1.34 times a fresh build. A fresh build is about 26 percent empty inside, so a third
+ * leaves it alone. An internal bound of this plan, not an approved constant.
+ */
+const FRAGMENTED_FRACTION = 1 / 3;
+
+/** Bytes of unused space inside the b-tree pages, or undefined when this SQLite build has no `dbstat` table. */
+function unusedBytes(db: Db): number | undefined {
+  try {
+    const row = db.prepare('SELECT sum(unused) AS unused FROM dbstat').get();
+    return row === undefined || row.unused === null ? undefined : Number(row.unused);
+  } catch {
+    return undefined; // no dbstat, or the scan failed: the free-page rule alone decides
+  }
+}
+
+/**
+ * Whether a full `VACUUM` is warranted: more than a quarter of the file is free pages (the plan's rule), or,
+ * when this build can say, more than `FRAGMENTED_FRACTION` of it is empty space inside pages.
+ */
+function worthVacuuming(db: Db, freePages: number): boolean {
+  const total = Number(db.pragma('page_count'));
+  if (freePages * 4 > total) return true;
+  const unused = unusedBytes(db);
+  return unused !== undefined && unused > total * Number(db.pragma('page_size')) * FRAGMENTED_FRACTION;
+}
+
 /** The next slice's page count: aim for `target` ms given that `pages` took `ms`, growing by at most `MAX_SLICE_GROWTH`. */
 function nextSlicePages(pages: number, ms: number, target: number): number {
   const scaled = Math.floor((pages * target) / Math.max(ms, 0.05));
@@ -198,7 +228,7 @@ function nextSlicePages(pages: number, ms: number, target: number): number {
  * checkpoint, which truncates the log when the run finished.
  *
  * A full `VACUUM` rewrites the whole file while it holds the writer, so it runs only when the caller asks
- * (`options.full`) and more than a quarter of the file is free; otherwise `full` changes nothing. `processed`
+ * (`options.full`) and the file is worth it (`worthVacuuming`); otherwise `full` changes nothing. `processed`
  * counts the pages given back.
  */
 export async function compactStore(parts: StoreParts, options: MaintenanceOptions): Promise<MaintenanceResult> {
@@ -211,10 +241,11 @@ export async function compactStore(parts: StoreParts, options: MaintenanceOption
   let complete = true;
 
   let free = freePages();
-  if (options.full === true && free * 4 > Number(db.pragma('page_count'))) {
+  if (options.full === true && worthVacuuming(db, free)) {
+    const before = Number(db.pragma('page_count'));
     lifecycleTestHooks.onVacuum?.();
     db.exec('VACUUM');
-    processed += free - freePages();
+    processed += before - Number(db.pragma('page_count'));
     free = freePages();
   }
 
