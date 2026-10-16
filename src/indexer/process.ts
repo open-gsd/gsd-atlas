@@ -88,6 +88,8 @@ export interface ProcessContext {
   readonly counters: ProcessCounters;
   readonly config: IndexerConfig;
   notice(notice: IndexerNotice): void;
+  /** The injected clock's time, for durations. */
+  now(): number;
   isStopped(): boolean;
   /** Waits `ms` of the injected clock's time; a stop wakes it early. */
   sleep(ms: number): Promise<void>;
