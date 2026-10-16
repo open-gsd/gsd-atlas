@@ -23,6 +23,8 @@ export interface ContractScenarios {
     readonly crlf: string;
     readonly bom: string;
     readonly broken: string;
+    /** A function whose text is over the 256 code unit capture text bound (built in code, not a fixture file). */
+    readonly long: string;
   };
   /** The real engine's results for every source, keyed by exact source text. Scripts the fake. */
   readonly expected: ReadonlyMap<string, GrammarRunResult>;
@@ -58,6 +60,7 @@ async function buildToyScenarios(): Promise<ContractScenarios> {
     crlf: readFixture('fixtures/crlf.toy'),
     bom: readFixture('fixtures/bom.toy'),
     broken: readFixture('fixtures-negative/broken.toy'),
+    long: `fn big {\n${'  helper();\n'.repeat(40)}}\n`,
   };
   const real = createGrammarEngine();
   try {
@@ -177,6 +180,36 @@ export function defineGrammarEngineContract(
         const result = await grammar.run(scenarios.sources.broken);
         assert.ok(result.errorBytes > 0, 'errorBytes must be above 0');
         assert.ok(result.errorBytes <= result.totalBytes, 'errorBytes must not exceed totalBytes');
+      });
+    });
+
+    it('gives the captures of one query match the same match index and different definitions different ones', async () => {
+      await withLoaded(async (grammar, scenarios) => {
+        const tags = (await grammar.run(scenarios.sources.basic)).captures.filter((c) => c.query === 'tags');
+        const matchOf = (name: string, text?: string) =>
+          tags.find((c) => c.name === name && (text === undefined || c.text === text))?.match;
+        assert.equal(matchOf('definition.function'), matchOf('name', 'main'));
+        assert.equal(matchOf('definition.type'), matchOf('name', 'Widget'));
+        assert.notEqual(matchOf('definition.function'), matchOf('definition.type'));
+        for (const capture of tags) {
+          assert.ok(Number.isInteger(capture.match) && capture.match >= 0);
+        }
+      });
+    });
+
+    it('keeps capture text only up to 256 UTF-16 code units: a long definition has empty text and a real span', async () => {
+      await withLoaded(async (grammar, scenarios) => {
+        const result = await grammar.run(scenarios.sources.long);
+        const definition = result.captures.find((c) => c.name === 'definition.function');
+        assert.ok(definition);
+        assert.equal(definition.text, '');
+        assert.equal(definition.span.startLine, 0);
+        assert.equal(definition.span.endLine, 41);
+        const name = result.captures.find((c) => c.name === 'name');
+        assert.ok(name);
+        assert.equal(name.text, 'big');
+        const short = (await grammar.run(scenarios.sources.basic)).captures.find((c) => c.name === 'definition.function');
+        assert.equal(short?.text, 'fn main {\n  helper();\n}');
       });
     });
 

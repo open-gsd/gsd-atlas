@@ -6,8 +6,9 @@ import { describe, it } from 'node:test';
 import { Language, Parser } from 'web-tree-sitter';
 
 import { defineGrammarEngineContract, loadToyScenarios } from './contract.ts';
-import { createFakeGrammarEngine, createGrammarEngine, GrammarLoadError, GrammarRunError } from './index.ts';
+import { createFakeGrammarEngine, createGrammarEngine, GrammarLoadError, GrammarRunError, GRAMMAR_LIMITS } from './index.ts';
 import type { Capture, GrammarInput } from './index.ts';
+import { toCapture } from './normalize.ts';
 import { withTree } from './with-tree.ts';
 
 const toyDir = path.resolve(import.meta.dirname, '..', '..', 'test', 'fixtures', 'modules', 'toy');
@@ -296,6 +297,119 @@ describe('fake engine expectations are not echoed wrong data', () => {
     const broken = scenarios.expected.get(scenarios.sources.broken);
     assert.ok(broken);
     assert.ok(broken.errorBytes > 0);
+  });
+});
+
+describe('real engine: match grouping', () => {
+  it('gives every capture a zero-based match index and lets the captures of one definition share it', async () => {
+    await withToyGrammar(async (grammar) => {
+      const result = await grammar.run(fixture('basic.toy'));
+      for (const capture of result.captures) {
+        assert.ok(Number.isInteger(capture.match) && capture.match >= 0, `${capture.name} has match ${String(capture.match)}`);
+      }
+      const tags = result.captures.filter((c) => c.query === 'tags');
+      const fn = tags.find((c) => c.name === 'definition.function');
+      const type = tags.find((c) => c.name === 'definition.type');
+      const names = tags.filter((c) => c.name === 'name');
+      assert.ok(fn && type);
+      assert.equal(names.length, 2);
+      const nameOfFn = names.find((c) => c.text === 'main');
+      const nameOfType = names.find((c) => c.text === 'Widget');
+      assert.ok(nameOfFn && nameOfType);
+      assert.equal(fn.match, nameOfFn.match, 'the function and its name come from one match');
+      assert.equal(type.match, nameOfType.match, 'the type and its name come from one match');
+      assert.notEqual(fn.match, type.match, 'two definitions are two matches');
+      assert.deepEqual([fn.match, type.match].sort(), [0, 1], 'indexes are zero-based and dense within the tags query');
+    });
+  });
+
+  it('keeps nested definitions apart: each name pairs with its own definition node by match, not by span nesting', async () => {
+    await withToyGrammar(async (grammar) => {
+      const result = await grammar.run('fn outer {\n  fn inner {\n  }\n}\n');
+      const tags = result.captures.filter((c) => c.query === 'tags');
+      const definitions = tags.filter((c) => c.name === 'definition.function');
+      assert.equal(definitions.length, 2);
+      for (const definition of definitions) {
+        const sameMatch = tags.filter((c) => c.match === definition.match);
+        assert.equal(sameMatch.length, 2, 'one definition capture and one name capture per match');
+      }
+      const pairs = definitions.map((definition) => {
+        const name = tags.find((c) => c.name === 'name' && c.match === definition.match);
+        return [name?.text, definition.span.startLine];
+      });
+      assert.deepEqual(pairs.sort(), [
+        ['inner', 1],
+        ['outer', 0],
+      ]);
+    });
+  });
+});
+
+describe('toCapture: bounded capture text', () => {
+  function nodeOf(length: number) {
+    return {
+      startPosition: { row: 0, column: 0 },
+      endPosition: { row: 0, column: length },
+      startIndex: 0,
+      endIndex: length,
+    };
+  }
+
+  it('keeps the exact text of a node of at most 256 UTF-16 code units', () => {
+    const source = 'x'.repeat(300);
+    assert.equal(toCapture('tags', 'name', nodeOf(256), source, 4).text, 'x'.repeat(256));
+    assert.equal(toCapture('tags', 'name', nodeOf(1), source, 4).text, 'x');
+  });
+
+  it('returns an empty string for a node of 257 code units or more, and still reports its span and match', () => {
+    const source = 'x'.repeat(300);
+    const capture = toCapture('tags', 'definition.function', nodeOf(257), source, 7);
+    assert.equal(capture.text, '');
+    assert.equal(capture.match, 7);
+    assert.deepEqual(capture.span, span(0, 0, 0, 257));
+    assert.equal(GRAMMAR_LIMITS.captureTextChars, 256);
+  });
+});
+
+describe('fake engine: scripted match indexes', () => {
+  async function scripted(captures: ReadonlyArray<Omit<Capture, 'match'> & { match?: number }>) {
+    const source = 'scripted source';
+    const engine = createFakeGrammarEngine({
+      abi: lock.abi,
+      results: new Map([[source, { hadBom: false, captures, errorBytes: 0, totalBytes: 15, missingNodes: 0 }]]),
+    });
+    const grammar = await engine.load(toyInput());
+    try {
+      return (await grammar.run(source)).captures;
+    } finally {
+      await engine.dispose();
+    }
+  }
+
+  it('assigns a distinct match per scripted capture when match is omitted', async () => {
+    const captures = await scripted([
+      { query: 'tags', name: 'definition.function', span: span(0, 0, 1, 1), text: '' },
+      { query: 'tags', name: 'name', span: span(0, 3, 0, 4), text: 'a' },
+    ]);
+    assert.equal(captures.length, 2);
+    const [first, second] = captures;
+    assert.ok(first && second);
+    assert.ok(Number.isInteger(first.match) && Number.isInteger(second.match));
+    assert.notEqual(first.match, second.match);
+  });
+
+  it('keeps a scripted match and never hands the same index to an unscripted capture of that query', async () => {
+    const captures = await scripted([
+      { query: 'tags', name: 'definition.function', span: span(0, 0, 1, 1), text: '', match: 0 },
+      { query: 'tags', name: 'name', span: span(0, 3, 0, 4), text: 'a', match: 0 },
+      { query: 'tags', name: 'definition.type', span: span(2, 0, 3, 1), text: '' },
+    ]);
+    const [def, name, other] = captures;
+    assert.ok(def && name && other);
+    assert.equal(def.match, 0);
+    assert.equal(name.match, 0);
+    assert.ok(Number.isInteger(other.match), 'the unscripted capture gets an integer match');
+    assert.notEqual(other.match, 0);
   });
 });
 
