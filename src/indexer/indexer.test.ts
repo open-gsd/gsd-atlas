@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
+import fs from 'node:fs';
 import path from 'node:path';
 import { describe, it } from 'node:test';
 import type { TestContext } from 'node:test';
@@ -8,8 +9,8 @@ import { openFactStore } from '../fact-store/index.ts';
 import type { FactStore, Reader, Resolver } from '../fact-store/index.ts';
 import type { Clock } from '../facts/index.ts';
 import { createGovernor } from '../governor/index.ts';
-import type { Governor } from '../governor/index.ts';
-import { createGrammarEngine } from '../grammar-engine/index.ts';
+import type { Governor, Job } from '../governor/index.ts';
+import { GrammarRunError, createGrammarEngine } from '../grammar-engine/index.ts';
 import type { GrammarEngine } from '../grammar-engine/index.ts';
 import { createSourceTree } from '../source-tree/index.ts';
 import type { SourceTree } from '../source-tree/index.ts';
@@ -417,5 +418,325 @@ describe('Indexer events: the coalescing queue and the event source', () => {
     await world.indexer.stop();
     assert.equal(manual.subscriptions(), 0);
     assert.equal(clock.live, 0);
+  });
+});
+
+/** A Governor that records every job it is asked to run and delegates to a real one. */
+function spyGovernor(real: Governor, jobs: Job[]): Governor {
+  return {
+    run<T>(job: Job, fn: (signal: AbortSignal) => Promise<T>) {
+      jobs.push(job);
+      return real.run(job, fn);
+    },
+    lease: (key, estimatedBytes, onEvict) => real.lease(key, estimatedBytes, onEvict),
+    status: () => real.status(),
+  };
+}
+
+/** The real engine with a hook that runs before every parse; the hook may reject or wait. */
+function scriptedEngine(onRun: (source: string) => Promise<void> | void): (real: GrammarEngine) => GrammarEngine {
+  return (real) => ({
+    load: async (input) => {
+      const grammar = await real.load(input);
+      return {
+        name: grammar.name,
+        abi: grammar.abi,
+        run: async (source) => {
+          await onRun(source);
+          return grammar.run(source);
+        },
+        dispose: () => grammar.dispose(),
+      };
+    },
+    dispose: () => real.dispose(),
+  });
+}
+
+interface RaceHook {
+  armed: boolean;
+  reads: number;
+  /** The content to write into a.toy after its read number `reads`, or undefined to leave it alone. */
+  next(reads: number): string | undefined;
+}
+
+/** A Source Tree that rewrites a.toy right after the Indexer has read it: the file changes during indexing. */
+function racingTree(log: TreeLog, hook: RaceHook): (tree: SourceTree) => SourceTree {
+  const record = recordingTree(log);
+  return (tree) => {
+    const wrapped = record(tree);
+    return {
+      ...wrapped,
+      readText: async (worktree, relPath, options) => {
+        const result = await wrapped.readText(worktree, relPath, options);
+        if (hook.armed && relPath === 'a.toy') {
+          hook.reads += 1;
+          const content = hook.next(hook.reads);
+          if (content !== undefined) fs.writeFileSync(path.join(worktree, relPath), content);
+        }
+        return result;
+      },
+    };
+  };
+}
+
+const requeued = (notices: readonly IndexerNotice[]): number => notices.filter((n) => n.kind === 'requeued').length;
+
+describe('Indexer ensureFresh, the hash and parse race, failures and status', () => {
+  it('ensureFresh indexes the named path at once, with no clock advance, and cancels the pending debounce timer', async (t) => {
+    const log = newLog();
+    const notices: IndexerNotice[] = [];
+    const clock = new SpyClock(1000);
+    const world = await makeWorld(t, { files: THREE_FILES, wrapTree: recordingTree(log), clock, onNotice: (n) => notices.push(n) });
+    await world.indexer.build(world.dir);
+    const manual = createManualEventSource();
+    await world.indexer.attach(manual.source, [world.dir]);
+    log.hashPaths.length = 0;
+    notices.length = 0;
+
+    world.repo.write('a.toy', 'fn main {\n}\nfn fresh_one {\n}\n');
+    manual.emit(world.dir, 'a.toy');
+    assert.equal(clock.live, 1);
+    await clock.advance(30);
+    const result = await world.indexer.ensureFresh(world.dir, ['a.toy']);
+
+    assert.deepEqual(result, { complete: true, stalePaths: [], invalid: [] });
+    assert.equal((await world.reader.find('fresh_one')).data.length, 1);
+    assert.equal(clock.live, 0, 'neither the debounce timer nor the wait timer is left');
+    await clock.advance(debounceMs * 3);
+    assert.deepEqual(log.hashPaths, [['a.toy']], 'the superseded queue entry did not run a second job');
+    const indexed = notices.flatMap((n) => (n.kind === 'indexed' ? [n] : []));
+    assert.deepEqual(
+      indexed.map((n) => [n.path, n.lagMs]),
+      [['a.toy', 30]],
+      'lag is measured from the first event of the entry ensureFresh took over',
+    );
+  });
+
+  it('a queue entry and ensureFresh for one path end with the newest content, in one job', async (t) => {
+    const log = newLog();
+    const world = await makeWorld(t, { files: THREE_FILES, wrapTree: recordingTree(log), clock: new SpyClock(1000) });
+    await world.indexer.build(world.dir);
+    const manual = createManualEventSource();
+    await world.indexer.attach(manual.source, [world.dir]);
+    log.hashPaths.length = 0;
+
+    world.repo.write('a.toy', 'fn first_edit {\n}\n');
+    manual.emit(world.dir, 'a.toy');
+    const newest = 'fn newest_edit {\n}\n';
+    world.repo.write('a.toy', newest);
+    const result = await world.indexer.ensureFresh(world.dir, ['a.toy']);
+    await world.clock.advance(debounceMs * 3);
+    assert.equal(result.complete, true);
+    assert.equal((await world.reader.fileFacts('a.toy')).data?.contentHash, blobId(newest));
+    assert.equal((await world.reader.find('first_edit')).data.length, 0);
+    assert.equal(log.hashPaths.length, 1);
+  });
+
+  it('fresh slot: ensureFresh of three paths runs every job in the fresh class under one request id', async (t) => {
+    const jobs: Job[] = [];
+    const world = await makeWorld(t, { files: THREE_FILES, governor: (clock) => spyGovernor(createGovernor({ clock }), jobs) });
+    await world.indexer.build(world.dir);
+    jobs.length = 0;
+
+    world.repo.write('a.toy', 'fn main {\n}\nfn x1 {\n}\n');
+    world.repo.write('b.toy', 'fn helper {\n}\nfn x2 {\n}\n');
+    world.repo.write('c.toy', 'type Widget {\n}\nfn x3 {\n}\n');
+    const result = await world.indexer.ensureFresh(world.dir, ['c.toy', 'a.toy', 'b.toy']);
+    assert.equal(result.complete, true);
+    assert.ok(jobs.length >= 4, `one preparation job and one per path, saw ${String(jobs.length)}`);
+    assert.ok(jobs.every((job) => job.class === 'fresh'), 'no indexing-class job for a fresh request');
+    const ids = new Set(jobs.map((job) => job.requestId));
+    assert.equal(ids.size, 1, 'one request id, so the Governor gives the request one slot');
+    assert.notEqual([...ids][0], undefined);
+    for (const name of ['x1', 'x2', 'x3']) assert.equal((await world.reader.find(name)).data.length, 1);
+  });
+
+  it('invalid: absolute, dot-dot, NUL and symlink-escape paths are refused and never hashed or read', async (t) => {
+    const log = newLog();
+    const outside = makeTempDir();
+    t.after(() => outside.cleanup());
+    const target = path.join(outside.path, 'outside.toy');
+    fs.writeFileSync(target, 'fn Outside {\n}\n');
+    const world = await makeWorld(t, { files: THREE_FILES, wrapTree: recordingTree(log) });
+    await world.indexer.build(world.dir);
+    log.hashPaths.length = 0;
+    log.readTexts.length = 0;
+
+    const bad = ['/etc/hosts.toy', '../x.toy', 'sub/../../x.toy', 'nul\0.toy'];
+    if (process.platform !== 'win32') {
+      // Creating a symlink needs a privilege on Windows runners; the lexical refusals above still run there.
+      fs.symlinkSync(target, path.join(world.dir, 'escape.toy'));
+      bad.push('escape.toy');
+    }
+    world.repo.write('b.toy', 'fn helper {\n}\nfn valid_one {\n}\n');
+    const result = await world.indexer.ensureFresh(world.dir, [...bad.slice(0, 2), 'b.toy', ...bad.slice(2)]);
+
+    assert.deepEqual(result.invalid, bad, 'refused paths are listed in request order');
+    assert.equal(result.complete, true);
+    assert.deepEqual(result.stalePaths, []);
+    assert.deepEqual(log.hashPaths, [['b.toy']]);
+    assert.deepEqual(log.readTexts, ['b.toy']);
+    assert.equal((await world.reader.find('Outside')).data.length, 0);
+  });
+
+  it('ensureFresh of a directory that is not a worktree of the repository throws unknown_worktree', async (t) => {
+    const world = await makeWorld(t, { files: THREE_FILES });
+    await assert.rejects(
+      world.indexer.ensureFresh(path.join(world.dir, 'nowhere'), ['a.toy']),
+      (error: unknown) => error instanceof IndexerError && error.code === 'unknown_worktree',
+    );
+  });
+
+  it('race: a file edited while it is read is read again, and the stored facts match its final content', async (t) => {
+    const log = newLog();
+    const notices: IndexerNotice[] = [];
+    const hook: RaceHook = { armed: false, reads: 0, next: (n) => (n === 1 ? 'fn racing {\n}\nfn second {\n}\n' : undefined) };
+    const world = await makeWorld(t, { files: THREE_FILES, wrapTree: racingTree(log, hook), onNotice: (n) => notices.push(n) });
+    await world.indexer.build(world.dir);
+    world.repo.write('a.toy', 'fn firstversion {\n}\n');
+    hook.armed = true;
+    notices.length = 0;
+
+    const result = await world.indexer.ensureFresh(world.dir, ['a.toy']);
+    assert.deepEqual(result, { complete: true, stalePaths: [], invalid: [] });
+    assert.equal(hook.reads, 2, 'the interim content was read once, the final content once');
+    assert.equal(requeued(notices), 1);
+    const final = 'fn racing {\n}\nfn second {\n}\n';
+    assert.equal((await world.reader.fileFacts('a.toy')).data?.contentHash, blobId(final));
+    assert.equal((await world.reader.find('second')).data.length, 1);
+    assert.equal((await world.reader.find('firstversion')).data.length, 0, 'nothing was committed for the interim content');
+  });
+
+  it('race: a file that changes on every read is given up after the configured retries and reported stale', async (t) => {
+    const log = newLog();
+    const notices: IndexerNotice[] = [];
+    const hook: RaceHook = { armed: false, reads: 0, next: (n) => `fn changing${'x'.repeat(n)} {\n}\n` };
+    const world = await makeWorld(t, { files: THREE_FILES, wrapTree: racingTree(log, hook), onNotice: (n) => notices.push(n) });
+    await world.indexer.build(world.dir);
+    world.repo.write('a.toy', 'fn startpoint {\n}\n');
+    hook.armed = true;
+    notices.length = 0;
+
+    const result = await world.indexer.ensureFresh(world.dir, ['a.toy']);
+    assert.deepEqual(result, { complete: false, stalePaths: ['a.toy'], invalid: [] });
+    assert.equal(hook.reads, 4, 'the first read and three more');
+    assert.equal(requeued(notices), 3, 'one requeued notice per retry');
+    assert.deepEqual(world.indexer.status().failed, [{ worktree: world.dir, path: 'a.toy', code: 'unstable' }]);
+    assert.deepEqual((await world.reader.fileFacts('a.toy')).data?.symbols.map((s) => s.name), ['main', 'boot'], 'the earlier facts stay');
+    assert.equal((await world.reader.find('changing', { mode: 'prefix' })).data.length, 0);
+    assert.equal((await world.reader.find('startpoint')).data.length, 0);
+  });
+
+  it('busy governor: ensureFresh answers incomplete when the wait ends, and the queued work finishes later', async (t) => {
+    const world = await makeWorld(t, { files: THREE_FILES, governor: (clock) => createGovernor({ clock, concurrency: 1 }) });
+    await world.indexer.build(world.dir);
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const blocker = world.governor.run({ tenant: 'other', class: 'indexing', cost: 1 }, () => gate);
+
+    world.repo.write('a.toy', 'fn main {\n}\nfn late_one {\n}\n');
+    const pending = world.indexer.ensureFresh(world.dir, ['a.toy'], 500);
+    await world.clock.advance(500);
+    const result = await pending;
+    assert.deepEqual(result, { complete: false, stalePaths: ['a.toy'], invalid: [] });
+    assert.equal(world.indexer.status().queued, 1, 'the work was not cancelled; it is waiting for a slot');
+    assert.equal((await world.reader.find('late_one')).data.length, 0);
+
+    release();
+    await blocker;
+    await eventually(async () => (await world.reader.find('late_one')).data.length === 1, 'the queued work to finish');
+  });
+
+  it('parse failure: a failing file keeps its earlier facts, is counted with its code, and the next file is still processed', async (t) => {
+    const notices: IndexerNotice[] = [];
+    const world = await makeWorld(t, {
+      files: THREE_FILES,
+      engine: scriptedEngine((source) => {
+        if (source.includes('TIMEOUT_MARKER')) throw new GrammarRunError('parse_timeout', 'scripted parse timeout');
+      }),
+      onNotice: (n) => notices.push(n),
+    });
+    await world.indexer.build(world.dir);
+    notices.length = 0;
+
+    world.repo.write('a.toy', 'fn main {\n}\n# TIMEOUT_MARKER\n');
+    world.repo.write('b.toy', 'fn helper {\n}\nfn after_failure {\n}\n');
+    const result = await world.indexer.ensureFresh(world.dir, ['a.toy', 'b.toy']);
+
+    assert.deepEqual(result, { complete: false, stalePaths: ['a.toy'], invalid: [] });
+    assert.deepEqual((await world.reader.fileFacts('a.toy')).data?.symbols.map((s) => s.name), ['main', 'boot'], 'earlier facts kept');
+    assert.equal((await world.reader.find('after_failure')).data.length, 1, 'the next path in the same batch went through');
+    assert.deepEqual(world.indexer.status().failed, [{ worktree: world.dir, path: 'a.toy', code: 'parse_timeout' }]);
+    assert.deepEqual(
+      notices.filter((n) => n.kind === 'failed'),
+      [{ kind: 'failed', worktree: world.dir, path: 'a.toy', code: 'parse_timeout' }],
+    );
+
+    world.repo.write('a.toy', 'fn main {\n}\nfn recovered {\n}\n');
+    const again = await world.indexer.ensureFresh(world.dir, ['a.toy']);
+    assert.equal(again.complete, true);
+    assert.deepEqual(world.indexer.status().failed, [], 'a later success clears the failure');
+  });
+
+  it('parse failure: a file over the byte cap keeps its earlier facts and is counted as source_too_large', async (t) => {
+    const world = await makeWorld(t, { files: THREE_FILES, config: { maxFileBytes: 100 } });
+    await world.indexer.build(world.dir);
+    world.repo.write('c.toy', `type Widget {\n}\n# ${'x'.repeat(200)}\n`);
+    const result = await world.indexer.ensureFresh(world.dir, ['c.toy']);
+    assert.deepEqual(result, { complete: false, stalePaths: ['c.toy'], invalid: [] });
+    assert.deepEqual(world.indexer.status().failed, [{ worktree: world.dir, path: 'c.toy', code: 'source_too_large' }]);
+    assert.equal((await world.reader.find('Widget')).data.length, 1);
+  });
+
+  it('binary: a path that becomes binary leaves the overlay, and so does a path whose extension is no longer claimed', async (t) => {
+    const world = await makeWorld(t, { files: THREE_FILES });
+    await world.indexer.build(world.dir);
+
+    world.repo.write('b.toy', Buffer.from('fn helper {\n}\n\0binary tail'));
+    const binary = await world.indexer.ensureFresh(world.dir, ['b.toy']);
+    assert.equal(binary.complete, true);
+    assert.equal((await world.reader.find('helper')).data.length, 0);
+    assert.equal((await world.reader.fileFacts('b.toy')).data, null);
+
+    await world.indexer.stop();
+    const unclaiming = world.another({ builtinDir: null });
+    const result = await unclaiming.ensureFresh(world.dir, ['c.toy']);
+    assert.equal(result.complete, true);
+    assert.equal((await world.reader.find('Widget')).data.length, 0, 'no loaded module claims .toy any more');
+    assert.equal((await world.reader.fileFacts('a.toy')).data !== null, true, 'paths nobody asked about are untouched');
+  });
+
+  it('status reports queued and running paths, failed paths and the time of the last commit', async (t) => {
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let gated = false;
+    const world = await makeWorld(t, {
+      files: THREE_FILES,
+      engine: scriptedEngine(async (source) => {
+        if (gated && source.includes('GATED')) await gate;
+      }),
+    });
+    assert.deepEqual(world.indexer.status(), { queued: 0, running: 0, failed: [], lastIndexedAt: null, watchProblems: [] });
+    await world.indexer.build(world.dir);
+    assert.equal(world.indexer.status().lastIndexedAt, 1000, 'the injected clock, not the wall clock');
+
+    gated = true;
+    world.repo.write('b.toy', 'fn helper {\n}\n# GATED\n');
+    await world.clock.advance(25);
+    const pending = world.indexer.ensureFresh(world.dir, ['b.toy']);
+    await eventually(async () => world.indexer.status().running === 1, 'the parse to start');
+    assert.equal(world.indexer.status().queued, 0);
+    release();
+    assert.equal((await pending).complete, true);
+    assert.deepEqual(world.indexer.status(), { queued: 0, running: 0, failed: [], lastIndexedAt: 1025, watchProblems: [] });
+
+    const manual = createManualEventSource();
+    await world.indexer.attach(manual.source, [world.dir]);
+    manual.emit(world.dir, 'a.toy');
+    assert.equal(world.indexer.status().queued, 1, 'an event waiting for its debounce window is queued');
   });
 });
