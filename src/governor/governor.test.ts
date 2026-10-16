@@ -4,7 +4,8 @@ import { describe, it } from 'node:test';
 import type { Clock } from '../facts/index.ts';
 import { FakeClock } from '../test-kit/index.ts';
 import { defineGovernorContract, defineGovernorSchedulingContract, deferred, job, mustLease } from './contract.ts';
-import { createFakeGovernor, createGovernor, createNoopGovernor } from './index.ts';
+import { DEFAULT_GOVERNOR_OPTIONS, createFakeGovernor, createGovernor, createNoopGovernor } from './index.ts';
+import type { JobClass } from './index.ts';
 
 defineGovernorContract('noop', () => createNoopGovernor());
 defineGovernorContract('fake', () => createFakeGovernor({ clock: new FakeClock() }));
@@ -144,5 +145,176 @@ describe('real Governor: job timers', () => {
     await blocker;
     assert.deepEqual(await queued, { kind: 'ok', value: 'queued' });
     assert.equal(clock.live, 0);
+  });
+});
+
+describe('real Governor: per-class bounds', () => {
+  it('answers busy with the class retry delay when only that class queue is full', async () => {
+    const governor = createGovernor({
+      clock: new FakeClock(),
+      concurrency: 1,
+      maxQueue: { interactive: 1, maintenance: 1 },
+      busyRetryMs: { interactive: 111, maintenance: 777 },
+    });
+    const gate = deferred();
+    const running = governor.run(job('indexing'), () => gate.promise);
+    const queuedInteractive = governor.run(job('interactive'), async () => 'interactive');
+    let ran = false;
+    const rejected = await governor.run(job('interactive'), async () => {
+      ran = true;
+    });
+    assert.deepEqual(rejected, { kind: 'busy', retry_after: 111 });
+    assert.equal(ran, false);
+    // Maintenance has its own queue, which still has room.
+    const queuedMaintenance = governor.run(job('maintenance'), async () => 'maintenance');
+    assert.equal(governor.status().queued, 2);
+    assert.deepEqual(await governor.run(job('maintenance'), async () => {}), { kind: 'busy', retry_after: 777 });
+    assert.equal(governor.status().queued, 2);
+    gate.resolve();
+    await running;
+    assert.deepEqual(await queuedInteractive, { kind: 'ok', value: 'interactive' });
+    assert.deepEqual(await queuedMaintenance, { kind: 'ok', value: 'maintenance' });
+  });
+
+  it('admits a job of another class while one class is at its bound', async () => {
+    const governor = createGovernor({ clock: new FakeClock(), concurrency: 1, maxQueue: { fresh: 0 } });
+    const gate = deferred();
+    const running = governor.run(job('indexing'), () => gate.promise);
+    assert.equal((await governor.run(job('fresh'), async () => {})).kind, 'busy');
+    const other = governor.run(job('interactive'), async () => 'admitted');
+    assert.equal(governor.status().queued, 1);
+    gate.resolve();
+    await running;
+    assert.deepEqual(await other, { kind: 'ok', value: 'admitted' });
+  });
+
+  it('maxQueue 0 admits a job only when a slot is free', async () => {
+    const governor = createGovernor({
+      clock: new FakeClock(),
+      concurrency: 1,
+      maxQueue: { interactive: 0, fresh: 0, indexing: 0, maintenance: 0 },
+    });
+    assert.deepEqual(await governor.run(job('indexing'), async () => 'free slot'), { kind: 'ok', value: 'free slot' });
+    const gate = deferred();
+    const running = governor.run(job('indexing'), () => gate.promise);
+    let ran = false;
+    const result = await governor.run(job('indexing'), async () => {
+      ran = true;
+    });
+    assert.equal(result.kind, 'busy');
+    assert.equal(ran, false);
+    assert.equal(governor.status().queued, 0);
+    gate.resolve();
+    await running;
+    assert.deepEqual(await governor.run(job('indexing'), async () => 'again'), { kind: 'ok', value: 'again' });
+  });
+
+  it('gives every class in the default options a finite bound and a positive integer retry delay', () => {
+    for (const cls of ['interactive', 'fresh', 'indexing', 'maintenance'] as const) {
+      const bound = DEFAULT_GOVERNOR_OPTIONS.maxQueue[cls];
+      const delay = DEFAULT_GOVERNOR_OPTIONS.busyRetryMs[cls];
+      assert.ok(Number.isInteger(bound) && bound >= 0, `maxQueue.${cls} is not a finite non-negative integer`);
+      assert.ok(Number.isInteger(delay) && delay >= 1, `busyRetryMs.${cls} is not a positive integer`);
+    }
+    assert.ok(Number.isInteger(DEFAULT_GOVERNOR_OPTIONS.concurrency) && DEFAULT_GOVERNOR_OPTIONS.concurrency >= 1);
+  });
+
+  it('saturates the default maintenance queue and answers busy with the default maintenance delay', async () => {
+    const governor = createGovernor({ clock: new FakeClock() });
+    const gate = deferred();
+    const jobs = Array.from({ length: DEFAULT_GOVERNOR_OPTIONS.concurrency }, () =>
+      governor.run(job('maintenance'), () => gate.promise),
+    );
+    const queued = Array.from({ length: DEFAULT_GOVERNOR_OPTIONS.maxQueue.maintenance }, () =>
+      governor.run(job('maintenance'), async () => {}),
+    );
+    assert.equal(governor.status().queued, DEFAULT_GOVERNOR_OPTIONS.maxQueue.maintenance);
+    assert.deepEqual(await governor.run(job('maintenance'), async () => {}), {
+      kind: 'busy',
+      retry_after: DEFAULT_GOVERNOR_OPTIONS.busyRetryMs.maintenance,
+    });
+    gate.resolve();
+    await Promise.all([...jobs, ...queued]);
+    assert.equal(governor.status().queued, 0);
+  });
+
+  it('runs 100 jobs at once under concurrency 4 in submission order within each class, never above the cap', async () => {
+    const governor = createGovernor({
+      clock: new FakeClock(),
+      concurrency: 4,
+      maxQueue: { interactive: 100, fresh: 100, indexing: 100, maintenance: 100 },
+    });
+    const classes: readonly JobClass[] = ['interactive', 'fresh', 'indexing', 'maintenance'];
+    const started: Array<{ cls: JobClass; index: number }> = [];
+    let peak = 0;
+    const all = Array.from({ length: 100 }, (_, index) => {
+      const cls = classes[index % classes.length] ?? 'indexing';
+      return governor.run(job(cls), async () => {
+        started.push({ cls, index });
+        peak = Math.max(peak, governor.status().running);
+        await new Promise<void>((resolve) => setImmediate(resolve));
+      });
+    });
+    const results = await Promise.all(all);
+    assert.ok(results.every((r) => r.kind === 'ok'));
+    assert.equal(started.length, 100);
+    assert.ok(peak <= 4, `running peaked at ${peak}`);
+    for (const cls of classes) {
+      const order = started.filter((s) => s.cls === cls).map((s) => s.index);
+      assert.deepEqual(order, [...order].sort((a, b) => a - b), `${cls} jobs left submission order`);
+    }
+    assert.deepEqual(governor.status(), { queued: 0, running: 0, leases: 0, leasedBytes: 0 });
+  });
+
+  it('leaves no live timer once every job of a saturation run has settled', async () => {
+    const inner = new FakeClock();
+    const clock = new TimerCountingClock(inner);
+    const governor = createGovernor({
+      clock,
+      concurrency: 2,
+      maxQueue: { interactive: 3, fresh: 3, indexing: 3, maintenance: 3 },
+    });
+    const gate = deferred();
+    const results = Array.from({ length: 30 }, (_, index) =>
+      governor.run(job(index % 2 === 0 ? 'indexing' : 'maintenance', { timeoutMs: 1000 }), () => gate.promise),
+    );
+    const settledEarly = await Promise.all(results.slice(8));
+    assert.ok(settledEarly.every((r) => r.kind === 'busy'));
+    gate.resolve();
+    const settled = await Promise.all(results);
+    assert.ok(settled.some((r) => r.kind === 'ok'));
+    assert.equal(clock.live, 0);
+    assert.equal(governor.status().queued, 0);
+    assert.equal(governor.status().running, 0);
+  });
+});
+
+describe('real Governor: option validation', () => {
+  const rangeErrorNaming = (name: string) => (error: unknown) =>
+    error instanceof RangeError && error.message.includes(name);
+
+  it('throws RangeError naming maxQueue for a negative bound', () => {
+    assert.throws(() => createGovernor({ clock: new FakeClock(), maxQueue: { indexing: -1 } }), rangeErrorNaming('maxQueue.indexing'));
+  });
+
+  it('throws RangeError naming maxQueue for a bound that is not an integer or is infinite', () => {
+    assert.throws(() => createGovernor({ clock: new FakeClock(), maxQueue: { fresh: 1.5 } }), rangeErrorNaming('maxQueue.fresh'));
+    assert.throws(() => createGovernor({ clock: new FakeClock(), maxQueue: { interactive: Infinity } }), rangeErrorNaming('maxQueue.interactive'));
+    assert.throws(() => createGovernor({ clock: new FakeClock(), maxQueue: { maintenance: Number.NaN } }), rangeErrorNaming('maxQueue.maintenance'));
+  });
+
+  it('throws RangeError naming busyRetryMs for a delay that is not a positive integer', () => {
+    assert.throws(() => createGovernor({ clock: new FakeClock(), busyRetryMs: { fresh: 1.5 } }), rangeErrorNaming('busyRetryMs.fresh'));
+    assert.throws(() => createGovernor({ clock: new FakeClock(), busyRetryMs: { interactive: 0 } }), rangeErrorNaming('busyRetryMs.interactive'));
+    assert.throws(() => createGovernor({ clock: new FakeClock(), busyRetryMs: { maintenance: -5 } }), rangeErrorNaming('busyRetryMs.maintenance'));
+  });
+
+  it('throws RangeError naming concurrency for a value below 1 or not an integer', () => {
+    assert.throws(() => createGovernor({ clock: new FakeClock(), concurrency: 0 }), rangeErrorNaming('concurrency'));
+    assert.throws(() => createGovernor({ clock: new FakeClock(), concurrency: 2.5 }), rangeErrorNaming('concurrency'));
+  });
+
+  it('throws RangeError naming memoryBudgetBytes for a negative budget', () => {
+    assert.throws(() => createGovernor({ clock: new FakeClock(), memoryBudgetBytes: -1 }), rangeErrorNaming('memoryBudgetBytes'));
   });
 });
