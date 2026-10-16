@@ -38,6 +38,7 @@
  * so each pin covers the other's gap. Both are set AFTER the caller env, so a test-kit overlay or a Source
  * Tree `envOverlay` cannot switch them off, and `decide` refuses any git spec that lacks them.
  */
+import { randomBytes } from 'node:crypto';
 import os from 'node:os';
 import type { CommandRunner, CommandSpec, RunContext } from './spec.ts';
 
@@ -172,9 +173,19 @@ export class GitConfigError extends Error {
 }
 
 /**
- * Lists every configured filter driver name. This runs WITHOUT neutralisation on purpose: reading config
- * executes nothing, and the names it returns are what the neutralisation needs. Exit status 1 with empty
- * output means "no such keys"; any other failure is an error, never "no drivers" (that would fail open).
+ * Lists every configured filter driver name, and fails closed.
+ *
+ * Reading config executes nothing, so the names come from an un-neutralised read. The read does carry one
+ * neutralisation pair, for a per-call random PROBE driver (`atlas-probe-` plus 64 random bits): git lists
+ * that key only when it honours the `GIT_CONFIG_COUNT` environment channel (git 2.31 and newer). So a
+ * missing probe proves the channel is dead and every later neutralisation would be silently skipped.
+ * Outcomes:
+ *   - `git_env_config_unsupported`: exit 0 but the probe's key is not in the output (git older than 2.31, or
+ *     the environment was lost);
+ *   - `filter_enumeration_failed`: any non-zero exit (exit 1 included: a conforming git always lists the
+ *     probe, so "no matching keys" can no longer happen), spawn error, timeout, truncation or denial.
+ * It never resolves to an empty list on failure. A repository cannot pre-define the probe's name (64 random
+ * bits per call), so a hostile driver with that name is not a supported attack.
  */
 export async function listFilterNames(
   runner: CommandRunner,
@@ -182,16 +193,24 @@ export async function listFilterNames(
   ctx?: RunContext,
   env?: Readonly<Record<string, string>>,
 ): Promise<string[]> {
+  const probe = `atlas-probe-${randomBytes(8).toString('hex')}`;
   const spec = gitSpec(['config', '--name-only', '--get-regexp', '^filter\\.'], {
     worktree,
+    filterNames: [probe],
     ...(env === undefined ? {} : { env }),
   });
   const result = await runner.run(spec, ctx);
-  const text = new TextDecoder().decode(result.stdout);
-  if (result.exitCode === 1 && text === '') return [];
   if (!result.ok) {
     const why = result.denied?.message ?? result.spawnError?.message ?? new TextDecoder().decode(result.stderr).trim();
-    throw new Error(`git config could not list filter drivers: ${why || `exit ${String(result.exitCode)}`}`);
+    const how = result.timedOut ? 'timed out' : result.truncated ? 'output exceeded its cap' : `exit ${String(result.exitCode)}`;
+    throw new GitConfigError('filter_enumeration_failed', `git config could not list filter drivers: ${why || how}`);
   }
-  return parseFilterNames(text);
+  const names = parseFilterNames(new TextDecoder().decode(result.stdout));
+  if (!names.includes(probe)) {
+    throw new GitConfigError(
+      'git_env_config_unsupported',
+      'git ignored the GIT_CONFIG_COUNT environment config channel (it needs git 2.31 or newer), so repository filter drivers could not be neutralised',
+    );
+  }
+  return names.filter((name) => name !== probe);
 }
