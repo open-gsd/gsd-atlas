@@ -4,6 +4,7 @@ import type { TestContext } from 'node:test';
 import type { Resolver } from '../fact-store/index.ts';
 import type { Envelope, RefKind, Request } from '../facts/index.ts';
 import { estimateTokens } from './budget.ts';
+import { addCaller, defineFn, nameOf, where } from './fixtures.test.ts';
 import { createHarness } from './harness.test.ts';
 import type { Harness, HarnessOptions } from './harness.test.ts';
 import type { Query, QueryConfig } from './index.ts';
@@ -45,44 +46,6 @@ const dataOf = (envelope: Envelope): RefsData => envelope.data as RefsData;
 
 function refsRequest(h: Harness, args: Record<string, unknown>): Request {
   return { protocol: 1, kind: 'code_refs', args: { repo: h.dir, ...args }, worktree: h.dir };
-}
-
-/** The 0-based line and column where `needle` first appears in `content` at or after `after`. */
-function where(content: string, needle: string, after = 0): { line: number; col: number } {
-  const index = content.indexOf(needle, after);
-  assert.ok(index >= 0, `${needle} appears in the fixture`);
-  const before = content.slice(0, index).split('\n');
-  return { line: before.length - 1, col: (before[before.length - 1] ?? '').length };
-}
-
-/** Where the name of `function NAME(` starts. */
-function nameOf(content: string, name: string): { line: number; col: number } {
-  const at = where(content, `function ${name}(`);
-  return { line: at.line, col: at.col + 'function '.length };
-}
-
-/** `export function NAME() {}` on line 1 (below a path comment, so identical bytes never share facts). */
-async function defineFn(h: Harness, file: string, name: string, extra: { kind?: string } = {}): Promise<void> {
-  const content = `// ${file}\nexport function ${name}() {}\n`;
-  const at = nameOf(content, name);
-  await h.addFileWith(file, content, {
-    symbols: [{ name, kind: extra.kind ?? 'function', line: at.line, col: at.col, exported: true }],
-    exports: [{ name, line: at.line, col: at.col }],
-  });
-}
-
-/** A file that imports `name` from `from` and calls it inside `fn`. */
-async function addCaller(h: Harness, file: string, from: string, name: string, fn: string): Promise<string> {
-  const content = `// ${file}\nimport { ${name} } from '${from}';\nexport function ${fn}() { return ${name}(1); }\n`;
-  const decl = nameOf(content, fn);
-  const call = where(content, `${name}(1)`);
-  await h.addFileWith(file, content, {
-    symbols: [{ name: fn, kind: 'function', line: decl.line, col: decl.col, exported: true }],
-    refs: [{ name, line: call.line, col: call.col, kind: 'call', enclosing: 0 }],
-    imports: [{ path: from, line: 1, style: 'es', bindings: [{ imported: name, local: name }] }],
-    exports: [{ name: fn, line: decl.line, col: decl.col }],
-  });
-  return content;
 }
 
 const NONCE = /^[0-9a-f]{32}$/;
