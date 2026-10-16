@@ -12,6 +12,18 @@ export const SOURCE_TREE_CODES = {
   gitlinkSkipped: 'gitlink_skipped',
   /** `hash-object` did not return exactly one id per input path. */
   hashOutputMismatch: 'hash_output_mismatch',
+  /** Source set (LNG-05): git marks the file `linguist-generated`. */
+  generatedSkipped: 'generated_skipped',
+  /** Source set (LNG-05): git marks the file `linguist-vendored`. */
+  vendoredSkipped: 'vendored_skipped',
+  /** Source set (LNG-05): a NUL byte in the first 8 KB. */
+  binarySkipped: 'binary_skipped',
+  /** Source set (LNG-05): the content is a Git LFS pointer, not the file. */
+  lfsPointerSkipped: 'lfs_pointer_skipped',
+  /** Source set (LNG-05): no loaded module claims the extension. Info, one aggregated count rather than one per file. */
+  extensionNotClaimed: 'extension_not_claimed',
+  /** Source set (LNG-05): the file is larger than the byte cap. */
+  sourceTooLarge: 'source_too_large',
 } as const;
 
 /** Thrown for failures that make a result untrustworthy (a failed git command, a hash batch that does not line up). */
@@ -38,6 +50,14 @@ export interface SnapshotResult {
   readonly diagnostics: Diagnostic[];
 }
 
+/** What {@link SourceTree.hashPaths} found: the same shape as a snapshot, for only the paths asked for. */
+export interface HashPathsResult {
+  /** Repo-relative POSIX path to git blob id, for every requested path that could be hashed, sorted by path. */
+  readonly files: ReadonlyMap<string, string>;
+  /** One entry per requested path that was left out, with a {@link SOURCE_TREE_CODES} code and the path as subject. */
+  readonly diagnostics: Diagnostic[];
+}
+
 /** Which repository this is, stable across clones' checkouts of the same history at the same git directory. */
 export interface SourceTreeIdentity {
   /** The first root commit of HEAD's history, or null for a repository with no commits. */
@@ -60,6 +80,15 @@ export interface SourceTreeIdentity {
 export interface SourceTree {
   /** Hashes the tracked and untracked-not-ignored files of `worktree` with one batched git call. */
   snapshot(worktree: string): Promise<SnapshotResult>;
+  /**
+   * Hashes only `paths` (repo-relative POSIX) of `worktree`: duplicates are hashed once, the clean filters and
+   * line-ending rules git would apply are applied, and a path that is absent, a link, a directory or cannot ride
+   * the line-oriented batch is left out with a coded diagnostic while the rest are still hashed. The real
+   * implementation starts git twice however many paths there are (enumerate filter drivers, one batched hash)
+   * and not at all when nothing can be hashed. It hashes what it is asked to: it does NOT consult ignore rules,
+   * so a caller holding watcher paths must drop ignored ones first (T-02-14).
+   */
+  hashPaths(worktree: string, paths: readonly string[]): Promise<HashPathsResult>;
   /** True when the object database holds the object. False for an unknown or malformed id. */
   hasObject(hash: string): Promise<boolean>;
   /** The bytes of `path` at `commit`, or null when the commit has no such blob. */

@@ -14,8 +14,8 @@ import type { CommandRunner, CommandSpec, RunContext } from '../command-runner/i
 import { diagnostic } from '../facts/index.ts';
 import type { Diagnostic } from '../facts/index.ts';
 import { SOURCE_TREE_CODES, SourceTreeError } from './types.ts';
-import { assertReadArguments, isObjectId } from './validate.ts';
-import type { SnapshotResult, SourceTree, SourceTreeIdentity } from './types.ts';
+import { assertReadArguments, isObjectId, unhashableReason } from './validate.ts';
+import type { HashPathsResult, SnapshotResult, SourceTree, SourceTreeIdentity } from './types.ts';
 
 export interface SourceTreeOptions {
   /** The only way this module starts anything. */
@@ -30,22 +30,14 @@ export interface SourceTreeOptions {
 const BIG_OUTPUT_BYTES = 512 * 1024 * 1024;
 /** How many paths are lstat-ed at once. */
 const LSTAT_BATCH = 256;
+/** Timeout of every git spec built here. Value: `git.timeoutMs` in 02-CONSTANTS.md (Status: Approved 2026-10-16). */
+const GIT_TIMEOUT_MS = 60000;
+/** Timeout of the one batched `hash-object`. Value: `git.hashBatchTimeoutMs` in 02-CONSTANTS.md (Approved 2026-10-16). */
+const GIT_HASH_BATCH_TIMEOUT_MS = 120000;
 
 const decoder = new TextDecoder();
 
 const compareCodeUnits = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
-
-/** Reasons a path cannot ride in the line-oriented `--stdin-paths` batch. Returns the reason, or null if it can. */
-function unhashableReason(rel: string): string | null {
-  if (rel === '') return 'empty path';
-  if (rel.includes('\n') || rel.includes('\r')) return 'the name contains a line break, which would split the hash batch';
-  // git reads a leading double quote as a C-style quoted path in --stdin-paths.
-  if (rel.startsWith('"')) return 'the name starts with a double quote, which git would unquote';
-  if (rel.includes('\0')) return 'the name contains NUL';
-  if (path.posix.isAbsolute(rel) || path.win32.isAbsolute(rel)) return 'the path is absolute';
-  if (rel.split('/').includes('..')) return 'the path leaves the worktree';
-  return null;
-}
 
 export function createSourceTree(options: SourceTreeOptions): SourceTree {
   const { runner, repoDir } = options;
@@ -76,7 +68,10 @@ export function createSourceTree(options: SourceTreeOptions): SourceTree {
     // 2. Tracked entries: "<mode> <hash> <stage>\t<path>" separated by NUL. The index hash is not used:
     //    the working-tree content is what gets hashed, so an edited file is reported as edited.
     const candidates = new Set<string>();
-    const tracked = await gitText(spec(['ls-files', '-z', '-s'], worktree, { maxStdoutBytes: BIG_OUTPUT_BYTES }), 'ls-files -s');
+    const tracked = await gitText(
+      spec(['ls-files', '-z', '-s'], worktree, { maxStdoutBytes: BIG_OUTPUT_BYTES, timeoutMs: GIT_TIMEOUT_MS }),
+      'ls-files -s',
+    );
     for (const entry of tracked.split('\0')) {
       if (entry === '') continue;
       const tab = entry.indexOf('\t');
@@ -92,7 +87,7 @@ export function createSourceTree(options: SourceTreeOptions): SourceTree {
 
     // 3. Untracked files git does not ignore. A nested repository shows up as "dir/".
     const untracked = await gitText(
-      spec(['ls-files', '-z', '--others', '--exclude-standard'], worktree, { maxStdoutBytes: BIG_OUTPUT_BYTES }),
+      spec(['ls-files', '-z', '--others', '--exclude-standard'], worktree, { maxStdoutBytes: BIG_OUTPUT_BYTES, timeoutMs: GIT_TIMEOUT_MS }),
       'ls-files --others',
     );
     for (const rel of untracked.split('\0')) {
@@ -105,7 +100,21 @@ export function createSourceTree(options: SourceTreeOptions): SourceTree {
     }
 
     // 4. Keep only what can be hashed safely: skip, with a diagnostic, instead of failing the batch.
-    const ordered = [...candidates].sort(compareCodeUnits);
+    const hashable = await vetPaths(worktree, [...candidates].sort(compareCodeUnits), diagnostics);
+
+    // 5. One batched hash over everything that is left.
+    const files = await hashBatch(worktree, hashable, filterNames);
+    return { files, diagnostics };
+  }
+
+  /**
+   * Lstat-classifies sorted, unique candidate paths: the ones git can hash as regular files are returned, every
+   * other one is reported into `diagnostics` with its code (snapshot and hashPaths share this, so they agree).
+   */
+  async function vetPaths(worktree: string, ordered: readonly string[], diagnostics: Diagnostic[]): Promise<string[]> {
+    const skip = (code: string, severity: Diagnostic['severity'], message: string, subject: string): void => {
+      diagnostics.push(diagnostic(code, severity, message, subject));
+    };
     const hashable: string[] = [];
     for (let at = 0; at < ordered.length; at += LSTAT_BATCH) {
       const slice = ordered.slice(at, at + LSTAT_BATCH);
@@ -144,29 +153,41 @@ export function createSourceTree(options: SourceTreeOptions): SourceTree {
         }
       });
     }
+    return hashable;
+  }
 
-    // 5. One batched hash over everything that is left, one path per line, ids returned in input order.
+  /** ONE `hash-object --stdin-paths` over vetted paths, one per line; ids come back in input order. */
+  async function hashBatch(worktree: string, hashable: readonly string[], filterNames: readonly string[]): Promise<Map<string, string>> {
     const files = new Map<string, string>();
-    if (hashable.length > 0) {
-      const out = await gitText(
-        spec(['hash-object', '--stdin-paths'], worktree, {
-          filterNames,
-          stdin: hashable.join('\n') + '\n',
-          maxStdoutBytes: BIG_OUTPUT_BYTES,
-        }),
-        'hash-object --stdin-paths',
+    if (hashable.length === 0) return files;
+    const out = await gitText(
+      spec(['hash-object', '--stdin-paths'], worktree, {
+        filterNames,
+        stdin: hashable.join('\n') + '\n',
+        maxStdoutBytes: BIG_OUTPUT_BYTES,
+        timeoutMs: GIT_HASH_BATCH_TIMEOUT_MS,
+      }),
+      'hash-object --stdin-paths',
+    );
+    const ids = out.split('\n');
+    if (ids[ids.length - 1] === '') ids.pop();
+    if (ids.length !== hashable.length || !ids.every(isObjectId)) {
+      throw new SourceTreeError(
+        SOURCE_TREE_CODES.hashOutputMismatch,
+        `git hash-object returned ${ids.length} ids for ${hashable.length} paths`,
       );
-      const ids = out.split('\n');
-      if (ids[ids.length - 1] === '') ids.pop();
-      if (ids.length !== hashable.length || !ids.every(isObjectId)) {
-        throw new SourceTreeError(
-          SOURCE_TREE_CODES.hashOutputMismatch,
-          `git hash-object returned ${ids.length} ids for ${hashable.length} paths`,
-        );
-      }
-      hashable.forEach((rel, i) => files.set(rel, ids[i] as string));
     }
-    return { files, diagnostics };
+    hashable.forEach((rel, i) => files.set(rel, ids[i] as string));
+    return files;
+  }
+
+  async function hashPaths(worktree: string, paths: readonly string[]): Promise<HashPathsResult> {
+    const diagnostics: Diagnostic[] = [];
+    const hashable = await vetPaths(worktree, [...new Set(paths)].sort(compareCodeUnits), diagnostics);
+    if (hashable.length === 0) return { files: new Map(), diagnostics };
+    // Filter drivers are enumerated on every call, never cached, so a driver added since the last call is neutralised.
+    const filterNames = await listFilterNames(runner, worktree, ctx, env);
+    return { files: await hashBatch(worktree, hashable, filterNames), diagnostics };
   }
 
   /** Runs an object read where exit 1 (`-e`) or 128 (not found) are answers, not failures. */
@@ -204,5 +225,5 @@ export function createSourceTree(options: SourceTreeOptions): SourceTree {
     return { rootCommit, storeId };
   }
 
-  return { snapshot, hasObject, read, identity };
+  return { snapshot, hashPaths, hasObject, read, identity };
 }

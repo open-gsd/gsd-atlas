@@ -11,8 +11,8 @@ import { createHash } from 'node:crypto';
 import { diagnostic } from '../facts/index.ts';
 import type { Diagnostic } from '../facts/index.ts';
 import { SOURCE_TREE_CODES } from './types.ts';
-import type { SnapshotResult, SourceTree, SourceTreeIdentity, SourceTreeWorld } from './types.ts';
-import { assertReadArguments, isObjectId } from './validate.ts';
+import type { HashPathsResult, SnapshotResult, SourceTree, SourceTreeIdentity, SourceTreeWorld } from './types.ts';
+import { assertReadArguments, isObjectId, unhashableReason } from './validate.ts';
 
 const encoder = new TextEncoder();
 
@@ -41,7 +41,44 @@ export function createFakeSourceTree(world: Partial<SourceTreeWorld> = {}): Sour
   const committedBlobs = new Set(committedPaths.map((rel) => blobId(committed[rel] ?? '')));
   const storeId = createHash('sha256').update(`${rootCommit ?? ''}\nfake`).digest('hex').slice(0, 16);
 
+  /** The working-tree content of `rel`: a string, or null when the file is not on disk. */
+  const onDisk = (rel: string): string | null => {
+    const edit = Object.hasOwn(working, rel) ? working[rel] : undefined;
+    const content = edit === undefined ? committed[rel] : edit;
+    return content ?? null;
+  };
+  /** True when some file on disk lives below `rel/`, i.e. `rel` is a directory (the real tree sees it with lstat). */
+  const isDirectory = (rel: string): boolean => {
+    const prefix = `${rel}/`;
+    return [...new Set([...committedPaths, ...Object.keys(working)])].some((p) => p.startsWith(prefix) && onDisk(p) !== null);
+  };
+
   return {
+    hashPaths(_worktree: string, paths: readonly string[]): Promise<HashPathsResult> {
+      const diagnostics: Diagnostic[] = [];
+      const files = new Map<string, string>();
+      // Vets exactly as the real tree does, in the same order: name rules, then what is on disk. Like the real
+      // tree it hashes what it is asked to, so an ignored file that exists is hashed too.
+      for (const rel of [...new Set(paths)].sort(compareCodeUnits)) {
+        const reason = unhashableReason(rel);
+        if (reason !== null) {
+          diagnostics.push(diagnostic(SOURCE_TREE_CODES.unhashablePath, 'warning', reason, rel));
+          continue;
+        }
+        const content = onDisk(rel);
+        if (content === null) {
+          if (isDirectory(rel)) {
+            diagnostics.push(diagnostic(SOURCE_TREE_CODES.gitlinkSkipped, 'info', 'a directory is not hashed as a file', rel));
+          } else {
+            diagnostics.push(diagnostic(SOURCE_TREE_CODES.missingOnDisk, 'info', 'git lists this path but it is not on disk (deleted or sparse)', rel));
+          }
+          continue;
+        }
+        files.set(rel, blobId(content));
+      }
+      return Promise.resolve({ files, diagnostics });
+    },
+
     snapshot(): Promise<SnapshotResult> {
       const diagnostics: Diagnostic[] = [];
       const paths = new Set([...committedPaths, ...Object.keys(working)]);
