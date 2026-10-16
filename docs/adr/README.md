@@ -13,7 +13,7 @@ These decisions shape the MVP's code and data, and are expensive to reverse once
 
 | ADR | Decision | DESIGN.md | Status |
 |-----|----------|-----------|--------|
-| [draft-product-boundary](draft-product-boundary.md) | Standalone sibling of gsd‑graph; MIT; three OSes; MVP = gsd‑core development; justified against free tools | A1, A13, A14, A16 | Proposed |
+| [2-product-boundary](2-product-boundary.md) | Standalone sibling of gsd‑graph; MIT; three OSes; MVP = gsd‑core development; justified against free tools | A1, A13, A14, A16 | Accepted |
 | [draft-fact-model](draft-fact-model.md) | Local facts by blob id, resolved edges by overlay and context; stable symbol identity; provenance, spans, confidence | A2, A8, A19, A45 | Proposed |
 | [draft-sqlite-store](draft-sqlite-store.md) | SQLite via `node:sqlite` behind the Fact Store, driver internal and conformance‑tested; synced‑folder fallback; lazy rebuilds; real‑corpus budgets | A3, A4, A13, A17, A18, A50 | Proposed |
 | [draft-fact-store-interface](draft-fact-store-interface.md) | One Fact Store module with a fact‑level seam; `at(worktree)` reader with `Answer<T>`; single writer lease; typed maintenance; SQL driver internal; no fake store | A2, A3, A5, A17, A20, A21, A26, A45, A46 | Proposed |
