@@ -1,0 +1,31 @@
+{
+  "schema": 1,
+  "fixture": "modules.mjs",
+  "convention": "Hand-curated from the fixture text before the extractor was run. line is the 1-based editor line of the statement; an import item is named by its path, an export item by the name other files use.",
+  "scope": "ES import: default, namespace, named with and without alias, side-effect, mixed default and named. ES export: export *, export * as, re-export with alias, export { a as b }, exported declarations, export default.",
+  "items": [
+    { "construct": "ES import", "name": "./default-thing.mjs", "line": 4 },
+    { "construct": "ES import", "name": "./everything.mjs", "line": 5 },
+    { "construct": "ES import", "name": "./named.mjs", "line": 6 },
+    { "construct": "ES import", "name": "./side-effect.mjs", "line": 7 },
+    { "construct": "ES import", "name": "./mixed.mjs", "line": 8 },
+
+    { "construct": "ES export", "name": "*", "line": 10 },
+    { "construct": "ES export", "name": "grouped", "line": 11 },
+    { "construct": "ES export", "name": "shown", "line": 12 },
+    { "construct": "ES export", "name": "other", "line": 12 },
+    { "construct": "ES export", "name": "localOne", "line": 16 },
+    { "construct": "ES export", "name": "publicTwo", "line": 16 },
+    { "construct": "ES export", "name": "exportedFunction", "line": 17 },
+    { "construct": "ES export", "name": "exportedValue", "line": 18 },
+    { "construct": "ES export", "name": "ExportedClass", "line": 19 },
+    { "construct": "ES export", "name": "default", "line": 20 },
+
+    { "construct": "const/var", "name": "localOne", "line": 14 },
+    { "construct": "const/var", "name": "localTwo", "line": 15 },
+    { "construct": "const/var", "name": "exportedValue", "line": 18 },
+    { "construct": "function", "name": "exportedFunction", "line": 17 },
+    { "construct": "class", "name": "ExportedClass", "line": 19 }
+  ],
+  "parents": []
+}

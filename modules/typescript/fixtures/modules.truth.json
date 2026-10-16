@@ -1,0 +1,48 @@
+{
+  "schema": 1,
+  "fixture": "modules.ts",
+  "convention": "Hand-curated from the fixture text before the extractor was run. line is the 1-based editor line of the statement (for a CommonJS require, of the require call); an import item is named by its path, an export item by the name other files use.",
+  "scope": "ES import: default, namespace, named with and without alias, type-only, inline type, side-effect, mixed default and named. CJS require: import x = require, const x = require, destructured, member, bare and var forms. ES export: export *, export * as, re-exports with alias, type re-export, export { a as b }, exported declarations, export default. CJS module.exports: module.exports = {...} (one item per property), exports.x =, module.exports.x =. A require() bound by const is not a const definition.",
+  "items": [
+    { "construct": "ES import", "name": "./default-thing", "line": 4 },
+    { "construct": "ES import", "name": "./everything", "line": 5 },
+    { "construct": "ES import", "name": "./named", "line": 6 },
+    { "construct": "ES import", "name": "./only-type", "line": 7 },
+    { "construct": "ES import", "name": "./inline-type", "line": 8 },
+    { "construct": "ES import", "name": "./side-effect", "line": 9 },
+    { "construct": "ES import", "name": "./mixed", "line": 11 },
+    { "construct": "ES import", "name": "./default-type", "line": 12 },
+
+    { "construct": "CJS require", "name": "./legacy", "line": 10 },
+    { "construct": "CJS require", "name": "./fs-like", "line": 27 },
+    { "construct": "CJS require", "name": "./destructured", "line": 28 },
+    { "construct": "CJS require", "name": "./member", "line": 29 },
+    { "construct": "CJS require", "name": "./bare", "line": 30 },
+    { "construct": "CJS require", "name": "./old-style", "line": 31 },
+
+    { "construct": "ES export", "name": "*", "line": 14 },
+    { "construct": "ES export", "name": "grouped", "line": 15 },
+    { "construct": "ES export", "name": "shown", "line": 16 },
+    { "construct": "ES export", "name": "other", "line": 16 },
+    { "construct": "ES export", "name": "OnlyType", "line": 17 },
+    { "construct": "ES export", "name": "localOne", "line": 21 },
+    { "construct": "ES export", "name": "publicTwo", "line": 21 },
+    { "construct": "ES export", "name": "exportedFunction", "line": 22 },
+    { "construct": "ES export", "name": "exportedValue", "line": 23 },
+    { "construct": "ES export", "name": "ExportedClass", "line": 24 },
+    { "construct": "ES export", "name": "default", "line": 25 },
+
+    { "construct": "CJS module.exports", "name": "localOne", "line": 33 },
+    { "construct": "CJS module.exports", "name": "publicOne", "line": 33 },
+    { "construct": "CJS module.exports", "name": "inline", "line": 33 },
+    { "construct": "CJS module.exports", "name": "direct", "line": 34 },
+    { "construct": "CJS module.exports", "name": "nested", "line": 35 },
+
+    { "construct": "const/var", "name": "localOne", "line": 19 },
+    { "construct": "const/var", "name": "localTwo", "line": 20 },
+    { "construct": "const/var", "name": "exportedValue", "line": 23 },
+    { "construct": "function", "name": "exportedFunction", "line": 22 },
+    { "construct": "class", "name": "ExportedClass", "line": 24 }
+  ],
+  "parents": []
+}

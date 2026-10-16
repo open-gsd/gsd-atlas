@@ -1,0 +1,64 @@
+{
+  "schema": 1,
+  "fixture": "constructs.cjs",
+  "convention": "Hand-curated from the fixture text before the extractor was run. line is the 1-based editor line a declaration starts on; name is the declared identifier text; a CommonJS require is named by its path and lined at the require call.",
+  "scope": "functions anywhere (declaration, generator, const/let/var bound arrow or function expression); classes anywhere; methods in class bodies (accessors included, constructors excluded); properties as class fields only; plain const, let and var only at module top level; a const bound to require() is an import, not a const definition; destructuring and local variables are not definitions. Interfaces, type aliases and enums do not exist in JavaScript, so those rows are n/a.",
+  "items": [
+    { "construct": "function", "name": "plainFunction", "line": 10 },
+    { "construct": "function", "name": "asyncFunction", "line": 14 },
+    { "construct": "function", "name": "generatorFunction", "line": 18 },
+    { "construct": "function", "name": "arrowConst", "line": 22 },
+    { "construct": "function", "name": "expressionConst", "line": 23 },
+    { "construct": "function", "name": "varArrow", "line": 24 },
+    { "construct": "function", "name": "outer", "line": 56 },
+    { "construct": "function", "name": "inner", "line": 57 },
+    { "construct": "function", "name": "localArrow", "line": 58 },
+    { "construct": "function", "name": "afterEmoji", "line": 63 },
+
+    { "construct": "class", "name": "Animal", "line": 30 },
+    { "construct": "class", "name": "Dog", "line": 52 },
+
+    { "construct": "const/var", "name": "LIMIT", "line": 26 },
+    { "construct": "const/var", "name": "counter", "line": 27 },
+    { "construct": "const/var", "name": "legacy", "line": 28 },
+    { "construct": "const/var", "name": "café", "line": 63 },
+    { "construct": "const/var", "name": "tag", "line": 63 },
+
+    { "construct": "method", "name": "speak", "line": 37 },
+    { "construct": "method", "name": "create", "line": 40 },
+    { "construct": "method", "name": "#hidden", "line": 43 },
+    { "construct": "method", "name": "label", "line": 44 },
+    { "construct": "method", "name": "label", "line": 47 },
+    { "construct": "method", "name": "bark", "line": 53 },
+
+    { "construct": "property", "name": "name", "line": 31 },
+    { "construct": "property", "name": "count", "line": 32 },
+    { "construct": "property", "name": "#secret", "line": 33 },
+
+    { "construct": "CJS require", "name": "./fs-like", "line": 4 },
+    { "construct": "CJS require", "name": "./destructured", "line": 5 },
+    { "construct": "CJS require", "name": "./member", "line": 6 },
+    { "construct": "CJS require", "name": "./old-style", "line": 7 },
+    { "construct": "CJS require", "name": "./bare", "line": 8 },
+
+    { "construct": "CJS module.exports", "name": "plainFunction", "line": 65 },
+    { "construct": "CJS module.exports", "name": "shown", "line": 65 },
+    { "construct": "CJS module.exports", "name": "outer", "line": 65 },
+    { "construct": "CJS module.exports", "name": "direct", "line": 66 },
+    { "construct": "CJS module.exports", "name": "nested", "line": 67 },
+    { "construct": "CJS module.exports", "name": "module.exports", "line": 68 }
+  ],
+  "parents": [
+    { "child": "name", "parent": "Animal", "line": 31 },
+    { "child": "count", "parent": "Animal", "line": 32 },
+    { "child": "#secret", "parent": "Animal", "line": 33 },
+    { "child": "speak", "parent": "Animal", "line": 37 },
+    { "child": "create", "parent": "Animal", "line": 40 },
+    { "child": "#hidden", "parent": "Animal", "line": 43 },
+    { "child": "label", "parent": "Animal", "line": 44 },
+    { "child": "label", "parent": "Animal", "line": 47 },
+    { "child": "bark", "parent": "Dog", "line": 53 },
+    { "child": "inner", "parent": "outer", "line": 57 },
+    { "child": "localArrow", "parent": "outer", "line": 58 }
+  ]
+}

@@ -186,6 +186,28 @@ describe('extractFileFacts: imports', () => {
     assert.deepEqual(validateFileFacts(facts), []);
   });
 
+  it('lets an import.local that comes before the import.named of its match alias that name (const f = require(p).member)', () => {
+    const { facts } = extract(
+      runOf([
+        cap('imports', 0, 'import.cjs', [1, 15, 1, 30]),
+        cap('imports', 0, 'import.path', [1, 23, 1, 29], "'./lib'"),
+        cap('imports', 0, 'import.local', [1, 6, 1, 12], 'member'),
+        cap('imports', 0, 'import.named', [1, 32, 1, 37], 'thing'),
+        // A leading import.local with no import.named after it binds nothing.
+        cap('imports', 1, 'import.cjs', [2, 15, 2, 30]),
+        cap('imports', 1, 'import.path', [2, 23, 2, 29], "'./two'"),
+        cap('imports', 1, 'import.local', [2, 6, 2, 9], 'orphan'),
+      ]),
+    );
+    assert.deepEqual(
+      facts.imports.map((site) => [site.path, site.bindings]),
+      [
+        ['./lib', [{ imported: 'thing', local: 'member' }]],
+        ['./two', undefined],
+      ],
+    );
+  });
+
   it('removes exactly one pair of matching surrounding quotes and nothing else (quotes)', () => {
     const paths = ['"a"', "'b'", '`c`', '"d\'', '"e', '"\'f\'"', 'g'];
     const captures = paths.flatMap((text, i) => [

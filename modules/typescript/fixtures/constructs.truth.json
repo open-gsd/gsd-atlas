@@ -84,6 +84,7 @@
     { "construct": "property", "name": "naïve", "line": 145 },
 
     { "construct": "ES export", "name": "exportedPlain", "line": 5 },
+    { "construct": "ES export", "name": "default", "line": 17 },
     { "construct": "ES export", "name": "exportedArrow", "line": 36 },
     { "construct": "ES export", "name": "EXPORTED_CONST", "line": 43 },
     { "construct": "ES export", "name": "Shape", "line": 73 },
