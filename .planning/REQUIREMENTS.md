@@ -22,7 +22,7 @@ Scope is the full PRD 1.0 (M0-M6), with M4 split into SDK facts, agent integrati
 - [x] **FND-09**: Each ADR is ratified (issue opened, file renamed to `<issue#>-<slug>.md`, Proposed to Accepted) before the first phase that depends on it
 - [x] **FND-10**: Three of the five ADR gaps found in research (ProjectModel seam, read-triggered cache write, SQLite-access wording) are amended in the language-modules, fact-store-interface and sqlite-store ADRs as they are ratified in Phase 1; the other two are FND-12
 - [x] **FND-11**: `gsd-atlas lang test` runs a fixture module end to end on all three OSes (walking skeleton)
-- [ ] **FND-12**: The other two ADR gaps found in research (writer contention and leader/follower, metrics migrations) are amended in the worktree-lifecycle and value-dashboard ADRs as they are ratified at the start of Phase 2
+- [x] **FND-12**: The other two ADR gaps found in research (writer contention and leader/follower, metrics migrations) are amended in the worktree-lifecycle and value-dashboard ADRs as they are ratified at the start of Phase 2
 
 ### Fact Store and Lifecycle (STO)
 
@@ -205,7 +205,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | FND-09 | Phase 1 | Complete |
 | FND-10 | Phase 1 | Complete |
 | FND-11 | Phase 1 | Complete |
-| FND-12 | Phase 2 | Pending |
+| FND-12 | Phase 2 | Complete |
 | STO-01 | Phase 2 | Pending |
 | STO-02 | Phase 2 | Pending |
 | STO-03 | Phase 2 | Pending |

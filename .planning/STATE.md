@@ -3,16 +3,16 @@ gsd_state_version: "1.0"
 current_phase: 02
 current_phase_name: Grammar Tier, Store and stdio Host
 status: executing
-stopped_at: Completed 02-03-PLAN.md
-last_updated: "2026-10-16T17:57:30.271Z"
+stopped_at: Completed 02-01-PLAN.md (plans 02-01, 02-02, 02-03 done; next 02-04)
+last_updated: "2026-10-16T18:00:39.434Z"
 last_activity: 2026-10-16
-last_activity_desc: Phase 02 execution started
-state_head: 35087f7f23956a3a6fb3cd122c68c3b74e5d7bbe
+last_activity_desc: Completed 02-01 ADR ratification and Phase 2 amendments
+state_head: 49d09c0806be6e9eb78eae510b2f4836d0a7645c
 progress:
   total_phases: 9
   completed_phases: 1
   total_plans: 48
-  completed_plans: 22
+  completed_plans: 23
   percent: 11
 ---
 
@@ -28,16 +28,16 @@ See: .planning/PROJECT.md (updated 2026-10-15)
 ## Current Position
 
 Phase: 02 (Grammar Tier, Store and stdio Host) — EXECUTING
-Plan: 2 of 28
+Plan: 4 of 28 (plans 02-01, 02-02 and 02-03 complete; they ran out of order, next is 02-04)
 Status: Ready to execute
-Last activity: 2026-10-16 — Phase 02 execution started
+Last activity: 2026-10-16 — Completed 02-01 (ADR ratification and Phase 2 amendments)
 
 Progress: [█░░░░░░░░░] 11%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 20
+- Total plans completed: 23
 - Average duration: -
 - Total execution time: 0.0 hours
 
@@ -46,6 +46,7 @@ Progress: [█░░░░░░░░░] 11%
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 01 | 20 | - | - |
+| 02 | 3 of 28 | - | - |
 
 **Recent Trend:**
 - Last 5 plans: -
@@ -58,6 +59,7 @@ Progress: [█░░░░░░░░░] 11%
 |------|----------|-------|-------|
 | Phase 02 P02 | 9 min | 3 tasks | 8 files |
 | Phase 02 P03 | 8 min | 3 tasks | 9 files |
+| Phase 02 P01 | 45 min | 3 tasks | 15 files |
 
 ## Accumulated Context
 
@@ -76,6 +78,8 @@ Recent decisions affecting current work:
 - [Phase 02]: Citation carries structure only (debug is a string handle, optional text_ref); repo text may appear only in Envelope.untrusted_text — QRY-01 prohibition: keep source text out of every other envelope field
 - [Phase 02]: worktree git read shape is exactly list --porcelain -z; worktree is not in GIT_READ_SUBCOMMANDS — Plan 02-03: add/remove/prune/lock write to the repository; only the exact read form is reachable (T-02-06)
 - [Phase 02]: SQLite kit drives incremental_vacuum(N) itself; a fresh store needs auto_vacuum=INCREMENTAL plus VACUUM after the WAL open — Plan 02-03: better-sqlite3 steps a no-column statement once; the WAL open writes the header so the pragma alone is ignored
+- [Phase 02]: Plan 02-01: four Phase 2 ADRs Accepted as issues 11 to 14; amendments dated 2026-10-16 record the in-process Host, six-tool profile, nonce-fenced untrusted_text, watermark_moved cursor and code_impact chain_confidence before code lands
+- [Phase 02]: Plan 02-01: writer contention is lease.db BEGIN EXCLUSIVE with a read-only degraded follower; build and maintain exit 3 when the lease is held; Reconcile idle interval about 10 minutes
 
 ### Pending Todos
 
@@ -102,6 +106,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-10-16T17:57:30.194Z
-Stopped at: Completed 02-03-PLAN.md
+Last session: 2026-10-16T18:00:39.385Z
+Stopped at: Completed 02-01-PLAN.md (plans 02-01, 02-02, 02-03 done; next 02-04)
 Resume file: None
