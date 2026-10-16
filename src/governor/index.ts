@@ -16,3 +16,5 @@ export type {
 export { createNoopGovernor } from './noop.ts';
 export { createFakeGovernor } from './fake.ts';
 export type { FakeGovernor, FakeGovernorOptions } from './fake.ts';
+export { createGovernor } from './real.ts';
+export type { GovernorOptions, RealGovernor } from './real.ts';
