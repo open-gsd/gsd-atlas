@@ -38,7 +38,18 @@ async function overlayHash(ctx: ProcessContext, worktree: string, result: PathRe
   }
 }
 
-export async function runBuild(ctx: ProcessContext, writer: Writer, target: BuildTarget): Promise<BuildResult> {
+/**
+ * Tells the Indexer what a build did path by path, so it can keep its failure list and send notices: the results
+ * of the paths it indexed (oversize ones included, as failures) and the paths that left the overlay.
+ */
+export type BuildObserver = (results: readonly PathResult[], departed: readonly string[]) => void;
+
+export async function runBuild(
+  ctx: ProcessContext,
+  writer: Writer,
+  target: BuildTarget,
+  observe?: BuildObserver,
+): Promise<BuildResult> {
   const { worktree, ref } = target;
   const job = { cls: 'indexing' } as const;
   const extensions = ctx.host.extensions();
@@ -77,6 +88,10 @@ export async function runBuild(ctx: ProcessContext, writer: Writer, target: Buil
   }
   const finalOverlay = new Map([...overlay].sort(([a], [b]) => compareCodeUnits(a, b)));
   await writer.setOverlay(worktree, ref, finalOverlay);
+  observe?.(
+    [...results, ...oversize.map((path): PathResult => ({ path, outcome: 'failed', code: SOURCE_TREE_CODES.sourceTooLarge }))],
+    departed,
+  );
 
   const failures: FailedPath[] = [
     ...results.filter((r) => r.outcome === 'failed').map((r) => ({ worktree, path: r.path, code: r.code ?? 'internal_error' })),

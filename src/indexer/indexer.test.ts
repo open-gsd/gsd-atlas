@@ -492,16 +492,18 @@ describe('Indexer ensureFresh, the hash and parse race, failures and status', ()
     await world.indexer.attach(manual.source, [world.dir]);
     log.hashPaths.length = 0;
     notices.length = 0;
+    // The store keeps one timer of its own (the dirty-sentinel idle timer); the Indexer's timers are counted over it.
+    const storeTimers = clock.live;
 
     world.repo.write('a.toy', 'fn main {\n}\nfn fresh_one {\n}\n');
     manual.emit(world.dir, 'a.toy');
-    assert.equal(clock.live, 1);
+    assert.equal(clock.live, storeTimers + 1, 'the event armed the queue timer');
     await clock.advance(30);
     const result = await world.indexer.ensureFresh(world.dir, ['a.toy']);
 
     assert.deepEqual(result, { complete: true, stalePaths: [], invalid: [] });
     assert.equal((await world.reader.find('fresh_one')).data.length, 1);
-    assert.equal(clock.live, 0, 'neither the debounce timer nor the wait timer is left');
+    assert.equal(clock.live, storeTimers, 'neither the debounce timer nor the wait timer is left');
     await clock.advance(debounceMs * 3);
     assert.deepEqual(log.hashPaths, [['a.toy']], 'the superseded queue entry did not run a second job');
     const indexed = notices.flatMap((n) => (n.kind === 'indexed' ? [n] : []));

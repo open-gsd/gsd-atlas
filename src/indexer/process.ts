@@ -5,18 +5,27 @@
  *
  * The order of work for a batch:
  * 1. Paths whose extension no loaded module claims are set aside (no git, no read).
- * 2. `SourceTree.hashPaths` hashes the rest with ONE batched git run; it hashes what it is asked and does not
- *    consult ignore rules (T-02-14), which is why every caller of `processBatch` has already dropped ignored
- *    watcher paths (a build passes snapshot paths, which git has already filtered).
- * 3. `SourceTree.sourceSet` keeps the files that are source (LNG-05): not generated, vendored, binary, an LFS
+ * 2. Paths git would ignore are dropped (`PathFilter`), because `SourceTree.hashPaths` hashes what it is asked
+ *    and does not consult ignore rules (T-02-14). A build passes snapshot paths, which git has already filtered.
+ * 3. Each remaining path is `lstat`ed, then `SourceTree.hashPaths` hashes them all with ONE batched git run.
+ * 4. `SourceTree.sourceSet` keeps the files that are source (LNG-05): not generated, vendored, binary, an LFS
  *    pointer or oversize.
- * 4. Each survivor is tried with `Writer.link` first (the store may already hold facts for its hash); only an
+ * 5. Each survivor is tried with `Writer.link` first (the store may already hold facts for its hash); only an
  *    unknown hash is read and parsed (STO-03's basis), then committed under the hash git computed.
- * 5. A path that disappeared, stopped being source or stopped being claimed is removed with a null commit.
+ * 6. A path that disappeared, stopped being source or stopped being claimed is removed with a null commit.
+ *
+ * The hash and parse race (STO-02, T-02-50): the stamp (size, times, inode) taken before hashing must equal the
+ * stamp taken just before the link and again right after the read. Any difference means the bytes that were
+ * hashed may not be the bytes that were read, so nothing is committed for them: the path is hashed and read
+ * again, up to `maxRaceRetries` more times, with a `requeued` notice each time; a file that never settles fails
+ * with the code `unstable` and keeps its earlier facts. Two jobs for one path never run at once (`PathLocks`), so
+ * an older hash cannot be committed after a newer one.
  *
  * Every unit of work runs through the Governor in the class the caller names. Nothing in a batch can stop the
  * queue: a failing file is a `failed` result with a code, and the next file is processed.
  */
+import fs from 'node:fs';
+import path from 'node:path';
 import { UnknownWorktree } from '../fact-store/index.ts';
 import type { FactStore, Writer } from '../fact-store/index.ts';
 import type { Governor, JobClass } from '../governor/index.ts';
@@ -26,12 +35,45 @@ import type { PathFilter } from './ignore.ts';
 import { extensionOf } from './modules.ts';
 import type { ModuleHost } from './modules.ts';
 import { IndexerError } from './types.ts';
-import type { IndexerConfig } from './types.ts';
+import type { IndexerConfig, IndexerNotice } from './types.ts';
 
 /** How many independent files are handed to the Governor at once; the Governor's own queue bound does the rest. */
 const IN_FLIGHT_PATHS = 8;
 
 export const compareCodeUnits = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
+
+const keyOf = (worktree: string, rel: string): string => `${worktree}\0${rel}`;
+
+/** Serialises work per key: the second `acquire` of a key waits until the first holder releases. */
+export interface PathLocks {
+  acquire(key: string): Promise<() => void>;
+}
+
+export function createPathLocks(): PathLocks {
+  const tails = new Map<string, Promise<void>>();
+  return {
+    async acquire(key) {
+      const previous = tails.get(key) ?? Promise.resolve();
+      let release: () => void = () => {};
+      const mine = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const tail = previous.then(() => mine);
+      tails.set(key, tail);
+      await previous;
+      return () => {
+        release();
+        if (tails.get(key) === tail) tails.delete(key);
+      };
+    },
+  };
+}
+
+/** Paths in batches (`batched`) and paths whose job is running (`running`); the Indexer reports the difference as queued. */
+export interface ProcessCounters {
+  batched: number;
+  running: number;
+}
 
 /** Everything batch processing needs from the Indexer that owns it. */
 export interface ProcessContext {
@@ -42,7 +84,10 @@ export interface ProcessContext {
   readonly host: ModuleHost;
   /** Drops ignored paths before `hashPaths`, which would hash them (T-02-14). */
   readonly filter: PathFilter;
+  readonly locks: PathLocks;
+  readonly counters: ProcessCounters;
   readonly config: IndexerConfig;
+  notice(notice: IndexerNotice): void;
   isStopped(): boolean;
   /** Waits `ms` of the injected clock's time; a stop wakes it early. */
   sleep(ms: number): Promise<void>;
@@ -69,6 +114,9 @@ export interface PathResult {
   /** Why the path failed (`failed`). */
   readonly code?: string;
 }
+
+/** What one attempt at a path found; `raced` means the file changed under it and nothing was committed. */
+type Attempt = PathResult | { readonly path: string; readonly outcome: 'raced' };
 
 /** Run `fn` as one Governor job, waiting out `busy` answers for as long as the Indexer is running. */
 export async function runJob<T>(ctx: ProcessContext, spec: JobSpec, fn: () => Promise<T>): Promise<T> {
@@ -104,12 +152,33 @@ const codeOf = (error: unknown): string => {
   return typeof code === 'string' && code !== '' ? code : 'internal_error';
 };
 
-const failed = (path: string, code: string): PathResult => ({ path, outcome: 'failed', code });
+const failed = (rel: string, code: string): PathResult => ({ path: rel, outcome: 'failed', code });
+const raced = (rel: string): Attempt => ({ path: rel, outcome: 'raced' });
+
+/** What `lstat` said about a file: enough to tell that its bytes may have changed. */
+interface Stamp {
+  readonly size: number;
+  readonly mtimeMs: number;
+  readonly ctimeMs: number;
+  readonly ino: number;
+}
+
+async function stampOf(worktree: string, rel: string): Promise<Stamp | undefined> {
+  try {
+    const stat = await fs.promises.lstat(path.join(worktree, rel));
+    return { size: stat.size, mtimeMs: stat.mtimeMs, ctimeMs: stat.ctimeMs, ino: stat.ino };
+  } catch {
+    return undefined;
+  }
+}
+
+const sameStamp = (a: Stamp | undefined, b: Stamp | undefined): boolean =>
+  a !== undefined && b !== undefined && a.size === b.size && a.mtimeMs === b.mtimeMs && a.ctimeMs === b.ctimeMs && a.ino === b.ino;
 
 /** True when the overlay holds facts for `path`. */
-async function isIndexed(store: FactStore, worktree: string, path: string): Promise<boolean> {
+async function isIndexed(store: FactStore, worktree: string, rel: string): Promise<boolean> {
   try {
-    return (await store.at(worktree).fileFacts(path)).data !== null;
+    return (await store.at(worktree).fileFacts(rel)).data !== null;
   } catch (error) {
     if (error instanceof UnknownWorktree) return false;
     throw error;
@@ -121,38 +190,52 @@ async function removePath(
   ctx: ProcessContext,
   writer: Writer,
   worktree: string,
-  path: string,
+  rel: string,
   onlyIfIndexed: boolean,
 ): Promise<PathResult> {
-  if (onlyIfIndexed && !(await isIndexed(ctx.store, worktree, path))) return { path, outcome: 'skipped' };
-  const commit = await writer.commitFile({ worktree, path, hash: '', facts: null });
-  return { path, outcome: commit.status === 'committed' ? 'removed' : 'skipped' };
+  if (onlyIfIndexed && !(await isIndexed(ctx.store, worktree, rel))) return { path: rel, outcome: 'skipped' };
+  const commit = await writer.commitFile({ worktree, path: rel, hash: '', facts: null });
+  return { path: rel, outcome: commit.status === 'committed' ? 'removed' : 'skipped' };
 }
 
 /** Index one file whose hash git computed: attach known facts, or read, parse and commit. */
-async function indexPath(ctx: ProcessContext, writer: Writer, worktree: string, path: string, hash: string): Promise<PathResult> {
-  const attached = await writer.link(worktree, path, hash);
-  if (attached.status !== 'rejected') return { path, outcome: 'linked', hash };
+async function indexPath(
+  ctx: ProcessContext,
+  writer: Writer,
+  worktree: string,
+  rel: string,
+  hash: string,
+  stamp: Stamp | undefined,
+): Promise<Attempt> {
+  // Inside the path lock: if the file changed since it was hashed, that hash may already be out of date.
+  if (!sameStamp(stamp, await stampOf(worktree, rel))) return raced(rel);
 
-  const read = await ctx.tree.readText(worktree, path, { maxBytes: ctx.config.maxFileBytes });
-  if (read.kind === 'too_large') return failed(path, SOURCE_TREE_CODES.sourceTooLarge);
-  if (read.kind !== 'ok') return removePath(ctx, writer, worktree, path, false);
+  const attached = await writer.link(worktree, rel, hash);
+  if (attached.status !== 'rejected') return { path: rel, outcome: 'linked', hash };
 
-  const extracted = await ctx.host.extract(path, read.text, hash);
-  if (extracted.kind === 'unclaimed') return removePath(ctx, writer, worktree, path, true);
-  if (extracted.kind === 'failed') return failed(path, extracted.code);
+  const read = await ctx.tree.readText(worktree, rel, { maxBytes: ctx.config.maxFileBytes });
+  if (read.kind === 'too_large') return failed(rel, SOURCE_TREE_CODES.sourceTooLarge);
+  if (read.kind !== 'ok') return removePath(ctx, writer, worktree, rel, false);
+  // STO-02: the stamp after the read must equal the stamp before the hash, or the text may not be what was hashed.
+  if (!sameStamp(stamp, await stampOf(worktree, rel))) return raced(rel);
 
-  const commit = await writer.commitFile({ worktree, path, hash, facts: extracted.facts });
-  if (commit.status === 'rejected') return failed(path, commit.diagnostics[0]?.code ?? 'commit_rejected');
-  return { path, outcome: 'parsed', hash };
+  const extracted = await ctx.host.extract(rel, read.text, hash);
+  if (extracted.kind === 'unclaimed') return removePath(ctx, writer, worktree, rel, true);
+  if (extracted.kind === 'failed') return failed(rel, extracted.code);
+
+  const commit = await writer.commitFile({ worktree, path: rel, hash, facts: extracted.facts });
+  if (commit.status === 'rejected') return failed(rel, commit.diagnostics[0]?.code ?? 'commit_rejected');
+  return { path: rel, outcome: 'parsed', hash };
 }
 
 interface Prepared {
   /** Path to the blob id git computed, for files that are source. Sorted by path. */
   readonly survivors: ReadonlyMap<string, string>;
+  /** What each survivor's file looked like just before it was hashed. */
+  readonly stamps: ReadonlyMap<string, Stamp | undefined>;
   /** Requested paths that are gone, or no longer source, and so must leave the overlay. */
   readonly gone: readonly string[];
-  /** Requested paths no loaded module claims; they leave the overlay only if it holds them. */
+  /** Requested paths no loaded module claims, or git ignores; they leave the overlay only if it holds them. */
   readonly unclaimed: readonly string[];
   /** Source files over the byte cap: not parsed, previous facts kept. */
   readonly oversize: readonly string[];
@@ -168,6 +251,10 @@ async function prepare(ctx: ProcessContext, worktree: string, sorted: readonly s
   const candidates = [...kept].sort(compareCodeUnits);
   const unclaimed = [...sorted.filter((p) => !claimed.has(extensionOf(p))), ...dropped].sort(compareCodeUnits);
 
+  // The stamps come first: whatever happens to a file after this moment is what the race checks look for.
+  const stamps = new Map<string, Stamp | undefined>(
+    await Promise.all(candidates.map(async (rel): Promise<[string, Stamp | undefined]> => [rel, await stampOf(worktree, rel)])),
+  );
   const hashed = candidates.length === 0 ? undefined : await ctx.tree.hashPaths(worktree, candidates);
   const files = hashed?.files ?? new Map<string, string>();
   const set =
@@ -179,11 +266,89 @@ async function prepare(ctx: ProcessContext, worktree: string, sorted: readonly s
   );
   const oversize = candidates.filter((p) => tooLarge.has(p));
   const gone = candidates.filter((p) => !survivors.has(p) && !tooLarge.has(p));
-  return { survivors, gone, unclaimed, oversize };
+  return { survivors, stamps, gone, unclaimed, oversize };
 }
 
 export interface BatchOptions {
   readonly job: JobSpec;
+  /** Told as each path reaches its final result (not for an attempt that raced and will be retried). */
+  readonly onResult?: (result: PathResult) => void;
+}
+
+/** One attempt over `sorted`: every path ends as a result, or `raced` when its file changed under it. */
+async function attemptBatch(
+  ctx: ProcessContext,
+  writer: Writer,
+  worktree: string,
+  sorted: readonly string[],
+  options: BatchOptions,
+): Promise<Attempt[]> {
+  const results = new Map<string, Attempt>();
+  const settle = (rel: string, attempt: Attempt): void => {
+    results.set(rel, attempt);
+    if (attempt.outcome !== 'raced') options.onResult?.(attempt);
+  };
+
+  let prepared: Prepared;
+  try {
+    prepared = await runJob(ctx, options.job, () => prepare(ctx, worktree, sorted));
+  } catch (error) {
+    if (error instanceof IndexerError) throw error;
+    const code = codeOf(error);
+    return sorted.map((rel) => {
+      const result = failed(rel, code);
+      options.onResult?.(result);
+      return result;
+    });
+  }
+
+  for (const rel of prepared.oversize) settle(rel, failed(rel, SOURCE_TREE_CODES.sourceTooLarge));
+
+  // Units of work: files that share a hash form one unit, so the first is parsed and the rest are linked to its
+  // facts after it commits. Units start in order of their first path, so the order never depends on arrival order.
+  const units: Array<{ readonly first: string; readonly run: () => Promise<void> }> = [];
+  const guarded = async (rel: string, work: () => Promise<Attempt>): Promise<void> => {
+    try {
+      const attempt = await runJob(ctx, options.job, async () => {
+        ctx.counters.running += 1;
+        const release = await ctx.locks.acquire(keyOf(worktree, rel));
+        try {
+          return await work();
+        } finally {
+          release();
+          ctx.counters.running -= 1;
+        }
+      });
+      settle(rel, attempt);
+    } catch (error) {
+      if (error instanceof IndexerError) throw error;
+      settle(rel, failed(rel, codeOf(error)));
+    }
+  };
+
+  const byHash = new Map<string, string[]>();
+  for (const [rel, hash] of prepared.survivors) {
+    const same = byHash.get(hash);
+    if (same === undefined) byHash.set(hash, [rel]);
+    else same.push(rel);
+  }
+  for (const [hash, same] of byHash) {
+    units.push({
+      first: same[0] as string,
+      run: async () => {
+        for (const rel of same) await guarded(rel, () => indexPath(ctx, writer, worktree, rel, hash, prepared.stamps.get(rel)));
+      },
+    });
+  }
+  for (const rel of prepared.gone) units.push({ first: rel, run: () => guarded(rel, () => removePath(ctx, writer, worktree, rel, false)) });
+  for (const rel of prepared.unclaimed) units.push({ first: rel, run: () => guarded(rel, () => removePath(ctx, writer, worktree, rel, true)) });
+  units.sort((a, b) => compareCodeUnits(a.first, b.first));
+
+  await runLimited(
+    units.map((unit) => unit.run),
+    IN_FLIGHT_PATHS,
+  );
+  return sorted.map((rel) => results.get(rel) ?? failed(rel, 'internal_error'));
 }
 
 /**
@@ -200,52 +365,29 @@ export async function processBatch(
 ): Promise<PathResult[]> {
   const sorted = [...new Set(paths)].sort(compareCodeUnits);
   if (sorted.length === 0) return [];
-  const results = new Map<string, PathResult>();
-
-  let prepared: Prepared;
+  ctx.counters.batched += sorted.length;
   try {
-    prepared = await runJob(ctx, options.job, () => prepare(ctx, worktree, sorted));
-  } catch (error) {
-    if (error instanceof IndexerError) throw error;
-    const code = codeOf(error);
-    return sorted.map((path) => failed(path, code));
-  }
-
-  for (const path of prepared.oversize) results.set(path, failed(path, SOURCE_TREE_CODES.sourceTooLarge));
-
-  // Units of work: files that share a hash form one unit, so the first is parsed and the rest are linked to its
-  // facts after it commits. Units start in order of their first path, so the order never depends on arrival order.
-  const units: Array<{ readonly first: string; readonly run: () => Promise<void> }> = [];
-  const guarded = async (path: string, work: () => Promise<PathResult>): Promise<void> => {
-    try {
-      results.set(path, await runJob(ctx, options.job, work));
-    } catch (error) {
-      if (error instanceof IndexerError) throw error;
-      results.set(path, failed(path, codeOf(error)));
+    const final = new Map<string, PathResult>();
+    let remaining: readonly string[] = sorted;
+    for (let retry = 0; remaining.length > 0; retry += 1) {
+      const lost: string[] = [];
+      for (const attempt of await attemptBatch(ctx, writer, worktree, remaining, options)) {
+        if (attempt.outcome === 'raced') lost.push(attempt.path);
+        else final.set(attempt.path, attempt);
+      }
+      if (retry >= ctx.config.maxRaceRetries) {
+        for (const rel of lost) {
+          const result = failed(rel, 'unstable');
+          final.set(rel, result);
+          options.onResult?.(result);
+        }
+        break;
+      }
+      for (const rel of lost) ctx.notice({ kind: 'requeued', worktree, path: rel });
+      remaining = lost;
     }
-  };
-
-  const byHash = new Map<string, string[]>();
-  for (const [path, hash] of prepared.survivors) {
-    const same = byHash.get(hash);
-    if (same === undefined) byHash.set(hash, [path]);
-    else same.push(path);
+    return sorted.map((rel) => final.get(rel) ?? failed(rel, 'internal_error'));
+  } finally {
+    ctx.counters.batched -= sorted.length;
   }
-  for (const [hash, same] of byHash) {
-    units.push({
-      first: same[0] as string,
-      run: async () => {
-        for (const path of same) await guarded(path, () => indexPath(ctx, writer, worktree, path, hash));
-      },
-    });
-  }
-  for (const path of prepared.gone) units.push({ first: path, run: () => guarded(path, () => removePath(ctx, writer, worktree, path, false)) });
-  for (const path of prepared.unclaimed) units.push({ first: path, run: () => guarded(path, () => removePath(ctx, writer, worktree, path, true)) });
-  units.sort((a, b) => compareCodeUnits(a.first, b.first));
-
-  await runLimited(
-    units.map((unit) => unit.run),
-    IN_FLIGHT_PATHS,
-  );
-  return sorted.map((path) => results.get(path) ?? failed(path, 'internal_error'));
 }
