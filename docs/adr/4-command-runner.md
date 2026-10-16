@@ -44,3 +44,9 @@ git is a first-party built-in (decision 3), yet some git commands execute comman
 - Each neutralised filter and each refused git subcommand is reported as a diagnostic, as decision 6 requires.
 
 The hostile-repo test of Phase 1 (plan 01-13) proves it against a poisoned `.git/config`.
+
+## Amendment 2026-10-16: Source Tree git subcommands
+
+Sources: FND-12; 02-CONTEXT.md D-02 and D-03; 02-RESEARCH.md Pattern 3.
+
+Phase 2's Source Tree needs two more git reads than the allowlist in the amendment above. The built-in git allowlist gains `ls-tree` and `worktree`. `worktree` is allowed with the single shape `worktree list --porcelain -z`, which lists the repo's worktrees and runs nothing from repo config. `ls-tree` reads a commit's tree. Both carry the same pinned `-c` overrides and environment as every other git spec, and the runner neutralises filter drivers before them as before. No other `worktree` subcommand (`add`, `remove`, `prune`, `move`) is allowed, and `status` stays refused. The recording-fake decide tests cover both new shapes: each is allowed in its exact form, and `worktree list` without `--porcelain -z` or any other `worktree` verb is denied with a diagnostic.

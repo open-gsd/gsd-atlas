@@ -443,6 +443,29 @@ const AMENDED: readonly AmendedAdr[] = [
     amendments: [
       { title: 'SQLite-access wording', keywords: ['sqlite/', 'Metrics'] },
       { title: 'Node floor and open-time self-test', keywords: ['24.16.0', 'NUL'], extra: 'node-floor' },
+      {
+        title: 'Phase 2 store policy',
+        keywords: ['incremental_vacuum', 'wal_checkpoint', 'contentless_delete', 'dirty', '24 h'],
+      },
+    ],
+  },
+  {
+    slug: 'worktree-lifecycle',
+    preserved: [
+      'each worktree or branch is an overlay mapping paths to content hashes',
+      'a retired version is collected when',
+      'History comes from git, not the store.',
+      'of a repo join its workspace automatically',
+      "Source Tree supplies each worktree's snapshot and `hasObject`",
+      'watch tracked directories only.',
+      'Keep versions for history:',
+      'Full copy per worktree:',
+    ],
+    amendments: [
+      {
+        title: 'Writer contention and leader/follower',
+        keywords: ['lease.db', 'BEGIN EXCLUSIVE', 'follower', 'exit code 3'],
+      },
     ],
   },
   {
@@ -476,6 +499,7 @@ const AMENDED: readonly AmendedAdr[] = [
     ],
     amendments: [
       { title: 'git runs repo-controlled code', keywords: GIT_HARDENING_KEYWORDS, extra: 'git-hardening' },
+      { title: 'Source Tree git subcommands', keywords: ['ls-tree', 'worktree list', 'porcelain'] },
     ],
   },
   {

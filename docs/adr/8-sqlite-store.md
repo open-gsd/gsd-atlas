@@ -48,3 +48,16 @@ Decision 1 says the SQL driver is internal to the Fact Store. It is internal to 
 Sources: user decision of 2026-10-15; 01-RESEARCH.md Pitfall 2 and Open Question 1.
 
 Decision 2 says Node 24 or later. The supported floor is Node 24.16.0, not 24.15.0. On 24.15.0 `node:sqlite` truncates TEXT at an embedded NUL (verified: all five bytes of a stored value are written, but a value with a NUL after its second character reads back as two characters), so source-derived text would be cut silently. Node 24.16.0 and Node 26 return the full value. Driver open therefore runs a NUL round-trip self-test and refuses a driver that fails it, reporting a diagnostic, whatever the Node version. CI lanes are Node 24.16.0 (the floor) and Node 26 latest on all three operating systems, and `engines.node` is `>=24.16.0`.
+
+## Amendment 2026-10-16: Phase 2 store policy
+
+Sources: FND-12; 02-CONTEXT.md D-13 to D-16; 02-RESEARCH.md Patterns 4 and 6.
+
+Phase 2 builds the Fact Store, and these points follow from the code. The decisions above stand unedited.
+
+1. **Pragma allowlist.** The driver kit's pragma allowlist gains `incremental_vacuum`, `wal_checkpoint`, `journal_size_limit`, `page_count` and `freelist_count`, with conformance cases on both drivers.
+2. **Open-time self-test.** It also records `contentless_delete` support, next to the existing FTS5 trigram check, so maintenance knows which delete form the index supports.
+3. **Auto-vacuum.** `auto_vacuum` is set to INCREMENTAL before the first table exists, as decision 6 requires; it cannot be set afterwards without a rebuild.
+4. **Dirty sentinel.** A dirty marker is a sentinel file beside the database, set before a batch and cleared after its commit. It works when the database itself is unreadable, which is when it is needed (D-14).
+5. **No fact-store migrations.** The fact-store schema version is checked at open. An older code with a newer store refuses with a clear message. A newer code with an older store drops and rebuilds it (D-15), as decision 4 allows. Forward-only migrations exist only for the Metrics database.
+6. **Retired file versions** are collected once git holds the blob, or after a configurable 24 h grace (D-16).

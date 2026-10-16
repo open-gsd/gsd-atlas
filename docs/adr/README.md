@@ -65,6 +65,9 @@ Dated amendment sections appended to Accepted ADRs, one line per amendment. The 
 - Amendment 2026-10-15: language-modules - Parse-error budget unit (extra, approved at plan 01-08 Task 1)
 - Amendment 2026-10-15: sqlite-store - Node floor and open-time self-test (extra, approved at plan 01-08 Task 1)
 - Amendment 2026-10-16: query-and-policy - Phase 2 shape
+- Amendment 2026-10-16: worktree-lifecycle - Writer contention and leader/follower
+- Amendment 2026-10-16: command-runner - Source Tree git subcommands
+- Amendment 2026-10-16: sqlite-store - Phase 2 store policy
 
 ## Ratification schedule
 The six ADRs that remain Proposed, and the phase whose first plan ratifies each (from the ROADMAP schedule). Ratifying means: open the issue, rename `draft-<slug>.md` to `<issue#>-<slug>.md`, move Proposed to Accepted, and apply the listed amendments as dated sections.

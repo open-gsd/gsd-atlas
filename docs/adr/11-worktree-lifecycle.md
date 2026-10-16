@@ -49,3 +49,17 @@ Agents work across many branches and short‑lived worktrees. The store must ref
 - **Collect only when both git‑backed and past grace (earlier draft):** uncommitted content never collected.
 - **Delete immediately on change:** loses "what did the agent change this session" for uncommitted edits.
 - **Full copy per worktree:** multiplies storage by worktree count.
+
+## Amendment 2026-10-16: Writer contention and leader/follower
+
+Sources: FND-12; 02-CONTEXT.md D-01, D-03 and D-13; 02-RESEARCH.md Patterns 3 and 4.
+
+Phase 2 puts several processes (CLI, stdio MCP servers, hooks) on one repo store. This amendment fixes who writes and what everyone else does. The decisions above stand unedited.
+
+1. **One writer per repo store, held by a lease file.** The lease is a dedicated SQLite file, `lease.db`, in the store directory. It is opened through the driver kit with a zero busy timeout. The kit's WAL default is acceptable here, because a held write lock excludes a second writer either way.
+2. **The leader keeps the lock for its whole life.** The leader runs `BEGIN EXCLUSIVE` on `lease.db` and keeps that connection open. The operating system releases the lock when the process dies, SIGKILL included, so no stale-lease detection exists. Diagnostics (pid, start time, version) go in `lease.json`, written by rename, and are never used to decide ownership.
+3. **The leader owns every worktree.** All worktrees of a repo share one store, so the leader discovers them with `git worktree list --porcelain -z` and watches and indexes all of them (decision 7 is unchanged: Source Tree supplies each snapshot).
+4. **A follower is read-only.** A follower never opens a writer and reads on read-only connections. It reports `degraded: ['follower']`. For `fresh` paths it parses the files into a per-request in-memory overlay merged over the store's facts (D-03), so its answers are fresh without a store write. It retries lease acquisition on a jittered timer, which is how takeover happens after the leader exits.
+5. **`build` and `maintain` exit with code 3** (exit code 3 means a writer lease or the host is held by another process) when another process holds the lease.
+6. **Reconcile interval.** The idle Reconcile interval is about 10 minutes (D-13), replacing the 5 minutes in decision 5. Git events still trigger a Reconcile at once.
+7. **In-process Host.** In Phase 2 the Host runs in-process in each process (D-01), so the leader is whichever process opened the store first. Phase 4's single host per user replaces this arrangement without changing the lease.
