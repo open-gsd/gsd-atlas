@@ -3,7 +3,7 @@ import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { describe, it } from 'node:test';
-import { createTempGitRepo, makeTempDir } from '../src/test-kit/index.ts';
+import { createTempGitRepo, makeTempDir, realPath } from '../src/test-kit/index.ts';
 import type { SetupResult, SetupRunner, SetupSpec, TempGitRepo } from '../src/test-kit/index.ts';
 import { corpusRemote, fetchCorpus } from './corpus-fetch.ts';
 
@@ -77,7 +77,7 @@ describe('fetchCorpus', () => {
         manifest: manifestFor(remote.first),
       });
       assert.equal(result.sha, remote.first);
-      assert.ok(path.resolve(result.dir).startsWith(path.resolve(dest.path) + path.sep), 'the checkout is under the destination');
+      assert.ok(path.resolve(result.dir).startsWith(realPath(dest.path) + path.sep), 'the checkout is under the destination');
       assert.equal(git(result.dir, ['rev-parse', 'HEAD']), remote.first);
       assert.equal(git(result.dir, ['rev-parse', '--abbrev-ref', 'HEAD']), 'HEAD', 'HEAD is detached');
       assert.equal(git(result.dir, ['rev-list', '--count', 'HEAD']), '1', 'depth 1');
