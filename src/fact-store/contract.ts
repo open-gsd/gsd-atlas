@@ -137,6 +137,26 @@ function richFacts(filePath: string, hash: string): FileFacts {
   };
 }
 
+/** A file with the given symbols, sites, imports and exports on top of empty defaults (module typescript 0.23.2). */
+function fileOf(filePath: string, n: number, parts: Partial<FileFacts>): FileFacts {
+  return parseFacts(filePath, H(n), { symbols: [], refSites: [], imports: [], exports: [], ...parts });
+}
+
+/** An import of `specifier` on `line` that binds the given (imported name, local name) pairs. */
+function importOf(specifier: string, line: number, ...bindings: Array<[string, string]>): ImportSite {
+  return {
+    path: specifier,
+    span: span(line, 0, line, 30),
+    style: 'es',
+    bindings: bindings.map(([imported, local]) => ({ imported, local })),
+  };
+}
+
+/** One function definition called `name` over the three lines from `line`. */
+function definition(name: string, line = 1, extra: { exported?: boolean } = {}): FileFacts['symbols'][number] {
+  return { name, kind: 'function', span: span(line, 0, line + 2, 1), ...extra };
+}
+
 const COUNTED_TABLES = ['files', 'names', 'symbols', 'refs', 'imports', 'import_bindings', 'exports', 'overlays', 'overlay_files'];
 
 /** Row counts of every table, read through a second kit connection. */
@@ -206,20 +226,19 @@ const loadA = parseFacts('src/a.ts', H(1), {
     { name: 'load', span: span(9, 2, 9, 6), kind: 'read', enclosing: 1 },
   ],
   imports: [],
-  exports: [],
+  exports: [{ name: 'load', span: span(0, 0, 5, 1) }],
 });
 
-/** A second definition also called `load`, one call inside the method `Job.run` and one type use at the top level. */
+/** Imports `load` from `./a`: one call inside the method `Job.run` and one type use at the top level. */
 const loadB = parseFacts('src/b.ts', H(2), {
-  symbols: [
-    { name: 'load', kind: 'function', span: span(0, 0, 2, 1) },
-    { name: 'run', kind: 'method', qualifiedName: 'Job.run', span: span(4, 2, 8, 3) },
-  ],
+  symbols: [{ name: 'run', kind: 'method', qualifiedName: 'Job.run', span: span(4, 2, 8, 3) }],
   refSites: [
-    { name: 'load', span: span(5, 4, 5, 8), kind: 'call', enclosing: 1 },
-    { name: 'load', span: span(1, 0, 1, 4), kind: 'type' },
+    { name: 'load', span: span(5, 4, 5, 8), kind: 'call', enclosing: 0, importPath: './a' },
+    { name: 'load', span: span(1, 0, 1, 4), kind: 'type', importPath: './a' },
   ],
-  imports: [],
+  imports: [
+    { path: './a', span: span(0, 0, 0, 24), style: 'es', bindings: [{ imported: 'load', local: 'load' }] },
+  ],
   exports: [],
 });
 
@@ -905,13 +924,12 @@ export function defineFactStoreContract(label: string, driver: DriverName): void
       });
     });
 
-    it('refs returns every name-matching reference site (grammar tier, INFERRED) ordered by path then span; scoping by imports is plan 02-11', async () => {
+    it('refs import scope: sites in the defining file and in files that import the definition, grammar tier INFERRED, ordered by path then span', async () => {
       await withStore(driver, async (fx) => {
         const writer = fx.store.writer();
         await writer.commitFile({ worktree: 'main', path: 'src/a.ts', hash: H(1), facts: loadA });
         await writer.commitFile({ worktree: 'main', path: 'src/b.ts', hash: H(2), facts: loadB });
         const idA = identity('src/a.ts', 'load', 'function');
-        const idB = identity('src/b.ts', 'load', 'function');
         const reader = fx.store.at('main');
 
         const refs = await reader.refs(idA);
@@ -940,9 +958,7 @@ export function defineFactStoreContract(label: string, driver: DriverName): void
         assert.deepStrictEqual(fifth?.enclosing, identity('src/b.ts', 'Job.run', 'method'));
         assert.equal(fifth?.content_hash, H(2));
 
-        const forB = await reader.refs(idB);
-        assert.equal(forB.data.length, 5, 'both definitions are named load, so both see every name-matching site');
-        for (const record of forB.data) assert.deepStrictEqual(record.target, idB);
+        for (const record of refs.data) assert.equal(record.candidates, undefined, 'one definition in scope: no candidates field');
 
         const none = await reader.refs(identity('src/a.ts', 'ghost', 'function'));
         assert.deepStrictEqual(none.data, []);
@@ -964,6 +980,215 @@ export function defineFactStoreContract(label: string, driver: DriverName): void
         assert.equal(box.data.length, 1);
         assert.equal(box.data[0]?.kind, 'new');
         assert.equal(box.data[0]?.enclosing, null);
+        writer.release();
+      });
+    });
+
+    it('refs same file: a definition and a site of the same name in one file give one record, and an identically named site in a file that does not import it gives none', async () => {
+      await withStore(driver, async (fx) => {
+        const writer = fx.store.writer();
+        await writer.commitFile({
+          worktree: 'main',
+          path: 'src/a.ts',
+          hash: H(1),
+          facts: fileOf('src/a.ts', 1, {
+            symbols: [definition('parse', 1), definition('main', 5)],
+            refSites: [{ name: 'parse', span: span(6, 2, 6, 7), kind: 'call', enclosing: 1 }],
+          }),
+        });
+        await writer.commitFile({
+          worktree: 'main',
+          path: 'src/c.ts',
+          hash: H(2),
+          facts: fileOf('src/c.ts', 2, {
+            symbols: [definition('other', 1)],
+            refSites: [{ name: 'parse', span: span(2, 2, 2, 7), kind: 'call', enclosing: 0 }],
+          }),
+        });
+        const refs = await fx.store.at('main').refs(identity('src/a.ts', 'parse', 'function'));
+        assert.deepStrictEqual(
+          refs.data.map((record) => [record.source_path, record.span.startLine, record.tier, record.confidence]),
+          [['src/a.ts', 6, 'grammar', 'INFERRED']],
+        );
+        assert.equal(refs.data[0]?.candidates, undefined);
+        assert.deepStrictEqual(refs.data[0]?.enclosing, identity('src/a.ts', 'main', 'function'));
+        writer.release();
+      });
+    });
+
+    it('refs import scope: an aliased named import, a namespace member and a default import reach the definition, while unbound names, other bindings and package imports do not', async () => {
+      await withStore(driver, async (fx) => {
+        const writer = fx.store.writer();
+        const commit = async (filePath: string, n: number, parts: Partial<FileFacts>): Promise<void> => {
+          await writer.commitFile({ worktree: 'main', path: filePath, hash: H(n), facts: fileOf(filePath, n, parts) });
+        };
+        // parse has an export entry; helper has none, so it is found through the exported-flag fallback.
+        await commit('src/a.ts', 1, {
+          symbols: [definition('parse', 1, { exported: true }), definition('helper', 5, { exported: true })],
+          exports: [{ name: 'parse', span: span(1, 0, 3, 1) }],
+        });
+        // import { parse as p } from './a': the site name p maps through the binding to parse.
+        await commit('src/b.ts', 2, {
+          symbols: [definition('run', 1)],
+          imports: [importOf('./a', 0, ['parse', 'p'])],
+          refSites: [{ name: 'p', span: span(2, 2, 2, 3), kind: 'call', enclosing: 0, importPath: './a' }],
+        });
+        // import * as ns from './a': a member site named parse (and one named helper) reaches the module's exports.
+        await commit('src/c.ts', 3, {
+          symbols: [definition('run', 1)],
+          imports: [importOf('./a', 0, ['*', 'ns'])],
+          refSites: [
+            { name: 'parse', span: span(2, 5, 2, 10), kind: 'member', enclosing: 0 },
+            { name: 'helper', span: span(3, 5, 3, 11), kind: 'member', enclosing: 0 },
+          ],
+        });
+        // import { helper } from './a' and an unbound parse: only helper is in scope.
+        await commit('src/d.ts', 4, {
+          symbols: [definition('run', 1)],
+          imports: [importOf('./a', 0, ['helper', 'helper'])],
+          refSites: [
+            { name: 'helper', span: span(2, 2, 2, 8), kind: 'call', enclosing: 0, importPath: './a' },
+            { name: 'parse', span: span(3, 2, 3, 7), kind: 'call', enclosing: 0 },
+          ],
+        });
+        // import { parse } from 'parse-lib': a package name never resolves.
+        await commit('src/e.ts', 5, {
+          symbols: [definition('run', 1)],
+          imports: [importOf('parse-lib', 0, ['parse', 'parse'])],
+          refSites: [{ name: 'parse', span: span(2, 2, 2, 7), kind: 'call', enclosing: 0, importPath: 'parse-lib' }],
+        });
+        // import parse from './a': a.ts has no default export, so the binding maps to nothing.
+        await commit('src/h.ts', 6, {
+          symbols: [definition('run', 1)],
+          imports: [importOf('./a', 0, ['default', 'parse'])],
+          refSites: [{ name: 'parse', span: span(2, 2, 2, 7), kind: 'call', enclosing: 0, importPath: './a' }],
+        });
+        // import make from './g': g.ts exports `build` as its default.
+        await commit('src/g.ts', 7, {
+          symbols: [definition('build', 1, { exported: true })],
+          exports: [{ name: 'default', local: 'build', span: span(1, 0, 3, 1) }],
+        });
+        await commit('src/f.ts', 8, {
+          symbols: [definition('run', 1)],
+          imports: [importOf('./g', 0, ['default', 'make'])],
+          refSites: [{ name: 'make', span: span(2, 2, 2, 6), kind: 'call', enclosing: 0, importPath: './g' }],
+        });
+
+        const reader = fx.store.at('main');
+        const parse = await reader.refs(identity('src/a.ts', 'parse', 'function'));
+        assert.deepStrictEqual(
+          parse.data.map((record) => [record.source_path, record.site.name, record.kind]),
+          [['src/b.ts', 'p', 'call'], ['src/c.ts', 'parse', 'member']],
+        );
+        for (const record of parse.data) {
+          assert.equal(record.tier, 'grammar');
+          assert.equal(record.confidence, 'INFERRED');
+          assert.equal(record.candidates, undefined);
+          assert.deepStrictEqual(record.target, identity('src/a.ts', 'parse', 'function'));
+        }
+        const helper = await reader.refs(identity('src/a.ts', 'helper', 'function'));
+        assert.deepStrictEqual(
+          helper.data.map((record) => [record.source_path, record.kind]),
+          [['src/c.ts', 'member'], ['src/d.ts', 'call']],
+        );
+        const build = await reader.refs(identity('src/g.ts', 'build', 'function'));
+        assert.deepStrictEqual(build.data.map((record) => [record.source_path, record.site.name]), [['src/f.ts', 'make']]);
+        writer.release();
+      });
+    });
+
+    it('refs export scope: an export alias maps a site in the defining file and in an importer to the local symbol', async () => {
+      await withStore(driver, async (fx) => {
+        const writer = fx.store.writer();
+        const commit = async (filePath: string, n: number, parts: Partial<FileFacts>): Promise<void> => {
+          await writer.commitFile({ worktree: 'main', path: filePath, hash: H(n), facts: fileOf(filePath, n, parts) });
+        };
+        // export { parse as run }: the site `run` in a.ts maps to the local symbol parse.
+        await commit('src/a.ts', 1, {
+          symbols: [definition('parse', 1)],
+          exports: [{ name: 'run', local: 'parse', span: span(5, 0, 5, 25) }],
+          refSites: [{ name: 'run', span: span(7, 0, 7, 3), kind: 'call' }],
+        });
+        await commit('src/b.ts', 2, {
+          symbols: [definition('main', 1)],
+          imports: [importOf('./a', 0, ['run', 'run'])],
+          refSites: [{ name: 'run', span: span(2, 2, 2, 5), kind: 'call', enclosing: 0, importPath: './a' }],
+        });
+        await commit('src/c.ts', 3, {
+          symbols: [definition('main', 1)],
+          refSites: [{ name: 'run', span: span(2, 2, 2, 5), kind: 'call', enclosing: 0 }],
+        });
+        const refs = await fx.store.at('main').refs(identity('src/a.ts', 'parse', 'function'));
+        assert.deepStrictEqual(
+          refs.data.map((record) => [record.source_path, record.site.name, record.span.startLine]),
+          [['src/a.ts', 'run', 7], ['src/b.ts', 'run', 2]],
+        );
+        writer.release();
+      });
+    });
+
+    it('refs ambiguity: a specifier that matches two files gives every candidate the site, each record carrying candidates equal to the number of alternatives', async () => {
+      await withStore(driver, async (fx) => {
+        const writer = fx.store.writer();
+        const commit = async (filePath: string, n: number, parts: Partial<FileFacts>): Promise<void> => {
+          await writer.commitFile({ worktree: 'main', path: filePath, hash: H(n), facts: fileOf(filePath, n, parts) });
+        };
+        // The same-file call in foo.cts has exactly one target; the call through ./foo.cjs has two.
+        await commit('src/foo.cts', 1, {
+          symbols: [definition('x', 1, { exported: true }), definition('self', 5)],
+          exports: [{ name: 'x', span: span(1, 0, 3, 1) }],
+          refSites: [{ name: 'x', span: span(6, 2, 6, 3), kind: 'call', enclosing: 1 }],
+        });
+        await commit('src/foo.cjs', 2, {
+          symbols: [definition('x', 1, { exported: true })],
+          exports: [{ name: 'x', span: span(1, 0, 3, 1) }],
+        });
+        await commit('src/c.cjs', 3, {
+          symbols: [definition('main', 1)],
+          imports: [importOf('./foo.cjs', 0, ['x', 'x'])],
+          refSites: [{ name: 'x', span: span(2, 2, 2, 3), kind: 'call', enclosing: 0, importPath: './foo.cjs' }],
+        });
+        const reader = fx.store.at('main');
+        const cts = await reader.refs(identity('src/foo.cts', 'x', 'function'));
+        assert.deepStrictEqual(
+          cts.data.map((record) => [record.source_path, record.candidates]),
+          [['src/c.cjs', 2], ['src/foo.cts', undefined]],
+        );
+        const cjs = await reader.refs(identity('src/foo.cjs', 'x', 'function'));
+        assert.deepStrictEqual(cjs.data.map((record) => [record.source_path, record.candidates]), [['src/c.cjs', 2]]);
+        assert.deepStrictEqual(cts.data[0]?.site, cjs.data[0]?.site, 'both candidates receive the same site');
+        for (const record of [...cts.data, ...cjs.data]) assert.equal(record.confidence, 'INFERRED');
+        writer.release();
+      });
+    });
+
+    it('refs two branches: one file resolves ./b to src/b.ts in one overlay and to src/b/index.ts in the other, with no cache involved', async () => {
+      await withStore(driver, async (fx) => {
+        const writer = fx.store.writer();
+        const peek = await fx.peek();
+        const main = fileOf('src/main.ts', 1, {
+          symbols: [definition('start', 1)],
+          imports: [importOf('./b', 0, ['run', 'run'])],
+          refSites: [{ name: 'run', span: span(2, 2, 2, 5), kind: 'call', enclosing: 0, importPath: './b' }],
+        });
+        const runFile = (filePath: string, n: number): FileFacts =>
+          fileOf(filePath, n, { symbols: [definition('run', 1, { exported: true })], exports: [{ name: 'run', span: span(1, 0, 3, 1) }] });
+        await writer.commitFile({ worktree: 'wt-a', path: 'src/main.ts', hash: H(1), facts: main });
+        await writer.commitFile({ worktree: 'wt-a', path: 'src/b.ts', hash: H(2), facts: runFile('src/b.ts', 2) });
+        await writer.commitFile({ worktree: 'wt-b', path: 'src/main.ts', hash: H(1), facts: main });
+        await writer.commitFile({ worktree: 'wt-b', path: 'src/b/index.ts', hash: H(3), facts: runFile('src/b/index.ts', 3) });
+        assert.equal(Number(peek.prepare('SELECT count(*) AS n FROM files WHERE hash = ?').get(H(1))?.n), 1, 'main.ts is one files row shared by both overlays');
+
+        const inA = await fx.store.at('wt-a').refs(identity('src/b.ts', 'run', 'function'));
+        const inB = await fx.store.at('wt-b').refs(identity('src/b/index.ts', 'run', 'function'));
+        assert.deepStrictEqual(inA.data.map((record) => record.source_path), ['src/main.ts']);
+        assert.deepStrictEqual(inB.data.map((record) => record.source_path), ['src/main.ts']);
+        assert.deepStrictEqual(inA.data[0]?.site, inB.data[0]?.site);
+        assert.equal(inA.data[0]?.content_hash, inB.data[0]?.content_hash);
+        assert.deepStrictEqual(inA.data[0]?.target, identity('src/b.ts', 'run', 'function'));
+        assert.deepStrictEqual(inB.data[0]?.target, identity('src/b/index.ts', 'run', 'function'));
+        assert.deepStrictEqual((await fx.store.at('wt-a').refs(identity('src/b/index.ts', 'run', 'function'))).data, []);
+        assert.deepStrictEqual((await fx.store.at('wt-b').refs(identity('src/b.ts', 'run', 'function'))).data, []);
         writer.release();
       });
     });

@@ -70,6 +70,12 @@ export interface RefRecord extends Provenance {
   readonly kind?: RefKind;
   /** The innermost symbol that contains the site; `null` for a top-level site, absent when not known. */
   readonly enclosing?: SymbolIdentity | null;
+  /**
+   * Set only when the site could point at more than one definition (a specifier that matches two files, two
+   * same-named definitions in scope): the number of alternatives, and every one of them receives the site.
+   * Absent when exactly one definition is in scope. Nothing is guessed (LNG-03).
+   */
+  readonly candidates?: number;
 }
 
 /**
