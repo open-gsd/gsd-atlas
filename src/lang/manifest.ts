@@ -89,6 +89,22 @@ export type ParseManifestResult =
   | { readonly ok: true; readonly manifest: Manifest }
   | { readonly ok: false; readonly diagnostics: readonly Diagnostic[] };
 
+/**
+ * The JSON Schema (draft 2020-12) generated from `ManifestSchema`, for authors and editors.
+ * `io: 'input'` describes what an author writes, so defaulted fields are not required.
+ * `scripts/schema-build.ts` serialises this object; never hand-edit the generated file.
+ */
+export function manifestJsonSchema(): Record<string, unknown> {
+  const generated = z.toJSONSchema(ManifestSchema, { target: 'draft-2020-12', io: 'input' });
+  const { $schema, ...rest } = generated;
+  return {
+    $schema,
+    $id: 'urn:gsd-atlas:schema:atlas-lang:1',
+    title: 'gsd-atlas language module manifest',
+    ...rest,
+  };
+}
+
 function issueLabel(issue: z.core.$ZodIssue): string {
   const join = (path: readonly PropertyKey[]): string => path.map(String).join('.');
   if (issue.code === 'unrecognized_keys') {
