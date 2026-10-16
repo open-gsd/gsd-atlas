@@ -4,12 +4,24 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { parseGrammarLock } from '../src/lang/grammar-lock.ts';
-import type { GrammarLock } from '../src/lang/grammar-lock.ts';
+import {
+  ARTIFACT_PLATFORM_KEYS,
+  PLATFORM_KEYS,
+  expectedPlatformSha256,
+  parseGrammarLock,
+  platformKey,
+} from '../src/lang/grammar-lock.ts';
+import type { GrammarLock, PlatformKey } from '../src/lang/grammar-lock.ts';
 import { ensureTreeSitter } from './ensure-tree-sitter.ts';
 
 /**
- * node scripts/grammar-build.ts [moduleDir...] [--update-lock] [--report]
+ * node scripts/grammar-build.ts [moduleDir...] [--update-lock | --update-platform] [--report]
+ *
+ * Default: rebuild and compare with this platform's grammar.lock entry (wasm.platforms).
+ * --update-lock:     artifact platforms only (linux-x64, darwin-arm64): replace the committed wasm,
+ *                    wasm.sha256 and this platform's entry.
+ * --update-platform: any platform: record only this platform's rebuild hash; the committed wasm
+ *                    and wasm.sha256 are never touched.
  *
  * The one shared grammar build, driven by each module's grammar.lock (D-08). It generates the
  * parser with an explicit ABI and builds the WASM with the pinned tree-sitter CLI. It is
@@ -51,16 +63,62 @@ export function sha256Hex(bytes: Uint8Array): string {
   return createHash('sha256').update(bytes).digest('hex');
 }
 
-/** Null when the computed hash equals the lock; otherwise the text to print before exiting 1. */
-export function checkAgainstLock(lock: GrammarLock, computedSha256: string): string | null {
-  if (computedSha256 === lock.wasm.sha256) {
+/**
+ * Null when the computed hash equals this platform's grammar.lock entry; otherwise the text to
+ * print before exiting 1. A platform with no entry is a failure naming the platform key.
+ */
+export function checkAgainstLock(
+  lock: GrammarLock,
+  computedSha256: string,
+  platform: string = process.platform,
+  arch: string = process.arch,
+): string | null {
+  const expected = expectedPlatformSha256(lock, platform, arch);
+  if (!expected.ok) {
+    return `grammar hash check failed: ${expected.message}`;
+  }
+  if (computedSha256 === expected.sha256) {
     return null;
   }
   return (
-    `grammar hash mismatch for ${lock.name} on ${process.platform}/${process.arch}\n` +
-    `  expected (grammar.lock): ${lock.wasm.sha256}\n` +
+    `grammar hash mismatch for ${lock.name} on ${expected.key}\n` +
+    `  expected (grammar.lock wasm.platforms.${expected.key}): ${expected.sha256}\n` +
     `  computed:                ${computedSha256}\n` +
-    'run with --update-lock if this change is intentional'
+    'run with --update-platform if this change is intentional ' +
+    '(--update-lock on linux-x64 or darwin-arm64 also replaces the committed wasm)'
+  );
+}
+
+/**
+ * The lock after a rebuild on `key` produced `builtSha256`. `replaceArtifact` also swaps the
+ * committed wasm hash (artifact platforms only). Other platforms' entries are kept unchanged: if
+ * they are now stale their own verification fails loudly and --update-platform refreshes them.
+ */
+export function updatedLock(
+  lock: GrammarLock,
+  key: PlatformKey,
+  builtSha256: string,
+  replaceArtifact: boolean,
+): GrammarLock {
+  return {
+    ...lock,
+    wasm: {
+      file: lock.wasm.file,
+      sha256: replaceArtifact ? builtSha256 : lock.wasm.sha256,
+      platforms: { ...lock.wasm.platforms, [key]: builtSha256 },
+    },
+  };
+}
+
+/** Why --update-lock is refused on `platform`/`arch`, or null when it is allowed. */
+export function updateLockRefusal(platform: string = process.platform, arch: string = process.arch): string | null {
+  const key = platformKey(platform, arch);
+  if (key !== undefined && ARTIFACT_PLATFORM_KEYS.includes(key)) {
+    return null;
+  }
+  return (
+    `--update-lock replaces the committed wasm and is only allowed on ${ARTIFACT_PLATFORM_KEYS.join(' or ')} ` +
+    `(this is ${platform}-${arch}); use --update-platform to record this platform's hash`
   );
 }
 
@@ -245,9 +303,17 @@ export function discoverModules(): string[] {
   return found.sort();
 }
 
-/** Stable key order (the schema's), LF endings, trailing newline. */
+/** Stable key order (the schema's, platforms in PLATFORM_KEYS order), LF endings, trailing newline. */
 export function serializeLock(lock: GrammarLock): string {
-  return `${JSON.stringify(lock, null, 2)}\n`;
+  const platforms: Partial<Record<PlatformKey, string>> = {};
+  for (const key of PLATFORM_KEYS) {
+    const sha256 = lock.wasm.platforms[key];
+    if (sha256 !== undefined) {
+      platforms[key] = sha256;
+    }
+  }
+  const ordered: GrammarLock = { ...lock, wasm: { file: lock.wasm.file, sha256: lock.wasm.sha256, platforms } };
+  return `${JSON.stringify(ordered, null, 2)}\n`;
 }
 
 function isEntryPoint(): boolean {
@@ -257,6 +323,11 @@ function isEntryPoint(): boolean {
 
 async function main(argv: string[]): Promise<number> {
   const updateLock = argv.includes('--update-lock');
+  const updatePlatform = argv.includes('--update-platform');
+  if (updateLock && updatePlatform) {
+    process.stderr.write('grammar-build: --update-lock and --update-platform are mutually exclusive\n');
+    return 1;
+  }
   const report = argv.includes('--report');
   const requested = argv.filter((a) => !a.startsWith('--')).map((a) => path.resolve(a));
   const modules = requested.length > 0 ? requested : discoverModules();
@@ -270,10 +341,15 @@ async function main(argv: string[]): Promise<number> {
     const cli = ensureTreeSitter(lock);
     const built = await buildModule(moduleDir, cli.binary);
     if (report) {
+      const expected = expectedPlatformSha256(lock);
       process.stdout.write(
         `${JSON.stringify({
           platform: process.platform,
           arch: process.arch,
+          platformKey: expected.key ?? null,
+          lockSha256: expected.ok ? expected.sha256 : null,
+          matchesLock: expected.ok && expected.sha256 === built.sha256,
+          committedSha256: lock.wasm.sha256,
           node: process.versions.node,
           cli: cli.version,
           abi: lock.abi,
@@ -287,11 +363,25 @@ async function main(argv: string[]): Promise<number> {
       continue;
     }
     const wasmPath = path.join(moduleDir, lock.wasm.file);
-    if (updateLock) {
-      fs.writeFileSync(wasmPath, built.wasm);
-      const next: GrammarLock = { ...lock, wasm: { file: lock.wasm.file, sha256: built.sha256 } };
-      fs.writeFileSync(path.join(moduleDir, 'grammar.lock'), serializeLock(next));
-      process.stdout.write(`${lock.name}: wrote ${lock.wasm.file} (${built.wasm.length} bytes) sha256 ${built.sha256}\n`);
+    const key = platformKey();
+    if (updateLock || updatePlatform) {
+      const refusal = updateLock ? updateLockRefusal() : null;
+      if (refusal !== null || key === undefined) {
+        process.stderr.write(
+          `${lock.name}: ${refusal ?? `${process.platform}-${process.arch} is not a supported grammar build platform`}\n`,
+        );
+        status = 1;
+        continue;
+      }
+      if (updateLock) {
+        fs.writeFileSync(wasmPath, built.wasm);
+      }
+      fs.writeFileSync(
+        path.join(moduleDir, 'grammar.lock'),
+        serializeLock(updatedLock(lock, key, built.sha256, updateLock)),
+      );
+      const wrote = updateLock ? `wrote ${lock.wasm.file} (${String(built.wasm.length)} bytes), ` : '';
+      process.stdout.write(`${lock.name}: ${wrote}recorded ${key} sha256 ${built.sha256}\n`);
       continue;
     }
     const mismatch = checkAgainstLock(lock, built.sha256);
@@ -300,8 +390,8 @@ async function main(argv: string[]): Promise<number> {
       status = 1;
       continue;
     }
-    fs.writeFileSync(wasmPath, built.wasm);
-    process.stdout.write(`${lock.name}: ok sha256 ${built.sha256}\n`);
+    // Check mode never writes the wasm: on a non-artifact platform the rebuild differs from it.
+    process.stdout.write(`${lock.name}: ok ${String(key)} sha256 ${built.sha256}\n`);
   }
   return status;
 }

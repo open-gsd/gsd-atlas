@@ -4,8 +4,8 @@
  */
 export { parseManifest } from './manifest.ts';
 export type { Manifest, ParseManifestResult } from './manifest.ts';
-export { parseGrammarLock } from './grammar-lock.ts';
-export type { GrammarLock, GrammarLockResult } from './grammar-lock.ts';
+export { PLATFORM_KEYS, expectedPlatformSha256, parseGrammarLock, platformKey } from './grammar-lock.ts';
+export type { GrammarLock, GrammarLockResult, PlatformExpectation, PlatformKey } from './grammar-lock.ts';
 export { MANIFEST_FILE, readModuleFile, readModuleInputs } from './module-files.ts';
 export type { ReadModuleFileResult, ReadModuleInputsResult } from './module-files.ts';
 export { GOLDEN_CONVENTION, compareGolden, goldenFileName, renderGolden, serializeGolden } from './golden.ts';
