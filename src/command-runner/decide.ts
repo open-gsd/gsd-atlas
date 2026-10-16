@@ -21,8 +21,16 @@ interface Builtin {
   match(spec: CommandSpec): boolean;
 }
 
+/**
+ * The generic read subcommands, plus `config` and `worktree` which {@link matchGit} accepts only in one
+ * exact shape each. The command-runner ADR amendment dated 2026-10-16 added two read shapes to the original
+ * list: `ls-tree` (any arguments not in {@link GIT_DENIED_OPTIONS}, like the others here) and the single
+ * worktree shape `worktree list --porcelain -z`. `worktree` is deliberately NOT in this set: `add`, `remove`,
+ * `prune`, `lock` and `move` write to the repository, so no other worktree subcommand is reachable.
+ */
 const GIT_READ_SUBCOMMANDS: ReadonlySet<string> = new Set([
   'ls-files',
+  'ls-tree',
   'hash-object',
   'cat-file',
   'rev-parse',
@@ -185,6 +193,10 @@ function matchGit(spec: CommandSpec): boolean {
   const rest = args.slice(i + 1);
   if (sub === 'config') {
     return rest.length === 3 && rest[0] === '--name-only' && rest[1] === '--get-regexp' && rest[2] !== '';
+  }
+  if (sub === 'worktree') {
+    // The one worktree read shape (amendment 2026-10-16): exactly `list --porcelain -z`, in this order.
+    return rest.length === 3 && rest[0] === 'list' && rest[1] === '--porcelain' && rest[2] === '-z';
   }
   if (!GIT_READ_SUBCOMMANDS.has(sub)) return false;
   return !rest.some((r) => GIT_DENIED_OPTIONS.has(r));
