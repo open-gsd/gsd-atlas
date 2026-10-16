@@ -5,7 +5,8 @@ import { after, describe, it } from 'node:test';
 
 import { createGrammarEngine } from '../grammar-engine/index.ts';
 import { makeTempDir } from '../test-kit/index.ts';
-import { runLangTest } from './index.ts';
+import { runLangTest as runWithRoots } from './index.ts';
+import type { LangTestOptions, Roots } from './index.ts';
 
 const TOY = path.resolve(import.meta.dirname, '..', '..', 'test', 'fixtures', 'modules', 'toy');
 const OTHER_FIXTURES = ['emoji.toy', 'crlf.toy', 'bom.toy'];
@@ -19,6 +20,16 @@ after(async () => {
     t.cleanup();
   }
 });
+
+/** Roots that point at nothing: folder targets never consult the registry. */
+const NO_ROOTS: Roots = {
+  repoRoot: path.join(tmp.path, 'no-repo'),
+  userDir: path.join(tmp.path, 'no-user'),
+  builtinDir: null,
+  npmRoots: [],
+};
+const runLangTest = (options: Omit<LangTestOptions, 'roots'> & { readonly roots?: Roots }) =>
+  runWithRoots({ roots: NO_ROOTS, ...options });
 
 let counter = 0;
 /** A copy of the toy module in a fresh folder; `only` limits the copied fixtures to those names. */
@@ -139,6 +150,57 @@ describe('runLangTest', () => {
         ['fixture_unreadable'],
       );
     }
+  });
+});
+
+describe('runLangTest by module id (D-03)', () => {
+  function rootsWithToyIn(repoCopy: string): Roots {
+    counter += 1;
+    const repoRoot = path.join(tmp.path, `id-repo-${String(counter)}`);
+    fs.mkdirSync(path.join(repoRoot, '.gsd-atlas', 'languages'), { recursive: true });
+    fs.cpSync(repoCopy, path.join(repoRoot, '.gsd-atlas', 'languages', 'toy'), { recursive: true });
+    return { ...NO_ROOTS, repoRoot };
+  }
+
+  it('resolves a bare id through the registry and tests that module', async () => {
+    const roots = rootsWithToyIn(copyToy(['basic.toy']));
+    const report = await runLangTest({ target: 'toy', roots, engine });
+    assert.deepEqual(report.diagnostics, []);
+    assert.equal(report.ok, true);
+    assert.equal(report.module, 'toy');
+    assert.deepEqual(report.fixtures, [{ file: 'basic.toy', ok: true }]);
+  });
+
+  it('reports module_not_found for an id no location holds', async () => {
+    const roots = rootsWithToyIn(copyToy(['basic.toy']));
+    const report = await runLangTest({ target: 'nosuch', roots, engine });
+    assert.equal(report.ok, false);
+    assert.deepEqual(report.diagnostics.map((d) => d.code), ['module_not_found']);
+  });
+
+  it('does not treat a target with a path separator as an id', async () => {
+    const roots = rootsWithToyIn(copyToy(['basic.toy']));
+    for (const target of ['./toy-no-such', 'languages/toy', 'a\\toy']) {
+      const report = await runLangTest({ target, roots, engine });
+      assert.deepEqual(report.diagnostics.map((d) => d.code), ['module_not_found'], target);
+    }
+  });
+
+  it('keeps a skipped copy as a warning and tests the valid lower-tier copy', async () => {
+    const roots = rootsWithToyIn(copyToy(['basic.toy']));
+    const userCopy = path.join(tmp.path, `id-user-${String(counter)}`, 'languages', 'toy');
+    fs.cpSync(copyToy(['basic.toy']), userCopy, { recursive: true });
+    fs.writeFileSync(path.join(roots.repoRoot, '.gsd-atlas', 'languages', 'toy', 'atlas-lang.json'), '{}');
+    const report = await runLangTest({ target: 'toy', roots: { ...roots, userDir: path.dirname(path.dirname(userCopy)) }, engine });
+    assert.equal(report.ok, true);
+    assert.ok(report.diagnostics.length > 0);
+    assert.ok(report.diagnostics.every((d) => d.code === 'manifest_invalid' && d.severity === 'warning'));
+  });
+
+  it('tests a folder path as a folder even when the registry holds a module of that name', async () => {
+    const roots = rootsWithToyIn(copyToy(['basic.toy']));
+    const report = await runLangTest({ target: copyToy(['emoji.toy']), roots, engine });
+    assert.deepEqual(report.fixtures, [{ file: 'emoji.toy', ok: true }]);
   });
 });
 

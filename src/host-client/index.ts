@@ -12,5 +12,6 @@ export interface HostClient {
   handle(request: Request): Promise<Envelope>;
 }
 
-export { ERROR_SCHEMA, LANG_TEST_SCHEMA, createInProcessHostClient } from './in-process.ts';
-export type { InProcessHostClientOptions } from './in-process.ts';
+export { ERROR_SCHEMA, LANG_LIST_SCHEMA, LANG_TEST_SCHEMA, createInProcessHostClient } from './in-process.ts';
+export type { InProcessHostClientOptions, LangListData } from './in-process.ts';
+export type { ModuleEntry, ModuleSource, Roots, ShadowedCopy, TierStatus } from '../lang/index.ts';

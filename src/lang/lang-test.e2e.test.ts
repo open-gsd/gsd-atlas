@@ -321,5 +321,218 @@ describe('gsd-atlas lang test: exit codes and diagnostics', () => {
     const help = await spawnAtlas(['--help']);
     assert.equal(help.exitCode, 0);
     assert.match(help.stdout, /lang test <module-folder>/);
+    assert.match(help.stdout, /lang list/);
+  });
+});
+
+interface ListedModule {
+  readonly name: string;
+  readonly source: string;
+  readonly dir: string;
+  readonly extensions: string[];
+  readonly inactiveExtensions: string[];
+  readonly tiers: Array<{ tier: string; active: boolean; reason?: string }>;
+  readonly shadowed: Array<{ source: string; dir: string }>;
+}
+
+interface RootLayout {
+  readonly repo: string;
+  readonly user: string;
+  readonly npm: string;
+  readonly builtin: string;
+  /** The four root flags pointing at this layout. */
+  readonly flags: string[];
+  folder(source: 'repo' | 'user' | 'npm' | 'builtin', name: string): string;
+}
+
+let layoutCounter = 0;
+/** Four empty search locations under the shared temp dir, wired up as root flags. */
+function layout(): RootLayout {
+  layoutCounter += 1;
+  const base = path.join(temp.path, `layout ${String(layoutCounter)}`);
+  const repo = path.join(base, 'repo');
+  const user = path.join(base, 'user');
+  const npm = path.join(base, 'npm');
+  const builtin = path.join(base, 'builtin');
+  return {
+    repo,
+    user,
+    npm,
+    builtin,
+    flags: ['--repo-root', repo, '--user-dir', user, '--npm-root', npm, '--builtin-dir', builtin],
+    folder(source, name) {
+      switch (source) {
+        case 'repo':
+          return path.join(repo, '.gsd-atlas', 'languages', name);
+        case 'user':
+          return path.join(user, 'languages', name);
+        case 'npm':
+          return path.join(npm, 'node_modules', `gsd-atlas-lang-${name}`);
+        case 'builtin':
+          return path.join(builtin, name);
+      }
+    },
+  };
+}
+
+const modulesOf = (out: Outcome): ListedModule[] => (out.envelope.data as { modules: ListedModule[] }).modules;
+
+describe('gsd-atlas lang list and lang test <id>, as real processes (D-03, LNG-01)', () => {
+  it('lists the toy module with its source, active tier, extensions and shadowed copies, and exits 0', async () => {
+    const l = layout();
+    fs.cpSync(TOY, l.folder('repo', 'toy'), { recursive: true });
+    fs.cpSync(TOY, l.folder('npm', 'toy'), { recursive: true });
+    fs.cpSync(TOY, l.folder('builtin', 'toy'), { recursive: true });
+
+    const out = await atlas(['lang', 'list', ...l.flags]);
+    assert.equal(out.exitCode, 0, out.stderr);
+    assert.equal(out.envelope.schema, 'gsd-atlas.lang-list/1');
+    assert.equal(out.envelope.ok, true);
+    assert.deepEqual(out.envelope.diagnostics, []);
+    const [toy, ...rest] = modulesOf(out);
+    assert.deepEqual(rest, []);
+    assert.equal(toy?.name, 'toy');
+    assert.equal(toy.source, 'repo');
+    assert.deepEqual(toy.extensions, ['.toy']);
+    assert.deepEqual(toy.inactiveExtensions, []);
+    assert.deepEqual(toy.tiers, [{ tier: 'grammar', active: true }]);
+    assert.deepEqual(toy.shadowed.map((s) => s.source), ['npm', 'builtin']);
+    assert.equal(fs.realpathSync.native(toy.dir), fs.realpathSync.native(l.folder('repo', 'toy')));
+  });
+
+  it('lists nothing, with an ok envelope and exit 0, when no location exists', async () => {
+    const out = await atlas(['lang', 'list', ...layout().flags]);
+    assert.equal(out.exitCode, 0, out.stderr);
+    assert.equal(out.envelope.ok, true);
+    assert.deepEqual(out.envelope.data, { modules: [] });
+    assert.equal(out.stderr, '');
+  });
+
+  it('accepts relative root flags and several --npm-root flags', async () => {
+    const l = layout();
+    fs.cpSync(TOY, path.join(l.npm, 'node_modules', '@opengsd', 'atlas-lang-toy'), { recursive: true });
+    const second = path.join(temp.path, `second npm ${String(layoutCounter)}`);
+    const out = await atlas([
+      'lang', 'list',
+      '--repo-root', path.relative(process.cwd(), l.repo),
+      '--user-dir', l.user,
+      '--builtin-dir', l.builtin,
+      '--npm-root', l.npm,
+      '--npm-root', second,
+    ]);
+    assert.equal(out.exitCode, 0, out.stderr);
+    assert.deepEqual(modulesOf(out).map((m) => [m.name, m.source]), [['toy', 'npm']]);
+  });
+
+  it('lang test toy resolves the id through the registry, tests all four fixtures and exits 0', async () => {
+    const l = layout();
+    fs.cpSync(TOY, l.folder('repo', 'toy'), { recursive: true });
+    const out = await atlas(['lang', 'test', 'toy', ...l.flags]);
+    assert.equal(out.exitCode, 0, out.stderr);
+    assert.equal(out.envelope.schema, 'gsd-atlas.lang-test/1');
+    assert.deepEqual(out.envelope.data, {
+      ok: true,
+      module: 'toy',
+      fixtures: [
+        { file: 'basic.toy', ok: true },
+        { file: 'bom.toy', ok: true },
+        { file: 'crlf.toy', ok: true },
+        { file: 'emoji.toy', ok: true },
+      ],
+      diagnostics: [],
+    });
+  });
+
+  it('lang test nosuch exits 1 with module_not_found', async () => {
+    const l = layout();
+    fs.cpSync(TOY, l.folder('repo', 'toy'), { recursive: true });
+    const out = await atlas(['lang', 'test', 'nosuch', ...l.flags]);
+    assert.equal(out.exitCode, 1);
+    assert.equal(out.envelope.ok, false);
+    assert.deepEqual(out.envelope.diagnostics.map((d) => d.code), ['module_not_found']);
+  });
+
+  it('lang test <folder> still works with root flags present', async () => {
+    const out = await atlas(['lang', 'test', TOY, ...layout().flags]);
+    assert.equal(out.exitCode, 0, out.stderr);
+  });
+
+  it('skips an invalid repo copy with a manifest_invalid warning, uses the valid user copy, and exits 0', async () => {
+    const l = layout();
+    const bad = l.folder('repo', 'toy');
+    fs.cpSync(TOY, bad, { recursive: true });
+    fs.writeFileSync(path.join(bad, 'atlas-lang.json'), '{}');
+    fs.cpSync(TOY, l.folder('user', 'toy'), { recursive: true });
+
+    const listed = await atlas(['lang', 'list', ...l.flags]);
+    assert.equal(listed.exitCode, 0, listed.stderr);
+    assert.equal(modulesOf(listed)[0]?.source, 'user');
+    assert.ok(listed.envelope.diagnostics.length > 0);
+    assert.ok(listed.envelope.diagnostics.every((x) => x.code === 'manifest_invalid'));
+    assert.match(listed.stderr, /^gsd-atlas: warning manifest_invalid: /);
+    assert.ok(!listed.stderr.includes('    at '), 'no stack trace');
+
+    const tested = await atlas(['lang', 'test', 'toy', ...l.flags]);
+    assert.equal(tested.exitCode, 0, tested.stderr);
+    assert.equal(tested.envelope.ok, true);
+  });
+
+  it('skips a name_mismatch folder with a warning, never a crash, and lists the valid copy below it', async () => {
+    const l = layout();
+    const wrong = l.folder('repo', 'toy');
+    fs.cpSync(TOY, wrong, { recursive: true });
+    const manifestPath = path.join(wrong, 'atlas-lang.json');
+    fs.writeFileSync(manifestPath, fs.readFileSync(manifestPath, 'utf8').replace('"name": "toy"', '"name": "other"'));
+    fs.cpSync(TOY, l.folder('builtin', 'toy'), { recursive: true });
+
+    const out = await atlas(['lang', 'list', ...l.flags]);
+    assert.equal(out.exitCode, 0, out.stderr);
+    assert.deepEqual(out.envelope.diagnostics.map((x) => x.code), ['name_mismatch']);
+    assert.deepEqual(modulesOf(out).map((m) => [m.name, m.source]), [['toy', 'builtin']]);
+    assert.match(out.stderr, /^gsd-atlas: warning name_mismatch: /);
+  });
+
+  it('reports extension_collision as an error diagnostic and lists the contested extension as inactive', async () => {
+    const l = layout();
+    fs.cpSync(TOY, l.folder('repo', 'toy'), { recursive: true });
+    const second = l.folder('user', 'toy2');
+    fs.cpSync(TOY, second, { recursive: true });
+    const manifestPath = path.join(second, 'atlas-lang.json');
+    fs.writeFileSync(manifestPath, fs.readFileSync(manifestPath, 'utf8').replace('"name": "toy"', '"name": "toy2"'));
+
+    const out = await atlas(['lang', 'list', ...l.flags]);
+    assert.equal(out.exitCode, 0, out.stderr);
+    const collision = out.envelope.diagnostics.find((x) => x.code === 'extension_collision');
+    assert.equal(collision?.severity, 'error');
+    assert.match(out.stderr, /^gsd-atlas: error extension_collision: /);
+    const toy2 = modulesOf(out).find((m) => m.name === 'toy2');
+    assert.deepEqual(toy2?.inactiveExtensions, ['.toy']);
+  });
+
+  it('never runs a precise command from a manifest: list and test pass and the marker file is never written', async () => {
+    const l = layout();
+    const marker = path.join(temp.path, `precise marker ${String(layoutCounter)}.txt`);
+    const dir = l.folder('repo', 'toy');
+    fs.cpSync(TOY, dir, { recursive: true });
+    const manifestPath = path.join(dir, 'atlas-lang.json');
+    const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8')) as Record<string, unknown>;
+    manifest['tiers'] = ['grammar', 'precise', 'platform'];
+    manifest['precise'] = { command: [process.execPath, '-e', `require('node:fs').writeFileSync(${JSON.stringify(marker)}, 'ran')`] };
+    fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
+
+    const listed = await atlas(['lang', 'list', ...l.flags]);
+    assert.equal(listed.exitCode, 0, listed.stderr);
+    assert.deepEqual(modulesOf(listed)[0]?.tiers, [
+      { tier: 'grammar', active: true },
+      { tier: 'precise', active: false, reason: 'command_not_approved' },
+      { tier: 'platform', active: false, reason: 'no_sdk_provider' },
+    ]);
+    assert.deepEqual(listed.envelope.diagnostics.map((x) => x.code), ['precise_command_inactive']);
+
+    const tested = await atlas(['lang', 'test', 'toy', ...l.flags]);
+    assert.equal(tested.exitCode, 0, tested.stderr);
+    assert.equal(tested.envelope.ok, true);
+
+    assert.equal(fs.existsSync(marker), false, 'the precise command in the manifest must never have started');
   });
 });
