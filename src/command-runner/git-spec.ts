@@ -20,6 +20,15 @@
  *
  * The environment pins `GIT_OPTIONAL_LOCKS=0` (a read must not contend for the index lock) and
  * `GIT_TERMINAL_PROMPT=0` (git must never wait for a credential prompt).
+ *
+ * Lazy fetch (verification gap CR-01, threat T-01-43): when an object is missing locally and the repository
+ * declares a promisor remote (`extensions.partialClone`, `remote.<name>.promisor`), git fetches it by
+ * starting the transport the repository configures (`core.sshCommand`, proxy commands, credential
+ * helpers), which is repo-controlled code. `hasObject` and `read` ask for objects that may be absent, so
+ * both would start it. The environment therefore also pins `GIT_NO_LAZY_FETCH=1` (git 2.44 and newer: no
+ * fetch is attempted) and `GIT_ALLOW_PROTOCOL=none` (every transport is refused, which covers older git),
+ * so each pin covers the other's gap. Both are set AFTER the caller env, so a test-kit overlay or a Source
+ * Tree `envOverlay` cannot switch them off, and `decide` refuses any git spec that lacks them.
  */
 import os from 'node:os';
 import type { CommandRunner, CommandSpec, RunContext } from './spec.ts';
@@ -73,7 +82,7 @@ export interface GitSpecOptions {
   readonly stdin?: CommandSpec['stdin'];
   readonly maxStdoutBytes?: number;
   readonly timeoutMs?: number;
-  /** Overlaid after the two pinned variables, e.g. a test's git-config isolation. */
+  /** Overlaid BEFORE the pinned variables, so it can add (a test's git-config isolation) but never override them. */
   readonly env?: Readonly<Record<string, string>>;
 }
 
@@ -87,7 +96,13 @@ export function gitSpec(sub: readonly string[], opts: GitSpecOptions): CommandSp
     ...neutraliseFilters(opts.filterNames ?? []),
     ...sub,
   ];
-  const env: Record<string, string> = { ...opts.env, GIT_OPTIONAL_LOCKS: '0', GIT_TERMINAL_PROMPT: '0' };
+  const env: Record<string, string> = {
+    ...opts.env,
+    GIT_OPTIONAL_LOCKS: '0',
+    GIT_TERMINAL_PROMPT: '0',
+    GIT_NO_LAZY_FETCH: '1',
+    GIT_ALLOW_PROTOCOL: 'none',
+  };
   return {
     executable: 'git',
     args,

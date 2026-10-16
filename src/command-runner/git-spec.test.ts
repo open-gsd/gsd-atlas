@@ -31,6 +31,37 @@ describe('gitSpec: every git command is built here', () => {
     assert.equal(spec.env?.['GIT_CONFIG_GLOBAL'], '/x/empty');
   });
 
+  it('pins GIT_NO_LAZY_FETCH=1 and GIT_ALLOW_PROTOCOL=none for every allowed subcommand (CR-01)', () => {
+    const subs: ReadonlyArray<readonly string[]> = [
+      ['ls-files', '-z'],
+      ['hash-object', '--stdin-paths'],
+      ['cat-file', '-e', 'a'.repeat(40)],
+      ['rev-parse', '--git-common-dir'],
+      ['rev-list', '--max-parents=0', 'HEAD'],
+      ['config', '--name-only', '--get-regexp', '^filter\\.'],
+      ['check-attr', '-a', 'x'],
+    ];
+    for (const sub of subs) {
+      const env = gitSpec(sub, { worktree: W }).env;
+      assert.equal(env?.['GIT_NO_LAZY_FETCH'], '1', sub.join(' '));
+      assert.equal(env?.['GIT_ALLOW_PROTOCOL'], 'none', sub.join(' '));
+      assert.equal(env?.['GIT_OPTIONAL_LOCKS'], '0', sub.join(' '));
+      assert.equal(env?.['GIT_TERMINAL_PROMPT'], '0', sub.join(' '));
+    }
+  });
+
+  it('pinned values win over a caller env that tries to switch them off', () => {
+    const env = gitSpec(['cat-file', '-e', 'a'.repeat(40)], {
+      worktree: W,
+      env: { GIT_NO_LAZY_FETCH: '0', GIT_ALLOW_PROTOCOL: 'file:ssh', GIT_OPTIONAL_LOCKS: '1', GIT_TERMINAL_PROMPT: '1', GIT_CONFIG_GLOBAL: '/x/empty' },
+    }).env;
+    assert.equal(env?.['GIT_NO_LAZY_FETCH'], '1');
+    assert.equal(env?.['GIT_ALLOW_PROTOCOL'], 'none');
+    assert.equal(env?.['GIT_OPTIONAL_LOCKS'], '0');
+    assert.equal(env?.['GIT_TERMINAL_PROMPT'], '0');
+    assert.equal(env?.['GIT_CONFIG_GLOBAL'], '/x/empty');
+  });
+
   it('passes stdin and limits through unchanged', () => {
     const spec = gitSpec(['hash-object', '--stdin-paths'], { worktree: W, stdin: 'a\nb\n', maxStdoutBytes: 99, timeoutMs: 1234 });
     assert.equal(spec.stdin, 'a\nb\n');
