@@ -9,8 +9,12 @@
  * So every spec built here switches all of that off, command-line and environment config taking precedence
  * over every config file:
  *   - `-c core.fsmonitor=false`, `-c core.hooksPath=<null device>`, `-c core.quotepath=off` (paths come back verbatim);
- *   - for EVERY configured filter driver, `clean`, `smudge` and `process` emptied and `required=false`,
- *     carried on the `GIT_CONFIG_COUNT` / `GIT_CONFIG_KEY_n` / `GIT_CONFIG_VALUE_n` environment channel.
+ *   - for every configured filter driver whose name the environment channel can carry byte for byte,
+ *     `clean`, `smudge` and `process` emptied and `required=false`, carried on the `GIT_CONFIG_COUNT` /
+ *     `GIT_CONFIG_KEY_n` / `GIT_CONFIG_VALUE_n` environment channel. A driver whose name the channel cannot
+ *     carry (not valid UTF-8, a U+FFFD or an unpaired surrogate, NUL, LF or CR, or longer than 1024 UTF-16
+ *     code units; the rule and the reason for the cap live in `filter-name.ts`) makes `listFilterNames`
+ *     throw `filter_enumeration_failed`, so the snapshot is refused and nothing is hashed (CR-01, T-01-50).
  *
  * Why the environment and not `-c`: git splits a `-c` argument at the first `=`, so a driver whose name
  * contains `=` (`filter.a=b.clean`) can never be written as a `-c` key, and it would then run its clean
@@ -19,8 +23,10 @@
  * Because a git that ignores the channel would silently skip neutralisation, `listFilterNames` proves the
  * channel is live before any hash call.
  *
- * There is NO allowlist of drivers. A repo-controlled config can name any command `lfs`, so exempting a
- * driver by name would let a hostile repository pick the exempt name. A repository that really uses Git
+ * There is still NO allowlist of drivers: no driver is exempt by name. A repo-controlled config can name any
+ * command `lfs`, so exempting a driver by name would let a hostile repository pick the exempt name. The only
+ * drivers not neutralised are the ones whose names cannot be carried, and those fail the snapshot instead of
+ * passing it. A repository that really uses Git
  * LFS gets its pointer files hashed as ordinary files here; source-set rules for them are Phase 2 (LNG-05).
  *
  * `git status` is not an allowed subcommand (see `decide.ts`): it runs clean filters to compare working
@@ -40,6 +46,7 @@
  */
 import { randomBytes } from 'node:crypto';
 import os from 'node:os';
+import { filterNameProblem } from './filter-name.ts';
 import type { CommandRunner, CommandSpec, RunContext } from './spec.ts';
 
 /**
@@ -57,9 +64,17 @@ const override = (kv: string): readonly string[] => ['-c', kv];
  * `GIT_CONFIG_KEY_n` / `GIT_CONFIG_VALUE_n` pairs after a `GIT_CONFIG_COUNT`. Names are used as written
  * (no trimming, no escaping): git takes the key from its own variable, so `a=b`, `my.driver` and the empty
  * name are all expressible, which a `-c filter.<name>.clean=` argument is not (git splits `-c` at the first
- * `=`). There is no allowlist: every driver is neutralised, whatever it is called.
+ * `=`). There is no allowlist: every driver whose name the channel can carry byte for byte is neutralised,
+ * and no driver is exempt by name. A name the channel cannot carry (see `filter-name.ts`: U+FFFD, an unpaired
+ * surrogate, NUL, LF, CR, or more than 1024 UTF-16 code units) would be neutralised under a different name
+ * than the configured one, so this throws `GitConfigError('filter_enumeration_failed')` instead of emitting
+ * a lossy key; `decide` refuses the same names, so the builder never emits what the gate denies (WR-01).
  */
 export function neutraliseFilters(names: readonly string[]): Record<string, string> {
+  for (const name of names) {
+    const problem = filterNameProblem(name);
+    if (problem !== null) throw refusedNameError(name, problem);
+  }
   const out: Record<string, string> = {};
   let n = 0;
   const add = (key: string, value: string): void => {
@@ -162,7 +177,7 @@ export function gitSpec(sub: readonly string[], opts: GitSpecOptions): CommandSp
 
 export type GitConfigErrorCode = 'git_env_config_unsupported' | 'filter_enumeration_failed';
 
-/** Thrown by {@link listFilterNames} whenever driver neutralisation cannot be guaranteed. */
+/** Thrown by {@link listFilterNames} and {@link neutraliseFilters} whenever driver neutralisation cannot be guaranteed. */
 export class GitConfigError extends Error {
   readonly code: GitConfigErrorCode;
   constructor(code: GitConfigErrorCode, message: string) {
@@ -170,6 +185,30 @@ export class GitConfigError extends Error {
     this.name = 'GitConfigError';
     this.code = code;
   }
+}
+
+/** Git's stdout as strict UTF-8: a driver name that is not valid UTF-8 throws instead of becoming U+FFFD. `ignoreBOM` keeps every byte. */
+const STRICT_UTF8 = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true });
+
+const SHOWN_NAME_LIMIT = 80;
+
+/**
+ * Repo-controlled text for an error message (T-01-53): always through `JSON.stringify`, so control
+ * characters are escaped, and clipped to 80 characters without splitting a surrogate pair. Never raw.
+ */
+function shown(text: string): string {
+  const quoted = JSON.stringify(text);
+  if (quoted.length <= SHOWN_NAME_LIMIT) return quoted;
+  let end = SHOWN_NAME_LIMIT - 3;
+  const last = quoted.charCodeAt(end - 1);
+  if (last >= 0xd800 && last <= 0xdbff) end -= 1;
+  return `${quoted.slice(0, end)}...`;
+}
+
+const REMEDY = 'repository filter drivers could not be neutralised; rename or remove that [filter] section in the repository config';
+
+function refusedNameError(name: string, problem: string): GitConfigError {
+  return new GitConfigError('filter_enumeration_failed', `git config lists the filter driver ${shown(name)}, whose name ${problem}; ${REMEDY}`);
 }
 
 /**
@@ -183,7 +222,13 @@ export class GitConfigError extends Error {
  *   - `git_env_config_unsupported`: exit 0 but the probe's key is not in the output (git older than 2.31, or
  *     the environment was lost);
  *   - `filter_enumeration_failed`: any non-zero exit (exit 1 included: a conforming git always lists the
- *     probe, so "no matching keys" can no longer happen), spawn error, timeout, truncation or denial.
+ *     probe, so "no matching keys" can no longer happen), spawn error, timeout, truncation or denial; and
+ *     a listing the environment channel cannot express: git's stdout is decoded as strict UTF-8, so a
+ *     driver name that is not valid UTF-8 rejects, and every listed name must pass `filterNameProblem`
+ *     (no U+FFFD, unpaired surrogate, NUL, LF or CR, and at most 1024 UTF-16 code units), because such a
+ *     name would be neutralised under a different name than the configured one (CR-01, T-01-50).
+ * The checks run in this order: command outcome, strict decode, parse, every name, probe presence.
+ * A name appears in a message only through `JSON.stringify`, clipped (repo-controlled text, T-01-53).
  * It never resolves to an empty list on failure. A repository cannot pre-define the probe's name (64 random
  * bits per call), so a hostile driver with that name is not a supported attack.
  */
@@ -205,7 +250,22 @@ export async function listFilterNames(
     const how = result.timedOut ? 'timed out' : result.truncated ? 'output exceeded its cap' : `exit ${String(result.exitCode)}`;
     throw new GitConfigError('filter_enumeration_failed', `git config could not list filter drivers: ${why || how}`);
   }
-  const names = parseFilterNames(new TextDecoder().decode(result.stdout));
+  let listed: string;
+  try {
+    listed = STRICT_UTF8.decode(result.stdout);
+  } catch {
+    // Display only: a lenient decode of the same bytes finds the first key line that holds a substitution character.
+    const key = new TextDecoder().decode(result.stdout).split('\n').find((line) => line.includes('�')) ?? '';
+    throw new GitConfigError(
+      'filter_enumeration_failed',
+      `git config output lists a filter driver whose name is not valid UTF-8 (near ${shown(key)}); ${REMEDY}`,
+    );
+  }
+  const names = parseFilterNames(listed);
+  for (const name of names) {
+    const problem = filterNameProblem(name);
+    if (problem !== null) throw refusedNameError(name, problem);
+  }
   if (!names.includes(probe)) {
     throw new GitConfigError(
       'git_env_config_unsupported',
