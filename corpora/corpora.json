@@ -9,6 +9,42 @@
       "status": "pinned",
       "role": "primary validation corpus: TypeScript .cts emitted to .cjs, ADRs",
       "pinnedAt": "2026-10-15"
+    },
+    {
+      "id": "gsd-pi",
+      "repo": "open-gsd/gsd-pi",
+      "ref": "main",
+      "sha": "bb86b6ca2d3d047899092d845d574beeb5a21965",
+      "status": "pinned",
+      "role": "pnpm monorepo with 14 tsconfigs",
+      "pinnedAt": "2026-10-15"
+    },
+    {
+      "id": "gsd-path",
+      "repo": "open-gsd/gsd-path",
+      "ref": "main",
+      "sha": "73bf62e34f1adb8e9d86ae43378c8dd1200539bc",
+      "status": "pinned",
+      "role": "Python bring-your-own proof: 553 files stored as 230 distinct contents",
+      "pinnedAt": "2026-10-15"
+    },
+    {
+      "id": "gsd-graph",
+      "repo": "open-gsd/gsd-graph",
+      "ref": "main",
+      "sha": "b105e4deb1fc3aaafba2cb65f4dfa6405597f799",
+      "status": "pinned",
+      "role": "PRD criterion 16 reference set and bridge target",
+      "pinnedAt": "2026-10-15"
+    },
+    {
+      "id": "swift-reference-app",
+      "repo": null,
+      "ref": null,
+      "sha": null,
+      "status": "unselected",
+      "role": "Swift reference app for the Apple SDK and Swift module accuracy runs",
+      "note": "Not yet chosen. It is selected and pinned to a commit SHA in Phase 5 (SWF-05); until then this entry has no repo, ref or sha."
     }
   ]
 }
