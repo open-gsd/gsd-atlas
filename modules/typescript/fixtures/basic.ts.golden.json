@@ -23,6 +23,15 @@
       "text": "greet"
     },
     {
+      "query": "refs",
+      "name": "reference.read",
+      "startLine": 1,
+      "startColumn": 18,
+      "endLine": 1,
+      "endColumn": 22,
+      "text": "name"
+    },
+    {
       "query": "tags",
       "name": "definition.class",
       "startLine": 4,

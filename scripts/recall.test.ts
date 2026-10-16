@@ -229,9 +229,10 @@ describe('typescript fixture recall (LNG-02)', () => {
     const shape = (line: number) => exportsAt(facts, line).map((site) => [site.name, site.local, site.from]);
     assert.deepEqual(shape(14), [['*', undefined, './all']]);
     assert.deepEqual(shape(15), [['grouped', undefined, './grouped']]);
+    // Sites that share a statement come out ordered by name.
     assert.deepEqual(shape(16), [
-      ['shown', 'plain', './reexport'],
       ['other', 'value', './reexport'],
+      ['shown', 'plain', './reexport'],
     ]);
     assert.deepEqual(shape(17), [['OnlyType', undefined, './only-type']]);
     assert.deepEqual(shape(21), [
@@ -239,8 +240,11 @@ describe('typescript fixture recall (LNG-02)', () => {
       ['publicTwo', 'localTwo', undefined],
     ]);
     assert.deepEqual(shape(25), [['default', 'localTwo', undefined]]);
-    assert.deepEqual(shape(33).map((entry) => entry[0]), ['localOne', 'publicOne', 'inline']);
-    assert.deepEqual(shape(33).map((entry) => entry[1]), [undefined, 'localTwo', undefined]);
+    assert.deepEqual(shape(33).map((entry) => [entry[0], entry[1]]), [
+      ['inline', undefined],
+      ['localOne', undefined],
+      ['publicOne', 'localTwo'],
+    ]);
     assert.deepEqual(shape(34).map((entry) => entry[0]), ['direct']);
     assert.deepEqual(shape(35).map((entry) => entry[0]), ['nested']);
     const exported = (name: string): boolean | undefined => facts.symbols.find((symbol) => symbol.name === name)?.exported;
@@ -311,9 +315,9 @@ describe('javascript fixture recall (LNG-02)', () => {
     assert.deepEqual(at(8), ['./bare', 'cjs', undefined]);
     const shape = (line: number) => exportsAt(facts, line).map((site) => [site.name, site.local]);
     assert.deepEqual(shape(65), [
+      ['outer', undefined],
       ['plainFunction', undefined],
       ['shown', 'asyncFunction'],
-      ['outer', undefined],
     ]);
     assert.deepEqual(shape(66), [['direct', 'arrowConst']]);
     assert.deepEqual(shape(67), [['nested', undefined]]);
@@ -333,8 +337,8 @@ describe('javascript fixture recall (LNG-02)', () => {
     assert.deepEqual(
       exportsAt(facts, 12).map((entry) => [entry.name, entry.local, entry.from]),
       [
-        ['shown', 'plain', './reexport.mjs'],
         ['other', 'renamed', './reexport.mjs'],
+        ['shown', 'plain', './reexport.mjs'],
       ],
     );
     assert.deepEqual(

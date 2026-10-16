@@ -8,7 +8,9 @@
     "lock": "grammar.lock"
   },
   "queries": {
-    "tags": "queries/tags.scm"
+    "tags": "queries/tags.scm",
+    "refs": "queries/refs.scm",
+    "imports": "queries/imports.scm"
   },
   "tiers": ["grammar"],
   "parseBudget": 0.005

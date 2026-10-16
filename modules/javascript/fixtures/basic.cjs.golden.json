@@ -23,6 +23,15 @@
       "text": "greet"
     },
     {
+      "query": "refs",
+      "name": "reference.read",
+      "startLine": 3,
+      "startColumn": 18,
+      "endLine": 3,
+      "endColumn": 22,
+      "text": "name"
+    },
+    {
       "query": "tags",
       "name": "definition.class",
       "startLine": 6,
@@ -41,6 +50,15 @@
       "text": "Greeter"
     },
     {
+      "query": "refs",
+      "name": "reference.read",
+      "startLine": 8,
+      "startColumn": 18,
+      "endLine": 8,
+      "endColumn": 24,
+      "text": "prefix"
+    },
+    {
       "query": "tags",
       "name": "name",
       "startLine": 12,
@@ -57,6 +75,168 @@
       "endLine": 12,
       "endColumn": 42,
       "text": "shout = (text) => text.toUpperCase()"
+    },
+    {
+      "query": "refs",
+      "name": "reference.read",
+      "startLine": 12,
+      "startColumn": 24,
+      "endLine": 12,
+      "endColumn": 28,
+      "text": "text"
+    },
+    {
+      "query": "refs",
+      "name": "reference.member",
+      "startLine": 12,
+      "startColumn": 29,
+      "endLine": 12,
+      "endColumn": 40,
+      "text": "toUpperCase"
+    },
+    {
+      "query": "imports",
+      "name": "cjs.object",
+      "startLine": 14,
+      "startColumn": 0,
+      "endLine": 14,
+      "endColumn": 6,
+      "text": "module"
+    },
+    {
+      "query": "imports",
+      "name": "cjs.object",
+      "startLine": 14,
+      "startColumn": 0,
+      "endLine": 14,
+      "endColumn": 6,
+      "text": "module"
+    },
+    {
+      "query": "imports",
+      "name": "cjs.object",
+      "startLine": 14,
+      "startColumn": 0,
+      "endLine": 14,
+      "endColumn": 6,
+      "text": "module"
+    },
+    {
+      "query": "refs",
+      "name": "reference.read",
+      "startLine": 14,
+      "startColumn": 0,
+      "endLine": 14,
+      "endColumn": 6,
+      "text": "module"
+    },
+    {
+      "query": "imports",
+      "name": "export",
+      "startLine": 14,
+      "startColumn": 0,
+      "endLine": 14,
+      "endColumn": 42,
+      "text": "module.exports = { greet, Greeter, shout }"
+    },
+    {
+      "query": "imports",
+      "name": "export",
+      "startLine": 14,
+      "startColumn": 0,
+      "endLine": 14,
+      "endColumn": 42,
+      "text": "module.exports = { greet, Greeter, shout }"
+    },
+    {
+      "query": "imports",
+      "name": "export",
+      "startLine": 14,
+      "startColumn": 0,
+      "endLine": 14,
+      "endColumn": 42,
+      "text": "module.exports = { greet, Greeter, shout }"
+    },
+    {
+      "query": "imports",
+      "name": "cjs.property",
+      "startLine": 14,
+      "startColumn": 7,
+      "endLine": 14,
+      "endColumn": 14,
+      "text": "exports"
+    },
+    {
+      "query": "imports",
+      "name": "cjs.property",
+      "startLine": 14,
+      "startColumn": 7,
+      "endLine": 14,
+      "endColumn": 14,
+      "text": "exports"
+    },
+    {
+      "query": "imports",
+      "name": "cjs.property",
+      "startLine": 14,
+      "startColumn": 7,
+      "endLine": 14,
+      "endColumn": 14,
+      "text": "exports"
+    },
+    {
+      "query": "imports",
+      "name": "export.name",
+      "startLine": 14,
+      "startColumn": 19,
+      "endLine": 14,
+      "endColumn": 24,
+      "text": "greet"
+    },
+    {
+      "query": "refs",
+      "name": "reference.read",
+      "startLine": 14,
+      "startColumn": 19,
+      "endLine": 14,
+      "endColumn": 24,
+      "text": "greet"
+    },
+    {
+      "query": "imports",
+      "name": "export.name",
+      "startLine": 14,
+      "startColumn": 26,
+      "endLine": 14,
+      "endColumn": 33,
+      "text": "Greeter"
+    },
+    {
+      "query": "refs",
+      "name": "reference.read",
+      "startLine": 14,
+      "startColumn": 26,
+      "endLine": 14,
+      "endColumn": 33,
+      "text": "Greeter"
+    },
+    {
+      "query": "imports",
+      "name": "export.name",
+      "startLine": 14,
+      "startColumn": 35,
+      "endLine": 14,
+      "endColumn": 40,
+      "text": "shout"
+    },
+    {
+      "query": "refs",
+      "name": "reference.read",
+      "startLine": 14,
+      "startColumn": 35,
+      "endLine": 14,
+      "endColumn": 40,
+      "text": "shout"
     }
   ]
 }

@@ -20,7 +20,9 @@
  * - `import.path` on the path string (one pair of surrounding quotes is removed). Required: a
  *   statement without it is skipped and counted.
  * - Per-binding captures: `import.default` (local name), `import.namespace` (local name),
- *   `import.named` (the imported name) with `import.local` for the local alias when it differs.
+ *   `import.named` (the imported name) with `import.local` for the local alias when it differs
+ *   (after the `import.named`, or before it when the local name is written first, as in
+ *   `const local = require(path).named`).
  *   One match per binding is allowed; matches that share a statement span merge into one site.
  * - Exports: the statement or assignment is captured as `export`, with `export.name` (the name
  *   other files import), optional `export.local` (the local name when different) and optional
@@ -262,10 +264,15 @@ function importStyleOf(capture: Capture): ImportStyle | undefined {
   return (IMPORT_STYLES as readonly string[]).includes(suffix) ? (suffix as ImportStyle) : undefined;
 }
 
-/** The bindings one match carries, in position order. `import.local` aliases the `import.named` before it. */
+/**
+ * The bindings one match carries, in position order. `import.local` aliases the `import.named` before it;
+ * an `import.local` that comes before every `import.named` of the match (`const local = require(p).named`)
+ * aliases the first one after it.
+ */
 function bindingsOf(group: readonly Capture[]): PositionedBinding[] {
   const out: PositionedBinding[] = [];
   let lastNamed: PositionedBinding | undefined;
+  let leadingLocal: string | undefined;
   for (const capture of group) {
     if (capture.text === '') {
       continue;
@@ -278,7 +285,8 @@ function bindingsOf(group: readonly Capture[]): PositionedBinding[] {
         out.push({ at: capture.span, binding: { imported: '*', local: capture.text } });
         break;
       case 'import.named':
-        lastNamed = { at: capture.span, binding: { imported: capture.text, local: capture.text } };
+        lastNamed = { at: capture.span, binding: { imported: capture.text, local: leadingLocal ?? capture.text } };
+        leadingLocal = undefined;
         out.push(lastNamed);
         break;
       case 'import.local':
@@ -286,6 +294,8 @@ function bindingsOf(group: readonly Capture[]): PositionedBinding[] {
           const index = out.indexOf(lastNamed);
           lastNamed = { at: lastNamed.at, binding: { imported: lastNamed.binding.imported, local: capture.text } };
           out[index] = lastNamed;
+        } else {
+          leadingLocal = capture.text;
         }
         break;
       default:

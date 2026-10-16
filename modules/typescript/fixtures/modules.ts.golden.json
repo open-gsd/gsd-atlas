@@ -1,0 +1,1421 @@
+{
+  "schema": 1,
+  "fixture": "modules.ts",
+  "convention": "0-based line, 0-based UTF-16 column, end exclusive",
+  "hadBom": false,
+  "captures": [
+    {
+      "query": "imports",
+      "name": "import.es",
+      "startLine": 3,
+      "startColumn": 0,
+      "endLine": 3,
+      "endColumn": 43,
+      "text": "import defaultThing from './default-thing';"
+    },
+    {
+      "query": "imports",
+      "name": "import.default",
+      "startLine": 3,
+      "startColumn": 7,
+      "endLine": 3,
+      "endColumn": 19,
+      "text": "defaultThing"
+    },
+    {
+      "query": "imports",
+      "name": "import.path",
+      "startLine": 3,
+      "startColumn": 25,
+      "endLine": 3,
+      "endColumn": 42,
+      "text": "'./default-thing'"
+    },
+    {
+      "query": "imports",
+      "name": "import.es",
+      "startLine": 4,
+      "startColumn": 0,
+      "endLine": 4,
+      "endColumn": 43,
+      "text": "import * as everything from './everything';"
+    },
+    {
+      "query": "imports",
+      "name": "import.namespace",
+      "startLine": 4,
+      "startColumn": 12,
+      "endLine": 4,
+      "endColumn": 22,
+      "text": "everything"
+    },
+    {
+      "query": "imports",
+      "name": "import.path",
+      "startLine": 4,
+      "startColumn": 28,
+      "endLine": 4,
+      "endColumn": 42,
+      "text": "'./everything'"
+    },
+    {
+      "query": "imports",
+      "name": "import.es",
+      "startLine": 5,
+      "startColumn": 0,
+      "endLine": 5,
+      "endColumn": 53,
+      "text": "import { plain, original as renamed } from './named';"
+    },
+    {
+      "query": "imports",
+      "name": "import.es",
+      "startLine": 5,
+      "startColumn": 0,
+      "endLine": 5,
+      "endColumn": 53,
+      "text": "import { plain, original as renamed } from './named';"
+    },
+    {
+      "query": "imports",
+      "name": "import.named",
+      "startLine": 5,
+      "startColumn": 9,
+      "endLine": 5,
+      "endColumn": 14,
+      "text": "plain"
+    },
+    {
+      "query": "imports",
+      "name": "import.named",
+      "startLine": 5,
+      "startColumn": 16,
+      "endLine": 5,
+      "endColumn": 24,
+      "text": "original"
+    },
+    {
+      "query": "imports",
+      "name": "import.local",
+      "startLine": 5,
+      "startColumn": 28,
+      "endLine": 5,
+      "endColumn": 35,
+      "text": "renamed"
+    },
+    {
+      "query": "imports",
+      "name": "import.path",
+      "startLine": 5,
+      "startColumn": 43,
+      "endLine": 5,
+      "endColumn": 52,
+      "text": "'./named'"
+    },
+    {
+      "query": "imports",
+      "name": "import.path",
+      "startLine": 5,
+      "startColumn": 43,
+      "endLine": 5,
+      "endColumn": 52,
+      "text": "'./named'"
+    },
+    {
+      "query": "imports",
+      "name": "import.es",
+      "startLine": 6,
+      "startColumn": 0,
+      "endLine": 6,
+      "endColumn": 44,
+      "text": "import type { OnlyType } from './only-type';"
+    },
+    {
+      "query": "imports",
+      "name": "import.named",
+      "startLine": 6,
+      "startColumn": 14,
+      "endLine": 6,
+      "endColumn": 22,
+      "text": "OnlyType"
+    },
+    {
+      "query": "imports",
+      "name": "import.path",
+      "startLine": 6,
+      "startColumn": 30,
+      "endLine": 6,
+      "endColumn": 43,
+      "text": "'./only-type'"
+    },
+    {
+      "query": "imports",
+      "name": "import.es",
+      "startLine": 7,
+      "startColumn": 0,
+      "endLine": 7,
+      "endColumn": 55,
+      "text": "import { type InlineType, value } from './inline-type';"
+    },
+    {
+      "query": "imports",
+      "name": "import.es",
+      "startLine": 7,
+      "startColumn": 0,
+      "endLine": 7,
+      "endColumn": 55,
+      "text": "import { type InlineType, value } from './inline-type';"
+    },
+    {
+      "query": "imports",
+      "name": "import.named",
+      "startLine": 7,
+      "startColumn": 14,
+      "endLine": 7,
+      "endColumn": 24,
+      "text": "InlineType"
+    },
+    {
+      "query": "imports",
+      "name": "import.named",
+      "startLine": 7,
+      "startColumn": 26,
+      "endLine": 7,
+      "endColumn": 31,
+      "text": "value"
+    },
+    {
+      "query": "imports",
+      "name": "import.path",
+      "startLine": 7,
+      "startColumn": 39,
+      "endLine": 7,
+      "endColumn": 54,
+      "text": "'./inline-type'"
+    },
+    {
+      "query": "imports",
+      "name": "import.path",
+      "startLine": 7,
+      "startColumn": 39,
+      "endLine": 7,
+      "endColumn": 54,
+      "text": "'./inline-type'"
+    },
+    {
+      "query": "imports",
+      "name": "import.side-effect",
+      "startLine": 8,
+      "startColumn": 0,
+      "endLine": 8,
+      "endColumn": 23,
+      "text": "import './side-effect';"
+    },
+    {
+      "query": "imports",
+      "name": "import.path",
+      "startLine": 8,
+      "startColumn": 7,
+      "endLine": 8,
+      "endColumn": 22,
+      "text": "'./side-effect'"
+    },
+    {
+      "query": "imports",
+      "name": "import.cjs",
+      "startLine": 9,
+      "startColumn": 0,
+      "endLine": 9,
+      "endColumn": 36,
+      "text": "import legacy = require('./legacy');"
+    },
+    {
+      "query": "imports",
+      "name": "import.namespace",
+      "startLine": 9,
+      "startColumn": 7,
+      "endLine": 9,
+      "endColumn": 13,
+      "text": "legacy"
+    },
+    {
+      "query": "imports",
+      "name": "import.path",
+      "startLine": 9,
+      "startColumn": 24,
+      "endLine": 9,
+      "endColumn": 34,
+      "text": "'./legacy'"
+    },
+    {
+      "query": "imports",
+      "name": "import.es",
+      "startLine": 10,
+      "startColumn": 0,
+      "endLine": 10,
+      "endColumn": 39,
+      "text": "import mixed, { extra } from './mixed';"
+    },
+    {
+      "query": "imports",
+      "name": "import.es",
+      "startLine": 10,
+      "startColumn": 0,
+      "endLine": 10,
+      "endColumn": 39,
+      "text": "import mixed, { extra } from './mixed';"
+    },
+    {
+      "query": "imports",
+      "name": "import.default",
+      "startLine": 10,
+      "startColumn": 7,
+      "endLine": 10,
+      "endColumn": 12,
+      "text": "mixed"
+    },
+    {
+      "query": "imports",
+      "name": "import.named",
+      "startLine": 10,
+      "startColumn": 16,
+      "endLine": 10,
+      "endColumn": 21,
+      "text": "extra"
+    },
+    {
+      "query": "imports",
+      "name": "import.path",
+      "startLine": 10,
+      "startColumn": 29,
+      "endLine": 10,
+      "endColumn": 38,
+      "text": "'./mixed'"
+    },
+    {
+      "query": "imports",
+      "name": "import.path",
+      "startLine": 10,
+      "startColumn": 29,
+      "endLine": 10,
+      "endColumn": 38,
+      "text": "'./mixed'"
+    },
+    {
+      "query": "imports",
+      "name": "import.es",
+      "startLine": 11,
+      "startColumn": 0,
+      "endLine": 11,
+      "endColumn": 46,
+      "text": "import type DefaultType from './default-type';"
+    },
+    {
+      "query": "imports",
+      "name": "import.default",
+      "startLine": 11,
+      "startColumn": 12,
+      "endLine": 11,
+      "endColumn": 23,
+      "text": "DefaultType"
+    },
+    {
+      "query": "imports",
+      "name": "import.path",
+      "startLine": 11,
+      "startColumn": 29,
+      "endLine": 11,
+      "endColumn": 45,
+      "text": "'./default-type'"
+    },
+    {
+      "query": "imports",
+      "name": "export",
+      "startLine": 13,
+      "startColumn": 0,
+      "endLine": 13,
+      "endColumn": 22,
+      "text": "export * from './all';"
+    },
+    {
+      "query": "imports",
+      "name": "import.reexport",
+      "startLine": 13,
+      "startColumn": 0,
+      "endLine": 13,
+      "endColumn": 22,
+      "text": "export * from './all';"
+    },
+    {
+      "query": "imports",
+      "name": "export.name",
+      "startLine": 13,
+      "startColumn": 7,
+      "endLine": 13,
+      "endColumn": 8,
+      "text": "*"
+    },
+    {
+      "query": "imports",
+      "name": "export.from",
+      "startLine": 13,
+      "startColumn": 14,
+      "endLine": 13,
+      "endColumn": 21,
+      "text": "'./all'"
+    },
+    {
+      "query": "imports",
+      "name": "import.path",
+      "startLine": 13,
+      "startColumn": 14,
+      "endLine": 13,
+      "endColumn": 21,
+      "text": "'./all'"
+    },
+    {
+      "query": "imports",
+      "name": "export",
+      "startLine": 14,
+      "startColumn": 0,
+      "endLine": 14,
+      "endColumn": 37,
+      "text": "export * as grouped from './grouped';"
+    },
+    {
+      "query": "imports",
+      "name": "import.reexport",
+      "startLine": 14,
+      "startColumn": 0,
+      "endLine": 14,
+      "endColumn": 37,
+      "text": "export * as grouped from './grouped';"
+    },
+    {
+      "query": "imports",
+      "name": "export.name",
+      "startLine": 14,
+      "startColumn": 12,
+      "endLine": 14,
+      "endColumn": 19,
+      "text": "grouped"
+    },
+    {
+      "query": "imports",
+      "name": "export.from",
+      "startLine": 14,
+      "startColumn": 25,
+      "endLine": 14,
+      "endColumn": 36,
+      "text": "'./grouped'"
+    },
+    {
+      "query": "imports",
+      "name": "import.path",
+      "startLine": 14,
+      "startColumn": 25,
+      "endLine": 14,
+      "endColumn": 36,
+      "text": "'./grouped'"
+    },
+    {
+      "query": "imports",
+      "name": "export",
+      "startLine": 15,
+      "startColumn": 0,
+      "endLine": 15,
+      "endColumn": 60,
+      "text": "export { plain as shown, value as other } from './reexport';"
+    },
+    {
+      "query": "imports",
+      "name": "export",
+      "startLine": 15,
+      "startColumn": 0,
+      "endLine": 15,
+      "endColumn": 60,
+      "text": "export { plain as shown, value as other } from './reexport';"
+    },
+    {
+      "query": "imports",
+      "name": "import.reexport",
+      "startLine": 15,
+      "startColumn": 0,
+      "endLine": 15,
+      "endColumn": 60,
+      "text": "export { plain as shown, value as other } from './reexport';"
+    },
+    {
+      "query": "imports",
+      "name": "import.reexport",
+      "startLine": 15,
+      "startColumn": 0,
+      "endLine": 15,
+      "endColumn": 60,
+      "text": "export { plain as shown, value as other } from './reexport';"
+    },
+    {
+      "query": "imports",
+      "name": "export.local",
+      "startLine": 15,
+      "startColumn": 9,
+      "endLine": 15,
+      "endColumn": 14,
+      "text": "plain"
+    },
+    {
+      "query": "imports",
+      "name": "export.name",
+      "startLine": 15,
+      "startColumn": 18,
+      "endLine": 15,
+      "endColumn": 23,
+      "text": "shown"
+    },
+    {
+      "query": "imports",
+      "name": "export.local",
+      "startLine": 15,
+      "startColumn": 25,
+      "endLine": 15,
+      "endColumn": 30,
+      "text": "value"
+    },
+    {
+      "query": "imports",
+      "name": "export.name",
+      "startLine": 15,
+      "startColumn": 34,
+      "endLine": 15,
+      "endColumn": 39,
+      "text": "other"
+    },
+    {
+      "query": "imports",
+      "name": "export.from",
+      "startLine": 15,
+      "startColumn": 47,
+      "endLine": 15,
+      "endColumn": 59,
+      "text": "'./reexport'"
+    },
+    {
+      "query": "imports",
+      "name": "export.from",
+      "startLine": 15,
+      "startColumn": 47,
+      "endLine": 15,
+      "endColumn": 59,
+      "text": "'./reexport'"
+    },
+    {
+      "query": "imports",
+      "name": "import.path",
+      "startLine": 15,
+      "startColumn": 47,
+      "endLine": 15,
+      "endColumn": 59,
+      "text": "'./reexport'"
+    },
+    {
+      "query": "imports",
+      "name": "import.path",
+      "startLine": 15,
+      "startColumn": 47,
+      "endLine": 15,
+      "endColumn": 59,
+      "text": "'./reexport'"
+    },
+    {
+      "query": "imports",
+      "name": "export",
+      "startLine": 16,
+      "startColumn": 0,
+      "endLine": 16,
+      "endColumn": 44,
+      "text": "export type { OnlyType } from './only-type';"
+    },
+    {
+      "query": "imports",
+      "name": "import.reexport",
+      "startLine": 16,
+      "startColumn": 0,
+      "endLine": 16,
+      "endColumn": 44,
+      "text": "export type { OnlyType } from './only-type';"
+    },
+    {
+      "query": "imports",
+      "name": "export.name",
+      "startLine": 16,
+      "startColumn": 14,
+      "endLine": 16,
+      "endColumn": 22,
+      "text": "OnlyType"
+    },
+    {
+      "query": "imports",
+      "name": "export.from",
+      "startLine": 16,
+      "startColumn": 30,
+      "endLine": 16,
+      "endColumn": 43,
+      "text": "'./only-type'"
+    },
+    {
+      "query": "imports",
+      "name": "import.path",
+      "startLine": 16,
+      "startColumn": 30,
+      "endLine": 16,
+      "endColumn": 43,
+      "text": "'./only-type'"
+    },
+    {
+      "query": "tags",
+      "name": "name",
+      "startLine": 18,
+      "startColumn": 6,
+      "endLine": 18,
+      "endColumn": 14,
+      "text": "localOne"
+    },
+    {
+      "query": "tags",
+      "name": "definition.constant",
+      "startLine": 18,
+      "startColumn": 6,
+      "endLine": 18,
+      "endColumn": 18,
+      "text": "localOne = 1"
+    },
+    {
+      "query": "tags",
+      "name": "value.plain",
+      "startLine": 18,
+      "startColumn": 17,
+      "endLine": 18,
+      "endColumn": 18,
+      "text": "1"
+    },
+    {
+      "query": "tags",
+      "name": "name",
+      "startLine": 19,
+      "startColumn": 6,
+      "endLine": 19,
+      "endColumn": 14,
+      "text": "localTwo"
+    },
+    {
+      "query": "tags",
+      "name": "definition.constant",
+      "startLine": 19,
+      "startColumn": 6,
+      "endLine": 19,
+      "endColumn": 18,
+      "text": "localTwo = 2"
+    },
+    {
+      "query": "tags",
+      "name": "value.plain",
+      "startLine": 19,
+      "startColumn": 17,
+      "endLine": 19,
+      "endColumn": 18,
+      "text": "2"
+    },
+    {
+      "query": "imports",
+      "name": "export",
+      "startLine": 20,
+      "startColumn": 0,
+      "endLine": 20,
+      "endColumn": 43,
+      "text": "export { localOne, localTwo as publicTwo };"
+    },
+    {
+      "query": "imports",
+      "name": "export",
+      "startLine": 20,
+      "startColumn": 0,
+      "endLine": 20,
+      "endColumn": 43,
+      "text": "export { localOne, localTwo as publicTwo };"
+    },
+    {
+      "query": "imports",
+      "name": "export.name",
+      "startLine": 20,
+      "startColumn": 9,
+      "endLine": 20,
+      "endColumn": 17,
+      "text": "localOne"
+    },
+    {
+      "query": "imports",
+      "name": "export.local",
+      "startLine": 20,
+      "startColumn": 19,
+      "endLine": 20,
+      "endColumn": 27,
+      "text": "localTwo"
+    },
+    {
+      "query": "imports",
+      "name": "export.name",
+      "startLine": 20,
+      "startColumn": 31,
+      "endLine": 20,
+      "endColumn": 40,
+      "text": "publicTwo"
+    },
+    {
+      "query": "tags",
+      "name": "export",
+      "startLine": 21,
+      "startColumn": 0,
+      "endLine": 21,
+      "endColumn": 43,
+      "text": "export function exportedFunction(): void {}"
+    },
+    {
+      "query": "tags",
+      "name": "definition.function",
+      "startLine": 21,
+      "startColumn": 7,
+      "endLine": 21,
+      "endColumn": 43,
+      "text": "function exportedFunction(): void {}"
+    },
+    {
+      "query": "tags",
+      "name": "name",
+      "startLine": 21,
+      "startColumn": 16,
+      "endLine": 21,
+      "endColumn": 32,
+      "text": "exportedFunction"
+    },
+    {
+      "query": "tags",
+      "name": "export",
+      "startLine": 22,
+      "startColumn": 0,
+      "endLine": 22,
+      "endColumn": 38,
+      "text": "export const exportedValue = localOne;"
+    },
+    {
+      "query": "tags",
+      "name": "name",
+      "startLine": 22,
+      "startColumn": 13,
+      "endLine": 22,
+      "endColumn": 26,
+      "text": "exportedValue"
+    },
+    {
+      "query": "tags",
+      "name": "definition.constant",
+      "startLine": 22,
+      "startColumn": 13,
+      "endLine": 22,
+      "endColumn": 37,
+      "text": "exportedValue = localOne"
+    },
+    {
+      "query": "refs",
+      "name": "reference.read",
+      "startLine": 22,
+      "startColumn": 29,
+      "endLine": 22,
+      "endColumn": 37,
+      "text": "localOne"
+    },
+    {
+      "query": "tags",
+      "name": "value.plain",
+      "startLine": 22,
+      "startColumn": 29,
+      "endLine": 22,
+      "endColumn": 37,
+      "text": "localOne"
+    },
+    {
+      "query": "tags",
+      "name": "export",
+      "startLine": 23,
+      "startColumn": 0,
+      "endLine": 23,
+      "endColumn": 29,
+      "text": "export class ExportedClass {}"
+    },
+    {
+      "query": "tags",
+      "name": "definition.class",
+      "startLine": 23,
+      "startColumn": 7,
+      "endLine": 23,
+      "endColumn": 29,
+      "text": "class ExportedClass {}"
+    },
+    {
+      "query": "tags",
+      "name": "name",
+      "startLine": 23,
+      "startColumn": 13,
+      "endLine": 23,
+      "endColumn": 26,
+      "text": "ExportedClass"
+    },
+    {
+      "query": "imports",
+      "name": "export",
+      "startLine": 24,
+      "startColumn": 0,
+      "endLine": 24,
+      "endColumn": 24,
+      "text": "export default localTwo;"
+    },
+    {
+      "query": "imports",
+      "name": "export.name",
+      "startLine": 24,
+      "startColumn": 7,
+      "endLine": 24,
+      "endColumn": 14,
+      "text": "default"
+    },
+    {
+      "query": "imports",
+      "name": "export.local",
+      "startLine": 24,
+      "startColumn": 15,
+      "endLine": 24,
+      "endColumn": 23,
+      "text": "localTwo"
+    },
+    {
+      "query": "imports",
+      "name": "import.namespace",
+      "startLine": 26,
+      "startColumn": 6,
+      "endLine": 26,
+      "endColumn": 12,
+      "text": "fsLike"
+    },
+    {
+      "query": "imports",
+      "name": "require.callee",
+      "startLine": 26,
+      "startColumn": 15,
+      "endLine": 26,
+      "endColumn": 22,
+      "text": "require"
+    },
+    {
+      "query": "imports",
+      "name": "require.callee",
+      "startLine": 26,
+      "startColumn": 15,
+      "endLine": 26,
+      "endColumn": 22,
+      "text": "require"
+    },
+    {
+      "query": "refs",
+      "name": "reference.call",
+      "startLine": 26,
+      "startColumn": 15,
+      "endLine": 26,
+      "endColumn": 22,
+      "text": "require"
+    },
+    {
+      "query": "imports",
+      "name": "import.cjs",
+      "startLine": 26,
+      "startColumn": 15,
+      "endLine": 26,
+      "endColumn": 35,
+      "text": "require('./fs-like')"
+    },
+    {
+      "query": "imports",
+      "name": "import.cjs",
+      "startLine": 26,
+      "startColumn": 15,
+      "endLine": 26,
+      "endColumn": 35,
+      "text": "require('./fs-like')"
+    },
+    {
+      "query": "imports",
+      "name": "import.path",
+      "startLine": 26,
+      "startColumn": 23,
+      "endLine": 26,
+      "endColumn": 34,
+      "text": "'./fs-like'"
+    },
+    {
+      "query": "imports",
+      "name": "import.path",
+      "startLine": 26,
+      "startColumn": 23,
+      "endLine": 26,
+      "endColumn": 34,
+      "text": "'./fs-like'"
+    },
+    {
+      "query": "imports",
+      "name": "import.named",
+      "startLine": 27,
+      "startColumn": 8,
+      "endLine": 27,
+      "endColumn": 20,
+      "text": "destructured"
+    },
+    {
+      "query": "imports",
+      "name": "import.named",
+      "startLine": 27,
+      "startColumn": 22,
+      "endLine": 27,
+      "endColumn": 29,
+      "text": "aliased"
+    },
+    {
+      "query": "imports",
+      "name": "import.local",
+      "startLine": 27,
+      "startColumn": 31,
+      "endLine": 27,
+      "endColumn": 43,
+      "text": "renamedAlias"
+    },
+    {
+      "query": "imports",
+      "name": "require.callee",
+      "startLine": 27,
+      "startColumn": 48,
+      "endLine": 27,
+      "endColumn": 55,
+      "text": "require"
+    },
+    {
+      "query": "imports",
+      "name": "require.callee",
+      "startLine": 27,
+      "startColumn": 48,
+      "endLine": 27,
+      "endColumn": 55,
+      "text": "require"
+    },
+    {
+      "query": "imports",
+      "name": "require.callee",
+      "startLine": 27,
+      "startColumn": 48,
+      "endLine": 27,
+      "endColumn": 55,
+      "text": "require"
+    },
+    {
+      "query": "refs",
+      "name": "reference.call",
+      "startLine": 27,
+      "startColumn": 48,
+      "endLine": 27,
+      "endColumn": 55,
+      "text": "require"
+    },
+    {
+      "query": "imports",
+      "name": "import.cjs",
+      "startLine": 27,
+      "startColumn": 48,
+      "endLine": 27,
+      "endColumn": 73,
+      "text": "require('./destructured')"
+    },
+    {
+      "query": "imports",
+      "name": "import.cjs",
+      "startLine": 27,
+      "startColumn": 48,
+      "endLine": 27,
+      "endColumn": 73,
+      "text": "require('./destructured')"
+    },
+    {
+      "query": "imports",
+      "name": "import.cjs",
+      "startLine": 27,
+      "startColumn": 48,
+      "endLine": 27,
+      "endColumn": 73,
+      "text": "require('./destructured')"
+    },
+    {
+      "query": "imports",
+      "name": "import.path",
+      "startLine": 27,
+      "startColumn": 56,
+      "endLine": 27,
+      "endColumn": 72,
+      "text": "'./destructured'"
+    },
+    {
+      "query": "imports",
+      "name": "import.path",
+      "startLine": 27,
+      "startColumn": 56,
+      "endLine": 27,
+      "endColumn": 72,
+      "text": "'./destructured'"
+    },
+    {
+      "query": "imports",
+      "name": "import.path",
+      "startLine": 27,
+      "startColumn": 56,
+      "endLine": 27,
+      "endColumn": 72,
+      "text": "'./destructured'"
+    },
+    {
+      "query": "imports",
+      "name": "import.local",
+      "startLine": 28,
+      "startColumn": 6,
+      "endLine": 28,
+      "endColumn": 12,
+      "text": "member"
+    },
+    {
+      "query": "imports",
+      "name": "require.callee",
+      "startLine": 28,
+      "startColumn": 15,
+      "endLine": 28,
+      "endColumn": 22,
+      "text": "require"
+    },
+    {
+      "query": "imports",
+      "name": "require.callee",
+      "startLine": 28,
+      "startColumn": 15,
+      "endLine": 28,
+      "endColumn": 22,
+      "text": "require"
+    },
+    {
+      "query": "refs",
+      "name": "reference.call",
+      "startLine": 28,
+      "startColumn": 15,
+      "endLine": 28,
+      "endColumn": 22,
+      "text": "require"
+    },
+    {
+      "query": "imports",
+      "name": "import.cjs",
+      "startLine": 28,
+      "startColumn": 15,
+      "endLine": 28,
+      "endColumn": 34,
+      "text": "require('./member')"
+    },
+    {
+      "query": "imports",
+      "name": "import.cjs",
+      "startLine": 28,
+      "startColumn": 15,
+      "endLine": 28,
+      "endColumn": 34,
+      "text": "require('./member')"
+    },
+    {
+      "query": "imports",
+      "name": "import.path",
+      "startLine": 28,
+      "startColumn": 23,
+      "endLine": 28,
+      "endColumn": 33,
+      "text": "'./member'"
+    },
+    {
+      "query": "imports",
+      "name": "import.path",
+      "startLine": 28,
+      "startColumn": 23,
+      "endLine": 28,
+      "endColumn": 33,
+      "text": "'./member'"
+    },
+    {
+      "query": "imports",
+      "name": "import.named",
+      "startLine": 28,
+      "startColumn": 35,
+      "endLine": 28,
+      "endColumn": 40,
+      "text": "thing"
+    },
+    {
+      "query": "imports",
+      "name": "require.callee",
+      "startLine": 29,
+      "startColumn": 0,
+      "endLine": 29,
+      "endColumn": 7,
+      "text": "require"
+    },
+    {
+      "query": "refs",
+      "name": "reference.call",
+      "startLine": 29,
+      "startColumn": 0,
+      "endLine": 29,
+      "endColumn": 7,
+      "text": "require"
+    },
+    {
+      "query": "imports",
+      "name": "import.cjs",
+      "startLine": 29,
+      "startColumn": 0,
+      "endLine": 29,
+      "endColumn": 17,
+      "text": "require('./bare')"
+    },
+    {
+      "query": "imports",
+      "name": "import.path",
+      "startLine": 29,
+      "startColumn": 8,
+      "endLine": 29,
+      "endColumn": 16,
+      "text": "'./bare'"
+    },
+    {
+      "query": "imports",
+      "name": "import.namespace",
+      "startLine": 30,
+      "startColumn": 4,
+      "endLine": 30,
+      "endColumn": 12,
+      "text": "oldStyle"
+    },
+    {
+      "query": "imports",
+      "name": "require.callee",
+      "startLine": 30,
+      "startColumn": 15,
+      "endLine": 30,
+      "endColumn": 22,
+      "text": "require"
+    },
+    {
+      "query": "imports",
+      "name": "require.callee",
+      "startLine": 30,
+      "startColumn": 15,
+      "endLine": 30,
+      "endColumn": 22,
+      "text": "require"
+    },
+    {
+      "query": "refs",
+      "name": "reference.call",
+      "startLine": 30,
+      "startColumn": 15,
+      "endLine": 30,
+      "endColumn": 22,
+      "text": "require"
+    },
+    {
+      "query": "imports",
+      "name": "import.cjs",
+      "startLine": 30,
+      "startColumn": 15,
+      "endLine": 30,
+      "endColumn": 37,
+      "text": "require('./old-style')"
+    },
+    {
+      "query": "imports",
+      "name": "import.cjs",
+      "startLine": 30,
+      "startColumn": 15,
+      "endLine": 30,
+      "endColumn": 37,
+      "text": "require('./old-style')"
+    },
+    {
+      "query": "imports",
+      "name": "import.path",
+      "startLine": 30,
+      "startColumn": 23,
+      "endLine": 30,
+      "endColumn": 36,
+      "text": "'./old-style'"
+    },
+    {
+      "query": "imports",
+      "name": "import.path",
+      "startLine": 30,
+      "startColumn": 23,
+      "endLine": 30,
+      "endColumn": 36,
+      "text": "'./old-style'"
+    },
+    {
+      "query": "imports",
+      "name": "cjs.object",
+      "startLine": 32,
+      "startColumn": 0,
+      "endLine": 32,
+      "endColumn": 6,
+      "text": "module"
+    },
+    {
+      "query": "imports",
+      "name": "cjs.object",
+      "startLine": 32,
+      "startColumn": 0,
+      "endLine": 32,
+      "endColumn": 6,
+      "text": "module"
+    },
+    {
+      "query": "imports",
+      "name": "cjs.object",
+      "startLine": 32,
+      "startColumn": 0,
+      "endLine": 32,
+      "endColumn": 6,
+      "text": "module"
+    },
+    {
+      "query": "refs",
+      "name": "reference.read",
+      "startLine": 32,
+      "startColumn": 0,
+      "endLine": 32,
+      "endColumn": 6,
+      "text": "module"
+    },
+    {
+      "query": "imports",
+      "name": "export",
+      "startLine": 32,
+      "startColumn": 0,
+      "endLine": 32,
+      "endColumn": 63,
+      "text": "module.exports = { localOne, publicOne: localTwo, inline() {} }"
+    },
+    {
+      "query": "imports",
+      "name": "export",
+      "startLine": 32,
+      "startColumn": 0,
+      "endLine": 32,
+      "endColumn": 63,
+      "text": "module.exports = { localOne, publicOne: localTwo, inline() {} }"
+    },
+    {
+      "query": "imports",
+      "name": "export",
+      "startLine": 32,
+      "startColumn": 0,
+      "endLine": 32,
+      "endColumn": 63,
+      "text": "module.exports = { localOne, publicOne: localTwo, inline() {} }"
+    },
+    {
+      "query": "imports",
+      "name": "cjs.property",
+      "startLine": 32,
+      "startColumn": 7,
+      "endLine": 32,
+      "endColumn": 14,
+      "text": "exports"
+    },
+    {
+      "query": "imports",
+      "name": "cjs.property",
+      "startLine": 32,
+      "startColumn": 7,
+      "endLine": 32,
+      "endColumn": 14,
+      "text": "exports"
+    },
+    {
+      "query": "imports",
+      "name": "cjs.property",
+      "startLine": 32,
+      "startColumn": 7,
+      "endLine": 32,
+      "endColumn": 14,
+      "text": "exports"
+    },
+    {
+      "query": "imports",
+      "name": "export.name",
+      "startLine": 32,
+      "startColumn": 19,
+      "endLine": 32,
+      "endColumn": 27,
+      "text": "localOne"
+    },
+    {
+      "query": "refs",
+      "name": "reference.read",
+      "startLine": 32,
+      "startColumn": 19,
+      "endLine": 32,
+      "endColumn": 27,
+      "text": "localOne"
+    },
+    {
+      "query": "imports",
+      "name": "export.name",
+      "startLine": 32,
+      "startColumn": 29,
+      "endLine": 32,
+      "endColumn": 38,
+      "text": "publicOne"
+    },
+    {
+      "query": "imports",
+      "name": "export.local",
+      "startLine": 32,
+      "startColumn": 40,
+      "endLine": 32,
+      "endColumn": 48,
+      "text": "localTwo"
+    },
+    {
+      "query": "refs",
+      "name": "reference.read",
+      "startLine": 32,
+      "startColumn": 40,
+      "endLine": 32,
+      "endColumn": 48,
+      "text": "localTwo"
+    },
+    {
+      "query": "imports",
+      "name": "export.name",
+      "startLine": 32,
+      "startColumn": 50,
+      "endLine": 32,
+      "endColumn": 56,
+      "text": "inline"
+    },
+    {
+      "query": "imports",
+      "name": "cjs.object",
+      "startLine": 33,
+      "startColumn": 0,
+      "endLine": 33,
+      "endColumn": 7,
+      "text": "exports"
+    },
+    {
+      "query": "refs",
+      "name": "reference.read",
+      "startLine": 33,
+      "startColumn": 0,
+      "endLine": 33,
+      "endColumn": 7,
+      "text": "exports"
+    },
+    {
+      "query": "imports",
+      "name": "export",
+      "startLine": 33,
+      "startColumn": 0,
+      "endLine": 33,
+      "endColumn": 18,
+      "text": "exports.direct = 1"
+    },
+    {
+      "query": "imports",
+      "name": "export.name",
+      "startLine": 33,
+      "startColumn": 8,
+      "endLine": 33,
+      "endColumn": 14,
+      "text": "direct"
+    },
+    {
+      "query": "imports",
+      "name": "cjs.value",
+      "startLine": 33,
+      "startColumn": 17,
+      "endLine": 33,
+      "endColumn": 18,
+      "text": "1"
+    },
+    {
+      "query": "imports",
+      "name": "cjs.object",
+      "startLine": 34,
+      "startColumn": 0,
+      "endLine": 34,
+      "endColumn": 6,
+      "text": "module"
+    },
+    {
+      "query": "refs",
+      "name": "reference.read",
+      "startLine": 34,
+      "startColumn": 0,
+      "endLine": 34,
+      "endColumn": 6,
+      "text": "module"
+    },
+    {
+      "query": "imports",
+      "name": "export",
+      "startLine": 34,
+      "startColumn": 0,
+      "endLine": 34,
+      "endColumn": 25,
+      "text": "module.exports.nested = 2"
+    },
+    {
+      "query": "imports",
+      "name": "cjs.property",
+      "startLine": 34,
+      "startColumn": 7,
+      "endLine": 34,
+      "endColumn": 14,
+      "text": "exports"
+    },
+    {
+      "query": "imports",
+      "name": "export.name",
+      "startLine": 34,
+      "startColumn": 15,
+      "endLine": 34,
+      "endColumn": 21,
+      "text": "nested"
+    },
+    {
+      "query": "imports",
+      "name": "cjs.value",
+      "startLine": 34,
+      "startColumn": 24,
+      "endLine": 34,
+      "endColumn": 25,
+      "text": "2"
+    }
+  ]
+}

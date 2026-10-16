@@ -32,6 +32,15 @@
       "text": "exportedPlain"
     },
     {
+      "query": "refs",
+      "name": "reference.read",
+      "startLine": 5,
+      "startColumn": 9,
+      "endLine": 5,
+      "endColumn": 10,
+      "text": "a"
+    },
+    {
       "query": "tags",
       "name": "definition.function",
       "startLine": 8,
@@ -48,6 +57,33 @@
       "endLine": 8,
       "endColumn": 25,
       "text": "asyncPlain"
+    },
+    {
+      "query": "refs",
+      "name": "reference.type",
+      "startLine": 8,
+      "startColumn": 29,
+      "endLine": 8,
+      "endColumn": 36,
+      "text": "Promise"
+    },
+    {
+      "query": "refs",
+      "name": "reference.read",
+      "startLine": 9,
+      "startColumn": 8,
+      "endLine": 9,
+      "endColumn": 15,
+      "text": "Promise"
+    },
+    {
+      "query": "refs",
+      "name": "reference.member",
+      "startLine": 9,
+      "startColumn": 16,
+      "endLine": 9,
+      "endColumn": 23,
+      "text": "resolve"
     },
     {
       "query": "tags",
@@ -68,6 +104,24 @@
       "text": "generatorPlain"
     },
     {
+      "query": "refs",
+      "name": "reference.type",
+      "startLine": 12,
+      "startColumn": 28,
+      "endLine": 12,
+      "endColumn": 37,
+      "text": "Generator"
+    },
+    {
+      "query": "imports",
+      "name": "export",
+      "startLine": 16,
+      "startColumn": 0,
+      "endLine": 16,
+      "endColumn": 47,
+      "text": "export default function defaultNamed(): void {}"
+    },
+    {
       "query": "tags",
       "name": "modifier.default",
       "startLine": 16,
@@ -77,6 +131,15 @@
       "text": "export default function defaultNamed(): void {}"
     },
     {
+      "query": "imports",
+      "name": "export.name",
+      "startLine": 16,
+      "startColumn": 7,
+      "endLine": 16,
+      "endColumn": 14,
+      "text": "default"
+    },
+    {
       "query": "tags",
       "name": "definition.function",
       "startLine": 16,
@@ -84,6 +147,15 @@
       "endLine": 16,
       "endColumn": 47,
       "text": "function defaultNamed(): void {}"
+    },
+    {
+      "query": "imports",
+      "name": "export.local",
+      "startLine": 16,
+      "startColumn": 24,
+      "endLine": 16,
+      "endColumn": 36,
+      "text": "defaultNamed"
     },
     {
       "query": "tags",
@@ -149,6 +221,15 @@
       "text": "overloaded"
     },
     {
+      "query": "refs",
+      "name": "reference.read",
+      "startLine": 21,
+      "startColumn": 9,
+      "endLine": 21,
+      "endColumn": 10,
+      "text": "x"
+    },
+    {
       "query": "tags",
       "name": "definition.function",
       "startLine": 24,
@@ -203,6 +284,42 @@
       "text": "localArrow = (): number => inner()"
     },
     {
+      "query": "refs",
+      "name": "reference.call",
+      "startLine": 28,
+      "startColumn": 35,
+      "endLine": 28,
+      "endColumn": 40,
+      "text": "inner"
+    },
+    {
+      "query": "refs",
+      "name": "reference.call",
+      "startLine": 31,
+      "startColumn": 9,
+      "endLine": 31,
+      "endColumn": 19,
+      "text": "localArrow"
+    },
+    {
+      "query": "refs",
+      "name": "reference.read",
+      "startLine": 31,
+      "startColumn": 24,
+      "endLine": 31,
+      "endColumn": 34,
+      "text": "localValue"
+    },
+    {
+      "query": "refs",
+      "name": "reference.read",
+      "startLine": 31,
+      "startColumn": 37,
+      "endLine": 31,
+      "endColumn": 49,
+      "text": "localCounter"
+    },
+    {
       "query": "tags",
       "name": "name",
       "startLine": 34,
@@ -219,6 +336,15 @@
       "endLine": 34,
       "endColumn": 45,
       "text": "arrowTop = (n: number): number => n * 2"
+    },
+    {
+      "query": "refs",
+      "name": "reference.read",
+      "startLine": 34,
+      "startColumn": 40,
+      "endLine": 34,
+      "endColumn": 41,
+      "text": "n"
     },
     {
       "query": "tags",
@@ -246,6 +372,24 @@
       "endLine": 35,
       "endColumn": 68,
       "text": "exportedArrow = async (n: number): Promise<number> => n"
+    },
+    {
+      "query": "refs",
+      "name": "reference.type",
+      "startLine": 35,
+      "startColumn": 48,
+      "endLine": 35,
+      "endColumn": 55,
+      "text": "Promise"
+    },
+    {
+      "query": "refs",
+      "name": "reference.read",
+      "startLine": 35,
+      "startColumn": 67,
+      "endLine": 35,
+      "endColumn": 68,
+      "text": "n"
     },
     {
       "query": "tags",
@@ -581,6 +725,24 @@
       "text": "create"
     },
     {
+      "query": "refs",
+      "name": "reference.type",
+      "startLine": 55,
+      "startColumn": 19,
+      "endLine": 55,
+      "endColumn": 24,
+      "text": "Plain"
+    },
+    {
+      "query": "refs",
+      "name": "reference.new",
+      "startLine": 56,
+      "startColumn": 15,
+      "endLine": 56,
+      "endColumn": 20,
+      "text": "Plain"
+    },
+    {
       "query": "tags",
       "name": "definition.method",
       "startLine": 58,
@@ -651,6 +813,15 @@
       "endLine": 63,
       "endColumn": 11,
       "text": "value"
+    },
+    {
+      "query": "refs",
+      "name": "reference.read",
+      "startLine": 64,
+      "startColumn": 17,
+      "endLine": 64,
+      "endColumn": 18,
+      "text": "v"
     },
     {
       "query": "tags",
@@ -725,6 +896,15 @@
       "text": "load"
     },
     {
+      "query": "refs",
+      "name": "reference.type",
+      "startLine": 69,
+      "startColumn": 16,
+      "endLine": 69,
+      "endColumn": 23,
+      "text": "Promise"
+    },
+    {
       "query": "tags",
       "name": "export",
       "startLine": 72,
@@ -788,6 +968,15 @@
       "text": "describe(): string {\n    return `${this.area()}`;\n  }"
     },
     {
+      "query": "refs",
+      "name": "reference.member",
+      "startLine": 75,
+      "startColumn": 19,
+      "endLine": 75,
+      "endColumn": 23,
+      "text": "area"
+    },
+    {
       "query": "tags",
       "name": "definition.class",
       "startLine": 79,
@@ -824,6 +1013,15 @@
       "text": "value!: T"
     },
     {
+      "query": "refs",
+      "name": "reference.type",
+      "startLine": 80,
+      "startColumn": 10,
+      "endLine": 80,
+      "endColumn": 11,
+      "text": "T"
+    },
+    {
       "query": "tags",
       "name": "name",
       "startLine": 81,
@@ -842,6 +1040,42 @@
       "text": "map<U>(fn: (t: T) => U): U {\n    return fn(this.value);\n  }"
     },
     {
+      "query": "refs",
+      "name": "reference.type",
+      "startLine": 81,
+      "startColumn": 17,
+      "endLine": 81,
+      "endColumn": 18,
+      "text": "T"
+    },
+    {
+      "query": "refs",
+      "name": "reference.type",
+      "startLine": 81,
+      "startColumn": 23,
+      "endLine": 81,
+      "endColumn": 24,
+      "text": "U"
+    },
+    {
+      "query": "refs",
+      "name": "reference.type",
+      "startLine": 81,
+      "startColumn": 27,
+      "endLine": 81,
+      "endColumn": 28,
+      "text": "U"
+    },
+    {
+      "query": "refs",
+      "name": "reference.call",
+      "startLine": 82,
+      "startColumn": 11,
+      "endLine": 82,
+      "endColumn": 13,
+      "text": "fn"
+    },
+    {
       "query": "tags",
       "name": "definition.function",
       "startLine": 86,
@@ -858,6 +1092,15 @@
       "endLine": 86,
       "endColumn": 15,
       "text": "sealed"
+    },
+    {
+      "query": "refs",
+      "name": "reference.type",
+      "startLine": 86,
+      "startColumn": 24,
+      "endLine": 86,
+      "endColumn": 32,
+      "text": "Function"
     },
     {
       "query": "tags",
@@ -948,6 +1191,15 @@
       "endLine": 95,
       "endColumn": 18,
       "text": "Child"
+    },
+    {
+      "query": "refs",
+      "name": "reference.heritage",
+      "startLine": 95,
+      "startColumn": 27,
+      "endLine": 95,
+      "endColumn": 32,
+      "text": "Plain"
     },
     {
       "query": "tags",
@@ -1067,6 +1319,15 @@
       "text": "Extended"
     },
     {
+      "query": "refs",
+      "name": "reference.heritage",
+      "startLine": 105,
+      "startColumn": 30,
+      "endLine": 105,
+      "endColumn": 35,
+      "text": "Named"
+    },
+    {
       "query": "tags",
       "name": "name",
       "startLine": 106,
@@ -1085,6 +1346,15 @@
       "text": "extra: T"
     },
     {
+      "query": "refs",
+      "name": "reference.type",
+      "startLine": 106,
+      "startColumn": 9,
+      "endLine": 106,
+      "endColumn": 10,
+      "text": "T"
+    },
+    {
       "query": "tags",
       "name": "name",
       "startLine": 107,
@@ -1101,6 +1371,15 @@
       "endLine": 107,
       "endColumn": 46,
       "text": "onChange(listener: (value: T) => void): void"
+    },
+    {
+      "query": "refs",
+      "name": "reference.type",
+      "startLine": 107,
+      "startColumn": 29,
+      "endLine": 107,
+      "endColumn": 30,
+      "text": "T"
     },
     {
       "query": "tags",
@@ -1146,6 +1425,24 @@
       "endLine": 112,
       "endColumn": 16,
       "text": "Pair"
+    },
+    {
+      "query": "refs",
+      "name": "reference.type",
+      "startLine": 112,
+      "startColumn": 26,
+      "endLine": 112,
+      "endColumn": 27,
+      "text": "A"
+    },
+    {
+      "query": "refs",
+      "name": "reference.type",
+      "startLine": 112,
+      "startColumn": 29,
+      "endLine": 112,
+      "endColumn": 30,
+      "text": "B"
     },
     {
       "query": "tags",

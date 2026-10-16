@@ -1,0 +1,1304 @@
+{
+  "schema": 1,
+  "fixture": "constructs.cjs",
+  "convention": "0-based line, 0-based UTF-16 column, end exclusive",
+  "hadBom": false,
+  "captures": [
+    {
+      "query": "imports",
+      "name": "import.namespace",
+      "startLine": 3,
+      "startColumn": 6,
+      "endLine": 3,
+      "endColumn": 12,
+      "text": "fsLike"
+    },
+    {
+      "query": "imports",
+      "name": "require.callee",
+      "startLine": 3,
+      "startColumn": 15,
+      "endLine": 3,
+      "endColumn": 22,
+      "text": "require"
+    },
+    {
+      "query": "imports",
+      "name": "require.callee",
+      "startLine": 3,
+      "startColumn": 15,
+      "endLine": 3,
+      "endColumn": 22,
+      "text": "require"
+    },
+    {
+      "query": "refs",
+      "name": "reference.call",
+      "startLine": 3,
+      "startColumn": 15,
+      "endLine": 3,
+      "endColumn": 22,
+      "text": "require"
+    },
+    {
+      "query": "imports",
+      "name": "import.cjs",
+      "startLine": 3,
+      "startColumn": 15,
+      "endLine": 3,
+      "endColumn": 35,
+      "text": "require('./fs-like')"
+    },
+    {
+      "query": "imports",
+      "name": "import.cjs",
+      "startLine": 3,
+      "startColumn": 15,
+      "endLine": 3,
+      "endColumn": 35,
+      "text": "require('./fs-like')"
+    },
+    {
+      "query": "imports",
+      "name": "import.path",
+      "startLine": 3,
+      "startColumn": 23,
+      "endLine": 3,
+      "endColumn": 34,
+      "text": "'./fs-like'"
+    },
+    {
+      "query": "imports",
+      "name": "import.path",
+      "startLine": 3,
+      "startColumn": 23,
+      "endLine": 3,
+      "endColumn": 34,
+      "text": "'./fs-like'"
+    },
+    {
+      "query": "imports",
+      "name": "import.named",
+      "startLine": 4,
+      "startColumn": 8,
+      "endLine": 4,
+      "endColumn": 20,
+      "text": "destructured"
+    },
+    {
+      "query": "imports",
+      "name": "import.named",
+      "startLine": 4,
+      "startColumn": 22,
+      "endLine": 4,
+      "endColumn": 29,
+      "text": "aliased"
+    },
+    {
+      "query": "imports",
+      "name": "import.local",
+      "startLine": 4,
+      "startColumn": 31,
+      "endLine": 4,
+      "endColumn": 43,
+      "text": "renamedAlias"
+    },
+    {
+      "query": "imports",
+      "name": "require.callee",
+      "startLine": 4,
+      "startColumn": 48,
+      "endLine": 4,
+      "endColumn": 55,
+      "text": "require"
+    },
+    {
+      "query": "imports",
+      "name": "require.callee",
+      "startLine": 4,
+      "startColumn": 48,
+      "endLine": 4,
+      "endColumn": 55,
+      "text": "require"
+    },
+    {
+      "query": "imports",
+      "name": "require.callee",
+      "startLine": 4,
+      "startColumn": 48,
+      "endLine": 4,
+      "endColumn": 55,
+      "text": "require"
+    },
+    {
+      "query": "refs",
+      "name": "reference.call",
+      "startLine": 4,
+      "startColumn": 48,
+      "endLine": 4,
+      "endColumn": 55,
+      "text": "require"
+    },
+    {
+      "query": "imports",
+      "name": "import.cjs",
+      "startLine": 4,
+      "startColumn": 48,
+      "endLine": 4,
+      "endColumn": 73,
+      "text": "require('./destructured')"
+    },
+    {
+      "query": "imports",
+      "name": "import.cjs",
+      "startLine": 4,
+      "startColumn": 48,
+      "endLine": 4,
+      "endColumn": 73,
+      "text": "require('./destructured')"
+    },
+    {
+      "query": "imports",
+      "name": "import.cjs",
+      "startLine": 4,
+      "startColumn": 48,
+      "endLine": 4,
+      "endColumn": 73,
+      "text": "require('./destructured')"
+    },
+    {
+      "query": "imports",
+      "name": "import.path",
+      "startLine": 4,
+      "startColumn": 56,
+      "endLine": 4,
+      "endColumn": 72,
+      "text": "'./destructured'"
+    },
+    {
+      "query": "imports",
+      "name": "import.path",
+      "startLine": 4,
+      "startColumn": 56,
+      "endLine": 4,
+      "endColumn": 72,
+      "text": "'./destructured'"
+    },
+    {
+      "query": "imports",
+      "name": "import.path",
+      "startLine": 4,
+      "startColumn": 56,
+      "endLine": 4,
+      "endColumn": 72,
+      "text": "'./destructured'"
+    },
+    {
+      "query": "imports",
+      "name": "import.local",
+      "startLine": 5,
+      "startColumn": 6,
+      "endLine": 5,
+      "endColumn": 12,
+      "text": "member"
+    },
+    {
+      "query": "imports",
+      "name": "require.callee",
+      "startLine": 5,
+      "startColumn": 15,
+      "endLine": 5,
+      "endColumn": 22,
+      "text": "require"
+    },
+    {
+      "query": "imports",
+      "name": "require.callee",
+      "startLine": 5,
+      "startColumn": 15,
+      "endLine": 5,
+      "endColumn": 22,
+      "text": "require"
+    },
+    {
+      "query": "refs",
+      "name": "reference.call",
+      "startLine": 5,
+      "startColumn": 15,
+      "endLine": 5,
+      "endColumn": 22,
+      "text": "require"
+    },
+    {
+      "query": "imports",
+      "name": "import.cjs",
+      "startLine": 5,
+      "startColumn": 15,
+      "endLine": 5,
+      "endColumn": 34,
+      "text": "require('./member')"
+    },
+    {
+      "query": "imports",
+      "name": "import.cjs",
+      "startLine": 5,
+      "startColumn": 15,
+      "endLine": 5,
+      "endColumn": 34,
+      "text": "require('./member')"
+    },
+    {
+      "query": "imports",
+      "name": "import.path",
+      "startLine": 5,
+      "startColumn": 23,
+      "endLine": 5,
+      "endColumn": 33,
+      "text": "'./member'"
+    },
+    {
+      "query": "imports",
+      "name": "import.path",
+      "startLine": 5,
+      "startColumn": 23,
+      "endLine": 5,
+      "endColumn": 33,
+      "text": "'./member'"
+    },
+    {
+      "query": "imports",
+      "name": "import.named",
+      "startLine": 5,
+      "startColumn": 35,
+      "endLine": 5,
+      "endColumn": 40,
+      "text": "thing"
+    },
+    {
+      "query": "imports",
+      "name": "import.namespace",
+      "startLine": 6,
+      "startColumn": 4,
+      "endLine": 6,
+      "endColumn": 12,
+      "text": "oldStyle"
+    },
+    {
+      "query": "imports",
+      "name": "require.callee",
+      "startLine": 6,
+      "startColumn": 15,
+      "endLine": 6,
+      "endColumn": 22,
+      "text": "require"
+    },
+    {
+      "query": "imports",
+      "name": "require.callee",
+      "startLine": 6,
+      "startColumn": 15,
+      "endLine": 6,
+      "endColumn": 22,
+      "text": "require"
+    },
+    {
+      "query": "refs",
+      "name": "reference.call",
+      "startLine": 6,
+      "startColumn": 15,
+      "endLine": 6,
+      "endColumn": 22,
+      "text": "require"
+    },
+    {
+      "query": "imports",
+      "name": "import.cjs",
+      "startLine": 6,
+      "startColumn": 15,
+      "endLine": 6,
+      "endColumn": 37,
+      "text": "require('./old-style')"
+    },
+    {
+      "query": "imports",
+      "name": "import.cjs",
+      "startLine": 6,
+      "startColumn": 15,
+      "endLine": 6,
+      "endColumn": 37,
+      "text": "require('./old-style')"
+    },
+    {
+      "query": "imports",
+      "name": "import.path",
+      "startLine": 6,
+      "startColumn": 23,
+      "endLine": 6,
+      "endColumn": 36,
+      "text": "'./old-style'"
+    },
+    {
+      "query": "imports",
+      "name": "import.path",
+      "startLine": 6,
+      "startColumn": 23,
+      "endLine": 6,
+      "endColumn": 36,
+      "text": "'./old-style'"
+    },
+    {
+      "query": "imports",
+      "name": "require.callee",
+      "startLine": 7,
+      "startColumn": 0,
+      "endLine": 7,
+      "endColumn": 7,
+      "text": "require"
+    },
+    {
+      "query": "refs",
+      "name": "reference.call",
+      "startLine": 7,
+      "startColumn": 0,
+      "endLine": 7,
+      "endColumn": 7,
+      "text": "require"
+    },
+    {
+      "query": "imports",
+      "name": "import.cjs",
+      "startLine": 7,
+      "startColumn": 0,
+      "endLine": 7,
+      "endColumn": 17,
+      "text": "require('./bare')"
+    },
+    {
+      "query": "imports",
+      "name": "import.path",
+      "startLine": 7,
+      "startColumn": 8,
+      "endLine": 7,
+      "endColumn": 16,
+      "text": "'./bare'"
+    },
+    {
+      "query": "tags",
+      "name": "definition.function",
+      "startLine": 9,
+      "startColumn": 0,
+      "endLine": 11,
+      "endColumn": 1,
+      "text": "function plainFunction(a) {\n  return a + 1;\n}"
+    },
+    {
+      "query": "tags",
+      "name": "name",
+      "startLine": 9,
+      "startColumn": 9,
+      "endLine": 9,
+      "endColumn": 22,
+      "text": "plainFunction"
+    },
+    {
+      "query": "refs",
+      "name": "reference.read",
+      "startLine": 10,
+      "startColumn": 9,
+      "endLine": 10,
+      "endColumn": 10,
+      "text": "a"
+    },
+    {
+      "query": "tags",
+      "name": "definition.function",
+      "startLine": 13,
+      "startColumn": 0,
+      "endLine": 15,
+      "endColumn": 1,
+      "text": "async function asyncFunction() {\n  return plainFunction(1);\n}"
+    },
+    {
+      "query": "tags",
+      "name": "name",
+      "startLine": 13,
+      "startColumn": 15,
+      "endLine": 13,
+      "endColumn": 28,
+      "text": "asyncFunction"
+    },
+    {
+      "query": "refs",
+      "name": "reference.call",
+      "startLine": 14,
+      "startColumn": 9,
+      "endLine": 14,
+      "endColumn": 22,
+      "text": "plainFunction"
+    },
+    {
+      "query": "tags",
+      "name": "definition.function",
+      "startLine": 17,
+      "startColumn": 0,
+      "endLine": 19,
+      "endColumn": 1,
+      "text": "function* generatorFunction() {\n  yield 1;\n}"
+    },
+    {
+      "query": "tags",
+      "name": "name",
+      "startLine": 17,
+      "startColumn": 10,
+      "endLine": 17,
+      "endColumn": 27,
+      "text": "generatorFunction"
+    },
+    {
+      "query": "tags",
+      "name": "name",
+      "startLine": 21,
+      "startColumn": 6,
+      "endLine": 21,
+      "endColumn": 16,
+      "text": "arrowConst"
+    },
+    {
+      "query": "tags",
+      "name": "definition.function",
+      "startLine": 21,
+      "startColumn": 6,
+      "endLine": 21,
+      "endColumn": 31,
+      "text": "arrowConst = (n) => n * 2"
+    },
+    {
+      "query": "refs",
+      "name": "reference.read",
+      "startLine": 21,
+      "startColumn": 26,
+      "endLine": 21,
+      "endColumn": 27,
+      "text": "n"
+    },
+    {
+      "query": "tags",
+      "name": "name",
+      "startLine": 22,
+      "startColumn": 6,
+      "endLine": 22,
+      "endColumn": 21,
+      "text": "expressionConst"
+    },
+    {
+      "query": "tags",
+      "name": "definition.function",
+      "startLine": 22,
+      "startColumn": 6,
+      "endLine": 22,
+      "endColumn": 43,
+      "text": "expressionConst = function named() {}"
+    },
+    {
+      "query": "tags",
+      "name": "name",
+      "startLine": 23,
+      "startColumn": 4,
+      "endLine": 23,
+      "endColumn": 12,
+      "text": "varArrow"
+    },
+    {
+      "query": "tags",
+      "name": "definition.function",
+      "startLine": 23,
+      "startColumn": 4,
+      "endLine": 23,
+      "endColumn": 22,
+      "text": "varArrow = () => 1"
+    },
+    {
+      "query": "tags",
+      "name": "name",
+      "startLine": 25,
+      "startColumn": 6,
+      "endLine": 25,
+      "endColumn": 11,
+      "text": "LIMIT"
+    },
+    {
+      "query": "tags",
+      "name": "definition.constant",
+      "startLine": 25,
+      "startColumn": 6,
+      "endLine": 25,
+      "endColumn": 16,
+      "text": "LIMIT = 10"
+    },
+    {
+      "query": "tags",
+      "name": "value.plain",
+      "startLine": 25,
+      "startColumn": 14,
+      "endLine": 25,
+      "endColumn": 16,
+      "text": "10"
+    },
+    {
+      "query": "tags",
+      "name": "name",
+      "startLine": 26,
+      "startColumn": 4,
+      "endLine": 26,
+      "endColumn": 11,
+      "text": "counter"
+    },
+    {
+      "query": "tags",
+      "name": "definition.variable",
+      "startLine": 26,
+      "startColumn": 4,
+      "endLine": 26,
+      "endColumn": 15,
+      "text": "counter = 0"
+    },
+    {
+      "query": "tags",
+      "name": "value.plain",
+      "startLine": 26,
+      "startColumn": 14,
+      "endLine": 26,
+      "endColumn": 15,
+      "text": "0"
+    },
+    {
+      "query": "tags",
+      "name": "name",
+      "startLine": 27,
+      "startColumn": 4,
+      "endLine": 27,
+      "endColumn": 10,
+      "text": "legacy"
+    },
+    {
+      "query": "tags",
+      "name": "definition.variable",
+      "startLine": 27,
+      "startColumn": 4,
+      "endLine": 27,
+      "endColumn": 18,
+      "text": "legacy = 'old'"
+    },
+    {
+      "query": "tags",
+      "name": "value.plain",
+      "startLine": 27,
+      "startColumn": 13,
+      "endLine": 27,
+      "endColumn": 18,
+      "text": "'old'"
+    },
+    {
+      "query": "tags",
+      "name": "definition.class",
+      "startLine": 29,
+      "startColumn": 0,
+      "endLine": 49,
+      "endColumn": 1,
+      "text": ""
+    },
+    {
+      "query": "tags",
+      "name": "name",
+      "startLine": 29,
+      "startColumn": 6,
+      "endLine": 29,
+      "endColumn": 12,
+      "text": "Animal"
+    },
+    {
+      "query": "tags",
+      "name": "name",
+      "startLine": 30,
+      "startColumn": 2,
+      "endLine": 30,
+      "endColumn": 6,
+      "text": "name"
+    },
+    {
+      "query": "tags",
+      "name": "definition.property",
+      "startLine": 30,
+      "startColumn": 2,
+      "endLine": 30,
+      "endColumn": 12,
+      "text": "name = 'x'"
+    },
+    {
+      "query": "tags",
+      "name": "definition.property",
+      "startLine": 31,
+      "startColumn": 2,
+      "endLine": 31,
+      "endColumn": 18,
+      "text": "static count = 0"
+    },
+    {
+      "query": "tags",
+      "name": "name",
+      "startLine": 31,
+      "startColumn": 9,
+      "endLine": 31,
+      "endColumn": 14,
+      "text": "count"
+    },
+    {
+      "query": "tags",
+      "name": "name",
+      "startLine": 32,
+      "startColumn": 2,
+      "endLine": 32,
+      "endColumn": 9,
+      "text": "#secret"
+    },
+    {
+      "query": "tags",
+      "name": "definition.property",
+      "startLine": 32,
+      "startColumn": 2,
+      "endLine": 32,
+      "endColumn": 13,
+      "text": "#secret = 1"
+    },
+    {
+      "query": "refs",
+      "name": "reference.read",
+      "startLine": 34,
+      "startColumn": 16,
+      "endLine": 34,
+      "endColumn": 20,
+      "text": "name"
+    },
+    {
+      "query": "tags",
+      "name": "name",
+      "startLine": 36,
+      "startColumn": 2,
+      "endLine": 36,
+      "endColumn": 7,
+      "text": "speak"
+    },
+    {
+      "query": "tags",
+      "name": "definition.method",
+      "startLine": 36,
+      "startColumn": 2,
+      "endLine": 38,
+      "endColumn": 3,
+      "text": "speak() {\n    return this.name;\n  }"
+    },
+    {
+      "query": "tags",
+      "name": "definition.method",
+      "startLine": 39,
+      "startColumn": 2,
+      "endLine": 41,
+      "endColumn": 3,
+      "text": "static create() {\n    return new Animal('a');\n  }"
+    },
+    {
+      "query": "tags",
+      "name": "name",
+      "startLine": 39,
+      "startColumn": 9,
+      "endLine": 39,
+      "endColumn": 15,
+      "text": "create"
+    },
+    {
+      "query": "refs",
+      "name": "reference.new",
+      "startLine": 40,
+      "startColumn": 15,
+      "endLine": 40,
+      "endColumn": 21,
+      "text": "Animal"
+    },
+    {
+      "query": "tags",
+      "name": "name",
+      "startLine": 42,
+      "startColumn": 2,
+      "endLine": 42,
+      "endColumn": 9,
+      "text": "#hidden"
+    },
+    {
+      "query": "tags",
+      "name": "definition.method",
+      "startLine": 42,
+      "startColumn": 2,
+      "endLine": 42,
+      "endColumn": 14,
+      "text": "#hidden() {}"
+    },
+    {
+      "query": "tags",
+      "name": "definition.method",
+      "startLine": 43,
+      "startColumn": 2,
+      "endLine": 45,
+      "endColumn": 3,
+      "text": "get label() {\n    return this.name;\n  }"
+    },
+    {
+      "query": "tags",
+      "name": "name",
+      "startLine": 43,
+      "startColumn": 6,
+      "endLine": 43,
+      "endColumn": 11,
+      "text": "label"
+    },
+    {
+      "query": "tags",
+      "name": "definition.method",
+      "startLine": 46,
+      "startColumn": 2,
+      "endLine": 48,
+      "endColumn": 3,
+      "text": "set label(v) {\n    this.name = v;\n  }"
+    },
+    {
+      "query": "tags",
+      "name": "name",
+      "startLine": 46,
+      "startColumn": 6,
+      "endLine": 46,
+      "endColumn": 11,
+      "text": "label"
+    },
+    {
+      "query": "refs",
+      "name": "reference.read",
+      "startLine": 47,
+      "startColumn": 16,
+      "endLine": 47,
+      "endColumn": 17,
+      "text": "v"
+    },
+    {
+      "query": "tags",
+      "name": "definition.class",
+      "startLine": 51,
+      "startColumn": 0,
+      "endLine": 53,
+      "endColumn": 1,
+      "text": "class Dog extends Animal {\n  bark() {}\n}"
+    },
+    {
+      "query": "tags",
+      "name": "name",
+      "startLine": 51,
+      "startColumn": 6,
+      "endLine": 51,
+      "endColumn": 9,
+      "text": "Dog"
+    },
+    {
+      "query": "refs",
+      "name": "reference.heritage",
+      "startLine": 51,
+      "startColumn": 18,
+      "endLine": 51,
+      "endColumn": 24,
+      "text": "Animal"
+    },
+    {
+      "query": "tags",
+      "name": "name",
+      "startLine": 52,
+      "startColumn": 2,
+      "endLine": 52,
+      "endColumn": 6,
+      "text": "bark"
+    },
+    {
+      "query": "tags",
+      "name": "definition.method",
+      "startLine": 52,
+      "startColumn": 2,
+      "endLine": 52,
+      "endColumn": 11,
+      "text": "bark() {}"
+    },
+    {
+      "query": "tags",
+      "name": "definition.function",
+      "startLine": 55,
+      "startColumn": 0,
+      "endLine": 60,
+      "endColumn": 1,
+      "text": "function outer() {\n  function inner() {}\n  const localArrow = () => inner();\n  const localValue = 1;\n  return localArrow() + localValue;\n}"
+    },
+    {
+      "query": "tags",
+      "name": "name",
+      "startLine": 55,
+      "startColumn": 9,
+      "endLine": 55,
+      "endColumn": 14,
+      "text": "outer"
+    },
+    {
+      "query": "tags",
+      "name": "definition.function",
+      "startLine": 56,
+      "startColumn": 2,
+      "endLine": 56,
+      "endColumn": 21,
+      "text": "function inner() {}"
+    },
+    {
+      "query": "tags",
+      "name": "name",
+      "startLine": 56,
+      "startColumn": 11,
+      "endLine": 56,
+      "endColumn": 16,
+      "text": "inner"
+    },
+    {
+      "query": "tags",
+      "name": "name",
+      "startLine": 57,
+      "startColumn": 8,
+      "endLine": 57,
+      "endColumn": 18,
+      "text": "localArrow"
+    },
+    {
+      "query": "tags",
+      "name": "definition.function",
+      "startLine": 57,
+      "startColumn": 8,
+      "endLine": 57,
+      "endColumn": 34,
+      "text": "localArrow = () => inner()"
+    },
+    {
+      "query": "refs",
+      "name": "reference.call",
+      "startLine": 57,
+      "startColumn": 27,
+      "endLine": 57,
+      "endColumn": 32,
+      "text": "inner"
+    },
+    {
+      "query": "refs",
+      "name": "reference.call",
+      "startLine": 59,
+      "startColumn": 9,
+      "endLine": 59,
+      "endColumn": 19,
+      "text": "localArrow"
+    },
+    {
+      "query": "refs",
+      "name": "reference.read",
+      "startLine": 59,
+      "startColumn": 24,
+      "endLine": 59,
+      "endColumn": 34,
+      "text": "localValue"
+    },
+    {
+      "query": "tags",
+      "name": "name",
+      "startLine": 62,
+      "startColumn": 6,
+      "endLine": 62,
+      "endColumn": 10,
+      "text": "café"
+    },
+    {
+      "query": "tags",
+      "name": "definition.constant",
+      "startLine": 62,
+      "startColumn": 6,
+      "endLine": 62,
+      "endColumn": 14,
+      "text": "café = 1"
+    },
+    {
+      "query": "tags",
+      "name": "value.plain",
+      "startLine": 62,
+      "startColumn": 13,
+      "endLine": 62,
+      "endColumn": 14,
+      "text": "1"
+    },
+    {
+      "query": "tags",
+      "name": "name",
+      "startLine": 62,
+      "startColumn": 22,
+      "endLine": 62,
+      "endColumn": 25,
+      "text": "tag"
+    },
+    {
+      "query": "tags",
+      "name": "definition.constant",
+      "startLine": 62,
+      "startColumn": 22,
+      "endLine": 62,
+      "endColumn": 32,
+      "text": "tag = '😀'"
+    },
+    {
+      "query": "tags",
+      "name": "value.plain",
+      "startLine": 62,
+      "startColumn": 28,
+      "endLine": 62,
+      "endColumn": 32,
+      "text": "'😀'"
+    },
+    {
+      "query": "tags",
+      "name": "definition.function",
+      "startLine": 62,
+      "startColumn": 34,
+      "endLine": 62,
+      "endColumn": 58,
+      "text": "function afterEmoji() {}"
+    },
+    {
+      "query": "tags",
+      "name": "name",
+      "startLine": 62,
+      "startColumn": 43,
+      "endLine": 62,
+      "endColumn": 53,
+      "text": "afterEmoji"
+    },
+    {
+      "query": "imports",
+      "name": "cjs.object",
+      "startLine": 64,
+      "startColumn": 0,
+      "endLine": 64,
+      "endColumn": 6,
+      "text": "module"
+    },
+    {
+      "query": "imports",
+      "name": "cjs.object",
+      "startLine": 64,
+      "startColumn": 0,
+      "endLine": 64,
+      "endColumn": 6,
+      "text": "module"
+    },
+    {
+      "query": "imports",
+      "name": "cjs.object",
+      "startLine": 64,
+      "startColumn": 0,
+      "endLine": 64,
+      "endColumn": 6,
+      "text": "module"
+    },
+    {
+      "query": "refs",
+      "name": "reference.read",
+      "startLine": 64,
+      "startColumn": 0,
+      "endLine": 64,
+      "endColumn": 6,
+      "text": "module"
+    },
+    {
+      "query": "imports",
+      "name": "export",
+      "startLine": 64,
+      "startColumn": 0,
+      "endLine": 64,
+      "endColumn": 68,
+      "text": "module.exports = { plainFunction, shown: asyncFunction, outer() {} }"
+    },
+    {
+      "query": "imports",
+      "name": "export",
+      "startLine": 64,
+      "startColumn": 0,
+      "endLine": 64,
+      "endColumn": 68,
+      "text": "module.exports = { plainFunction, shown: asyncFunction, outer() {} }"
+    },
+    {
+      "query": "imports",
+      "name": "export",
+      "startLine": 64,
+      "startColumn": 0,
+      "endLine": 64,
+      "endColumn": 68,
+      "text": "module.exports = { plainFunction, shown: asyncFunction, outer() {} }"
+    },
+    {
+      "query": "imports",
+      "name": "cjs.property",
+      "startLine": 64,
+      "startColumn": 7,
+      "endLine": 64,
+      "endColumn": 14,
+      "text": "exports"
+    },
+    {
+      "query": "imports",
+      "name": "cjs.property",
+      "startLine": 64,
+      "startColumn": 7,
+      "endLine": 64,
+      "endColumn": 14,
+      "text": "exports"
+    },
+    {
+      "query": "imports",
+      "name": "cjs.property",
+      "startLine": 64,
+      "startColumn": 7,
+      "endLine": 64,
+      "endColumn": 14,
+      "text": "exports"
+    },
+    {
+      "query": "imports",
+      "name": "export.name",
+      "startLine": 64,
+      "startColumn": 19,
+      "endLine": 64,
+      "endColumn": 32,
+      "text": "plainFunction"
+    },
+    {
+      "query": "refs",
+      "name": "reference.read",
+      "startLine": 64,
+      "startColumn": 19,
+      "endLine": 64,
+      "endColumn": 32,
+      "text": "plainFunction"
+    },
+    {
+      "query": "imports",
+      "name": "export.name",
+      "startLine": 64,
+      "startColumn": 34,
+      "endLine": 64,
+      "endColumn": 39,
+      "text": "shown"
+    },
+    {
+      "query": "imports",
+      "name": "export.local",
+      "startLine": 64,
+      "startColumn": 41,
+      "endLine": 64,
+      "endColumn": 54,
+      "text": "asyncFunction"
+    },
+    {
+      "query": "refs",
+      "name": "reference.read",
+      "startLine": 64,
+      "startColumn": 41,
+      "endLine": 64,
+      "endColumn": 54,
+      "text": "asyncFunction"
+    },
+    {
+      "query": "imports",
+      "name": "export.name",
+      "startLine": 64,
+      "startColumn": 56,
+      "endLine": 64,
+      "endColumn": 61,
+      "text": "outer"
+    },
+    {
+      "query": "imports",
+      "name": "cjs.object",
+      "startLine": 65,
+      "startColumn": 0,
+      "endLine": 65,
+      "endColumn": 7,
+      "text": "exports"
+    },
+    {
+      "query": "refs",
+      "name": "reference.read",
+      "startLine": 65,
+      "startColumn": 0,
+      "endLine": 65,
+      "endColumn": 7,
+      "text": "exports"
+    },
+    {
+      "query": "imports",
+      "name": "export",
+      "startLine": 65,
+      "startColumn": 0,
+      "endLine": 65,
+      "endColumn": 27,
+      "text": "exports.direct = arrowConst"
+    },
+    {
+      "query": "imports",
+      "name": "export.name",
+      "startLine": 65,
+      "startColumn": 8,
+      "endLine": 65,
+      "endColumn": 14,
+      "text": "direct"
+    },
+    {
+      "query": "imports",
+      "name": "export.local",
+      "startLine": 65,
+      "startColumn": 17,
+      "endLine": 65,
+      "endColumn": 27,
+      "text": "arrowConst"
+    },
+    {
+      "query": "refs",
+      "name": "reference.read",
+      "startLine": 65,
+      "startColumn": 17,
+      "endLine": 65,
+      "endColumn": 27,
+      "text": "arrowConst"
+    },
+    {
+      "query": "imports",
+      "name": "cjs.object",
+      "startLine": 66,
+      "startColumn": 0,
+      "endLine": 66,
+      "endColumn": 6,
+      "text": "module"
+    },
+    {
+      "query": "refs",
+      "name": "reference.read",
+      "startLine": 66,
+      "startColumn": 0,
+      "endLine": 66,
+      "endColumn": 6,
+      "text": "module"
+    },
+    {
+      "query": "imports",
+      "name": "export",
+      "startLine": 66,
+      "startColumn": 0,
+      "endLine": 66,
+      "endColumn": 25,
+      "text": "module.exports.nested = 2"
+    },
+    {
+      "query": "imports",
+      "name": "cjs.property",
+      "startLine": 66,
+      "startColumn": 7,
+      "endLine": 66,
+      "endColumn": 14,
+      "text": "exports"
+    },
+    {
+      "query": "imports",
+      "name": "export.name",
+      "startLine": 66,
+      "startColumn": 15,
+      "endLine": 66,
+      "endColumn": 21,
+      "text": "nested"
+    },
+    {
+      "query": "imports",
+      "name": "cjs.value",
+      "startLine": 66,
+      "startColumn": 24,
+      "endLine": 66,
+      "endColumn": 25,
+      "text": "2"
+    },
+    {
+      "query": "imports",
+      "name": "cjs.object",
+      "startLine": 67,
+      "startColumn": 0,
+      "endLine": 67,
+      "endColumn": 6,
+      "text": "module"
+    },
+    {
+      "query": "refs",
+      "name": "reference.read",
+      "startLine": 67,
+      "startColumn": 0,
+      "endLine": 67,
+      "endColumn": 6,
+      "text": "module"
+    },
+    {
+      "query": "imports",
+      "name": "export.name",
+      "startLine": 67,
+      "startColumn": 0,
+      "endLine": 67,
+      "endColumn": 14,
+      "text": "module.exports"
+    },
+    {
+      "query": "imports",
+      "name": "export",
+      "startLine": 67,
+      "startColumn": 0,
+      "endLine": 67,
+      "endColumn": 20,
+      "text": "module.exports = Dog"
+    },
+    {
+      "query": "imports",
+      "name": "cjs.property",
+      "startLine": 67,
+      "startColumn": 7,
+      "endLine": 67,
+      "endColumn": 14,
+      "text": "exports"
+    },
+    {
+      "query": "imports",
+      "name": "export.local",
+      "startLine": 67,
+      "startColumn": 17,
+      "endLine": 67,
+      "endColumn": 20,
+      "text": "Dog"
+    },
+    {
+      "query": "refs",
+      "name": "reference.read",
+      "startLine": 67,
+      "startColumn": 17,
+      "endLine": 67,
+      "endColumn": 20,
+      "text": "Dog"
+    }
+  ]
+}
