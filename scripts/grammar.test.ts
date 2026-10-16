@@ -6,7 +6,12 @@ import { Language, Parser, Query } from 'web-tree-sitter';
 import type { Node } from 'web-tree-sitter';
 import { parseGrammarLock } from '../src/lang/grammar-lock.ts';
 import { parseCliVersion } from './ensure-tree-sitter.ts';
-import { checkAgainstLock, sha256Hex } from './grammar-build.ts';
+import { spawnSync } from 'node:child_process';
+import { pathToFileURL } from 'node:url';
+import { makeTempDir } from '../src/test-kit/index.ts';
+import type { GrammarLock } from '../src/lang/grammar-lock.ts';
+import { GrammarBuildError, checkAgainstLock, prepareSource, sha256Hex } from './grammar-build.ts';
+import { compareHashes } from './grammar-verify.ts';
 import { FIXTURES } from './toy-fixtures.ts';
 
 const repoRoot = path.resolve(import.meta.dirname, '..');
@@ -235,6 +240,140 @@ describe('toy fixtures: parse positions (0-based line, 0-based UTF-16 column, en
     const text = fixtureText('fixtures-negative/broken.toy');
     const hasError = await withTree(text, (root) => root.hasError && findAll(root, 'ERROR').length > 0);
     assert.equal(hasError, true);
+  });
+});
+
+describe('prepareSource with an upstream archive (hermetic: no network, no wasi toolchain)', () => {
+  /** tar.gz of `entries` (relative path -> text) under a single top directory, via the system tar. */
+  function makeArchive(root: string, topDir: string, entries: Record<string, string>): string {
+    const stage = path.join(root, 'stage');
+    for (const [relative, text] of Object.entries(entries)) {
+      const target = path.join(stage, topDir, relative);
+      fs.mkdirSync(path.dirname(target), { recursive: true });
+      fs.writeFileSync(target, text);
+    }
+    // Relative paths and cwd: GNU tar on Windows reads a drive letter as a remote host.
+    const result = spawnSync('tar', ['-czf', 'archive.tar.gz', '-C', 'stage', topDir], { cwd: root });
+    assert.equal(result.status, 0, String(result.stderr));
+    return path.join(root, 'archive.tar.gz');
+  }
+
+  const grammarJs = fs.readFileSync(path.join(toyDir, 'grammar', 'grammar.js'), 'utf8');
+
+  function patchAddingComment(): string {
+    const [l1, l2, l3] = grammarJs.split('\n');
+    return `--- a/grammar.js\n+++ b/grammar.js\n@@ -1,3 +1,4 @@\n ${l1}\n ${l2}\n+// patched by the hermetic test\n ${l3}\n`;
+  }
+
+  function upstreamLock(archive: string, archiveSha256: string, patches: string[], subdir?: string): GrammarLock {
+    const lock = readToyLock();
+    return {
+      ...lock,
+      source: {
+        type: 'upstream',
+        url: pathToFileURL(archive).href,
+        ref: 'test',
+        archiveSha256,
+        ...(subdir === undefined ? {} : { subdir }),
+      },
+      patches,
+    };
+  }
+
+  it('verifies the archive hash, extracts with one leading directory stripped and applies the patch', async () => {
+    const tmp = makeTempDir();
+    try {
+      const archive = makeArchive(tmp.path, 'toy-1.0', { 'grammar.js': grammarJs });
+      const moduleDir = path.join(tmp.path, 'module');
+      fs.mkdirSync(path.join(moduleDir, 'patches'), { recursive: true });
+      fs.writeFileSync(path.join(moduleDir, 'patches', '0001-comment.patch'), patchAddingComment());
+      const lock = upstreamLock(archive, sha256Hex(fs.readFileSync(archive)), ['patches/0001-comment.patch']);
+      const workDir = path.join(tmp.path, 'work');
+      const prepared = await prepareSource(lock, moduleDir, workDir);
+      assert.equal(prepared.patchesApplied, 1);
+      const extracted = fs.readFileSync(path.join(prepared.dir, 'grammar.js'), 'utf8');
+      assert.ok(extracted.includes('// patched by the hermetic test'));
+      assert.ok(extracted.includes("name: 'atlas_toy'"));
+    } finally {
+      tmp.cleanup();
+    }
+  });
+
+  it('honours the lock subdir', async () => {
+    const tmp = makeTempDir();
+    try {
+      const archive = makeArchive(tmp.path, 'repo-abc', { 'tree-sitter-x/grammar.js': grammarJs, 'README': 'x' });
+      const lock = upstreamLock(archive, sha256Hex(fs.readFileSync(archive)), [], 'tree-sitter-x');
+      const prepared = await prepareSource(lock, tmp.path, path.join(tmp.path, 'work'));
+      assert.equal(prepared.patchesApplied, 0);
+      assert.ok(fs.existsSync(path.join(prepared.dir, 'grammar.js')));
+    } finally {
+      tmp.cleanup();
+    }
+  });
+
+  it('fails with archive_hash_mismatch when archiveSha256 is wrong', async () => {
+    const tmp = makeTempDir();
+    try {
+      const archive = makeArchive(tmp.path, 'toy-1.0', { 'grammar.js': grammarJs });
+      const lock = upstreamLock(archive, '0'.repeat(64), []);
+      await assert.rejects(
+        prepareSource(lock, tmp.path, path.join(tmp.path, 'work')),
+        (error: unknown) => error instanceof GrammarBuildError && error.code === 'archive_hash_mismatch',
+      );
+    } finally {
+      tmp.cleanup();
+    }
+  });
+
+  it('fails with patch_failed naming the patch that does not apply', async () => {
+    const tmp = makeTempDir();
+    try {
+      const archive = makeArchive(tmp.path, 'toy-1.0', { 'grammar.js': grammarJs });
+      const moduleDir = path.join(tmp.path, 'module');
+      fs.mkdirSync(path.join(moduleDir, 'patches'), { recursive: true });
+      fs.writeFileSync(
+        path.join(moduleDir, 'patches', '0002-bad.patch'),
+        '--- a/grammar.js\n+++ b/grammar.js\n@@ -1,1 +1,1 @@\n-this line does not exist\n+replacement\n',
+      );
+      const lock = upstreamLock(archive, sha256Hex(fs.readFileSync(archive)), ['patches/0002-bad.patch']);
+      await assert.rejects(
+        prepareSource(lock, moduleDir, path.join(tmp.path, 'work')),
+        (error: unknown) =>
+          error instanceof GrammarBuildError &&
+          error.code === 'patch_failed' &&
+          error.message.includes('patches/0002-bad.patch'),
+      );
+    } finally {
+      tmp.cleanup();
+    }
+  });
+
+});
+
+describe('compareHashes (grammar:verify decision)', () => {
+  const lock = { ...readToyLock(), wasm: { file: 'grammar.wasm', sha256: 'e'.repeat(64) } };
+  const same = 'e'.repeat(64);
+
+  it('returns null only when both builds, the lock and the committed file all agree', () => {
+    assert.equal(compareHashes(lock, same, same, same), null);
+  });
+
+  it('names platform, expected, both computed and committed on any disagreement', () => {
+    const other = 'f'.repeat(64);
+    for (const [first, second, committed] of [
+      [other, same, same],
+      [same, other, same],
+      [same, same, other],
+    ] as const) {
+      const text = compareHashes(lock, first, second, committed);
+      assert.ok(text !== null);
+      assert.ok(text.includes(process.platform));
+      assert.ok(text.includes(lock.wasm.sha256));
+      assert.ok(text.includes(first));
+      assert.ok(text.includes(second));
+      assert.ok(text.includes(committed));
+    }
   });
 });
 

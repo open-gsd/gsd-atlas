@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { pathToFileURL } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { parseGrammarLock } from '../src/lang/grammar-lock.ts';
 import type { GrammarLock } from '../src/lang/grammar-lock.ts';
 import { ensureTreeSitter } from './ensure-tree-sitter.ts';
@@ -69,24 +69,107 @@ export function removeDir(dir: string): void {
   fs.rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 }
 
+/** Read the upstream archive: fetch for https, the file system for file:// (never http). */
+async function readArchive(url: string): Promise<Buffer> {
+  try {
+    if (url.startsWith('file://')) {
+      return fs.readFileSync(fileURLToPath(url));
+    }
+    if (!url.startsWith('https://')) {
+      throw new Error('only https:// and file:// archive URLs are allowed');
+    }
+    const response = await fetch(url);
+    if (!response.ok) {
+      throw new Error(`HTTP ${String(response.status)}`);
+    }
+    return Buffer.from(await response.arrayBuffer());
+  } catch (error) {
+    throw new GrammarBuildError(
+      'archive_fetch_failed',
+      `${url}: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+}
+
 /**
- * Copy the grammar source for `lock` into the fresh directory `workDir` (never inside the repo).
- * Local sources are copied from the module directory.
+ * Extract an archive into the existing directory `workDir`, stripping one leading directory.
+ * Relative paths plus a cwd that holds both: GNU tar on Windows parses a drive letter such as
+ * C: as a remote host, so an absolute Windows path must never reach tar (assumption A2).
+ */
+function extractArchive(archive: Buffer, workDir: string): void {
+  const holder = path.dirname(workDir);
+  const archiveName = `${path.basename(workDir)}.archive.tar.gz`;
+  fs.writeFileSync(path.join(holder, archiveName), archive);
+  try {
+    const result = spawnSync(
+      'tar',
+      ['-xzf', archiveName, '-C', path.basename(workDir), '--strip-components=1'],
+      { cwd: holder, encoding: 'utf8' },
+    );
+    if (result.error !== undefined || result.status !== 0) {
+      const reason = result.error?.message ?? result.stderr;
+      throw new GrammarBuildError('extract_failed', `tar -xzf ${archiveName} failed: ${reason}`);
+    }
+  } finally {
+    fs.rmSync(path.join(holder, archiveName), { force: true });
+  }
+}
+
+function applyPatch(patchRelative: string, patchFile: string, dir: string): void {
+  if (!fs.existsSync(patchFile)) {
+    throw new GrammarBuildError('patch_failed', `patch ${patchRelative} does not exist`);
+  }
+  // git apply works outside a repository and is on every runner; argument array, no shell.
+  const result = spawnSync('git', ['apply', '--whitespace=nowarn', patchFile], { cwd: dir, encoding: 'utf8' });
+  if (result.error !== undefined || result.status !== 0) {
+    const reason = result.error?.message ?? result.stderr.trim();
+    throw new GrammarBuildError('patch_failed', `patch ${patchRelative} does not apply: ${reason}`);
+  }
+}
+
+/**
+ * Put the grammar source for `lock` into the fresh directory `workDir` (never inside the repo)
+ * and apply the lock's patches in order. Local sources are copied from the module directory;
+ * upstream sources are fetched, checked against `archiveSha256` and extracted. The shipped
+ * product never reaches this code: it is explicit dev-time build tooling.
  */
 export async function prepareSource(
   lock: GrammarLock,
   moduleDir: string,
   workDir: string,
 ): Promise<PreparedSource> {
+  if (lock.license.trim() === '') {
+    throw new GrammarBuildError('lock_invalid', 'license must be an SPDX id');
+  }
+  fs.mkdirSync(workDir, { recursive: true });
+  let dir = workDir;
   if (lock.source.type === 'local') {
     const from = path.join(moduleDir, lock.source.path);
     if (!fs.existsSync(path.join(from, 'grammar.js'))) {
       throw new GrammarBuildError('source_missing', `no grammar.js under ${from}`);
     }
     fs.cpSync(from, workDir, { recursive: true });
-    return { dir: workDir, patchesApplied: 0 };
+  } else {
+    const archive = await readArchive(lock.source.url);
+    const actual = sha256Hex(archive);
+    if (actual !== lock.source.archiveSha256) {
+      throw new GrammarBuildError(
+        'archive_hash_mismatch',
+        `${lock.source.url}: expected ${lock.source.archiveSha256}, got ${actual}`,
+      );
+    }
+    extractArchive(archive, workDir);
+    if (lock.source.subdir !== undefined) {
+      dir = path.join(workDir, lock.source.subdir);
+    }
+    if (!fs.existsSync(path.join(dir, 'grammar.js'))) {
+      throw new GrammarBuildError('source_missing', `no grammar.js under ${dir} after extraction`);
+    }
   }
-  throw new GrammarBuildError('source_missing', 'upstream sources are not supported yet');
+  for (const patch of lock.patches) {
+    applyPatch(patch, path.join(moduleDir, patch), dir);
+  }
+  return { dir, patchesApplied: lock.patches.length };
 }
 
 function run(binary: string, args: string[], cwd: string, code: GrammarBuildErrorCode): void {
