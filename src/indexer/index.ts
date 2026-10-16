@@ -7,6 +7,8 @@ export { DEFAULT_INDEXER_CONFIG } from './defaults.ts';
 export { createManualEventSource } from './event-source.ts';
 export type { EventSource, FsChange, ManualEventSource, SourceEvent, SourceHandler, WatchProblem } from './event-source.ts';
 export { createIndexer } from './indexer.ts';
+export { createCoalescingQueue } from './queue.ts';
+export type { CoalescingQueue, CoalescingQueueOptions } from './queue.ts';
 export { IndexerError } from './types.ts';
 export type {
   BuildResult,
@@ -18,4 +20,5 @@ export type {
   IndexerErrorCode,
   IndexerNotice,
   IndexerStatus,
+  WatchProblemRecord,
 } from './types.ts';

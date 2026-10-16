@@ -22,6 +22,7 @@ import type { FactStore, Writer } from '../fact-store/index.ts';
 import type { Governor, JobClass } from '../governor/index.ts';
 import { SOURCE_TREE_CODES } from '../source-tree/index.ts';
 import type { SourceTree } from '../source-tree/index.ts';
+import type { PathFilter } from './ignore.ts';
 import { extensionOf } from './modules.ts';
 import type { ModuleHost } from './modules.ts';
 import { IndexerError } from './types.ts';
@@ -39,6 +40,8 @@ export interface ProcessContext {
   readonly store: FactStore;
   readonly governor: Governor;
   readonly host: ModuleHost;
+  /** Drops ignored paths before `hashPaths`, which would hash them (T-02-14). */
+  readonly filter: PathFilter;
   readonly config: IndexerConfig;
   isStopped(): boolean;
   /** Waits `ms` of the injected clock's time; a stop wakes it early. */
@@ -158,8 +161,12 @@ interface Prepared {
 async function prepare(ctx: ProcessContext, worktree: string, sorted: readonly string[]): Promise<Prepared> {
   const extensions = ctx.host.extensions();
   const claimed = new Set(extensions);
-  const candidates = sorted.filter((p) => claimed.has(extensionOf(p)));
-  const unclaimed = sorted.filter((p) => !claimed.has(extensionOf(p)));
+  // Unclaimed extensions are set aside first: they cost no git run and no ignore verdict. Then git's ignore rules
+  // are applied, because hashPaths would hash an ignored file that exists (T-02-14).
+  const wanted = sorted.filter((p) => claimed.has(extensionOf(p)));
+  const { kept, dropped } = await ctx.filter.keep(worktree, wanted);
+  const candidates = [...kept].sort(compareCodeUnits);
+  const unclaimed = [...sorted.filter((p) => !claimed.has(extensionOf(p))), ...dropped].sort(compareCodeUnits);
 
   const hashed = candidates.length === 0 ? undefined : await ctx.tree.hashPaths(worktree, candidates);
   const files = hashed?.files ?? new Map<string, string>();

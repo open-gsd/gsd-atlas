@@ -44,6 +44,8 @@ export async function runBuild(ctx: ProcessContext, writer: Writer, target: Buil
   const extensions = ctx.host.extensions();
 
   const snapshot = await runJob(ctx, job, () => ctx.tree.snapshot(worktree));
+  // A snapshot lists only files git does not ignore, so these paths need no ignore verdict later.
+  ctx.filter.learn(worktree, snapshot.files.keys());
   const source = await runJob(ctx, job, () =>
     ctx.tree.sourceSet(worktree, snapshot.files, { extensions, maxBytes: ctx.config.maxFileBytes }),
   );
