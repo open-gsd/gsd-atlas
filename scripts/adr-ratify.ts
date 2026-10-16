@@ -13,7 +13,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { parseArgs } from 'node:util';
 
-import { PHASE1_SLUGS, collectLinkFiles, findAdrFile, ratifyText, rewriteReferences } from './adr.ts';
+import { RATIFIED_SLUGS, collectLinkFiles, findAdrFile, ratifyText, rewriteReferences } from './adr.ts';
 
 function localIsoDate(now: Date = new Date()): string {
   const y = now.getFullYear();
@@ -38,8 +38,8 @@ const { values } = parseArgs({
 });
 
 const slug = values.slug;
-if (!slug || !PHASE1_SLUGS.includes(slug)) {
-  fail(`--slug must be one of: ${PHASE1_SLUGS.join(', ')}`);
+if (!slug || !RATIFIED_SLUGS.includes(slug)) {
+  fail(`--slug must be one of: ${RATIFIED_SLUGS.join(', ')}`);
 }
 if (!values.issue || !/^[1-9][0-9]*$/.test(values.issue)) fail('--issue must be a positive integer');
 const issue = Number(values.issue);

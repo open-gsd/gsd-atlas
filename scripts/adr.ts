@@ -22,6 +22,17 @@ export const PHASE1_SLUGS: readonly string[] = [
   'tenant-composition',
 ];
 
+/** The four ADRs scheduled for Phase 2 (FND-12, D-18). */
+export const PHASE2_SLUGS: readonly string[] = [
+  'worktree-lifecycle',
+  'query-and-policy',
+  'mcp-contract',
+  'value-dashboard',
+];
+
+/** Every ADR that adr-ratify may ratify: the Phase 1 set followed by the Phase 2 set (FND-12, D-18). */
+export const RATIFIED_SLUGS: readonly string[] = [...PHASE1_SLUGS, ...PHASE2_SLUGS];
+
 export interface BrokenLink {
   /** Path of the file holding the link, relative to the root, forward slashes. */
   file: string;

@@ -19,7 +19,7 @@ These decisions shape the MVP's code and data, and are expensive to reverse once
 | [7-fact-store-interface](7-fact-store-interface.md) | One Fact Store module with a fact‑level seam; `at(worktree)` reader with `Answer<T>`; single writer lease; typed maintenance; SQL driver internal; no fake store | A2, A3, A5, A17, A20, A21, A26, A45, A46 | Accepted |
 | [draft-host-process-model](draft-host-process-model.md) | One host per user and major version; repos as isolated tenants; versioned protocol; secure local transport; fair scheduling; no caps | A22–A28, A39–A43, A46, A49 | Proposed |
 | [5-language-modules](5-language-modules.md) | Languages are data; shared Grammar Engine; PreciseResolver seam; three tiers; grammars built from pinned upstream with a parse‑error budget; what counts as source | A6, A7, A9, A25, A47, A48 | Accepted |
-| [draft-worktree-lifecycle](draft-worktree-lifecycle.md) | Overlays; collect when in git or past grace; history from git; submodules; watch fallback | A5, A20, A21, A43 | Proposed |
+| [11-worktree-lifecycle](11-worktree-lifecycle.md) | Overlays; collect when in git or past grace; history from git; submodules; watch fallback | A5, A20, A21, A43 | Accepted |
 | [draft-mcp-contract](draft-mcp-contract.md) | MCP tool set, response envelope, ranking, token budgets, freshness and degraded flags, untrusted‑text fencing, CLI parity | A11, A12, A26, A32, A44, A51 | Proposed |
 | [draft-user-controlled-diagnostics](draft-user-controlled-diagnostics.md) | No telemetry; diagnostics off by default, approved per data type, submitted as GitHub issues; ↑ ↔ ↓ ratings; `gsd-atlas bug` defect forensics; automatic intake in the repo | A16, A52, A53 | Proposed |
 | [draft-query-and-policy](draft-query-and-policy.md) | One Query module behind MCP, CLI and hooks; a separate pure Policy module with the session ledger | A11, A12, A26, A32–A37, A44, A51, A58 | Proposed |
@@ -41,6 +41,9 @@ Phase 1 ratification (FND-09): one issue per ADR in open-gsd/gsd-atlas, each dra
 | fact-store-interface | [#7](https://github.com/open-gsd/gsd-atlas/issues/7) | [7-fact-store-interface.md](7-fact-store-interface.md) | 2026-10-15 |
 | sqlite-store | [#8](https://github.com/open-gsd/gsd-atlas/issues/8) | [8-sqlite-store.md](8-sqlite-store.md) | 2026-10-15 |
 | tenant-composition | [#9](https://github.com/open-gsd/gsd-atlas/issues/9) | [9-tenant-composition.md](9-tenant-composition.md) | 2026-10-15 |
+| worktree-lifecycle | [#11](https://github.com/open-gsd/gsd-atlas/issues/11) | [11-worktree-lifecycle.md](11-worktree-lifecycle.md) | 2026-10-16 |
+
+Phase 2 ratification (FND-12): the four ADRs scheduled for Phase 2, same procedure.
 
 **Editorial repairs made at ratification (not amendments).** A lost-text token (a backslash and the digit one) had replaced passages in four files. Each was repaired from the project's own sources, `PRD.md` section 4.6 and `DESIGN.md` A9, and is pending human review:
 - `3-trust-boundaries.md` decision 2: restored the heading `Commands.` and its three rules.
@@ -66,7 +69,6 @@ The six ADRs that remain Proposed, and the phase whose first plan ratifies each 
 
 | ADR | Ratify before | Amendments applied at that ratification |
 |-----|---------------|------------------------------------------|
-| worktree-lifecycle | Phase 2 | Writer contention and leader/follower |
 | query-and-policy | Phase 2 | None |
 | mcp-contract | Phase 2 | None |
 | value-dashboard | Phase 2 | Metrics migrations |

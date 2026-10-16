@@ -1,7 +1,8 @@
 # ADR: Worktree overlays, retirement and history from git
 
-- **Status:** Proposed
-- **Issue:** to be opened (rename to `<issue#>-worktree-lifecycle.md`)
+- **Status:** Accepted
+- **Issue:** [#11](https://github.com/open-gsd/gsd-atlas/issues/11)
+- **Ratified:** 2026-10-16
 - **DESIGN.md:** A5, A20, A21, A43
 - **Review findings addressed:** F‑1 (overlay side), L‑1, L‑2, L‑3, H‑6
 

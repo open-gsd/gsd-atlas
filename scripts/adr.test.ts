@@ -5,9 +5,10 @@ import os from 'node:os';
 import path from 'node:path';
 import { describe, it } from 'node:test';
 
-import * as adrModule from './adr.ts';
 import {
   PHASE1_SLUGS,
+  PHASE2_SLUGS,
+  RATIFIED_SLUGS,
   checkRelativeLinks,
   collectLinkFiles,
   findAdrFile,
@@ -204,14 +205,9 @@ describe('checkRelativeLinks', () => {
 
 describe('adr-ratify slug sets (FND-12, D-18)', () => {
   it('PHASE2_SLUGS is exactly the four Phase 2 ADRs and RATIFIED_SLUGS is Phase 1 then Phase 2', () => {
-    assert.deepEqual(adrModule.PHASE2_SLUGS, [
-      'worktree-lifecycle',
-      'query-and-policy',
-      'mcp-contract',
-      'value-dashboard',
-    ]);
-    assert.deepEqual(adrModule.RATIFIED_SLUGS, [...PHASE1_SLUGS, ...(adrModule.PHASE2_SLUGS ?? [])]);
-    assert.equal(new Set(adrModule.RATIFIED_SLUGS).size, 12);
+    assert.deepEqual(PHASE2_SLUGS, ['worktree-lifecycle', 'query-and-policy', 'mcp-contract', 'value-dashboard']);
+    assert.deepEqual(RATIFIED_SLUGS, [...PHASE1_SLUGS, ...PHASE2_SLUGS]);
+    assert.equal(new Set(RATIFIED_SLUGS).size, 12);
     assert.equal(PHASE1_SLUGS.length, 8);
   });
 
