@@ -5,6 +5,7 @@ import { GrammarRunError } from './errors.ts';
 import { GRAMMAR_LIMITS } from './limits.ts';
 import { compileGrammar, createInitializer, releaseQueries } from './load.ts';
 import type { CompiledGrammar } from './load.ts';
+import { measureErrors } from './measure.ts';
 import { stripBom } from './normalize.ts';
 import { collectCaptures } from './query.ts';
 import type { GrammarEngine, GrammarInput, GrammarRunResult, LoadedGrammar } from './types.ts';
@@ -43,10 +44,7 @@ function openGrammar(compiled: CompiledGrammar, onDispose: (grammar: LoadedGramm
         const result = withTree(live, text, (tree): GrammarRunResult => ({
           hadBom,
           captures: collectCaptures(compiled.queries, tree.rootNode, text),
-          // Filled by measureErrors in the next commit (LNG-06).
-          errorBytes: 0,
-          totalBytes: utf8Length(text),
-          missingNodes: 0,
+          ...measureErrors(tree.rootNode, text),
         }));
         return Promise.resolve(result);
       } catch (error) {

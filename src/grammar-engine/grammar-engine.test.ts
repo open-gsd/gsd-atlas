@@ -3,8 +3,10 @@ import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { describe, it } from 'node:test';
+import { Language, Parser } from 'web-tree-sitter';
 
-import { createGrammarEngine, GrammarLoadError, GrammarRunError } from './index.ts';
+import { defineGrammarEngineContract, loadToyScenarios } from './contract.ts';
+import { createFakeGrammarEngine, createGrammarEngine, GrammarLoadError, GrammarRunError } from './index.ts';
 import type { Capture, GrammarInput } from './index.ts';
 import { withTree } from './with-tree.ts';
 
@@ -199,3 +201,105 @@ describe('withTree', () => {
     assert.equal(digest, lock.wasm.sha256);
   });
 });
+
+describe('real engine: load failures that need a real WASM runtime', () => {
+  it('rejects garbage bytes whose sha256 matches the expected value with wasm_invalid', async () => {
+    const garbage = new Uint8Array([0, 1, 2, 3, 4, 5, 6, 7]);
+    const engine = createGrammarEngine();
+    await assert.rejects(
+      engine.load(toyInput({ wasm: garbage, expectedSha256: createHash('sha256').update(garbage).digest('hex') })),
+      (error: unknown) => error instanceof GrammarLoadError && error.code === 'wasm_invalid',
+    );
+    await engine.dispose();
+  });
+
+  it('rejects a wasm over 8 MiB with wasm_too_large, ahead of the hash check', async () => {
+    const engine = createGrammarEngine();
+    await assert.rejects(
+      engine.load(toyInput({ wasm: new Uint8Array(8 * 1024 * 1024 + 1) })),
+      (error: unknown) => error instanceof GrammarLoadError && error.code === 'wasm_too_large',
+    );
+    await engine.dispose();
+  });
+
+  it('rejects a query over 256 KiB with query_too_large', async () => {
+    const engine = createGrammarEngine();
+    await assert.rejects(
+      engine.load(toyInput({ queries: { tags: `; ${'x'.repeat(256 * 1024)}` } })),
+      (error: unknown) => error instanceof GrammarLoadError && error.code === 'query_too_large',
+    );
+    await engine.dispose();
+  });
+
+  it('keeps working after a failed load (the engine is not poisoned)', async () => {
+    const engine = createGrammarEngine();
+    await assert.rejects(engine.load(toyInput({ expectedSha256: 'c'.repeat(64) })));
+    const grammar = await engine.load(toyInput());
+    assert.equal((await grammar.run(fixture('basic.toy'))).captures.length, 6);
+    await engine.dispose();
+  });
+
+  it('withTree still deletes a real tree when the callback is deliberately faulty', async () => {
+    await Parser.init();
+    const language = await Language.load(toyInput().wasm);
+    const parser = new Parser();
+    try {
+      parser.setLanguage(language);
+      let deleted = 0;
+      // Not a call to the parse method: lint allows parse calls only inside with-tree.ts.
+      const realParse = parser.parse.bind(parser);
+      const spying = {
+        parse: (source: string) => {
+          const tree = realParse(source);
+          if (tree === null) return null;
+          const realDelete = tree.delete.bind(tree);
+          tree.delete = () => {
+            deleted += 1;
+            realDelete();
+          };
+          return tree;
+        },
+      };
+      assert.throws(
+        () =>
+          withTree(spying, fixture('basic.toy'), () => {
+            throw new Error('faulty callback');
+          }),
+        /faulty callback/,
+      );
+      assert.equal(deleted, 1);
+    } finally {
+      parser.delete();
+    }
+  });
+});
+
+describe('fake engine expectations are not echoed wrong data', () => {
+  it('the scenarios the fake is scripted from equal hand-written expectations for emoji.toy', async () => {
+    const scenarios = await loadToyScenarios();
+    const emoji = scenarios.expected.get(scenarios.sources.emoji);
+    assert.ok(emoji);
+    assert.deepEqual(
+      emoji.captures.map((c) => [c.query, c.name, c.span]),
+      [
+        ['imports', 'import.path', span(1, 4, 1, 10)],
+        ['tags', 'definition.function', span(2, 0, 4, 1)],
+        ['tags', 'name', span(2, 3, 2, 8)],
+        ['refs', 'reference.call', span(3, 2, 3, 6)],
+      ],
+    );
+    assert.equal(emoji.errorBytes, 0);
+    assert.equal(emoji.hadBom, false);
+    const bom = scenarios.expected.get(scenarios.sources.bom);
+    assert.ok(bom);
+    assert.equal(bom.hadBom, true);
+    const broken = scenarios.expected.get(scenarios.sources.broken);
+    assert.ok(broken);
+    assert.ok(broken.errorBytes > 0);
+  });
+});
+
+defineGrammarEngineContract('real engine', () => createGrammarEngine());
+defineGrammarEngineContract('fake engine', (scenarios) =>
+  createFakeGrammarEngine({ abi: scenarios.abi, results: scenarios.expected }),
+);

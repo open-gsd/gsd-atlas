@@ -7,6 +7,10 @@ export { createGrammarEngine } from './engine.ts';
 export { GrammarLoadError, GrammarRunError } from './errors.ts';
 export type { GrammarLoadErrorCode, GrammarRunErrorCode } from './errors.ts';
 export { GRAMMAR_LIMITS } from './limits.ts';
+export { measureErrors } from './measure.ts';
+export type { ErrorMeasurement } from './measure.ts';
+export { createFakeGrammarEngine } from './fake.ts';
+export type { FakeGrammarScript } from './fake.ts';
 export { stripBom } from './normalize.ts';
 export type {
   Capture,
