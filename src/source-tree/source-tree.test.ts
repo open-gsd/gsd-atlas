@@ -206,6 +206,21 @@ describe('real Source Tree git quirks', () => {
     }
   });
 
+  it('fails closed: a config listing with a driver name that is not valid UTF-8 rejects the snapshot and starts no hash-object (CR-01)', async (t) => {
+    const repo = await createTempGitRepo({ runner: setupRunner, files: { 'a.txt': 'a\n' } });
+    t.after(() => repo.cleanup());
+    const recording = createRecordingRunner({
+      respond: (spec) =>
+        subcommand(spec) === 'config'
+          ? { stdout: Buffer.concat([Buffer.from(probeListing(spec)), Buffer.from('filter.a'), Buffer.from([0xff]), Buffer.from('b.clean\n')]) }
+          : { stdout: '' },
+    });
+    const tree = createSourceTree({ runner: recording, repoDir: repo.dir });
+    await assert.rejects(() => tree.snapshot(repo.dir), { code: 'filter_enumeration_failed' });
+    assert.equal(hashStarts(recording), 0);
+    assert.deepEqual(recording.starts.map(subcommand), ['config']);
+  });
+
   it('answers hasObject false and throws invalid_argument for option-like input without starting git', async (t) => {
     const { recording, tree } = await realTree(t, { files: { 'a.txt': 'a\n' } });
     assert.equal(await tree.hasObject('--all'), false);

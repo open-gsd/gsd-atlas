@@ -1,8 +1,11 @@
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import os from 'node:os';
+import path from 'node:path';
 import { describe, it } from 'node:test';
 import { diagnostic } from '../facts/index.ts';
 import { createTempGitRepo } from '../test-kit/index.ts';
+import { MAX_FILTER_NAME_LENGTH, filterNameProblem, isNeutralisableFilterName } from './filter-name.ts';
 import {
   GitConfigError,
   allowAll,
@@ -319,5 +322,137 @@ describe('listFilterNames', () => {
     assert.deepEqual(names, ['a=b', 'evil', 'my.driver']);
     assert.ok(names.every((n) => !n.startsWith('atlas-probe-')));
     assert.equal(plain.starts.length, 2);
+  });
+});
+
+/** Names the environment channel can carry byte for byte, and the ones it cannot (plan 01-20, CR-01). */
+const ACCEPTED_NAMES: readonly string[] = ['evil', 'a=b', 'my.driver', 'Mixed Case', 'x"y', '', 'a\tb', ' lead', 'trail ', 'café', '\u{1F600}', 'x'.repeat(1024)];
+const REFUSED_NAMES: ReadonlyArray<{ readonly name: string; readonly reason: RegExp }> = [
+  { name: 'a�b', reason: /U\+FFFD/ },
+  { name: '�', reason: /U\+FFFD/ },
+  { name: 'a\uD800b', reason: /U\+FFFD/ },
+  { name: 'a\uDC00b', reason: /U\+FFFD/ },
+  { name: 'a\rb', reason: /carriage return/ },
+  { name: 'a\nb', reason: /line feed/ },
+  { name: 'a\0b', reason: /NUL/ },
+  { name: 'x'.repeat(1025), reason: /1024/ },
+];
+
+describe('filterNameProblem: the one rule for which driver names the environment channel can carry', () => {
+  it('has a cap of 1024 UTF-16 code units', () => {
+    assert.equal(MAX_FILTER_NAME_LENGTH, 1024);
+  });
+
+  it('accepts unusual but representable names', () => {
+    for (const name of ACCEPTED_NAMES) {
+      assert.equal(filterNameProblem(name), null, JSON.stringify(name).slice(0, 40));
+      assert.equal(isNeutralisableFilterName(name), true);
+    }
+  });
+
+  it('refuses U+FFFD, unpaired surrogates, CR, LF, NUL and over-long names with a short reason that never echoes the name', () => {
+    for (const { name, reason } of REFUSED_NAMES) {
+      const problem = filterNameProblem(name);
+      assert.ok(problem !== null && problem !== '', `expected a refusal for ${JSON.stringify(name).slice(0, 40)}`);
+      assert.match(problem, reason);
+      assert.ok(problem.length <= 200, problem);
+      assert.ok(!problem.includes(name) || name === '', 'the reason must not contain the name');
+      assert.equal(isNeutralisableFilterName(name), false);
+    }
+  });
+});
+
+/** The bytes of one `filter.<raw name>.clean` line, as git prints a key with a name it did not decode. */
+const rawKeyLine = (...nameBytes: number[]): Buffer => Buffer.concat([Buffer.from('filter.'), Buffer.from(nameBytes), Buffer.from('.clean\n')]);
+const listingBytes = (spec: CommandSpec, tail: Uint8Array): Buffer => Buffer.concat([Buffer.from(listing(spec)), tail]);
+const noRawControls = (message: string): void => {
+  assert.ok(!/[\r\n\0]/.test(message), `the message must not carry a raw CR, LF or NUL: ${JSON.stringify(message)}`);
+};
+
+describe('listFilterNames: undecodable and unrepresentable driver names fail closed (CR-01, T-01-50)', () => {
+  const INVALID: ReadonlyArray<readonly [string, number[]]> = [
+    ['a lone 0xFF byte', [0x61, 0xff, 0x62]],
+    ['an invalid continuation 0xC3 0x28', [0x61, 0xc3, 0x28, 0x62]],
+    ['an encoded surrogate 0xED 0xA0 0x80', [0x61, 0xed, 0xa0, 0x80, 0x62]],
+    ['an overlong 0xC0 0xAF', [0x61, 0xc0, 0xaf, 0x62]],
+    ['a truncated tail 0xE2 0x82', [0x61, 0xe2, 0x82]],
+  ];
+
+  for (const [label, bytes] of INVALID) {
+    it(`rejects ${label} in a name with filter_enumeration_failed and an actionable message`, async () => {
+      const runner = createRecordingRunner({ respond: (spec) => ({ exitCode: 0, stdout: listingBytes(spec, rawKeyLine(...bytes)) }) });
+      await assert.rejects(() => listFilterNames(runner, W), (error: unknown) => {
+        assert.ok(error instanceof GitConfigError);
+        assert.equal(error.code, 'filter_enumeration_failed');
+        assert.match(error.message, /not valid UTF-8/);
+        assert.match(error.message, /rename or remove/i);
+        noRawControls(error.message);
+        return true;
+      });
+    });
+  }
+
+  it('rejects an undecodable listing that also lacks the probe with filter_enumeration_failed, not git_env_config_unsupported', async () => {
+    const runner = createRecordingRunner({ respond: () => ({ exitCode: 0, stdout: rawKeyLine(0x61, 0xff, 0x62) }) });
+    await assert.rejects(() => listFilterNames(runner, W), { code: 'filter_enumeration_failed' });
+  });
+
+  for (const { name, reason } of REFUSED_NAMES.filter((r) => r.name !== 'a\nb' && r.name !== 'a\uD800b' && r.name !== 'a\uDC00b')) {
+    it(`rejects the valid UTF-8 name ${JSON.stringify(name).slice(0, 20)} that the shared rule refuses`, async () => {
+      const runner = createRecordingRunner({ respond: (spec) => ({ exitCode: 0, stdout: listingBytes(spec, Buffer.from(`filter.${name}.clean\n`)) }) });
+      await assert.rejects(() => listFilterNames(runner, W), (error: unknown) => {
+        assert.ok(error instanceof GitConfigError);
+        assert.equal(error.code, 'filter_enumeration_failed');
+        assert.match(error.message, reason);
+        assert.match(error.message, /rename or remove/i);
+        assert.ok(error.message.length < 400, `the message must clip the shown key: ${String(error.message.length)} characters`);
+        noRawControls(error.message);
+        return true;
+      });
+    });
+  }
+
+  it('returns unusual but representable names verbatim, sorted by code unit, unique, without the probe', async () => {
+    const names = ['a\tb', ' lead', 'trail ', 'café', '\u{1F600}', 'x'.repeat(1024)];
+    const runner = createRecordingRunner({ respond: (spec) => ({ exitCode: 0, stdout: Buffer.from(listing(spec, ...names)) }) });
+    assert.deepEqual(await listFilterNames(runner, W), [...names].sort());
+  });
+
+  it('with real git rejects a config whose driver name holds a lone 0xFF byte, after exactly one git start', async (t) => {
+    const setup = createRealRunner({ decide: allowAll });
+    const repo = await createTempGitRepo({ runner: setup, files: { 'a.txt': 'a\n' } });
+    t.after(() => repo.cleanup());
+    fs.appendFileSync(path.join(repo.dir, '.git', 'config'), Buffer.concat([Buffer.from('[filter "a'), Buffer.from([0xff]), Buffer.from('b"]\n\tclean = cat\n')]));
+    const recording = createRecordingRunner({ delegate: createRealRunner() });
+    await assert.rejects(() => listFilterNames(recording, repo.dir, undefined, repo.envOverlay), { code: 'filter_enumeration_failed' });
+    assert.equal(recording.starts.length, 1);
+  });
+});
+
+describe('neutraliseFilters and gitSpec refuse the names the shared rule refuses (CR-01, WR-01)', () => {
+  it('throws GitConfigError filter_enumeration_failed for each refused name', () => {
+    for (const { name } of REFUSED_NAMES) {
+      const label = JSON.stringify(name).slice(0, 20);
+      assert.throws(() => neutraliseFilters([name]), { name: 'GitConfigError', code: 'filter_enumeration_failed' }, label);
+      assert.throws(() => gitSpec(['hash-object', '--stdin-paths'], { worktree: W, filterNames: ['ok', name] }), { code: 'filter_enumeration_failed' }, label);
+    }
+  });
+
+  it('does not throw for the accepted names; a 1024-unit name yields a count of 4', () => {
+    for (const name of ACCEPTED_NAMES) assert.doesNotThrow(() => neutraliseFilters([name]), JSON.stringify(name).slice(0, 20));
+    assert.equal(neutraliseFilters(['x'.repeat(1024)])['GIT_CONFIG_COUNT'], '4');
+  });
+
+  it('names the problem and shows the name only through JSON.stringify, clipped', () => {
+    try {
+      neutraliseFilters(['a\rb' + 'y'.repeat(200)]);
+      assert.fail('expected a throw');
+    } catch (error) {
+      assert.ok(error instanceof GitConfigError);
+      assert.match(error.message, /carriage return/);
+      assert.ok(error.message.includes('\\r'), 'the CR must appear escaped');
+      assert.ok(error.message.length < 400, error.message);
+      noRawControls(error.message);
+    }
   });
 });

@@ -4,7 +4,9 @@
  * The poisoned repository carries a clean/smudge filter driver (via `.gitattributes`), a `core.fsmonitor`
  * command and a `core.hooksPath` folder of hooks, each of which writes a marker file OUTSIDE the repo.
  * A positive control first proves the poison fires when git runs unprotected on this platform; then the
- * Source Tree snapshot runs under the built-in `decide` and the markers must not exist.
+ * Source Tree snapshot runs under the built-in `decide` and the markers must not exist. Further groups
+ * cover filter driver names that are unusual: ones the environment channel cannot carry must fail the
+ * snapshot closed (CR-01), and valid unusual ones must still snapshot (no over-refusal).
  */
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
@@ -16,7 +18,7 @@ import { ESLint } from 'eslint';
 import { createFakeSourceTree, createSourceTree } from '../source-tree/index.ts';
 import { createTempGitRepo } from '../test-kit/index.ts';
 import type { TempGitRepo } from '../test-kit/index.ts';
-import { allowAll, createRealRunner, createRecordingRunner, gitSpec } from './index.ts';
+import { GitConfigError, allowAll, createRealRunner, createRecordingRunner, gitSpec } from './index.ts';
 import type { RecordedSpec } from './index.ts';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -215,6 +217,161 @@ describe('hostile repository: filter driver names that a -c pair cannot express 
     for (const d of ODD_DRIVERS) {
       assert.equal(exists(p.markers.get(d.name) as string), false, `the filter driver ${JSON.stringify(d.name)} ran`);
       assert.equal(files.get(d.file), blobId(`content of ${d.file}\n`), d.file);
+    }
+    assert.deepEqual(diagnostics, []);
+    assert.equal(recording.denials.length, 0);
+    assert.ok(recording.starts.every((s) => s.executable === 'git' && s.builtinId === 'git'), 'a start was not a built-in git spec');
+    assert.equal(recording.starts.filter((s) => subcommand(s) === 'hash-object').length, 1);
+  });
+});
+
+/** One driver in a raw-config fixture: its name as bytes, the data file that references it (if any) and its marker. */
+interface RawDriver {
+  readonly label: string;
+  readonly name: Buffer;
+  /** The committed data file `.gitattributes` points at the driver; `null` for a driver that is only configured. */
+  readonly file: string | null;
+  readonly marker: string;
+}
+
+interface RawDrivers {
+  readonly repo: TempGitRepo;
+  readonly markers: ReadonlyMap<string, string>;
+}
+
+const bytes = (...b: number[]): Buffer => Buffer.from(b);
+const text = (s: string): Buffer => Buffer.from(s, 'utf8');
+
+/**
+ * A repository whose filter driver names are raw bytes (CR-01, T-01-50). The data files are committed first,
+ * `.gitattributes` is written as bytes (a file name, a space, `filter=`, the raw name, LF) and committed, and
+ * only THEN is one `[filter "<raw name>"]` section appended to `.git/config` per driver, so building the
+ * fixture runs nothing. Each driver's `clean` command writes its marker outside the repo.
+ */
+async function rawDriverRepo(t: { after(fn: () => void): void }, drivers: readonly RawDriver[]): Promise<RawDrivers> {
+  const files = Object.fromEntries(drivers.flatMap((d) => (d.file === null ? [] : [[d.file, `content of ${d.file}\n`] as const])));
+  const repo = await createTempGitRepo({ runner: setup, files });
+  t.after(() => repo.cleanup());
+  const base = path.dirname(repo.dir);
+  const filter = path.join(base, 'filter-raw.cjs');
+  fs.writeFileSync(filter, "require('node:fs').writeFileSync(process.argv[2], 'ran');\nprocess.stdin.pipe(process.stdout);\n");
+
+  repo.write(
+    '.gitattributes',
+    Buffer.concat(drivers.flatMap((d) => (d.file === null ? [] : [text(`${d.file} filter=`), d.name, text('\n')]))),
+  );
+  await repo.commitAll('attributes');
+
+  const markers = new Map<string, string>();
+  const sections: Buffer[] = [];
+  for (const d of drivers) {
+    const marker = path.join(base, d.marker);
+    markers.set(d.label, marker);
+    sections.push(text('[filter "'), d.name, text(`"]\n\tclean = "'${slash(process.execPath)}' '${slash(filter)}' '${slash(marker)}'"\n`));
+  }
+  fs.appendFileSync(path.join(repo.dir, '.git', 'config'), Buffer.concat(sections));
+  return { repo, markers };
+}
+
+/** The unprotected hash-object call that fires every referenced driver; returns the labels whose marker is absent. */
+async function silentDrivers(p: RawDrivers, drivers: readonly RawDriver[]): Promise<string[]> {
+  const referenced = drivers.filter((d) => d.file !== null);
+  await setup.run({
+    executable: 'git',
+    args: ['-C', p.repo.dir, 'hash-object', '--stdin-paths'],
+    env: p.repo.envOverlay,
+    stdin: referenced.map((d) => `${d.file}\n`).join(''),
+  });
+  return referenced.filter((d) => !exists(p.markers.get(d.label) as string)).map((d) => d.label);
+}
+
+/** Driver names the environment channel cannot carry byte for byte, each referenceable from `.gitattributes`. */
+const UNREPRESENTABLE: readonly RawDriver[] = [
+  { label: 'a lone 0xFF byte', name: bytes(0x61, 0xff, 0x62), file: 'ff.txt', marker: 'M9' },
+  { label: 'an invalid continuation 0xC3 0x28', name: bytes(0x61, 0xc3, 0x28, 0x62), file: 'c328.txt', marker: 'M10' },
+  { label: 'an encoded surrogate 0xED 0xA0 0x80', name: bytes(0x61, 0xed, 0xa0, 0x80, 0x62), file: 'eda080.txt', marker: 'M11' },
+  { label: 'a genuine U+FFFD', name: bytes(0x61, 0xef, 0xbf, 0xbd, 0x62), file: 'fffd.txt', marker: 'M12' },
+  { label: 'a 1025 code unit name', name: text('x'.repeat(1025)), file: 'long1025.txt', marker: 'M13' },
+];
+
+describe('hostile repository: filter driver names the environment channel cannot carry (CR-01, T-01-50)', () => {
+  it('positive control: each of these drivers fires when git hashes its file unprotected', async (t) => {
+    const p = await rawDriverRepo(t, UNREPRESENTABLE);
+    const silent = await silentDrivers(p, UNREPRESENTABLE);
+    if (silent.length > 0) t.skip(`poison did not fire unprotected on this platform: ${silent.join(', ')}`);
+  });
+
+  for (const driver of UNREPRESENTABLE) {
+    it(`a snapshot is refused with filter_enumeration_failed for ${driver.label}, and its clean command never runs`, async (t) => {
+      const p = await rawDriverRepo(t, [driver]);
+      const recording = createRecordingRunner({ delegate: createRealRunner() });
+      const tree = createSourceTree({ runner: recording, repoDir: p.repo.dir, envOverlay: p.repo.envOverlay });
+
+      await assert.rejects(() => tree.snapshot(p.repo.dir), (error: unknown) => {
+        assert.ok(error instanceof GitConfigError, String(error));
+        assert.equal(error.code, 'filter_enumeration_failed');
+        return true;
+      });
+
+      assert.equal(exists(p.markers.get(driver.label) as string), false, `the driver with ${driver.label} ran`);
+      assert.deepEqual(recording.starts.map(subcommand), ['config']);
+      assert.equal(recording.denials.length, 0);
+      assert.ok(recording.starts.every((s) => s.executable === 'git' && s.builtinId === 'git'), 'a start was not a built-in git spec');
+    });
+  }
+
+  // No positive control: an attribute value ends at whitespace, so a driver named with a CR cannot be
+  // referenced from .gitattributes (an unprotected hash-object over `filter=a<CR>b` ran nothing, verified on
+  // git 2.54.0). The case pins the failure type: a typed enumeration error, not a denial at the hash step.
+  it('a driver named with a carriage return is refused with the typed enumeration error, not a denial at the hash step', async (t) => {
+    const drivers: readonly RawDriver[] = [
+      { label: 'a CR name', name: text('a\rb'), file: null, marker: 'M17' },
+      { label: 'a plain name', name: text('plain'), file: 'plain.txt', marker: 'M18' },
+    ];
+    const p = await rawDriverRepo(t, drivers);
+    const recording = createRecordingRunner({ delegate: createRealRunner() });
+    const tree = createSourceTree({ runner: recording, repoDir: p.repo.dir, envOverlay: p.repo.envOverlay });
+
+    await assert.rejects(() => tree.snapshot(p.repo.dir), (error: unknown) => {
+      assert.ok(error instanceof GitConfigError, String(error));
+      assert.equal(error.code, 'filter_enumeration_failed');
+      assert.match(error.message, /carriage return/);
+      return true;
+    });
+
+    assert.deepEqual(recording.starts.map(subcommand), ['config']);
+    assert.equal(recording.denials.length, 0);
+    assert.equal(exists(p.markers.get('a plain name') as string), false);
+  });
+});
+
+/** Driver names that are unusual but that the environment channel carries byte for byte. */
+const REPRESENTABLE: readonly RawDriver[] = [
+  { label: 'a non-ASCII letter', name: text('café'), file: 'cafe.txt', marker: 'M14' },
+  { label: 'an emoji', name: text('\u{1F600}'), file: 'emoji.txt', marker: 'M15' },
+  { label: 'exactly 1024 code units', name: text('x'.repeat(1024)), file: 'long1024.txt', marker: 'M16' },
+  { label: 'a tab', name: text('a\tb'), file: null, marker: 'M19' },
+  { label: 'a leading space', name: text(' lead'), file: null, marker: 'M20' },
+  { label: 'a trailing space', name: text('trail '), file: null, marker: 'M21' },
+];
+
+describe('hostile repository: unusual but representable filter driver names still snapshot (no over-refusal)', () => {
+  it('positive control: the referenced drivers fire when git hashes their files unprotected', async (t) => {
+    const p = await rawDriverRepo(t, REPRESENTABLE);
+    const silent = await silentDrivers(p, REPRESENTABLE);
+    if (silent.length > 0) t.skip(`poison did not fire unprotected on this platform: ${silent.join(', ')}`);
+  });
+
+  it('a snapshot through the default decide neutralises all of them, hashes the plain content and starts one hash-object', async (t) => {
+    const p = await rawDriverRepo(t, REPRESENTABLE);
+    const recording = createRecordingRunner({ delegate: createRealRunner() });
+    const tree = createSourceTree({ runner: recording, repoDir: p.repo.dir, envOverlay: p.repo.envOverlay });
+
+    const { files, diagnostics } = await tree.snapshot(p.repo.dir);
+
+    for (const d of REPRESENTABLE) {
+      assert.equal(exists(p.markers.get(d.label) as string), false, `the driver with ${d.label} ran`);
+      if (d.file !== null) assert.equal(files.get(d.file), blobId(`content of ${d.file}\n`), d.file);
     }
     assert.deepEqual(diagnostics, []);
     assert.equal(recording.denials.length, 0);
