@@ -251,6 +251,7 @@ None - no external service configuration required.
 
 - **02-16 (Query):** `ensureFresh(worktree, paths, waitMs?)` returns `{complete, stalePaths, invalid}` for the `fresh` port; `complete: false` maps to `fresh_timeout`, `invalid` to the `invalid_fresh_path` warning.
 - **02-17 (Reconcile, watcher):** the `EventSource` port lacks `subscribeGit` and `emitHead` (add them there); `ProcessContext` and `processBatch` are ready for chunks; `link` attaches a file that is marked stale without re-extracting it, so Reconcile or `markStale` handling must force a parse for stale paths; a `.gitignore` change clears ignore memory but does not re-evaluate paths already stored; a build that overlaps queue batches writes its overlay last (Reconcile repairs it).
+- **Requirements:** IDX-02 and STO-02 are marked complete in REQUIREMENTS.md; IDX-04 and LNG-05 stay Pending there because other plans of this phase also declare them (the shared-ID gate), and flip when the last of those finishes.
 - **Performance follow-ups:** a build hashes the paths that need work a second time (deliberate, STO-02); a new existing file costs one snapshot; both are within the 1 s p99 budget on gsd-core only if measured by 02-26.
 - **Platform:** Linux and Windows are unverified until three-OS CI runs these tests (stamp comparison depends on mtime resolution; the symlink case is skipped on Windows).
 

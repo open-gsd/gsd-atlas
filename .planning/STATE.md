@@ -3,16 +3,16 @@ gsd_state_version: "1.0"
 current_phase: 02
 current_phase_name: Grammar Tier, Store and stdio Host
 status: executing
-stopped_at: Completed 02-14-PLAN.md
-last_updated: "2026-10-16T21:44:33.554Z"
+stopped_at: Completed 02-15-PLAN.md
+last_updated: "2026-10-16T22:10:37.925Z"
 last_activity: 2026-10-16
-last_activity_desc: Completed 02-14 grammar worker pool
-state_head: e140f8e50fc73934154a54d2fd8b06ec30dd689a
+last_activity_desc: Completed 02-15 indexer core
+state_head: 4bb8de3aa3d4d03bc7436dd22e8d40b838c96918
 progress:
   total_phases: 9
   completed_phases: 1
   total_plans: 48
-  completed_plans: 35
+  completed_plans: 36
   percent: 11
 ---
 
@@ -28,9 +28,9 @@ See: .planning/PROJECT.md (updated 2026-10-15)
 ## Current Position
 
 Phase: 02 (Grammar Tier, Store and stdio Host) — EXECUTING
-Plan: 15 of 28 complete (plans 02-01 to 02-14 and 02-21 complete; they ran out of order, next is the lowest-numbered incomplete plan, 02-15)
+Plan: 16 of 28 complete (plans 02-01 to 02-15 and 02-21 complete; they ran out of order, next is the lowest-numbered incomplete plan, 02-16)
 Status: Ready to execute
-Last activity: 2026-10-16 — Completed 02-14 (bounded worker-thread pool behind GrammarEngine: FIFO queue, lazy per-worker grammar load, hard per-run deadline that terminates the worker, crash recovery, recycling, RSS plateau test over 1,200 files; src/grammar-engine/pool)
+Last activity: 2026-10-16 — Completed 02-15 (Indexer core: coalescing queue with debounce and maximum wait, ensureFresh in one fresh-class request, ignored watcher paths dropped before hashPaths, stamp-checked hash and parse race, failure accounting; src/indexer)
 
 Progress: [█░░░░░░░░░] 11%
 
@@ -46,7 +46,7 @@ Progress: [█░░░░░░░░░] 11%
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 01 | 20 | - | - |
-| 02 | 15 of 28 | - | - |
+| 02 | 16 of 28 | - | - |
 
 **Recent Trend:**
 - Last 5 plans: -
@@ -72,6 +72,7 @@ Progress: [█░░░░░░░░░] 11%
 | Phase 02 P12 | 17 min | 3 tasks | 14 files |
 | Phase 02 P13 | 35 min | 3 tasks | 30 files |
 | Phase 02 P14 | 16 min | 3 tasks | 9 files |
+| Phase 02 P15 | 22 min | 3 tasks | 13 files |
 
 ## Accumulated Context
 
@@ -122,6 +123,10 @@ Recent decisions affecting current work:
 - [Phase 02]: 02-14: the pool shares matchLimit GRAMMAR_LIMITS.matchLimitMax (65536, as the 02-13 recall engine) and defaults both its hard per-run deadline and the in-worker parse deadline to indexer.parseTimeoutMs (5000) — 02-CONSTANTS.md has no matchLimit row; at equal values the pool deadline usually wins (terminate and lazy reload), both give parse_timeout
 - [Phase 02]: 02-14: every way a pool worker ends (deadline, exit, error, recycle, dispose) goes through one detach() that fails in-flight requests and terminates in the background; workers load a grammar lazily on first run, and an invalid engine option comes back from the worker as a coded load error, not a dead worker
 - [Phase 02]: 02-14: RSS with two workers recycling every 400 runs climbs through warm-up (about 222, 307, 348 MiB over 1,200 files) and levels at about 397 MiB over 24 rounds; the test bound is relative; Linux and Windows unverified until three-OS CI
+- [Phase 02]: 02-15: a worktree is named by its root directory as SourceTree.worktrees() reports it; that string is the store worktree id, the Source Tree argument and the worktree of every notice — The plan wrote build('main') as a placeholder; Query tests already use the root path
+- [Phase 02]: 02-15: ignored watcher paths are dropped before hashPaths by snapshot membership (one snapshot per batch for new existing paths, verdicts remembered, a .gitignore event clears them) — hashPaths does not consult ignore rules and check-ignore is outside the CommandRunner allowlist; Reconcile (02-17) repairs paths whose status a rule change flips
+- [Phase 02]: 02-15: STO-02 race check: the lstat stamp taken before hashing must equal the stamp before the link and right after the read, else nothing is committed, a requeued notice is sent and the path is hashed again up to maxRaceRetries, then it fails as unstable keeping its earlier facts — Per-path locks stop an older hash being committed after a newer one; a build hashes the paths that need work a second time on purpose
+- [Phase 02]: 02-15: queue.flushNow hands the pending entries back instead of delivering them, so ensureFresh runs them as one fresh-class Governor request; two internal bounds are not in 02-CONSTANTS.md: 8 paths in flight and 100000 remembered ignored paths per worktree — Neither is a timeout, a Governor queue bound or a gate threshold; record them if the constants file is reopened
 
 ### Pending Todos
 
@@ -148,6 +153,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-10-16T21:44:27.831Z
-Stopped at: Completed 02-14-PLAN.md
+Last session: 2026-10-16T22:10:37.868Z
+Stopped at: Completed 02-15-PLAN.md
 Resume file: None
