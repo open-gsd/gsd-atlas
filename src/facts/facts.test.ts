@@ -18,6 +18,7 @@ import {
 } from './index.ts';
 import type {
   Answer,
+  Citation,
   FileFacts,
   OverlaySnapshot,
   Request,
@@ -26,6 +27,8 @@ import type {
   Span,
   SymbolIdentity,
   SymbolLookup,
+  UntrustedText,
+  Watermark,
 } from './index.ts';
 
 const span = (
@@ -362,7 +365,7 @@ describe('validateFileFacts with the Phase 2 optional fields', () => {
 });
 
 describe('DEGRADED_CODES', () => {
-  it('is exactly the eight codes of the contract', () => {
+  it('is exactly the eleven codes of the contract, the original eight first', () => {
     assert.deepEqual(
       [...DEGRADED_CODES],
       [
@@ -374,6 +377,9 @@ describe('DEGRADED_CODES', () => {
         'stale',
         'follower',
         'cache_unavailable',
+        'reconciling',
+        'rebuilding',
+        'watermark_moved',
       ],
     );
   });
@@ -381,6 +387,9 @@ describe('DEGRADED_CODES', () => {
   it('isDegradedCode narrows strings', () => {
     assert.equal(isDegradedCode('stale'), true);
     assert.equal(isDegradedCode('resolver_failed'), true);
+    assert.equal(isDegradedCode('reconciling'), true);
+    assert.equal(isDegradedCode('rebuilding'), true);
+    assert.equal(isDegradedCode('watermark_moved'), true);
     assert.equal(isDegradedCode('nope'), false);
     assert.equal(isDegradedCode(''), false);
   });
@@ -409,6 +418,101 @@ describe('Envelope helpers', () => {
       data: null,
       diagnostics: [d],
     });
+  });
+});
+
+describe('Envelope extras (QRY-01)', () => {
+  const citation: Citation = {
+    id: 'c1',
+    path: 'src/a.ts',
+    line: 3,
+    col: 1,
+    endLine: 3,
+    endCol: 9,
+    confidence: 'EXTRACTED',
+    debug: 'dbg-1',
+  };
+  const untrusted: UntrustedText = {
+    nonce: 'n0nce',
+    entries: [{ ref: 'c1', text: 'export function a() {}' }],
+  };
+  const watermark: Watermark = { seq: 4, stalePaths: [] };
+
+  it('okEnvelope without extras has exactly the Phase 1 key set', () => {
+    const envelope = okEnvelope('x.v1', { a: 1 });
+    assert.deepEqual(Object.keys(envelope).sort(), ['data', 'diagnostics', 'ok', 'schema']);
+  });
+
+  it('okEnvelope carries each extra it is given and omits the rest', () => {
+    const envelope = okEnvelope('x.v1', 1, [], {
+      citations: [citation],
+      watermark,
+      untrusted_text: untrusted,
+      truncated: true,
+      more: 'cursor-x',
+      hints: ['h'],
+    });
+    assert.deepEqual(envelope.citations, [citation]);
+    assert.deepEqual(envelope.watermark, watermark);
+    assert.deepEqual(envelope.untrusted_text, untrusted);
+    assert.equal(envelope.truncated, true);
+    assert.equal(envelope.more, 'cursor-x');
+    assert.deepEqual(envelope.hints, ['h']);
+    assert.equal('retry_after' in envelope, false);
+  });
+
+  it('okEnvelope leaves out keys whose extra is absent or undefined', () => {
+    const envelope = okEnvelope('x.v1', 1, [], { truncated: false, more: undefined });
+    assert.deepEqual(Object.keys(envelope).sort(), [
+      'data',
+      'diagnostics',
+      'ok',
+      'schema',
+      'truncated',
+    ]);
+    assert.equal(JSON.stringify(envelope).includes('undefined'), false);
+    assert.equal(JSON.stringify(envelope).includes('more'), false);
+  });
+
+  it('okEnvelope with empty extras equals the Phase 1 object', () => {
+    assert.deepEqual(okEnvelope('x.v1', 1, [], {}), okEnvelope('x.v1', 1));
+  });
+
+  it('failEnvelope without extras is unchanged', () => {
+    const d = diagnostic('boom', 'error', 'failed');
+    assert.deepEqual(Object.keys(failEnvelope('x.v1', [d])).sort(), [
+      'data',
+      'diagnostics',
+      'ok',
+      'schema',
+    ]);
+  });
+
+  it('failEnvelope carries retry_after in milliseconds and no other new key', () => {
+    const d = diagnostic('busy', 'error', 'try again');
+    const envelope = failEnvelope('x.v1', [d], { retry_after: 250 });
+    assert.deepEqual(envelope, {
+      schema: 'x.v1',
+      ok: false,
+      data: null,
+      diagnostics: [d],
+      retry_after: 250,
+    });
+  });
+
+  it('a Citation holds structure and a text_ref handle, never source text', () => {
+    const withRef: Citation = { ...citation, text_ref: 'c1' };
+    assert.deepEqual(Object.keys(withRef).sort(), [
+      'col',
+      'confidence',
+      'debug',
+      'endCol',
+      'endLine',
+      'id',
+      'line',
+      'path',
+      'text_ref',
+    ]);
   });
 });
 
