@@ -30,10 +30,10 @@ Scope is the full PRD 1.0 (M0-M6), with M4 split into SDK facts, agent integrati
 - [ ] **STO-02**: Local facts are keyed by git blob id computed with git's clean filters, and spans line up on CRLF and BOM files
 - [ ] **STO-03**: Each worktree or branch is an overlay; two worktrees of one repo share local facts and a branch switch re-parses only changed files
 - [ ] **STO-04**: Resolved edges are keyed by overlay snapshot plus resolution context, so one file resolving to different targets on two branches gives each branch its correct target
-- [ ] **STO-05**: Retired file versions are collected when in git or past the grace period; after 20,000 edits the store is <= 1.25x a fresh build
+- [x] **STO-05**: Retired file versions are collected when in git or past the grace period; after 20,000 edits the store is <= 1.25x a fresh build
 - [ ] **STO-06**: A store corrupted or interrupted by SIGKILL during writes is detected and rebuilt automatically
 - [ ] **STO-07**: The store lives in the git common dir, falling back to the cache dir for non-git, read-only or synced paths, with `store.dir` override
-- [ ] **STO-08**: Two sessions on one repo do not collide on the writer lease; followers read and report `degraded: ['follower']`
+- [x] **STO-08**: Two sessions on one repo do not collide on the writer lease; followers read and report `degraded: ['follower']`
 - [ ] **STO-09**: `history --at <commit>` answers from git without writing to the store
 - [ ] **STO-10**: Maintenance tasks (reconcile, resolve, refresh, collect, compact, check) run in idle time and as `maintain` CLI commands
 
@@ -51,7 +51,7 @@ Scope is the full PRD 1.0 (M0-M6), with M4 split into SDK facts, agent integrati
 ### Indexing and Freshness (IDX)
 
 - [ ] **IDX-01**: A file save updates grammar-tier facts in < 1 s
-- [ ] **IDX-02**: Repeated change events coalesce into one index job per (worktree, path)
+- [x] **IDX-02**: Repeated change events coalesce into one index job per (worktree, path)
 - [ ] **IDX-03**: Reconcile repairs missed file events, and any watcher overflow triggers a Reconcile
 - [ ] **IDX-04**: A request with `fresh` paths indexes them first and answers with the updated facts
 
@@ -67,9 +67,9 @@ Scope is the full PRD 1.0 (M0-M6), with M4 split into SDK facts, agent integrati
 
 ### Host and Transport (HST)
 
-- [ ] **HST-01**: `gsd-atlas-mcp` serves MCP over stdio, stateless, and survives a host restart between two tool calls
+- [x] **HST-01**: `gsd-atlas-mcp` serves MCP over stdio, stateless, and survives a host restart between two tool calls
 - [ ] **HST-02**: The Host composes a Tenant per repo from M1, with a two-tenant smoke test
-- [ ] **HST-03**: The Governor schedules by priority class (interactive > fresh > indexing > maintenance) and answers `busy` with `retry_after` under saturation
+- [x] **HST-03**: The Governor schedules by priority class (interactive > fresh > indexing > maintenance) and answers `busy` with `retry_after` under saturation
 - [ ] **HST-04**: `gsd-atlas init` registers MCP and hooks at user scope for detected agent hosts, never in repo config
 
 ### Metrics (MET)
@@ -210,10 +210,10 @@ Which phases cover which requirements. Updated during roadmap creation.
 | STO-02 | Phase 2 | Pending |
 | STO-03 | Phase 2 | Pending |
 | STO-04 | Phase 2 | Pending |
-| STO-05 | Phase 2 | Pending |
+| STO-05 | Phase 2 | Complete |
 | STO-06 | Phase 2 | Pending |
 | STO-07 | Phase 2 | Pending |
-| STO-08 | Phase 2 | Pending |
+| STO-08 | Phase 2 | Complete |
 | STO-09 | Phase 2 | Pending |
 | STO-10 | Phase 2 | Pending |
 | LNG-01 | Phase 1 | Complete |
@@ -225,7 +225,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | LNG-07 | Phase 2 | Pending |
 | LNG-08 | Phase 2 | Pending |
 | IDX-01 | Phase 2 | Pending |
-| IDX-02 | Phase 2 | Pending |
+| IDX-02 | Phase 2 | Complete |
 | IDX-03 | Phase 2 | Pending |
 | IDX-04 | Phase 2 | Pending |
 | QRY-01 | Phase 2 | Pending |
@@ -235,9 +235,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 | QRY-05 | Phase 2 | Pending |
 | QRY-06 | Phase 2 | Pending |
 | QRY-07 | Phase 3 | Pending |
-| HST-01 | Phase 2 | Pending |
+| HST-01 | Phase 2 | Complete |
 | HST-02 | Phase 2 | Pending |
-| HST-03 | Phase 2 | Pending |
+| HST-03 | Phase 2 | Complete |
 | HST-04 | Phase 2 | Pending |
 | MET-01 | Phase 2 | Pending |
 | MET-02 | Phase 2 | Pending |

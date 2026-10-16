@@ -3,16 +3,16 @@ gsd_state_version: "1.0"
 current_phase: 02
 current_phase_name: Grammar Tier, Store and stdio Host
 status: executing
-stopped_at: Completed 02-21-PLAN.md
-last_updated: "2026-10-16T18:22:54.550Z"
+stopped_at: Completed 02-04-PLAN.md
+last_updated: "2026-10-16T18:27:39.575Z"
 last_activity: 2026-10-16
-last_activity_desc: Completed 02-21 gsd-atlas init user-scope MCP registration
-state_head: 7a11e2c6352a25577f5a51a7383b8382929effa4
+last_activity_desc: Completed 02-04 user approval of constants and MCP SDK package
+state_head: 1be50a8517e308419b6431463c4678ba054e95f9
 progress:
   total_phases: 9
   completed_phases: 1
   total_plans: 48
-  completed_plans: 25
+  completed_plans: 26
   percent: 11
 ---
 
@@ -28,16 +28,16 @@ See: .planning/PROJECT.md (updated 2026-10-15)
 ## Current Position
 
 Phase: 02 (Grammar Tier, Store and stdio Host) — EXECUTING
-Plan: 5 of 28 (plans 02-01, 02-02, 02-03, 02-08 and 02-21 complete; they ran out of order, next is 02-04)
+Plan: 6 of 28 complete (plans 02-01, 02-02, 02-03, 02-04, 02-08 and 02-21 complete; they ran out of order, next is 02-05)
 Status: Ready to execute
-Last activity: 2026-10-16 — Completed 02-21 (gsd-atlas init user-scope MCP registration)
+Last activity: 2026-10-16 — Completed 02-04 (user approval of Phase 2 constants and MCP SDK package)
 
 Progress: [█░░░░░░░░░] 11%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 25
+- Total plans completed: 26
 - Average duration: -
 - Total execution time: 0.0 hours
 
@@ -46,7 +46,7 @@ Progress: [█░░░░░░░░░] 11%
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 01 | 20 | - | - |
-| 02 | 5 of 28 | - | - |
+| 02 | 6 of 28 | - | - |
 
 **Recent Trend:**
 - Last 5 plans: -
@@ -62,6 +62,7 @@ Progress: [█░░░░░░░░░] 11%
 | Phase 02 P01 | 45 min | 3 tasks | 15 files |
 | Phase 02 P08 | 7 min | 3 tasks | 20 files |
 | Phase 02 P21 | 6 min | 2 tasks | 5 files |
+| Phase 02 P04 | 12min | 3 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -84,6 +85,8 @@ Recent decisions affecting current work:
 - [Phase 02]: Plan 02-01: writer contention is lease.db BEGIN EXCLUSIVE with a read-only degraded follower; build and maintain exit 3 when the lease is held; Reconcile idle interval about 10 minutes
 - [Phase 02]: Plan 02-08: upstream lock sources take optional generate:false to build from the archive's shipped parser.c; built-in typescript (ABI 14) and javascript (ABI 15) modules are pinned by npm tarball sha256; no module claims .tsx in Phase 2; linux-x64 hashes are recorded by the artifact-platform rule and await CI confirmation
 - [Phase 02]: 02-21: gsd-atlas init replaces an existing gsd-atlas entry wholesale and rejects non-absolute launch commands before touching any host — A merged stale key could combine with a new command; a PATH lookup must never be registered (T-02-74).
+- [Phase 02]: User approved all proposed Phase 2 constants unchanged (02-CONSTANTS.md Status Approved, 2026-10-16)
+- [Phase 02]: User approved @modelcontextprotocol/server 2.3.1 for install by plan 02-23 only; @modelcontextprotocol/node not installed in Phase 2
 
 ### Pending Todos
 
@@ -110,6 +113,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-10-16T18:22:54.500Z
-Stopped at: Completed 02-21-PLAN.md
+Last session: 2026-10-16T18:27:39.520Z
+Stopped at: Completed 02-04-PLAN.md
 Resume file: None
