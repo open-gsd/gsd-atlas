@@ -90,7 +90,52 @@ Plans:
   5. Agents and developers get one answer surface: `code_find`, `code_refs`, `code_context` and `code_impact` return ranked, cited results (inline matched line text, `budget_tokens`, `more` cursor, server-side output ceiling) in the full envelope; the CLI and MCP return identical JSON for the same request; injection text in a doc comment returns fenced in `untrusted_text`; `atlas_status` and `lang_list` report freshness, health, policy mode and tiers; the default MCP profile is about 6 tools; the stateless stdio server survives a restart between two tool calls; a two-tenant smoke test passes; `busy` with `retry_after` appears under saturation; `gsd-atlas init` registers MCP at user scope only; and `gsd-atlas status` shows metrics panels with no source text, paths, symbols or prompts, a metrics write failure never blocking an answer.
   6. The four ADRs scheduled for this phase (worktree-lifecycle, query-and-policy, mcp-contract, value-dashboard) are ratified, and the two Phase 1 research-gap amendments D-16 assigned here are applied as dated sections: writer contention and leader/follower in worktree-lifecycle, and metrics migrations in value-dashboard (FND-12).
 
-**Plans:** TBD
+**Plans:** 28 plans
+
+Plans:
+**Wave 1**
+- [ ] 02-01-PLAN.md — Ratify the four ADRs and apply every Phase 2 dated amendment (FND-12)
+- [ ] 02-02-PLAN.md — Additive shared-kernel extensions: exports, reference kinds, new degraded codes, full envelope, cancellable clock timer (LNG-04, QRY-01)
+- [ ] 02-03-PLAN.md — Guarded doors: two git read shapes, three SQLite pragmas with probe, lint boundaries for the four new modules (STO-01, STO-03, STO-09, HST-01)
+- [ ] 02-04-PLAN.md — Human gates: approve the proposed constants and the too-new MCP SDK package (IDX-01, IDX-02, HST-01, HST-03, STO-05, STO-08)
+- [ ] 02-08-PLAN.md — Grammar pipeline for shipped parsers and the TypeScript and JavaScript modules as pinned data (LNG-02)
+- [ ] 02-21-PLAN.md — `gsd-atlas init`: user-scope MCP registration for detected agent hosts (HST-04)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+- [ ] 02-05-PLAN.md — Source Tree: batched hashing, source-set filters, worktree discovery, confined reads (LNG-05, STO-02, STO-03)
+- [ ] 02-06-PLAN.md — Fact Store core: schema, writer, reader and contract suite on both SQLite drivers (STO-01, STO-02, STO-03, LNG-04)
+- [ ] 02-07-PLAN.md — Extractor: captures to FileFacts, match grouping, capture-name vocabulary, toy goldens (LNG-03, LNG-04, LNG-08)
+- [ ] 02-09-PLAN.md — Real Governor: priority classes, bounded queues, busy with retry_after, file-set leases (HST-03)
+- [ ] 02-10-PLAN.md — Metrics module: own database, forward-only migrations, allow-listed events, rollups, report (MET-01, MET-02)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+- [ ] 02-11-PLAN.md — Fact Store resolution: scoped references, callers and importers, fuzzy search, resolved-edge cache (STO-03, STO-04, LNG-03)
+- [ ] 02-12-PLAN.md — Store lifecycle: location, writer lease and followers, crash recovery, schema-version refusal (STO-06, STO-07, STO-08)
+- [ ] 02-13-PLAN.md — Real TypeScript and JavaScript queries with the 90 percent per-construct recall harness (LNG-02)
+- [ ] 02-14-PLAN.md — Bounded, recycled parser worker pool behind the GrammarEngine interface (LNG-07)
+- [ ] 02-15-PLAN.md — Indexer core: batching, extraction, commits, builds, coalescing queue, ensureFresh (IDX-02, IDX-04, STO-02, LNG-05)
+- [ ] 02-16-PLAN.md — Query core and `code_find`: tools, envelope, ranking, budget, cursor, nonce-fenced text (QRY-01, QRY-02, QRY-05)
+
+**Wave 4** *(blocked on Wave 3 completion)*
+- [ ] 02-17-PLAN.md — Reconcile, native watcher, git-directory watch, branch-switch behaviour (IDX-01, IDX-03, STO-03, STO-04)
+- [ ] 02-18-PLAN.md — Collect, compact, check and maintain, refresh, and the 20,000-edit size gate (STO-05, STO-10)
+- [ ] 02-19-PLAN.md — `code_refs`, `code_context`, `code_impact` (INFERRED-expanding) and `atlas_status` (QRY-02, QRY-03)
+
+**Wave 5** *(blocked on Wave 4 completion)*
+- [ ] 02-20-PLAN.md — Tenant, Host and HostClient wrapper: routing, Governor classes and busy, follower basics, maintain tasks, user config, composition root (HST-02, HST-03, STO-08, IDX-04, STO-10)
+
+**Wave 6** *(blocked on Wave 5 completion)*
+- [ ] 02-22-PLAN.md — CLI adapter: tool commands, build, maintain, status, health, exit codes (QRY-04, MET-02, STO-10, HST-04)
+- [ ] 02-23-PLAN.md — Stateless stdio MCP server with the six shared tools and clean stdout (QRY-06, HST-01, QRY-04)
+- [ ] 02-28-PLAN.md — Host runtime behaviours: answer recording, start-up Reconcile deadline, follower takeover, idle maintenance (MET-02, STO-08, STO-10)
+
+**Wave 7** *(blocked on Wave 6 completion)*
+- [ ] 02-24-PLAN.md — `history --at <commit>` from git objects with a throwaway store (STO-09)
+- [ ] 02-25-PLAN.md — Product end-to-end: CLI and MCP parity, injection fencing, leader and follower sessions, freshness, worktrees (QRY-04, QRY-05, HST-01, HST-02, IDX-01, STO-08)
+- [ ] 02-27-PLAN.md — Follower per-request in-memory overlay of `fresh` paths (STO-08, IDX-04)
+
+**Wave 8** *(blocked on Wave 7 completion)*
+- [ ] 02-26-PLAN.md — Measured corpus gates, freshness gate and a green three-OS CI run (LNG-02, LNG-05, STO-05, STO-06, IDX-01)
 
 ### Phase 3: TypeScript Module and MVP Eval
 
@@ -226,7 +271,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Foundations and Walking Skeleton | 20/20 | Complete    | 2026-10-16 |
-| 2. Grammar Tier, Store and stdio Host | 0/TBD | Not started | - |
+| 2. Grammar Tier, Store and stdio Host | 0/28 | Not started | - |
 | 3. TypeScript Module and MVP Eval | 0/TBD | Not started | - |
 | 4. Host Hardening | 0/TBD | Not started | - |
 | 5. Swift Module | 0/TBD | Not started | - |
