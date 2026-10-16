@@ -159,6 +159,70 @@ describe('hostile repository: promisor remote with core.sshCommand (CR-01, T-01-
   });
 });
 
+/** Driver names a `-c filter.<name>.clean=` pair cannot express (CR-02, T-01-46): git splits `-c` at the first `=`. */
+const ODD_DRIVERS: ReadonlyArray<{ readonly name: string; readonly file: string; readonly marker: string }> = [
+  { name: 'a=b', file: 'eq.txt', marker: 'M5' },
+  { name: 'a=b=c', file: 'eq2.txt', marker: 'M6' },
+  { name: 'my.driver', file: 'dot.txt', marker: 'M7' },
+  { name: '', file: 'empty.txt', marker: 'M8' },
+];
+
+interface OddDrivers {
+  readonly repo: TempGitRepo;
+  readonly markers: ReadonlyMap<string, string>;
+}
+
+/** The commit is made BEFORE the drivers are configured, so building the fixture runs nothing. */
+async function oddDriverRepo(t: { after(fn: () => void): void }): Promise<OddDrivers> {
+  const attributes = ODD_DRIVERS.map((d) => `${d.file} filter=${d.name}\n`).join('');
+  const files = Object.fromEntries(ODD_DRIVERS.map((d) => [d.file, `content of ${d.file}\n`]));
+  const repo = await createTempGitRepo({ runner: setup, files: { '.gitattributes': attributes, ...files } });
+  t.after(() => repo.cleanup());
+  const base = path.dirname(repo.dir);
+  const filter = path.join(base, 'filter-odd.cjs');
+  fs.writeFileSync(filter, "require('node:fs').writeFileSync(process.argv[2], 'ran');\nprocess.stdin.pipe(process.stdout);\n");
+  const markers = new Map<string, string>();
+  for (const d of ODD_DRIVERS) {
+    const marker = path.join(base, d.marker);
+    markers.set(d.name, marker);
+    await repo.setConfig(`filter.${d.name}.clean`, `'${slash(process.execPath)}' '${slash(filter)}' '${slash(marker)}'`);
+  }
+  return { repo, markers };
+}
+
+describe('hostile repository: filter driver names that a -c pair cannot express (CR-02, T-01-46)', () => {
+  it('positive control: each odd-named driver fires when git hashes its file unprotected', async (t) => {
+    const p = await oddDriverRepo(t);
+    await setup.run({
+      executable: 'git',
+      args: ['-C', p.repo.dir, 'hash-object', '--stdin-paths'],
+      env: p.repo.envOverlay,
+      stdin: ODD_DRIVERS.map((d) => `${d.file}\n`).join(''),
+    });
+    const silent = ODD_DRIVERS.filter((d) => !exists(p.markers.get(d.name) as string));
+    if (silent.length > 0) {
+      t.skip(`poison did not fire unprotected on this platform: ${silent.map((d) => JSON.stringify(d.name)).join(', ')}`);
+    }
+  });
+
+  it('a snapshot through the default decide runs none of them and hashes the plain content', async (t) => {
+    const p = await oddDriverRepo(t);
+    const recording = createRecordingRunner({ delegate: createRealRunner() });
+    const tree = createSourceTree({ runner: recording, repoDir: p.repo.dir, envOverlay: p.repo.envOverlay });
+
+    const { files, diagnostics } = await tree.snapshot(p.repo.dir);
+
+    for (const d of ODD_DRIVERS) {
+      assert.equal(exists(p.markers.get(d.name) as string), false, `the filter driver ${JSON.stringify(d.name)} ran`);
+      assert.equal(files.get(d.file), blobId(`content of ${d.file}\n`), d.file);
+    }
+    assert.deepEqual(diagnostics, []);
+    assert.equal(recording.denials.length, 0);
+    assert.ok(recording.starts.every((s) => s.executable === 'git' && s.builtinId === 'git'), 'a start was not a built-in git spec');
+    assert.equal(recording.starts.filter((s) => subcommand(s) === 'hash-object').length, 1);
+  });
+});
+
 describe('hostile repository (ROADMAP SC4)', () => {
   it('positive control: the poison fires when git runs unprotected', async (t) => {
     const p = await poisonedRepo(t);
