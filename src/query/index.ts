@@ -4,6 +4,18 @@
  */
 export { DEFAULT_QUERY_CONFIG, resolveQueryConfig } from './defaults.ts';
 export { createQuery } from './query.ts';
+export { HEALTH_REASONS, POLICY_OFF } from './status.ts';
+export type { HealthReason, StatusSnapshot } from './status.ts';
 export { TOOLS, TOOL_NAMES, buildRequest } from './tools.ts';
 export type { ToolDefinition, ToolName } from './tools.ts';
-export type { FreshPort, FreshReport, Query, QueryConfig, QueryDeps } from './types.ts';
+export type {
+  FreshPort,
+  FreshReport,
+  IndexerStatusLike,
+  PolicyMode,
+  Query,
+  QueryConfig,
+  QueryDeps,
+  StatusPort,
+  TierActive,
+} from './types.ts';

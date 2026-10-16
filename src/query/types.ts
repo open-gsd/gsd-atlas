@@ -5,8 +5,9 @@
  * handles, the nonce-fenced `untrusted_text`, the watermark and the degraded codes. The MCP server, the CLI and
  * the hooks are adapters that hand it a `Request` and return the `Envelope` unchanged.
  */
-import type { FactStore } from '../fact-store/index.ts';
+import type { FactStore, StoreStatus } from '../fact-store/index.ts';
 import type { Clock, Envelope, Request } from '../facts/index.ts';
+import type { GovernorStatus } from '../governor/index.ts';
 import type { SourceTree } from '../source-tree/index.ts';
 
 /** Tunables of Query. Defaults: `DEFAULT_QUERY_CONFIG`. */
@@ -50,9 +51,50 @@ export interface FreshPort {
   ensureFresh(worktree: string, paths: readonly string[], waitMs: number): Promise<FreshReport>;
 }
 
+/**
+ * The part of the Indexer's status that `atlas_status` reports (structural, so Query does not import the Indexer;
+ * the Indexer's own `IndexerStatus` satisfies it). `failed` is only counted: the paths in it are never reported.
+ */
+export interface IndexerStatusLike {
+  readonly queued: number;
+  readonly running: number;
+  readonly failed: readonly unknown[];
+  /** `Clock.now()` after the last commit, or null before any. */
+  readonly lastIndexedAt: number | null;
+  /** How file events arrive: `native`, `poll` or `reconcile-only`. */
+  readonly watchMode: string;
+  readonly reconciling: boolean;
+  readonly lastReconcile: { readonly at: number } | null;
+}
+
+/** One tier of one language module and whether it is active. */
+export interface TierActive {
+  readonly tier: 'grammar' | 'precise' | 'platform';
+  readonly active: boolean;
+}
+
+/** The Policy module does not exist until Phase 7, so the mode is `off` until then. */
+export type PolicyMode = 'off';
+
+/**
+ * The state `atlas_status` reports, read through ports the Host injects. Query reads no repository content to
+ * answer it, and the answer carries counts and flags only.
+ */
+export interface StatusPort {
+  store(): Promise<StoreStatus>;
+  /** Null when this process runs no Indexer. */
+  indexer(): IndexerStatusLike | null;
+  governor(): GovernorStatus;
+  /** The loaded language modules and their tiers (from the module registry). */
+  tiers(): readonly { readonly module: string; readonly tiers: readonly TierActive[] }[];
+  policy(): PolicyMode;
+}
+
 export interface QueryDeps {
   /** Reads only: Query asks for a Reader per request and never writes. */
   readonly store: Pick<FactStore, 'at'>;
+  /** Absent: `atlas_status` answers `unavailable`. */
+  readonly status?: StatusPort;
   /** The only way Query sees file text: confined to the worktree, no symlink escape, size capped. */
   readonly text: Pick<SourceTree, 'readText'>;
   /** Absent: a request that names `fresh` paths degrades with `fresh_timeout` instead of failing. */

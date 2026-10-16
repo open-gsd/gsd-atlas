@@ -15,7 +15,8 @@ import type { FindContext, FreshOutcome } from './find.ts';
 import { runContext } from './context.ts';
 import { runImpact } from './impact.ts';
 import { runRefs } from './refs.ts';
-import { codeContextSchema, codeFindSchema, codeImpactSchema, codeRefsSchema } from './tools.ts';
+import { runStatus } from './status.ts';
+import { codeContextSchema, codeFindSchema, codeImpactSchema, codeRefsSchema, repoOnlySchema } from './tools.ts';
 import type { ToolName } from './tools.ts';
 import type { Query, QueryConfig, QueryDeps } from './types.ts';
 
@@ -84,6 +85,13 @@ async function freshOutcome(
   }
 }
 
+/** The first problem of a refused argument object, in one short sentence. */
+function invalidArgs(error: z.ZodError): Envelope {
+  const issue = error.issues[0];
+  const where = issue === undefined || issue.path.length === 0 ? 'arguments' : issue.path.join('.');
+  return errorEnvelope('invalid_args', say(`${where}: ${issue?.message ?? 'invalid'}`));
+}
+
 /** The arguments every code tool takes that Query itself uses. */
 interface CommonInput {
   readonly repo?: string | undefined;
@@ -108,11 +116,7 @@ async function prepare<I extends CommonInput>(
   partsOf: (input: I, worktree: string) => QueryParts,
 ): Promise<Prepared<I>> {
   const parsed = schema.safeParse(mergedInput(request));
-  if (!parsed.success) {
-    const issue = parsed.error.issues[0];
-    const where = issue === undefined || issue.path.length === 0 ? 'arguments' : issue.path.join('.');
-    return { error: errorEnvelope('invalid_args', say(`${where}: ${issue?.message ?? 'invalid'}`)) };
-  }
+  if (!parsed.success) return { error: invalidArgs(parsed.error) };
   const input = parsed.data;
 
   const worktree = request.worktree ?? input.repo;
@@ -186,6 +190,12 @@ export function createQuery(deps: QueryDeps): Query {
             cwd: input.cwd,
           }));
           return 'error' in ready ? ready.error : runImpact(ready.ctx, ready.input);
+        }
+        case 'atlas_status': {
+          // Status reports state: it has no budget, cursor or fresh paths, so only its own arguments are checked.
+          const parsed = repoOnlySchema.safeParse(argsObject(request.args));
+          if (!parsed.success) return invalidArgs(parsed.error);
+          return runStatus(deps.status, request.worktree ?? parsed.data.repo);
         }
         default:
           return errorEnvelope('unknown_kind', `request kind ${say(JSON.stringify(request.kind))} is not known to this host`);
