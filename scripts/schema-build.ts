@@ -5,38 +5,12 @@
  *   node scripts/schema-build.ts --check [file]    exit 1 if the file differs from the generated text
  *
  * `file` defaults to schemas/atlas-lang.schema.json; the argument exists so the drift
- * check can be tested without touching the committed file.
+ * check can be tested without touching the committed file. The logic lives in
+ * schema-lib.ts so tests can call it in-process; this file is only the CLI wrapper.
  */
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { runSchemaBuild } from './schema-lib.ts';
 
-import { manifestJsonSchema } from '../src/lang/manifest.ts';
-
-const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const args = process.argv.slice(2);
-const check = args.includes('--check');
-const positional = args.filter((a) => !a.startsWith('--'));
-const target = path.resolve(root, positional[0] ?? path.join('schemas', 'atlas-lang.schema.json'));
-
-const generated = `${JSON.stringify(manifestJsonSchema(), null, 2)}\n`;
-
-if (check) {
-  let current: string;
-  try {
-    // Normalise CRLF so a Windows checkout with core.autocrlf does not read as drift.
-    current = readFileSync(target, 'utf8').replace(/\r\n/g, '\n');
-  } catch {
-    console.error(`${target} is missing. Run: npm run schema:build`);
-    process.exit(1);
-  }
-  if (current !== generated) {
-    console.error(`${target} is out of date with src/lang/manifest.ts. Run: npm run schema:build`);
-    process.exit(1);
-  }
-  console.log(`${path.relative(root, target)} is current.`);
-} else {
-  mkdirSync(path.dirname(target), { recursive: true });
-  writeFileSync(target, generated, 'utf8');
-  console.log(`wrote ${path.relative(root, target)}`);
-}
+const result = runSchemaBuild(process.argv.slice(2));
+if (result.stdout !== '') process.stdout.write(result.stdout);
+if (result.stderr !== '') process.stderr.write(result.stderr);
+process.exit(result.status);

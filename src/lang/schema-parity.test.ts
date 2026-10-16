@@ -1,5 +1,4 @@
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
 import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, it } from 'node:test';
@@ -7,13 +6,13 @@ import { fileURLToPath } from 'node:url';
 
 import Ajv2020Module from 'ajv/dist/2020.js';
 
+import { runSchemaBuild } from '../../scripts/schema-lib.ts';
 import { makeTempDir } from '../test-kit/index.ts';
 import { manifestJsonSchema, parseManifest } from './manifest.ts';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const fixtureDir = path.join(root, 'test', 'fixtures', 'manifests');
 const schemaPath = path.join(root, 'schemas', 'atlas-lang.schema.json');
-const scriptPath = path.join(root, 'scripts', 'schema-build.ts');
 
 // ajv is a CommonJS package: under nodenext the class sits on `.default` of the default import.
 type AjvCtor = new (options: { allErrors: boolean }) => {
@@ -34,10 +33,9 @@ function fixtures(): string[] {
     .sort();
 }
 
+// In-process: src/ must not spawn child processes (FND-06), so the CLI logic is called directly.
 function runScript(args: string[]): { status: number | null; stdout: string; stderr: string } {
-  // Argument array, no shell, through process.execPath (npm shims break on Windows).
-  const r = spawnSync(process.execPath, [scriptPath, ...args], { cwd: root, encoding: 'utf8' });
-  return { status: r.status, stdout: r.stdout, stderr: r.stderr };
+  return runSchemaBuild(args);
 }
 
 /** Collect every object-typed schema node reachable through properties / items / anyOf. */
