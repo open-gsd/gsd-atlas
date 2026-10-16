@@ -128,6 +128,26 @@ describe('diagnostic and systemClock', () => {
     await systemClock.sleep(1);
     assert.ok(systemClock.now() >= before);
   });
+
+  it('systemClock.after calls the callback once after the delay', async () => {
+    let calls = 0;
+    systemClock.after(1, () => {
+      calls += 1;
+    });
+    await systemClock.sleep(30);
+    assert.equal(calls, 1);
+  });
+
+  it('systemClock.after cancel prevents the call and leaves no timer pending', async () => {
+    let calls = 0;
+    const cancel = systemClock.after(5, () => {
+      calls += 1;
+    });
+    cancel();
+    cancel();
+    await systemClock.sleep(30);
+    assert.equal(calls, 0);
+  });
 });
 
 describe('validateFileFacts', () => {

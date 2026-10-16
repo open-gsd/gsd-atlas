@@ -65,6 +65,88 @@ describe('FakeClock', () => {
     await p;
     assert.equal(woke, true);
   });
+
+  it('after does not fire until advance reaches its due time, then fires once', async () => {
+    const clock = new FakeClock();
+    let calls = 0;
+    clock.after(100, () => {
+      calls += 1;
+    });
+    await clock.advance(99);
+    assert.equal(calls, 0);
+    await clock.advance(1);
+    assert.equal(calls, 1);
+    await clock.advance(500);
+    assert.equal(calls, 1);
+  });
+
+  it('after fires in due-time order together with sleepers, ties in call order', async () => {
+    const clock = new FakeClock();
+    const order: string[] = [];
+    const sleeper = clock.sleep(20).then(() => order.push('sleep20'));
+    clock.after(30, () => order.push('after30'));
+    clock.after(20, () => order.push('after20'));
+    clock.after(10, () => order.push('after10'));
+    await clock.advance(50);
+    await sleeper;
+    assert.deepEqual(order, ['after10', 'sleep20', 'after20', 'after30']);
+  });
+
+  it('cancelling an after timer prevents its callback', async () => {
+    const clock = new FakeClock();
+    let calls = 0;
+    const cancel = clock.after(100, () => {
+      calls += 1;
+    });
+    cancel();
+    await clock.advance(200);
+    assert.equal(calls, 0);
+  });
+
+  it('cancel twice, or after the callback ran, does nothing and throws nothing', async () => {
+    const clock = new FakeClock();
+    let calls = 0;
+    const cancel = clock.after(10, () => {
+      calls += 1;
+    });
+    await clock.advance(10);
+    assert.equal(calls, 1);
+    assert.doesNotThrow(() => {
+      cancel();
+      cancel();
+    });
+    const early = clock.after(10, () => {
+      calls += 1;
+    });
+    early();
+    assert.doesNotThrow(early);
+    await clock.advance(10);
+    assert.equal(calls, 1);
+  });
+
+  it('lets an after callback schedule another after inside the same advance', async () => {
+    const clock = new FakeClock();
+    const hits: number[] = [];
+    clock.after(10, () => {
+      hits.push(clock.now());
+      clock.after(10, () => {
+        hits.push(clock.now());
+      });
+    });
+    await clock.advance(25);
+    assert.deepEqual(hits, [10, 20]);
+  });
+
+  it('one timer cancelling another that is due in the same advance wins', async () => {
+    const clock = new FakeClock();
+    let secondCalls = 0;
+    const cancelSecond = clock.after(20, () => {
+      secondCalls += 1;
+    });
+    clock.after(10, cancelSecond);
+    await clock.advance(30);
+    assert.equal(secondCalls, 0);
+  });
 });
 
 describe('makeTempDir', () => {
