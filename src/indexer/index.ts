@@ -4,6 +4,8 @@
  * `ensureFresh`, all driven by an injected clock. Test code is not exported from here.
  */
 export { DEFAULT_INDEXER_CONFIG } from './defaults.ts';
+export { createManualEventSource } from './event-source.ts';
+export type { EventSource, FsChange, ManualEventSource, SourceEvent, SourceHandler, WatchProblem } from './event-source.ts';
 export { createIndexer } from './indexer.ts';
 export { IndexerError } from './types.ts';
 export type {
