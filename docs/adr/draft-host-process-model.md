@@ -34,7 +34,7 @@ Developers run several repos at once, each with its own sessions, and agent tool
 11. **Isolation by default:** cross‑repo queries only within a workspace declared in user config (submodules join automatically), by fan‑out across stores (never `ATTACH`, which stops at 10).
 12. **Disk budgets:** per‑repo and workstation (default 2 GB); cold repo stores dropped after 30 days and rebuilt on use.
 13. **Visibility:** `status` and the SessionStart brief report when atlas is down or a tenant is degraded.
-14. **Composition:** the Host is the composition root. It builds one Tenant per repo (Source Tree, Fact Store, Indexer, Query, Policy) and shares the Grammar Engine, CommandRunner, SDK providers and Governor; adapters call `host.handle(request)` ([draft-tenant-composition](draft-tenant-composition.md)).
+14. **Composition:** the Host is the composition root. It builds one Tenant per repo (Source Tree, Fact Store, Indexer, Query, Policy) and shares the Grammar Engine, CommandRunner, SDK providers and Governor; adapters call `host.handle(request)` ([9-tenant-composition](9-tenant-composition.md)).
 
 ## Evidence (2026‑10‑15, prototype; re‑measured with the MCP SDK at M1)
 - Per‑agent processes: 44 MB per read‑only process; 357 MB for a TypeScript program over gsd‑core.

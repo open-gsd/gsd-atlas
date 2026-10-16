@@ -1,9 +1,10 @@
 # ADR: One CommandRunner for every child process
 
-- **Status:** Proposed
-- **Issue:** to be opened (rename to `<issue#>-command-runner.md`)
+- **Status:** Accepted
+- **Issue:** [#4](https://github.com/open-gsd/gsd-atlas/issues/4)
+- **Ratified:** 2026-10-15
 - **DESIGN.md:** A9, A44, A54
-- **Refines:** [draft-trust-boundaries](draft-trust-boundaries.md) decision 2, [draft-language-modules](draft-language-modules.md) decision 5
+- **Refines:** [3-trust-boundaries](3-trust-boundaries.md) decision 2, [5-language-modules](5-language-modules.md) decision 5
 
 ## Context
 The trust rules (who may run a command) were stated in three documents but enforced nowhere in particular. With providers for Apple, Node, C, Java and others plus SCIP indexers, each provider would re-implement the permission check, and a bug in one would let a cloned repo run code. The TypeScript adapter also loads the project's own `typescript` package in-process, which is repo-influenced code (a tsconfig `plugins` entry can load more).

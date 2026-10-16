@@ -4,7 +4,7 @@
 - **Issue:** to be opened (rename to `<issue#>-value-dashboard.md`)
 - **DESIGN.md:** A16, A18, A32, A36, A50, A52, A63
 - **Research:** [DASHBOARD-METRICS.md](../DASHBOARD-METRICS.md)
-- **Refines:** `AGENT-INTEGRATION.md` §4 "Local metrics", [draft-query-and-policy](draft-query-and-policy.md), [draft-tenant-composition](draft-tenant-composition.md)
+- **Refines:** `AGENT-INTEGRATION.md` §4 "Local metrics", [draft-query-and-policy](draft-query-and-policy.md), [9-tenant-composition](9-tenant-composition.md)
 
 ## Context
 A32 says atlas must be the cheaper path, but nothing lets a user see whether it is. Comparable tools report activity and acceptance counts; none reports a measured "tokens saved" (Sourcegraph's "hours saved" is a usage count times an assumed minutes figure), and a randomised trial found developers believed they were faster while measuring slower (research §4). Atlas has three constraints that rule out the usual answers: no telemetry (A16), a measured agent that can read its own context and could game a visible number (research §5), and a store that is derived and rebuilt on corruption (A17), which suits facts but not metrics, since a metric cannot be re-derived from source.

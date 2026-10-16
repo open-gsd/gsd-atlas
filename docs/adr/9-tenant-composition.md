@@ -1,7 +1,8 @@
 # ADR: Tenant composition, Source Tree, Indexer and Governor
 
-- **Status:** Proposed
-- **Issue:** to be opened (rename to `<issue#>-tenant-composition.md`)
+- **Status:** Accepted
+- **Issue:** [#9](https://github.com/open-gsd/gsd-atlas/issues/9)
+- **Ratified:** 2026-10-15
 - **DESIGN.md:** A4, A5, A19, A20, A21, A22, A24, A25, A26, A28, A40, A43, A47, A49, A59–A62
 - **Refines:** [draft-host-process-model](draft-host-process-model.md), [draft-worktree-lifecycle](draft-worktree-lifecycle.md)
 - **Review findings addressed:** design-it-twice review, findings 3 and 4
