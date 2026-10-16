@@ -26,7 +26,7 @@ Scope is the full PRD 1.0 (M0-M6), with M4 split into SDK facts, agent integrati
 
 ### Fact Store and Lifecycle (STO)
 
-- [ ] **STO-01**: Facts are stored in SQLite via `node:sqlite` with `better-sqlite3` working as fallback, behind one Fact Store interface and one conformance suite run over both drivers
+- [x] **STO-01**: Facts are stored in SQLite via `node:sqlite` with `better-sqlite3` working as fallback, behind one Fact Store interface and one conformance suite run over both drivers
 - [ ] **STO-02**: Local facts are keyed by git blob id computed with git's clean filters, and spans line up on CRLF and BOM files
 - [ ] **STO-03**: Each worktree or branch is an overlay; two worktrees of one repo share local facts and a branch switch re-parses only changed files
 - [ ] **STO-04**: Resolved edges are keyed by overlay snapshot plus resolution context, so one file resolving to different targets on two branches gives each branch its correct target
@@ -206,7 +206,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | FND-10 | Phase 1 | Complete |
 | FND-11 | Phase 1 | Complete |
 | FND-12 | Phase 2 | Complete |
-| STO-01 | Phase 2 | Pending |
+| STO-01 | Phase 2 | Complete |
 | STO-02 | Phase 2 | Pending |
 | STO-03 | Phase 2 | Pending |
 | STO-04 | Phase 2 | Pending |

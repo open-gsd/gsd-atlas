@@ -3,16 +3,16 @@ gsd_state_version: "1.0"
 current_phase: 02
 current_phase_name: Grammar Tier, Store and stdio Host
 status: executing
-stopped_at: Completed 02-05-PLAN.md
-last_updated: "2026-10-16T18:52:35.905Z"
+stopped_at: Completed 02-06-PLAN.md
+last_updated: "2026-10-16T19:15:13.260Z"
 last_activity: 2026-10-16
-last_activity_desc: Completed 02-04 user approval of constants and MCP SDK package
-state_head: b219e715a6488e8d21e658ff5edf4589ce6b3416
+last_activity_desc: Completed 02-06 Fact Store core
+state_head: 017bb8dd0931ab7665a8d8d5c3698bc60015106a
 progress:
   total_phases: 9
   completed_phases: 1
   total_plans: 48
-  completed_plans: 27
+  completed_plans: 28
   percent: 11
 ---
 
@@ -28,16 +28,16 @@ See: .planning/PROJECT.md (updated 2026-10-15)
 ## Current Position
 
 Phase: 02 (Grammar Tier, Store and stdio Host) — EXECUTING
-Plan: 7 of 28 complete (plans 02-01, 02-02, 02-03, 02-04, 02-05, 02-08 and 02-21 complete; they ran out of order, next is the lowest-numbered incomplete plan, 02-06)
+Plan: 8 of 28 complete (plans 02-01, 02-02, 02-03, 02-04, 02-05, 02-06, 02-08 and 02-21 complete; they ran out of order, next is the lowest-numbered incomplete plan, 02-07)
 Status: Ready to execute
-Last activity: 2026-10-16 — Completed 02-05 (Source Tree additions: hashPaths, sourceSet, worktrees, readText)
+Last activity: 2026-10-16 — Completed 02-06 (Fact Store core: schema, writer, reader, contract suite on both SQLite drivers)
 
 Progress: [█░░░░░░░░░] 11%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 27
+- Total plans completed: 28
 - Average duration: -
 - Total execution time: 0.0 hours
 
@@ -46,7 +46,7 @@ Progress: [█░░░░░░░░░] 11%
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 01 | 20 | - | - |
-| 02 | 7 of 28 | - | - |
+| 02 | 8 of 28 | - | - |
 
 **Recent Trend:**
 - Last 5 plans: -
@@ -64,6 +64,7 @@ Progress: [█░░░░░░░░░] 11%
 | Phase 02 P21 | 6 min | 2 tasks | 5 files |
 | Phase 02 P04 | 12min | 3 tasks | 1 files |
 | Phase 02 P05 | 55min | 3 tasks | 10 files |
+| Phase 02 P06 | 22 min | 3 tasks | 11 files |
 
 ## Accumulated Context
 
@@ -90,6 +91,9 @@ Recent decisions affecting current work:
 - [Phase 02]: User approved @modelcontextprotocol/server 2.3.1 for install by plan 02-23 only; @modelcontextprotocol/node not installed in Phase 2
 - [Phase 02]: Plan 02-05: hashPaths hashes what it is asked and does not consult ignore rules; the Indexer (02-15) must drop ignored watcher paths first (T-02-14 holds for snapshot only)
 - [Phase 02]: Plan 02-05: readText answers escape/missing/not_file/too_large instead of throwing and refuses final-component links; sourceSet and unhashable-name rules are shared by fake and real
+- [Phase 02]: Fact Store: StoreOptions (engine-independent) lives in types.ts; the driver choice is OpenFactStoreOptions in open.ts so types.ts and index.ts stay free of engine vocabulary
+- [Phase 02]: Fact Store: overlays keep a dropped flag so a worktree's watermark seq stays monotonic across drop and re-creation; commits and markStale advance seq of other worktrees whose stalePaths changed
+- [Phase 02]: Fact Store: grammar-tier edges (refs, callers, importers) are INFERRED and match on bare symbol names; reconcile also reports pending and stale paths; facts are keyed by blob hash alone (first module to commit wins for identical bytes)
 
 ### Pending Todos
 
@@ -116,6 +120,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-10-16T18:52:35.823Z
-Stopped at: Completed 02-05-PLAN.md
+Last session: 2026-10-16T19:15:13.203Z
+Stopped at: Completed 02-06-PLAN.md
 Resume file: None
