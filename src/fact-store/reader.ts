@@ -12,7 +12,7 @@ import type {
 } from '../facts/index.ts';
 import type { Db, Row } from '../sqlite/index.ts';
 import { UnknownWorktree } from './errors.ts';
-import { assertOpen, extractorOf } from './parts.ts';
+import { assertOpen, extractorOf, readTransaction } from './parts.ts';
 import type { StoreParts } from './parts.ts';
 import type { FindOptions, Reader, SymbolRecord, WorktreeId } from './types.ts';
 
@@ -163,9 +163,7 @@ function answer<T>(
   read: (snap: Snapshot) => T,
 ): Answer<T> {
   assertOpen(parts);
-  const db = parts.readDb;
-  db.exec('BEGIN');
-  try {
+  return readTransaction(parts, (db) => {
     const overlay = db.prepare('SELECT seq FROM overlays WHERE worktree = ? AND dropped = 0').get(worktree);
     if (overlay === undefined) throw new UnknownWorktree(worktree);
     const stalePaths = db
@@ -178,9 +176,7 @@ function answer<T>(
     if (stalePaths.length > 0 && !degraded.includes('stale')) degraded.push('stale');
     const watermark = { seq: num(overlay.seq), stalePaths };
     return degraded.length === 0 ? { data, watermark } : { data, watermark, degraded };
-  } finally {
-    db.exec('COMMIT');
-  }
+  });
 }
 
 function notYet(): never {

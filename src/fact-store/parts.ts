@@ -33,6 +33,20 @@ export function assertOpen(parts: StoreParts): void {
   if (parts.state.closed) throw new StoreClosed();
 }
 
+/**
+ * Run `fn` inside one read transaction on the read connection, so every statement in it sees the same
+ * committed state (a snapshot in WAL mode). `fn` must be synchronous: the connection is shared.
+ */
+export function readTransaction<T>(parts: StoreParts, fn: (db: Db) => T): T {
+  const db = parts.readDb;
+  db.exec('BEGIN');
+  try {
+    return fn(db);
+  } finally {
+    db.exec('COMMIT');
+  }
+}
+
 /** The extractor string carried in provenance, for example `grammar:typescript@0.23.2`. */
 export function extractorOf(module: string, grammarVersion: string): string {
   return `grammar:${module}@${grammarVersion}`;
