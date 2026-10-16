@@ -8,7 +8,7 @@ import path from 'node:path';
 import { allowAll, createRealRunner } from '../command-runner/index.ts';
 import { openFactStore } from '../fact-store/index.ts';
 import type { FactStore, Resolver, Writer } from '../fact-store/index.ts';
-import type { FileFacts, LocalSymbol } from '../facts/index.ts';
+import type { ExportSite, FileFacts, ImportBinding, ImportSite, ImportStyle, LocalSymbol, RefKind, RefSite } from '../facts/index.ts';
 import { createSourceTree } from '../source-tree/index.ts';
 import type { SourceTree } from '../source-tree/index.ts';
 import { FakeClock, createTempGitRepo, makeTempDir } from '../test-kit/index.ts';
@@ -40,6 +40,49 @@ export interface SymbolSpec {
   readonly endCol?: number;
   readonly exported?: boolean;
   readonly qualifiedName?: string;
+  /** Index into the same `symbols` list of the containing symbol. */
+  readonly parent?: number;
+}
+
+/** One reference site, in the store's own coordinates. */
+export interface RefSpec {
+  readonly name: string;
+  readonly line: number;
+  readonly col: number;
+  readonly endCol?: number;
+  readonly kind?: RefKind;
+  /** Index into the `symbols` list of the innermost symbol that contains the site. */
+  readonly enclosing?: number;
+  readonly importPath?: string;
+}
+
+/** One import statement on its own line. */
+export interface ImportSpec {
+  readonly path: string;
+  readonly line: number;
+  readonly style?: ImportStyle;
+  readonly bindings?: readonly ImportBinding[];
+}
+
+/** One export on its own line. */
+export interface ExportSpec {
+  readonly name: string;
+  readonly line: number;
+  readonly col?: number;
+  readonly local?: string;
+}
+
+/** Everything a hand-made file can carry: definitions, reference sites, imports and exports. */
+export interface FactsSpec {
+  readonly symbols?: readonly SymbolSpec[];
+  readonly refs?: readonly RefSpec[];
+  readonly imports?: readonly ImportSpec[];
+  readonly exports?: readonly ExportSpec[];
+}
+
+export interface HarnessOptions {
+  /** The store's precise resolver. Default: one that resolves nothing. */
+  readonly resolver?: Resolver;
 }
 
 export interface Harness {
@@ -53,6 +96,8 @@ export interface Harness {
   addFile(relPath: string, content: string, symbols: readonly SymbolSpec[]): Promise<string>;
   /** Store `symbols` as the facts of a file without touching the disk (the file may be absent or different). */
   addFacts(relPath: string, hash: string, symbols: readonly SymbolSpec[]): Promise<void>;
+  /** Write `content` to `relPath` and store `spec` (symbols, reference sites, imports, exports) as that file's facts. */
+  addFileWith(relPath: string, content: string, spec: FactsSpec): Promise<string>;
   /** The store's single writer, held for the harness's life (tests call `markStale` or `setOverlay` through it). */
   readonly writer: Writer;
   /** Dependencies wired to the real store and Source Tree; `overrides` replace any of them. */
@@ -73,39 +118,75 @@ function localSymbol(spec: SymbolSpec): LocalSymbol {
     },
     ...(spec.qualifiedName === undefined ? {} : { qualifiedName: spec.qualifiedName }),
     ...(spec.exported === undefined ? {} : { exported: spec.exported }),
+    ...(spec.parent === undefined ? {} : { parent: spec.parent }),
   };
 }
 
-function factsOf(relPath: string, hash: string, symbols: readonly SymbolSpec[]): FileFacts {
+function refSite(spec: RefSpec): RefSite {
+  return {
+    name: spec.name,
+    span: { startLine: spec.line, startColumn: spec.col, endLine: spec.line, endColumn: spec.endCol ?? spec.col + spec.name.length },
+    ...(spec.kind === undefined ? {} : { kind: spec.kind }),
+    ...(spec.enclosing === undefined ? {} : { enclosing: spec.enclosing }),
+    ...(spec.importPath === undefined ? {} : { importPath: spec.importPath }),
+  };
+}
+
+function importSite(spec: ImportSpec): ImportSite {
+  return {
+    path: spec.path,
+    span: { startLine: spec.line, startColumn: 0, endLine: spec.line, endColumn: 20 },
+    ...(spec.style === undefined ? {} : { style: spec.style }),
+    ...(spec.bindings === undefined ? {} : { bindings: spec.bindings }),
+  };
+}
+
+function exportSite(spec: ExportSpec): ExportSite {
+  const col = spec.col ?? 0;
+  return {
+    name: spec.name,
+    span: { startLine: spec.line, startColumn: col, endLine: spec.line, endColumn: col + spec.name.length },
+    ...(spec.local === undefined ? {} : { local: spec.local }),
+  };
+}
+
+function factsOf(relPath: string, hash: string, spec: FactsSpec): FileFacts {
   return {
     path: relPath,
     contentHash: hash,
     module: 'typescript',
     grammarVersion: '0.23.2',
-    symbols: symbols.map(localSymbol),
-    refSites: [],
-    imports: [],
-    exports: [],
+    symbols: (spec.symbols ?? []).map(localSymbol),
+    refSites: (spec.refs ?? []).map(refSite),
+    imports: (spec.imports ?? []).map(importSite),
+    exports: (spec.exports ?? []).map(exportSite),
     parse: { errorBytes: 0, totalBytes: 0 },
   };
 }
 
-export async function createHarness(): Promise<Harness> {
+export async function createHarness(options: HarnessOptions = {}): Promise<Harness> {
   const repo = await createTempGitRepo({ runner: setupRunner });
   const tmp = makeTempDir();
   const clock = new FakeClock(1000);
   const store = await openFactStore(
     path.join(tmp.path, 'store'),
-    { resolver: noResolver, clock, gitHas: () => Promise.resolve(true) },
+    { resolver: options.resolver ?? noResolver, clock, gitHas: () => Promise.resolve(true) },
     { repo: 'toy', version: 'test' },
   );
   const tree = createSourceTree({ runner: createRealRunner(), repoDir: repo.dir, envOverlay: repo.envOverlay });
   const writer = store.writer();
   const dir = repo.dir;
 
-  const addFacts = async (relPath: string, hash: string, symbols: readonly SymbolSpec[]): Promise<void> => {
-    const result = await writer.commitFile({ worktree: dir, path: relPath, hash, facts: factsOf(relPath, hash, symbols) });
+  const commit = async (relPath: string, hash: string, spec: FactsSpec): Promise<void> => {
+    const result = await writer.commitFile({ worktree: dir, path: relPath, hash, facts: factsOf(relPath, hash, spec) });
     if (result.status === 'rejected') throw new Error(`the harness facts for ${relPath} were rejected`);
+  };
+  const addFacts = (relPath: string, hash: string, symbols: readonly SymbolSpec[]): Promise<void> => commit(relPath, hash, { symbols });
+  const addFileWith = async (relPath: string, content: string, spec: FactsSpec): Promise<string> => {
+    repo.write(relPath, content);
+    const hash = blobId(content);
+    await commit(relPath, hash, spec);
+    return hash;
   };
   const deps = (overrides: Partial<QueryDeps> = {}): QueryDeps => ({ store, text: tree, clock, ...overrides });
 
@@ -116,13 +197,9 @@ export async function createHarness(): Promise<Harness> {
     tree,
     clock,
     writer,
-    addFile: async (relPath, content, symbols) => {
-      repo.write(relPath, content);
-      const hash = blobId(content);
-      await addFacts(relPath, hash, symbols);
-      return hash;
-    },
+    addFile: (relPath, content, symbols) => addFileWith(relPath, content, { symbols }),
     addFacts,
+    addFileWith,
     deps,
     query: (overrides) => createQuery(deps(overrides)),
     cleanup: async () => {
