@@ -1,7 +1,8 @@
 # ADR: Local value dashboard and honest metrics
 
-- **Status:** Proposed
-- **Issue:** to be opened (rename to `<issue#>-value-dashboard.md`)
+- **Status:** Accepted
+- **Issue:** [#14](https://github.com/open-gsd/gsd-atlas/issues/14)
+- **Ratified:** 2026-10-16
 - **DESIGN.md:** A16, A18, A32, A36, A50, A52, A63
 - **Research:** [DASHBOARD-METRICS.md](../DASHBOARD-METRICS.md)
 - **Refines:** `AGENT-INTEGRATION.md` §4 "Local metrics", [12-query-and-policy](12-query-and-policy.md), [9-tenant-composition](9-tenant-composition.md)
@@ -51,3 +52,16 @@ A32 says atlas must be the cheaper path, but nothing lets a user see whether it 
 - How is a displaced sweep detected on hosts with no hook bus (rules-only hosts)? Likely not at all, so the estimate is hidden there.
 - Should the pre-commit hook record "open at commit" into `metrics.db`? It is the best outcome signal the agent cannot influence, but git hooks run outside the Host process.
 - Should the OpenTelemetry GenAI names be aligned for a later local OTLP export? The conventions are still in Development status, so nothing depends on them yet.
+
+## Amendment 2026-10-16: Metrics migrations and retention
+
+Sources: FND-12; 02-CONTEXT.md D-17; 02-RESEARCH.md Pattern 13.
+
+Phase 2 builds the Metrics module. These points settle what the decisions above left provisional. The original text stands unedited.
+
+1. **Where the database lives (decision 2).** Metrics owns `metrics.db` beside the fact store, not inside it, so a store rebuild or a corruption move-aside never loses it.
+2. **Forward-only migrations.** Schema changes are numbered, forward-only migrations keyed by `PRAGMA user_version`, each run in one transaction when the database is opened. A database whose `user_version` is newer than the code disables recording instead of failing an answer, in line with decision 3's rule that recording never fails an answer.
+3. **Recording (decision 3).** `record` is a bounded in-memory queue that never blocks or throws. Events dropped when the queue is full are counted in `dropped_events`, which the dashboard shows.
+4. **Events (decision 5).** Events are an allow-listed union: counters and histograms only, with hashed ids at most. Nothing outside the union can be recorded.
+5. **Retention (decision 13).** Retention is 30 days rolling, with daily rollups made after 7 days. This replaces the provisional "events 30 days or 50,000 rows, rollups 13 months".
+6. **Token figures.** Token figures are serialized characters divided by four and are labelled estimates, as decision 6 requires.

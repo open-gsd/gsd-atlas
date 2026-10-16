@@ -33,12 +33,12 @@ const RATIFIED: readonly string[] = [
   'tenant-composition',
   'worktree-lifecycle',
   'query-and-policy',
+  'mcp-contract',
+  'value-dashboard',
 ];
 
 // The ADRs that stay Proposed, and the phase that must ratify each.
 const REMAINING: Readonly<Record<string, string>> = {
-  'mcp-contract': 'Phase 2',
-  'value-dashboard': 'Phase 2',
   'user-controlled-diagnostics': 'Phase 3',
   'host-process-model': 'Phase 4',
 };
@@ -517,6 +517,45 @@ const AMENDED: readonly AmendedAdr[] = [
     ],
     amendments: [
       { title: 'Phase 2 shape', keywords: ['chain_confidence', 'readText', 'untrusted_text', 'in-process'] },
+    ],
+  },
+  {
+    slug: 'mcp-contract',
+    preserved: [
+      'Agents choose the cheapest path.',
+      'every tool takes `budget_tokens` (default 2,000)',
+      'Ranking quality is part of the answer',
+      '`INFERRED` hops are listed but not expanded unless asked.',
+      'never mixed into `hints`.',
+      'Read tools marked `readOnlyHint`.',
+      'Many narrow tools:',
+      'Unbounded results:',
+    ],
+    amendments: [
+      {
+        title: 'Phase 2 contract changes',
+        keywords: ['watermark_moved', 'exit code 3', 'repo', 'six tools'],
+      },
+    ],
+  },
+  {
+    slug: 'value-dashboard',
+    preserved: [
+      'Two surfaces, both local.',
+      'A Metrics module per Tenant,',
+      '`record(event)`, `report(range)',
+      'no single value score',
+      'Asking the agent how much it saved is rejected.',
+      'value statistics are never placed in agent context.',
+      'The Host serves no dashboard route',
+      'Provisional retention:',
+      'One "atlas value score":',
+    ],
+    amendments: [
+      {
+        title: 'Metrics migrations and retention',
+        keywords: ['user_version', 'forward-only', 'dropped_events', '30 days'],
+      },
     ],
   },
   {

@@ -4,7 +4,7 @@
 - **Issue:** [#12](https://github.com/open-gsd/gsd-atlas/issues/12)
 - **Ratified:** 2026-10-16
 - **DESIGN.md:** A11, A12, A26, A32, A33, A34, A35, A36, A37, A44, A51, A58
-- **Refines:** [draft-mcp-contract](draft-mcp-contract.md), `AGENT-INTEGRATION.md`
+- **Refines:** [13-mcp-contract](13-mcp-contract.md), `AGENT-INTEGRATION.md`
 - **Review findings addressed:** design-it-twice review, finding 1
 
 ## Context

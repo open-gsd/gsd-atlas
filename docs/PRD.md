@@ -316,7 +316,7 @@ Full design: `AGENT-INTEGRATION.md`.
 - **Backstop for every host and for humans:** `gsd-atlas check --staged` as a git pre‑commit hook and CI step.
 
 ### 8.4 Value dashboard
-Full design: [draft-value-dashboard](adr/draft-value-dashboard.md); research: `DASHBOARD-METRICS.md`.
+Full design: [14-value-dashboard](adr/14-value-dashboard.md); research: `DASHBOARD-METRICS.md`.
 - **Surfaces:** `gsd-atlas status` (always; basic panels) and `gsd-atlas dashboard [--since 7d] [--html]`. The HTML output is a generated, static, self-contained file; the Host serves no dashboard route.
 - **Headline panels:** answers and tokens delivered; atlas vs raw search share; context kept out; problems caught before commit (raised / fixed / overridden / open at commit); gate behaviour; freshness; atlas's own cost; index health and answer quality. An optional A/B panel shows the last `gsd-atlas eval` result (hooks off / advise / enforce).
 - **Honesty rules:** every figure is labeled `measured`, `estimated`, or `A/B` with its method, denominator and interval; the low bound is the headline; no single score; atlas's own cost sits beside its savings; no value statistics reach agent context.

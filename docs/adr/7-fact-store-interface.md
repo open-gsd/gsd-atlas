@@ -18,7 +18,7 @@ Four interfaces were designed independently (minimal, flexible, optimised for th
 3. **Reads: `store.at(worktree) → Reader`.**
    - Cheap, lock-free, read-only connection.
    - Methods: `find(name, {mode, limit})`, `refs(id, opts)`, `callers(id, {hops})`, `symbol(id)`, `fileFacts(path)`.
-   - Every method returns `Answer<T> = { data, watermark, degraded? }`, which is the MCP envelope's core (see draft-mcp-contract).
+   - Every method returns `Answer<T> = { data, watermark, degraded? }`, which is the MCP envelope's core (see 13-mcp-contract).
    - Reads report `stalePaths` in the watermark and never wait. Read‑your‑writes (A26) is `Indexer.ensureFresh`, called by Query before it reads ([9-tenant-composition](9-tenant-composition.md)).
    - Reads never throw for missing data; they return empty `data` with `degraded`. They throw only `UnknownWorktree` and `StoreClosed`.
 4. **Resolution is hidden.**
