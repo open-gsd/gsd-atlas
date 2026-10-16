@@ -3,6 +3,7 @@
  * the fact store. The vocabulary is closed and no free text can be recorded.
  */
 export { openMetrics } from './store.ts';
+export { createNoopMetrics } from './noop.ts';
 export {
   COUNTER_METRICS,
   DIM_NONE,
