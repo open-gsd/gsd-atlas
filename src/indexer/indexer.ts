@@ -405,6 +405,30 @@ export function createIndexer(deps: IndexerDeps): Indexer {
       entry.unsubscribe = await activeSource.subscribe(worktree, fileHandler(worktree, true));
     } catch {
       degraded = true;
+      return;
+    }
+    void hintChanged(activeSource, worktree);
+  }
+
+  /**
+   * The optional start-up hint: the paths the source says changed while nothing was watching are queued, so they
+   * are indexed ahead of the Reconcile's walk. It is only a hint (research: the call lagged about 1.5 seconds on
+   * macOS), so it is never waited for and every failure of it is ignored; Reconcile is authoritative.
+   */
+  async function hintChanged(source: EventSource, worktree: string): Promise<void> {
+    try {
+      for (const rel of (await source.eventsSince?.(worktree)) ?? []) submit(worktree, rel);
+    } catch {
+      // ignored on purpose
+    }
+  }
+
+  /** The matching hint at stop: remember where each covered worktree was, for the next start. */
+  async function writeHint(source: EventSource, worktree: string): Promise<void> {
+    try {
+      await source.writeSnapshot?.(worktree);
+    } catch {
+      // ignored on purpose
     }
   }
 
@@ -613,8 +637,10 @@ export function createIndexer(deps: IndexerDeps): Indexer {
             // a watcher that fails to stop must not keep the Indexer from stopping
           }
         }
+        const roots = [...covered.keys()];
         covered.clear();
         while (active.size > 0) await Promise.allSettled([...active]);
+        if (activeSource !== undefined) for (const root of roots) await writeHint(activeSource, root);
         await host.dispose();
         writer?.release();
         writer = undefined;

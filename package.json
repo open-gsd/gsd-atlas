@@ -36,6 +36,7 @@
     "prepack": "npm run build"
   },
   "dependencies": {
+    "@parcel/watcher": "2.6.0",
     "web-tree-sitter": "0.27.1",
     "zod": "4.6.7"
   },

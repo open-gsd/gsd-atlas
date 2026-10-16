@@ -334,6 +334,8 @@ describe('parcel event source over the real watcher', () => {
     await repo.git(['-C', linked, 'checkout', '--quiet', '-b', 'side-two']);
     await arrived(() => has({ kind: 'head', gitDirName: name }), 'HEAD of the linked worktree');
 
+    // Let the operating system finish reporting the checkouts above before the quiet period is measured.
+    await new Promise((resolve) => setTimeout(resolve, 700));
     seen.length = 0;
     repo.write('b.txt', 'two\n');
     await repo.git(['add', 'b.txt']);
