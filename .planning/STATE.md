@@ -3,16 +3,16 @@ gsd_state_version: "1.0"
 current_phase: 02
 current_phase_name: Grammar Tier, Store and stdio Host
 status: executing
-stopped_at: Completed 02-15-PLAN.md
-last_updated: "2026-10-16T22:10:37.925Z"
+stopped_at: Completed 02-16-PLAN.md
+last_updated: "2026-10-16T22:33:32.140Z"
 last_activity: 2026-10-16
-last_activity_desc: Completed 02-15 indexer core
-state_head: 4bb8de3aa3d4d03bc7436dd22e8d40b838c96918
+last_activity_desc: Completed 02-16 query core and code_find
+state_head: 6d6c70edb7e11bdfab72c0041fcb293150f157a9
 progress:
   total_phases: 9
   completed_phases: 1
   total_plans: 48
-  completed_plans: 36
+  completed_plans: 37
   percent: 11
 ---
 
@@ -28,9 +28,9 @@ See: .planning/PROJECT.md (updated 2026-10-15)
 ## Current Position
 
 Phase: 02 (Grammar Tier, Store and stdio Host) — EXECUTING
-Plan: 16 of 28 complete (plans 02-01 to 02-15 and 02-21 complete; they ran out of order, next is the lowest-numbered incomplete plan, 02-16)
+Plan: 17 of 28 complete (plans 02-01 to 02-16 and 02-21 complete; they ran out of order, next is the lowest-numbered incomplete plan, 02-17)
 Status: Ready to execute
-Last activity: 2026-10-16 — Completed 02-15 (Indexer core: coalescing queue with debounce and maximum wait, ensureFresh in one fresh-class request, ignored watcher paths dropped before hashPaths, stamp-checked hash and parse race, failure accounting; src/indexer)
+Last activity: 2026-10-16 — Completed 02-16 (Query core and code_find: six shared strict-zod tool definitions, full citation and watermark envelope, total-order tiered ranking, token budget with hard ceiling and keyset cursor, nonce-fenced normalized line text, fresh handling; src/query)
 
 Progress: [█░░░░░░░░░] 11%
 
@@ -73,6 +73,7 @@ Progress: [█░░░░░░░░░] 11%
 | Phase 02 P13 | 35 min | 3 tasks | 30 files |
 | Phase 02 P14 | 16 min | 3 tasks | 9 files |
 | Phase 02 P15 | 22 min | 3 tasks | 13 files |
+| Phase 02 P16 | 15 min | 3 tasks | 19 files |
 
 ## Accumulated Context
 
@@ -127,6 +128,9 @@ Recent decisions affecting current work:
 - [Phase 02]: 02-15: ignored watcher paths are dropped before hashPaths by snapshot membership (one snapshot per batch for new existing paths, verdicts remembered, a .gitignore event clears them) — hashPaths does not consult ignore rules and check-ignore is outside the CommandRunner allowlist; Reconcile (02-17) repairs paths whose status a rule change flips
 - [Phase 02]: 02-15: STO-02 race check: the lstat stamp taken before hashing must equal the stamp before the link and right after the read, else nothing is committed, a requeued notice is sent and the path is hashed again up to maxRaceRetries, then it fails as unstable keeping its earlier facts — Per-path locks stop an older hash being committed after a newer one; a build hashes the paths that need work a second time on purpose
 - [Phase 02]: 02-15: queue.flushNow hands the pending entries back instead of delivering them, so ensureFresh runs them as one fresh-class Governor request; two internal bounds are not in 02-CONSTANTS.md: 8 paths in flight and 100000 remembered ignored paths per worktree — Neither is a timeout, a Governor queue bound or a gate threshold; record them if the constants file is reopened
+- [Phase 02]: 02-16: a symbol name is the last segment of its qualified name, and only a symbol the exact read returned is the exact tier; any other hit is tier 1 or worse — Stops a CommonJS name such as module.exports from ranking as an exact match for exports; the Reader's exact read is the only proof of an exact name
+- [Phase 02]: 02-16: a cursor longer than query.cursorMaxChars (a path over about 330 characters) is not issued; the response is truncated with a static hint and no more cursor. The cursor query hash includes the worktree — Never issue a cursor Query would later refuse as oversized; a cursor must not be replayable against another repository
+- [Phase 02]: 02-16: when the Indexer could not finish a fresh path its line text is dropped and the result degrades stale; the Query clock dependency is reserved and unread, the fresh wait lives in the Indexer — The file on disk is newer than the facts, so the old span would point at the wrong line; Plan 02-19 reuses FindContext, cutToBudget, createLineReader and the cursor for the other tools
 
 ### Pending Todos
 
@@ -153,6 +157,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-10-16T22:10:37.868Z
-Stopped at: Completed 02-15-PLAN.md
+Last session: 2026-10-16T22:33:32.077Z
+Stopped at: Completed 02-16-PLAN.md
 Resume file: None
