@@ -471,6 +471,29 @@ describe('prepareSource with an upstream archive (hermetic: no network, no wasi 
     }
   });
 
+  it('with generate false requires the archive to ship src/parser.c, and accepts one that does', async () => {
+    const tmp = makeTempDir();
+    try {
+      const without = makeArchive(tmp.path, 'toy-1.0', { 'grammar.js': grammarJs });
+      const base = upstreamLock(without, sha256Hex(fs.readFileSync(without)), []);
+      const skipGenerate = (archive: string): GrammarLock => {
+        const lock = upstreamLock(archive, sha256Hex(fs.readFileSync(archive)), []);
+        return { ...lock, source: { ...(base.source as Extract<GrammarLock['source'], { type: 'upstream' }>), url: pathToFileURL(archive).href, archiveSha256: sha256Hex(fs.readFileSync(archive)), generate: false } };
+      };
+      await assert.rejects(
+        prepareSource(skipGenerate(without), tmp.path, path.join(tmp.path, 'work-a')),
+        (error: unknown) => error instanceof GrammarBuildError && error.code === 'source_missing' && error.message.includes('src/parser.c'),
+      );
+      const withParser = path.join(tmp.path, 'second');
+      fs.mkdirSync(withParser);
+      const shipped = makeArchive(withParser, 'toy-1.0', { 'grammar.js': grammarJs, 'src/parser.c': '/* generated */' });
+      const prepared = await prepareSource(skipGenerate(shipped), tmp.path, path.join(tmp.path, 'work-b'));
+      assert.ok(fs.existsSync(path.join(prepared.dir, 'src', 'parser.c')));
+    } finally {
+      tmp.cleanup();
+    }
+  });
+
   it('fails with archive_hash_mismatch when archiveSha256 is wrong', async () => {
     const tmp = makeTempDir();
     try {

@@ -1,0 +1,26 @@
+{
+  "lockVersion": 2,
+  "name": "typescript",
+  "source": {
+    "type": "upstream",
+    "url": "https://registry.npmjs.org/tree-sitter-typescript/-/tree-sitter-typescript-0.23.2.tgz",
+    "ref": "0.23.2",
+    "archiveSha256": "0fdf63c35930a75885145d75ee63cb879da2d49db9bfe454bd8e60b08ba778a1",
+    "subdir": "typescript",
+    "generate": false
+  },
+  "patches": [],
+  "license": "MIT",
+  "cli": {
+    "version": "0.27.1"
+  },
+  "abi": 14,
+  "wasm": {
+    "file": "grammar.wasm",
+    "sha256": "d24392183c75c103feafb827c9c086de00c30198e27f362cc971fbca6e91a87f",
+    "platforms": {
+      "linux-x64": "d24392183c75c103feafb827c9c086de00c30198e27f362cc971fbca6e91a87f",
+      "darwin-arm64": "d24392183c75c103feafb827c9c086de00c30198e27f362cc971fbca6e91a87f"
+    }
+  }
+}

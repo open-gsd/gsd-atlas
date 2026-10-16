@@ -223,6 +223,12 @@ export async function prepareSource(
     if (!fs.existsSync(path.join(dir, 'grammar.js'))) {
       throw new GrammarBuildError('source_missing', `no grammar.js under ${dir} after extraction`);
     }
+    if (lock.source.generate === false && !fs.existsSync(path.join(dir, 'src', 'parser.c'))) {
+      throw new GrammarBuildError(
+        'source_missing',
+        `generate is false but the archive ships no src/parser.c under ${dir}`,
+      );
+    }
   }
   for (const patch of lock.patches) {
     applyPatch(patch, path.join(moduleDir, patch), dir);
@@ -244,10 +250,41 @@ function run(binary: string, args: string[], cwd: string, code: GrammarBuildErro
   }
 }
 
-/** generate --abi 15, then build --wasm into `outFile`. Needs the wasi toolchain (CLI downloads it). */
-export function buildWasm(cliBinary: string, workDir: string, outFile: string): void {
-  run(cliBinary, ['generate', '--abi', GENERATE_ABI], workDir, 'generate_failed');
-  run(cliBinary, ['build', '--wasm', '-o', outFile], workDir, 'build_failed');
+export interface BuildOptions {
+  /** False builds from the parser.c the source already ships and skips `generate`. Default true. */
+  readonly generate?: boolean;
+  /** The `-o` target of `build --wasm`. */
+  readonly outFile?: string;
+}
+
+export interface BuildCommand {
+  readonly code: GrammarBuildErrorCode;
+  readonly args: readonly string[];
+}
+
+/** The CLI invocations a build runs, in order. Pure, so the choice is testable without the wasi toolchain. */
+export function buildCommands(options: BuildOptions = {}): BuildCommand[] {
+  const commands: BuildCommand[] = [];
+  if (options.generate !== false) {
+    commands.push({ code: 'generate_failed', args: ['generate', '--abi', GENERATE_ABI] });
+  }
+  commands.push({ code: 'build_failed', args: ['build', '--wasm', '-o', options.outFile ?? 'grammar.wasm'] });
+  return commands;
+}
+
+/**
+ * generate --abi 15 (unless the lock says `generate: false`), then build --wasm into `outFile`.
+ * Needs the wasi toolchain (CLI downloads it).
+ */
+export function buildWasm(cliBinary: string, workDir: string, outFile: string, options: { generate?: boolean } = {}): void {
+  for (const command of buildCommands({ ...options, outFile })) {
+    run(cliBinary, [...command.args], workDir, command.code);
+  }
+}
+
+/** The lock's `generate` choice; local sources always generate. */
+function lockGenerates(lock: GrammarLock): boolean {
+  return lock.source.type === 'upstream' ? lock.source.generate !== false : true;
 }
 
 export interface BuiltModule {
@@ -278,7 +315,7 @@ export async function buildModule(moduleDir: string, cliBinary: string): Promise
     fs.mkdirSync(workDir);
     const prepared = await prepareSource(lock, moduleDir, workDir);
     const outFile = path.join(root, 'grammar.wasm');
-    buildWasm(cliBinary, prepared.dir, outFile);
+    buildWasm(cliBinary, prepared.dir, outFile, { generate: lockGenerates(lock) });
     const wasm = fs.readFileSync(outFile);
     return { lock, wasm, sha256: sha256Hex(wasm), patchesApplied: prepared.patchesApplied };
   } finally {
@@ -312,7 +349,18 @@ export function serializeLock(lock: GrammarLock): string {
       platforms[key] = sha256;
     }
   }
-  const ordered: GrammarLock = { ...lock, wasm: { file: lock.wasm.file, sha256: lock.wasm.sha256, platforms } };
+  const source: GrammarLock['source'] =
+    lock.source.type === 'upstream'
+      ? {
+          type: 'upstream',
+          url: lock.source.url,
+          ref: lock.source.ref,
+          archiveSha256: lock.source.archiveSha256,
+          ...(lock.source.subdir === undefined ? {} : { subdir: lock.source.subdir }),
+          ...(lock.source.generate === undefined ? {} : { generate: lock.source.generate }),
+        }
+      : lock.source;
+  const ordered: GrammarLock = { ...lock, source, wasm: { file: lock.wasm.file, sha256: lock.wasm.sha256, platforms } };
   return `${JSON.stringify(ordered, null, 2)}\n`;
 }
 

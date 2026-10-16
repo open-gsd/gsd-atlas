@@ -35,6 +35,12 @@ const LocalSource = z.strictObject({
   path: RelativePath,
 });
 
+/**
+ * `generate` (upstream only, default true when absent): false builds the WASM from the
+ * `src/parser.c` the pinned archive already ships and skips `tree-sitter generate`. Needed when
+ * generate cannot run from the archive alone (tree-sitter-typescript's grammar.js requires
+ * tree-sitter-javascript on disk) or when the archive's parser.c is the reviewed artifact.
+ */
 const UpstreamSource = z.strictObject({
   type: z.literal('upstream'),
   url: z
@@ -45,6 +51,7 @@ const UpstreamSource = z.strictObject({
   ref: z.string().min(1),
   archiveSha256: Sha256,
   subdir: RelativePath.optional(),
+  generate: z.boolean().optional(),
 });
 
 /**

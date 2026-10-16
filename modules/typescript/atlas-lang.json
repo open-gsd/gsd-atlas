@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "name": "typescript",
+  "version": "0.1.0",
+  "extensions": [".ts", ".cts", ".mts"],
+  "grammar": {
+    "wasm": "grammar.wasm",
+    "lock": "grammar.lock"
+  },
+  "queries": {
+    "tags": "queries/tags.scm"
+  },
+  "tiers": ["grammar"],
+  "parseBudget": 0.005
+}

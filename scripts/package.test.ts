@@ -388,9 +388,19 @@ test('installed tarball runs the bins', async () => {
     prefix,
   );
   assert.equal(list.exitCode, 0, list.stderr);
-  const listEnvelope = JSON.parse(list.stdout.trim()) as { ok: boolean; data: { modules: unknown[] } };
+  const listEnvelope = JSON.parse(list.stdout.trim()) as {
+    ok: boolean;
+    data: { modules: Array<{ name: string; source: string }> };
+  };
   assert.equal(listEnvelope.ok, true);
-  assert.deepEqual(listEnvelope.data.modules, []);
+  // With no repo, user or npm modules the list is exactly the built-in modules the package ships.
+  const shipped = readdirSync(path.join(root, 'modules'), { withFileTypes: true })
+    .filter((entry) => entry.isDirectory() && existsSync(path.join(root, 'modules', entry.name, 'atlas-lang.json')))
+    .map((entry) => entry.name)
+    .sort();
+  assert.ok(shipped.length > 0, 'the repository ships at least one built-in module');
+  assert.deepEqual(listEnvelope.data.modules.map((m) => m.name).sort(), shipped);
+  assert.ok(listEnvelope.data.modules.every((m) => m.source === 'builtin'));
 
   const toy = path.join(root, 'test', 'fixtures', 'modules', 'toy');
   const langTest = await runChild(process.execPath, [bin, 'lang', 'test', toy], prefix);
