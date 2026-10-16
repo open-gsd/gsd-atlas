@@ -46,6 +46,42 @@ export const CONTRACT_WORLD: SourceTreeWorld = {
   ignored: ['build/', 'secret.log'],
 };
 
+/** Options every sourceSet case passes: two claimed extensions and a 10,000-byte cap. */
+export const SOURCE_SET_OPTIONS = { extensions: ['.ts', '.cjs'], maxBytes: 10000 } as const;
+
+/**
+ * A world for the source-set cases: claimed and unclaimed extensions, linguist attributes (set and explicitly
+ * unset), a binary, a Git LFS pointer, a file over the byte cap, a NUL byte only after the first 8 KB, a file
+ * deleted after listing and an ignored secret that must never surface.
+ */
+export const SOURCE_SET_WORLD: SourceTreeWorld = {
+  committed: {
+    'src/a.ts': 'export const a = 1;\n',
+    'src/Upper.TS': 'export const upper = 1;\n',
+    'lib/b.cjs': 'module.exports = 1;\n',
+    'README.md': '# readme\n',
+    'notes.txt': 'notes\n',
+    'gen/out.ts': 'export const generated = 1;\n',
+    'gen/unset.ts': 'export const kept = 1;\n',
+    'third_party/v.ts': 'export const vendored = 1;\n',
+    'bin/blob.ts': 'MZ\0\0binary payload\n',
+    'lfs/pointer.ts': `version https://git-lfs.github.com/spec/v1\noid sha256:${'a'.repeat(64)}\nsize 12345\n`,
+    'big/huge.ts': `${'y'.repeat(20000)}\n`,
+    'late/nul.ts': `${'x'.repeat(9000)}\0\n`,
+    'gone/deleted.ts': 'export const gone = 1;\n',
+  },
+  working: {
+    'gone/deleted.ts': null,
+    'config/secrets.ts': 'export const token = "never indexed";\n',
+  },
+  ignored: ['config/secrets.ts'],
+  attributes: {
+    'gen/out.ts': { generated: true },
+    'gen/unset.ts': { generated: false },
+    'third_party/v.ts': { vendored: true },
+  },
+};
+
 /** What a snapshot of {@link CONTRACT_WORLD} must be, derived from the world alone. */
 function expectedFiles(world: SourceTreeWorld): Array<[string, string]> {
   const isIgnored = (rel: string): boolean => world.ignored.some((e) => (e.endsWith('/') ? rel.startsWith(e) : rel === e));
@@ -200,5 +236,104 @@ export function defineSourceTreeContract(label: string, make: MakeSourceTree): v
         ]);
       }),
     );
+
+    describe('sourceSet', () => {
+      const run = async (tree: SourceTree, worktree: string, extra: ReadonlyMap<string, string> = new Map()) => {
+        const { files } = await tree.snapshot(worktree);
+        return tree.sourceSet(worktree, new Map([...files, ...extra]), SOURCE_SET_OPTIONS);
+      };
+      const coded = (skipped: ReadonlyArray<{ code: string; subject?: string }>): string[] =>
+        skipped.map((d) => `${d.code}:${d.subject ?? ''}`).sort();
+
+      it(
+        'keeps only claimed extensions (case-insensitive) and reports the rest as one aggregated extension_not_claimed count',
+        withTree(SOURCE_SET_WORLD, async ({ tree, worktree }) => {
+          const { files, skipped } = await run(tree, worktree);
+          for (const kept of ['src/a.ts', 'lib/b.cjs', 'src/Upper.TS']) assert.ok(files.has(kept), kept);
+          for (const dropped of ['README.md', 'notes.txt']) assert.ok(!files.has(dropped), dropped);
+          const info = skipped.filter((d) => d.code === 'extension_not_claimed');
+          assert.equal(info.length, 1, 'one aggregated diagnostic, not one per file');
+          assert.equal(info[0]?.severity, 'info');
+          assert.match(info[0]?.message ?? '', /\b2\b/);
+          assert.ok(!skipped.some((d) => d.subject === 'README.md' || d.subject === 'notes.txt'));
+        }),
+      );
+
+      it(
+        'drops linguist-generated and linguist-vendored files and keeps one whose linguist-generated is explicitly unset',
+        withTree(SOURCE_SET_WORLD, async ({ tree, worktree }) => {
+          const { files, skipped } = await run(tree, worktree);
+          assert.ok(!files.has('gen/out.ts'));
+          assert.ok(!files.has('third_party/v.ts'));
+          assert.ok(files.has('gen/unset.ts'));
+          assert.ok(coded(skipped).includes('generated_skipped:gen/out.ts'));
+          assert.ok(coded(skipped).includes('vendored_skipped:third_party/v.ts'));
+          assert.ok(!coded(skipped).includes('generated_skipped:gen/unset.ts'));
+        }),
+      );
+
+      it(
+        'drops binary files (NUL in the first 8 KB), Git LFS pointers and oversize files, and keeps a NUL after the first 8 KB',
+        withTree(SOURCE_SET_WORLD, async ({ tree, worktree }) => {
+          const { files, skipped } = await run(tree, worktree);
+          for (const dropped of ['bin/blob.ts', 'lfs/pointer.ts', 'big/huge.ts']) assert.ok(!files.has(dropped), dropped);
+          assert.ok(files.has('late/nul.ts'), 'only the first 8 KB is inspected for NUL');
+          assert.deepEqual(
+            coded(skipped).filter((c) => /^(binary|lfs_pointer|source_too_large)/.test(c)),
+            ['binary_skipped:bin/blob.ts', 'lfs_pointer_skipped:lfs/pointer.ts', 'source_too_large:big/huge.ts'],
+          );
+        }),
+      );
+
+      it(
+        'returns the surviving ids sorted by path in code-unit order, identically on repeated calls, and never an ignored secret',
+        withTree(SOURCE_SET_WORLD, async ({ tree, worktree }) => {
+          const first = await run(tree, worktree);
+          const second = await run(tree, worktree);
+          const expectedKeep = [
+            'gen/unset.ts',
+            'late/nul.ts',
+            'lib/b.cjs',
+            'src/Upper.TS',
+            'src/a.ts',
+          ];
+          const keys = [...first.files.keys()];
+          assert.deepEqual(keys, [...keys].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0)));
+          assert.deepEqual(keys, expectedKeep);
+          const oracle = new Map(expectedFiles(SOURCE_SET_WORLD));
+          for (const [rel, id] of first.files) assert.equal(id, oracle.get(rel), rel);
+          assert.deepEqual([...second.files], [...first.files]);
+          assert.deepEqual(second.skipped, first.skipped);
+          assert.ok(!first.files.has('config/secrets.ts'));
+          assert.ok(!first.skipped.some((d) => d.subject === 'config/secrets.ts'));
+        }),
+      );
+
+      it(
+        'a path deleted after the snapshot gets missing_on_disk and the rest of the set is unaffected',
+        withTree(SOURCE_SET_WORLD, async ({ tree, worktree }) => {
+          const base = await run(tree, worktree);
+          const raced = await run(tree, worktree, new Map([['gone/deleted.ts', '0'.repeat(40)]]));
+          assert.deepEqual([...raced.files], [...base.files]);
+          assert.deepEqual(
+            coded(raced.skipped).filter((c) => !coded(base.skipped).includes(c)),
+            ['missing_on_disk:gone/deleted.ts'],
+          );
+        }),
+      );
+
+      it(
+        'an empty extension list or an empty file map returns an empty result',
+        withTree(SOURCE_SET_WORLD, async ({ tree, worktree }) => {
+          const { files } = await tree.snapshot(worktree);
+          const noExt = await tree.sourceSet(worktree, files, { extensions: [], maxBytes: SOURCE_SET_OPTIONS.maxBytes });
+          assert.equal(noExt.files.size, 0);
+          assert.deepEqual(noExt.skipped, []);
+          const noFiles = await tree.sourceSet(worktree, new Map(), SOURCE_SET_OPTIONS);
+          assert.equal(noFiles.files.size, 0);
+          assert.deepEqual(noFiles.skipped, []);
+        }),
+      );
+    });
   });
 }

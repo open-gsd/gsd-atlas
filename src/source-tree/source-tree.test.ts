@@ -9,6 +9,7 @@ import { createTempGitRepo } from '../test-kit/index.ts';
 import type { TempGitRepoOptions } from '../test-kit/index.ts';
 import { defineSourceTreeContract } from './contract.ts';
 import { createFakeSourceTree, createSourceTree } from './index.ts';
+import type { SourceTreeWorld } from './index.ts';
 
 /** Independent oracle: the git blob id of `content` in a SHA-1 repository. */
 const blobId = (content: string | Uint8Array): string => {
@@ -67,8 +68,25 @@ describe('Source Tree tracer: one batched hash-object over a whole snapshot', ()
 defineSourceTreeContract('fake', (world) =>
   Promise.resolve({ tree: createFakeSourceTree(world), worktree: '/fake', cleanup: () => {} }),
 );
+/**
+ * Realises `SourceTreeWorld.attributes` as linguist attributes in `.git/info/attributes`: git reads them like
+ * `.gitattributes`, but the file is untracked, so no attribute file ever appears in a snapshot.
+ */
+function writeAttributes(repoDir: string, attributes: NonNullable<SourceTreeWorld['attributes']>): void {
+  const lines: string[] = [];
+  for (const [rel, attr] of Object.entries(attributes)) {
+    const pattern = `/${rel.replace(/[\\*?[\] ]/g, '\\$&')}`;
+    if (attr.generated !== undefined) lines.push(`${pattern} ${attr.generated ? '' : '-'}linguist-generated`);
+    if (attr.vendored !== undefined) lines.push(`${pattern} ${attr.vendored ? '' : '-'}linguist-vendored`);
+  }
+  const file = path.join(repoDir, '.git', 'info', 'attributes');
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.appendFileSync(file, `${lines.join('\n')}\n`);
+}
+
 defineSourceTreeContract('real', async (world) => {
   const repo = await createTempGitRepo({ runner: setupRunner, world });
+  if (world.attributes !== undefined) writeAttributes(repo.dir, world.attributes);
   const tree = createSourceTree({ runner: createRealRunner(), repoDir: repo.dir, envOverlay: repo.envOverlay });
   return { tree, worktree: repo.dir, cleanup: () => repo.cleanup() };
 });
@@ -228,6 +246,114 @@ describe('real Source Tree git quirks', () => {
     await assert.rejects(() => tree.read('HEAD', 'a\0b'), { code: 'invalid_argument' });
     assert.equal(recording.starts.length, 0);
     assert.equal(await tree.hasObject(blobId('a\n')), true);
+  });
+});
+
+const checkAttrStarts = (recording: { readonly starts: readonly RecordedSpec[] }): RecordedSpec[] =>
+  recording.starts.filter((s) => subcommand(s) === 'check-attr');
+
+describe('real Source Tree sourceSet', () => {
+  const OPTIONS = { extensions: ['.ts'], maxBytes: 1000 } as const;
+
+  it('reads committed .gitattributes for linguist-generated and linguist-vendored (one check-attr run, 60 s timeout)', async (t) => {
+    const { repo, recording, tree } = await realTree(t, {
+      files: {
+        '.gitattributes': 'gen/** linguist-generated\nvendor/** linguist-vendored\ngen/keep.ts -linguist-generated\n',
+        'a.ts': 'a\n',
+        'gen/out.ts': 'g\n',
+        'gen/keep.ts': 'k\n',
+        'vendor/v.ts': 'v\n',
+        'z.ts': 'z\n',
+      },
+    });
+    const { files } = await tree.snapshot(repo.dir);
+    recording.reset();
+    const result = await tree.sourceSet(repo.dir, files, OPTIONS);
+    assert.deepEqual([...result.files.keys()], ['a.ts', 'gen/keep.ts', 'z.ts']);
+    assert.deepEqual(codes(result.skipped).filter((c) => !c.startsWith('extension_not_claimed')), [
+      'generated_skipped:gen/out.ts',
+      'vendored_skipped:vendor/v.ts',
+    ]);
+    const attrs = checkAttrStarts(recording);
+    assert.equal(attrs.length, 1);
+    assert.equal(recording.starts.length, 1, recording.starts.map((s) => subcommand(s)).join(','));
+    assert.equal(attrs[0]?.timeoutMs, 60000);
+    assert.ok(attrs[0]?.args.includes('--stdin') && attrs[0].args.includes('-z'));
+  });
+
+  it('starts no git for an empty extension list or an empty file map', async (t) => {
+    const { repo, recording, tree } = await realTree(t, { files: { 'a.ts': 'a\n' } });
+    const { files } = await tree.snapshot(repo.dir);
+    recording.reset();
+    assert.equal((await tree.sourceSet(repo.dir, files, { extensions: [], maxBytes: 1000 })).files.size, 0);
+    assert.equal((await tree.sourceSet(repo.dir, new Map(), OPTIONS)).files.size, 0);
+    assert.equal(recording.starts.length, 0);
+  });
+
+  it('starts no check-attr when no path survives the extension filter', async (t) => {
+    const { repo, recording, tree } = await realTree(t, { files: { 'a.md': 'a\n' } });
+    const { files } = await tree.snapshot(repo.dir);
+    recording.reset();
+    const result = await tree.sourceSet(repo.dir, files, OPTIONS);
+    assert.equal(result.files.size, 0);
+    assert.equal(recording.starts.length, 0);
+    assert.deepEqual(codes(result.skipped).map((c) => c.split(':')[0]), ['extension_not_claimed']);
+  });
+
+  it('inspects at most the first 8 KB (binary), compares the cap to the file size and detects an LFS pointer by its first line', async (t) => {
+    const { repo, tree } = await realTree(t, {
+      files: {
+        'nul-at-8191.ts': `${'x'.repeat(8191)}\0`,
+        'nul-at-8192.ts': `${'x'.repeat(8192)}\0`,
+        'exactly-cap.ts': 'e'.repeat(1000),
+        'one-over.ts': 'o'.repeat(1001),
+        'pointer-lookalike.ts': 'see version https://git-lfs.github.com/spec/v1 in the docs\n',
+      },
+    });
+    const { files } = await tree.snapshot(repo.dir);
+    const roomy = await tree.sourceSet(repo.dir, files, { extensions: ['.ts'], maxBytes: 9000 });
+    assert.deepEqual([...roomy.files.keys()], ['exactly-cap.ts', 'nul-at-8192.ts', 'one-over.ts', 'pointer-lookalike.ts']);
+    assert.deepEqual(codes(roomy.skipped), ['binary_skipped:nul-at-8191.ts']);
+    const tight = await tree.sourceSet(repo.dir, files, { extensions: ['.ts'], maxBytes: 1000 });
+    assert.deepEqual([...tight.files.keys()], ['exactly-cap.ts', 'pointer-lookalike.ts']);
+    assert.deepEqual(codes(tight.skipped), [
+      'source_too_large:nul-at-8191.ts',
+      'source_too_large:nul-at-8192.ts',
+      'source_too_large:one-over.ts',
+    ]);
+  });
+
+  it(
+    'reports symlink_skipped for a file replaced by a link after listing and keeps the rest',
+    { skip: notOnWindows('creating a symlink needs privileges on Windows') },
+    async (t) => {
+      const { repo, tree } = await realTree(t, { files: { 'a.ts': 'a\n', 'b.ts': 'b\n', 'real.ts': 'r\n' } });
+      const { files } = await tree.snapshot(repo.dir);
+      repo.remove('a.ts');
+      fs.symlinkSync('real.ts', path.join(repo.dir, 'a.ts'));
+      repo.remove('b.ts');
+      const result = await tree.sourceSet(repo.dir, files, OPTIONS);
+      assert.deepEqual([...result.files.keys()], ['real.ts']);
+      assert.deepEqual(codes(result.skipped), ['missing_on_disk:b.ts', 'symlink_skipped:a.ts']);
+    },
+  );
+
+  it('rejects a name that cannot be inspected safely with unhashable_path and keeps the rest', async (t) => {
+    const { repo, tree } = await realTree(t, { files: { 'a.ts': 'a\n' } });
+    const { files } = await tree.snapshot(repo.dir);
+    const result = await tree.sourceSet(repo.dir, new Map([...files, ['../escape.ts', '1'.repeat(40)], ['"q".ts', '2'.repeat(40)]]), OPTIONS);
+    assert.deepEqual([...result.files.keys()], ['a.ts']);
+    assert.deepEqual(codes(result.skipped), ['unhashable_path:"q".ts', 'unhashable_path:../escape.ts']);
+  });
+
+  it('fails closed when git check-attr fails or returns fewer records than asked', async (t) => {
+    const repo = await createTempGitRepo({ runner: setupRunner, files: { 'a.ts': 'a\n' } });
+    t.after(() => repo.cleanup());
+    for (const answer of [{ exitCode: 128 }, { stdout: '' }]) {
+      const recording = createRecordingRunner({ respond: () => answer });
+      const tree = createSourceTree({ runner: recording, repoDir: repo.dir });
+      await assert.rejects(() => tree.sourceSet(repo.dir, new Map([['a.ts', '1'.repeat(40)]]), OPTIONS), { code: 'git_failed' });
+    }
   });
 });
 
