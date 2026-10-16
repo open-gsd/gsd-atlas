@@ -404,3 +404,50 @@ describe('code_refs paging through the shared mechanism', () => {
     assert.equal(pathsOf(second).length, 5);
   });
 });
+
+describe('cross-tool determinism: the four code tools share one envelope discipline', () => {
+  const REQUESTS: readonly (readonly [string, (h: Harness) => Request])[] = [
+    ['code_find', (h) => ({ protocol: 1, kind: 'code_find', args: { repo: h.dir, name: 'parse' }, worktree: h.dir })],
+    ['code_refs', (h) => ({ protocol: 1, kind: 'code_refs', args: { repo: h.dir, name: 'parse' }, worktree: h.dir })],
+    ['code_context', (h) => ({ protocol: 1, kind: 'code_context', args: { repo: h.dir, name: 'parse' }, worktree: h.dir })],
+    ['code_impact', (h) => ({ protocol: 1, kind: 'code_impact', args: { repo: h.dir, name: 'parse', depth: 2 }, worktree: h.dir })],
+  ];
+
+  async function example(t: TestContext): Promise<Harness> {
+    const h = await world(t);
+    await defineFn(h, 'a.ts', 'parse');
+    await addCaller(h, 'b.ts', './a', 'parse', 'load');
+    await addCaller(h, 'c.ts', './b', 'load', 'main');
+    return h;
+  }
+
+  const masked = (envelope: Envelope): string => {
+    const nonce = envelope.untrusted_text?.nonce;
+    const text = JSON.stringify(envelope);
+    return nonce === undefined ? text : text.replaceAll(nonce, '<nonce>');
+  };
+
+  for (const [tool, build] of REQUESTS) {
+    it(`${tool}: 100 identical requests are byte-identical once the nonce is masked, and every response carries schema, watermark and fenced text`, async (t) => {
+      const h = await example(t);
+      const query = h.query();
+      const first = await query.ask(build(h));
+
+      assert.equal(first.ok, true, JSON.stringify(first.diagnostics));
+      assert.match(first.schema, /^gsd-atlas\.code-[a-z]+\/1$/);
+      assert.ok(first.watermark !== undefined, 'a watermark');
+      const untrusted = first.untrusted_text;
+      assert.ok(untrusted !== undefined, 'fenced text');
+      assert.match(untrusted.nonce, NONCE);
+      for (const entry of untrusted.entries) {
+        assert.ok(entry.text.startsWith(`BEGIN-UNTRUSTED-${untrusted.nonce}\n`), 'the opening fence');
+        assert.ok(entry.text.endsWith(`\nEND-UNTRUSTED-${untrusted.nonce}`), 'the closing fence');
+      }
+      const baseline = masked(first);
+      assert.ok(baseline.includes('<nonce>'));
+      for (let run = 0; run < 100; run += 1) {
+        assert.equal(masked(await query.ask(build(h))), baseline, `run ${String(run)}`);
+      }
+    });
+  }
+});
