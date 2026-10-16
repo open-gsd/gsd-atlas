@@ -1,12 +1,41 @@
 import { assertInputSizes, hashMismatchMessage, sha256Hex, utf8Length } from './check.ts';
 import { GrammarLoadError, GrammarRunError } from './errors.ts';
 import { GRAMMAR_LIMITS } from './limits.ts';
-import type { GrammarEngine, GrammarInput, GrammarRunResult, LoadedGrammar } from './types.ts';
+import type { Capture, GrammarEngine, GrammarInput, GrammarRunResult, LoadedGrammar, QueryKind } from './types.ts';
+
+/** A scripted capture: `match` may be left out, and the fake then assigns one. */
+export type ScriptedCapture = Omit<Capture, 'match'> & { readonly match?: number };
+
+/** A scripted run result; any `GrammarRunResult` (every capture with a match) is also a valid one. */
+export type ScriptedRunResult = Omit<GrammarRunResult, 'captures'> & { readonly captures: readonly ScriptedCapture[] };
 
 /** What a fake engine answers: results keyed by the EXACT source text passed to `run`. */
 export interface FakeGrammarScript {
   readonly abi: number;
-  readonly results: ReadonlyMap<string, GrammarRunResult>;
+  readonly results: ReadonlyMap<string, ScriptedRunResult>;
+}
+
+/**
+ * Give every scripted capture a match index. A scripted index is kept. A capture without one gets a
+ * fresh index of its own query kind, above every index scripted for that kind, so unscripted
+ * captures are never grouped with anything (a distinct match per capture).
+ */
+function withMatches(scripted: ScriptedRunResult): GrammarRunResult {
+  const next = new Map<QueryKind, number>();
+  for (const capture of scripted.captures) {
+    if (capture.match !== undefined) {
+      next.set(capture.query, Math.max(next.get(capture.query) ?? 0, capture.match + 1));
+    }
+  }
+  const captures = scripted.captures.map((capture): Capture => {
+    if (capture.match !== undefined) {
+      return { ...capture, match: capture.match };
+    }
+    const match = next.get(capture.query) ?? 0;
+    next.set(capture.query, match + 1);
+    return { ...capture, match };
+  });
+  return { ...scripted, captures };
 }
 
 /**
@@ -48,7 +77,7 @@ export function createFakeGrammarEngine(script: FakeGrammarScript): GrammarEngin
           if (scripted === undefined) {
             return Promise.reject(new GrammarRunError('parse_failed', `${input.name}: no scripted result for this source`));
           }
-          return Promise.resolve(scripted);
+          return Promise.resolve(withMatches(scripted));
         },
         dispose(): Promise<void> {
           disposed = true;

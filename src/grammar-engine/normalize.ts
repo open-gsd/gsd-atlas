@@ -1,3 +1,4 @@
+import { GRAMMAR_LIMITS } from './limits.ts';
 import type { Capture, QueryKind } from './types.ts';
 
 const BOM = '﻿';
@@ -24,17 +25,27 @@ export interface PositionedNode {
  * units (verified for emoji and accented letters; no conversion is needed). `text` is cut from
  * the same BOM-stripped string that was parsed.
  */
-export function toCapture(query: QueryKind, name: string, node: PositionedNode, source: string): Capture {
+export function toCapture(
+  query: QueryKind,
+  name: string,
+  node: PositionedNode,
+  source: string,
+  match: number,
+): Capture {
+  // Text is bounded (research Pitfall 9): a whole function body must not be copied per capture.
+  const text =
+    node.endIndex - node.startIndex > GRAMMAR_LIMITS.captureTextChars ? '' : source.slice(node.startIndex, node.endIndex);
   return {
     query,
     name,
+    match,
     span: {
       startLine: node.startPosition.row,
       startColumn: node.startPosition.column,
       endLine: node.endPosition.row,
       endColumn: node.endPosition.column,
     },
-    text: source.slice(node.startIndex, node.endIndex),
+    text,
   };
 }
 
@@ -42,7 +53,7 @@ function compareStrings(a: string, b: string): number {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 
-/** Order: start line, start column, end line, end column, query, name. */
+/** Order: start line, start column, end line, end column, query, name, match (last, only to make ties deterministic). */
 export function compareCaptures(a: Capture, b: Capture): number {
   return (
     a.span.startLine - b.span.startLine ||
@@ -50,7 +61,8 @@ export function compareCaptures(a: Capture, b: Capture): number {
     a.span.endLine - b.span.endLine ||
     a.span.endColumn - b.span.endColumn ||
     compareStrings(a.query, b.query) ||
-    compareStrings(a.name, b.name)
+    compareStrings(a.name, b.name) ||
+    a.match - b.match
   );
 }
 

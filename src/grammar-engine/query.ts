@@ -19,9 +19,12 @@ export function collectCaptures(
     if (query === undefined) {
       continue;
     }
-    for (const capture of query.captures(root)) {
-      captures.push(toCapture(kind, capture.name, capture.node, source));
-    }
+    // `matches` keeps the captures of one pattern match together; the match index is the position in the order returned.
+    query.matches(root).forEach((match, index) => {
+      for (const capture of match.captures) {
+        captures.push(toCapture(kind, capture.name, capture.node, source, index));
+      }
+    });
   }
   return sortCaptures(captures);
 }

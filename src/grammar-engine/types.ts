@@ -23,7 +23,19 @@ export interface Capture {
   readonly query: QueryKind;
   /** The capture name without the leading `@`, for example `definition.function` or `name`. */
   readonly name: string;
+  /**
+   * Zero-based index of the query match this capture came from, within its query kind, in the
+   * order `Query.matches` returned the matches. Captures of one match share it, so a consumer pairs
+   * a `name` with its definition node by match instead of by span nesting (nested definitions make
+   * span nesting ambiguous).
+   */
+  readonly match: number;
   readonly span: Span;
+  /**
+   * The captured source text, or an empty string when the node is longer than
+   * `GRAMMAR_LIMITS.captureTextChars` UTF-16 code units, so a whole function body never crosses a
+   * worker boundary as text. The span is always exact.
+   */
   readonly text: string;
 }
 

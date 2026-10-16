@@ -11,4 +11,6 @@ export const GRAMMAR_LIMITS = {
   sourceBytes: 2 * 1024 * 1024,
   /** atlas-lang.json and grammar.lock. */
   manifestBytes: 64 * 1024,
+  /** Longest captured node whose text is kept, in UTF-16 code units; a longer node yields an empty string (T-02-21). */
+  captureTextChars: 256,
 } as const;

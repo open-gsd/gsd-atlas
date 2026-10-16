@@ -7,6 +7,7 @@ import { GOLDEN_CONVENTION, compareGolden, renderGolden, serializeGolden } from 
 const capture = (name: string, line: number, from: number, to: number, text: string): Capture => ({
   query: 'tags',
   name,
+  match: 0,
   span: { startLine: line, startColumn: from, endLine: line, endColumn: to },
   text,
 });

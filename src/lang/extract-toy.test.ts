@@ -5,9 +5,8 @@ import { after, before, describe, it } from 'node:test';
 
 import { validateFileFacts } from '../facts/index.ts';
 import type { FileFacts } from '../facts/index.ts';
-import { createGrammarEngine } from '../grammar-engine/index.ts';
+import { createGrammarEngine, extractFileFacts } from '../grammar-engine/index.ts';
 import type { GrammarEngine, GrammarRunResult, LoadedGrammar } from '../grammar-engine/index.ts';
-import { extractFileFacts } from '../grammar-engine/extract.ts';
 import { readModuleInputs } from './module-files.ts';
 
 // LNG-08: the second, non-TypeScript language goes through the same extractor as the built-in modules.
@@ -22,7 +21,7 @@ before(async () => {
   const inputs = readModuleInputs(toyDir);
   assert.ok(inputs.ok, 'the toy module must be readable');
   moduleName = inputs.manifest.name;
-  moduleVersion = inputs.manifest.version;
+  moduleVersion = inputs.manifest.version ?? 'unversioned';
   engine = createGrammarEngine();
   grammar = await engine.load(inputs.input);
 });
