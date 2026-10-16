@@ -1,7 +1,21 @@
 import assert from 'node:assert/strict';
 import os from 'node:os';
 import { describe, it } from 'node:test';
-import { createRecordingRunner, decide, gitSpec, listFilterNames, neutraliseFilters, parseFilterNames } from './index.ts';
+import { diagnostic } from '../facts/index.ts';
+import { createTempGitRepo } from '../test-kit/index.ts';
+import {
+  GitConfigError,
+  allowAll,
+  createRealRunner,
+  createRecordingRunner,
+  decide,
+  gitSpec,
+  listFilterNames,
+  neutraliseFilters,
+  parseFilterNames,
+} from './index.ts';
+import { deniedResult, spawnErrorResult } from './spec.ts';
+import type { CommandResult, CommandRunner, CommandSpec } from './spec.ts';
 
 const W = process.platform === 'win32' ? 'C:/work/repo' : '/work/repo';
 const NULL_DEV = process.platform === 'win32' ? 'NUL' : os.devNull;
@@ -204,24 +218,106 @@ describe('parseFilterNames', () => {
   });
 });
 
+/** The probe driver name a listFilterNames call put in its config read, read back from GIT_CONFIG_KEY_0. */
+const probeOf = (spec: CommandSpec): string => {
+  const key = spec.env?.['GIT_CONFIG_KEY_0'] ?? '';
+  const m = /^filter\.(.*)\.clean$/.exec(key);
+  assert.ok(m !== null, `GIT_CONFIG_KEY_0 is not a filter key: ${key}`);
+  return m[1] as string;
+};
+/** What a conforming git prints for `config --name-only --get-regexp ^filter\.` when the probe plus `names` are configured. */
+const listing = (spec: CommandSpec, ...names: string[]): string =>
+  [probeOf(spec), ...names].flatMap((n) => [`filter.${n}.clean`, `filter.${n}.required`, `filter.${n}.smudge`]).join('\n') + '\n';
+const failed = (code: string): { code: string } => ({ code });
+
+/** A runner that answers every run with a fixed CommandResult, for outcomes ScriptedResult cannot express. */
+const fixedRunner = (result: CommandResult): CommandRunner => ({
+  run: () => Promise.resolve(result),
+  stream: () => {
+    throw new Error('not used');
+  },
+});
+
 describe('listFilterNames', () => {
-  it('reads names with a name-only config query and no neutralisation', async () => {
-    const runner = createRecordingRunner({ script: [{ exitCode: 0, stdout: 'filter.evil.clean\nfilter.lfs.smudge\n' }] });
+  it('reads names with a name-only config query, neutralising only a random probe driver', async () => {
+    const runner = createRecordingRunner({ respond: (spec) => ({ exitCode: 0, stdout: listing(spec, 'evil', 'lfs') }) });
     const names = await listFilterNames(runner, W);
     assert.deepEqual(names, ['evil', 'lfs']);
     assert.equal(runner.starts.length, 1);
-    const args = runner.starts[0]?.args ?? [];
-    assert.deepEqual(args.slice(-3), ['--name-only', '--get-regexp', '^filter\\.']);
-    assert.ok(!args.some((a) => a.startsWith('filter.')), 'a config read needs no neutralisation');
+    const start = runner.starts[0] as CommandSpec;
+    assert.deepEqual(start.args.slice(-3), ['--name-only', '--get-regexp', '^filter\\.']);
+    assert.ok(!start.args.some((a) => a.startsWith('filter.')), 'no -c pair');
+    assert.match(probeOf(start), /^atlas-probe-[0-9a-f]{16}$/);
+    assert.equal(start.env?.['GIT_CONFIG_COUNT'], '4');
   });
 
-  it('treats exit status 1 with empty output as "no drivers"', async () => {
-    const runner = createRecordingRunner({ script: [{ exitCode: 1, stdout: '' }] });
+  it('uses a fresh probe name on every call and never returns it', async () => {
+    const seen: string[] = [];
+    const runner = createRecordingRunner({
+      respond: (spec) => {
+        seen.push(probeOf(spec));
+        return { stdout: listing(spec, 'x') };
+      },
+    });
+    assert.deepEqual(await listFilterNames(runner, W), ['x']);
+    assert.deepEqual(await listFilterNames(runner, W), ['x']);
+    assert.equal(new Set(seen).size, 2);
+  });
+
+  it('resolves to [] when only the probe is listed (a repository with no drivers)', async () => {
+    const runner = createRecordingRunner({ respond: (spec) => ({ stdout: listing(spec) }) });
     assert.deepEqual(await listFilterNames(runner, W), []);
   });
 
-  it('throws on any other failure instead of pretending there are none', async () => {
-    const runner = createRecordingRunner({ script: [{ exitCode: 128, stdout: '', stderr: 'fatal' }] });
-    await assert.rejects(() => listFilterNames(runner, W), /git config/);
+  it('rejects with git_env_config_unsupported, naming git 2.31, when exit 0 output lacks the probe', async () => {
+    for (const stdout of ['', 'filter.evil.clean\n']) {
+      const runner = createRecordingRunner({ respond: () => ({ exitCode: 0, stdout }) });
+      await assert.rejects(() => listFilterNames(runner, W), (error: unknown) => {
+        assert.deepEqual({ code: (error as { code?: string }).code }, failed('git_env_config_unsupported'));
+        const message = (error as Error).message;
+        assert.ok(message.includes('2.31'), message);
+        assert.ok(/could not be neutralised/.test(message), message);
+        return true;
+      });
+    }
+  });
+
+  it('rejects with filter_enumeration_failed on exit 128', async () => {
+    const runner = createRecordingRunner({ respond: () => ({ exitCode: 128, stderr: 'fatal' }) });
+    await assert.rejects(() => listFilterNames(runner, W), failed('filter_enumeration_failed'));
+  });
+
+  it('rejects with filter_enumeration_failed on exit 1 with empty stdout (no longer "no drivers")', async () => {
+    const runner = createRecordingRunner({ respond: () => ({ exitCode: 1, stdout: '' }) });
+    await assert.rejects(() => listFilterNames(runner, W), failed('filter_enumeration_failed'));
+  });
+
+  it('rejects with filter_enumeration_failed on timeout, truncation, spawn error and denial', async () => {
+    const d = diagnostic('x', 'error', 'boom', 'git');
+    const timedOut = createRecordingRunner({ respond: (spec) => ({ stdout: listing(spec), timedOut: true }) });
+    const truncated = createRecordingRunner({ respond: (spec) => ({ stdout: listing(spec), truncated: true }) });
+    await assert.rejects(() => listFilterNames(timedOut, W), failed('filter_enumeration_failed'));
+    await assert.rejects(() => listFilterNames(truncated, W), failed('filter_enumeration_failed'));
+    await assert.rejects(() => listFilterNames(fixedRunner(spawnErrorResult(d)), W), failed('filter_enumeration_failed'));
+    await assert.rejects(() => listFilterNames(fixedRunner(deniedResult(d)), W), failed('filter_enumeration_failed'));
+  });
+
+  it('rejects with the typed error class', async () => {
+    const runner = createRecordingRunner({ respond: () => ({ exitCode: 128 }) });
+    await assert.rejects(() => listFilterNames(runner, W), GitConfigError);
+  });
+
+  it('with real git lists a repository\'s drivers (including "=" and "." names) and none for a plain repo', async (t) => {
+    const setup = createRealRunner({ decide: allowAll });
+    const repo = await createTempGitRepo({ runner: setup, files: { 'a.txt': 'a\n' } });
+    t.after(() => repo.cleanup());
+    const plain = createRecordingRunner({ delegate: createRealRunner() });
+    assert.deepEqual(await listFilterNames(plain, repo.dir, undefined, repo.envOverlay), []);
+    for (const name of ['evil', 'a=b', 'my.driver']) await repo.setConfig(`filter.${name}.clean`, 'cat');
+    await repo.setConfig('filter.a=b.smudge', 'cat');
+    const names = await listFilterNames(plain, repo.dir, undefined, repo.envOverlay);
+    assert.deepEqual(names, ['a=b', 'evil', 'my.driver']);
+    assert.ok(names.every((n) => !n.startsWith('atlas-probe-')));
+    assert.equal(plain.starts.length, 2);
   });
 });

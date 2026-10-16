@@ -88,7 +88,13 @@ const hashStarts = (recording: { readonly starts: readonly RecordedSpec[] }): nu
 const codes = (diagnostics: ReadonlyArray<{ code: string; subject?: string }>): string[] =>
   diagnostics.map((d) => `${d.code}:${d.subject ?? ''}`).sort();
 
-const notOnWindows = (why: string): string | false => (process.platform === 'win32' ? why : false);
+/** What a conforming git prints for the config read: the probe driver named in GIT_CONFIG_KEY_0, and nothing else. */
+const probeListing = (spec: { readonly env?: Readonly<Record<string, string>> }): string => {
+  const key = spec.env?.['GIT_CONFIG_KEY_0'] ?? '';
+  return `${key}\n${key.replace(/\.clean$/, '.smudge')}\n`;
+};
+
+const notOnWindows =(why: string): string | false => (process.platform === 'win32' ? why : false);
 
 describe('real Source Tree git quirks', () => {
   it('hashes a CRLF file under `* text=auto` to the blob id of its LF content', async (t) => {
@@ -163,7 +169,7 @@ describe('real Source Tree git quirks', () => {
     const lying = createRecordingRunner({
       respond: (spec) => {
         const sub = subcommand(spec);
-        if (sub === 'config') return { exitCode: 1 };
+        if (sub === 'config') return { stdout: probeListing(spec) };
         if (sub === 'ls-files' && spec.args.includes('-s')) {
           const entries = [`100644 ${'1'.repeat(40)} 0\ta.txt`, `100644 ${'2'.repeat(40)} 0\tb.txt`];
           return { stdout: entries.map((e) => `${e}\0`).join('') };
@@ -174,6 +180,30 @@ describe('real Source Tree git quirks', () => {
     });
     const tree = createSourceTree({ runner: lying, repoDir: repo.dir });
     await assert.rejects(() => tree.snapshot(repo.dir), { code: 'hash_output_mismatch' });
+  });
+
+  it('fails closed: a config read whose output lacks the probe rejects the snapshot and starts no hash-object', async (t) => {
+    const repo = await createTempGitRepo({ runner: setupRunner, files: { 'a.txt': 'a\n' } });
+    t.after(() => repo.cleanup());
+    for (const config of [{ stdout: '' }, { stdout: 'filter.evil.clean\n' }]) {
+      const recording = createRecordingRunner({ respond: (spec) => (subcommand(spec) === 'config' ? config : { stdout: '' }) });
+      const tree = createSourceTree({ runner: recording, repoDir: repo.dir });
+      await assert.rejects(() => tree.snapshot(repo.dir), { code: 'git_env_config_unsupported' });
+      assert.equal(hashStarts(recording), 0);
+      assert.deepEqual(recording.starts.map(subcommand), ['config']);
+    }
+  });
+
+  it('fails closed: a failed config read (exit 128, and exit 1 with no output) rejects the snapshot and starts no hash-object', async (t) => {
+    const repo = await createTempGitRepo({ runner: setupRunner, files: { 'a.txt': 'a\n' } });
+    t.after(() => repo.cleanup());
+    for (const exitCode of [128, 1]) {
+      const recording = createRecordingRunner({ respond: (spec) => (subcommand(spec) === 'config' ? { exitCode } : { stdout: '' }) });
+      const tree = createSourceTree({ runner: recording, repoDir: repo.dir });
+      await assert.rejects(() => tree.snapshot(repo.dir), { code: 'filter_enumeration_failed' });
+      assert.equal(hashStarts(recording), 0);
+      assert.deepEqual(recording.starts.map(subcommand), ['config']);
+    }
   });
 
   it('answers hasObject false and throws invalid_argument for option-like input without starting git', async (t) => {

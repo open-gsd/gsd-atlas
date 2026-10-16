@@ -159,6 +159,18 @@ export function gitSpec(sub: readonly string[], opts: GitSpecOptions): CommandSp
   };
 }
 
+export type GitConfigErrorCode = 'git_env_config_unsupported' | 'filter_enumeration_failed';
+
+/** Thrown by {@link listFilterNames} whenever driver neutralisation cannot be guaranteed. */
+export class GitConfigError extends Error {
+  readonly code: GitConfigErrorCode;
+  constructor(code: GitConfigErrorCode, message: string) {
+    super(message);
+    this.name = 'GitConfigError';
+    this.code = code;
+  }
+}
+
 /**
  * Lists every configured filter driver name. This runs WITHOUT neutralisation on purpose: reading config
  * executes nothing, and the names it returns are what the neutralisation needs. Exit status 1 with empty

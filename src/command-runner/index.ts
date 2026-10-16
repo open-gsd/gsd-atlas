@@ -26,5 +26,5 @@ export type { RecordedSpec, RecordedStdin, RecordingRunner, RecordingRunnerOptio
 export { defaultRunnable, resolveExecutable } from './exec-resolve.ts';
 export type { ResolveOptions, ResolvedExecutable } from './exec-resolve.ts';
 export { scrubEnv } from './env.ts';
-export { gitSpec, listFilterNames, neutraliseFilters, NULL_DEVICE, parseFilterNames } from './git-spec.ts';
-export type { GitSpecOptions } from './git-spec.ts';
+export { GitConfigError, gitSpec, listFilterNames, neutraliseFilters, NULL_DEVICE, parseFilterNames } from './git-spec.ts';
+export type { GitConfigErrorCode, GitSpecOptions } from './git-spec.ts';
