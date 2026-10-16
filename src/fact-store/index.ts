@@ -5,7 +5,7 @@
  */
 export { SchemaTooNew, StoreClosed, UnknownWorktree, WriterBusy } from './errors.ts';
 export { openFactStore } from './open.ts';
-export type { OpenFactStoreOptions } from './open.ts';
+export type { OpenFactStoreOptions, StoreOpenOptions } from './open.ts';
 export type {
   CallerRecord,
   CallersOptions,

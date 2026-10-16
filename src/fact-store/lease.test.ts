@@ -105,6 +105,7 @@ async function flakyDriver(failures: number): Promise<{ readonly driver: DriverM
   const driver: DriverModule = {
     name: real.name,
     open(file, options) {
+      if (file === ':memory:') return real.open(file, options); // the kit's own open-time self-test
       opens += 1;
       if (opens <= failures) throw new DbError('busy', 'database is locked', 5);
       return real.open(file, options);

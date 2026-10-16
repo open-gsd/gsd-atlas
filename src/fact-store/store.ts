@@ -1,4 +1,6 @@
+import type { DegradedCode } from '../facts/index.ts';
 import { WriterBusy } from './errors.ts';
+import type { Lease } from './lease.ts';
 import { assertOpen, readTransaction } from './parts.ts';
 import type { StoreParts } from './parts.ts';
 import { createReader } from './reader.ts';
@@ -35,7 +37,25 @@ function reconcile(parts: StoreParts, truth: ReconcileTruth): ReconcileResult {
   return { reindex: [...reindex].sort(), complete: true };
 }
 
-function status(parts: StoreParts): StoreStatus {
+/** What the lifecycle layer (open.ts) hands the store beyond its connections. All optional. */
+export interface StoreLifecycle {
+  /** The cross-process writer lease; absent when the store was opened with `lease: 'none'`. */
+  readonly lease?: Lease;
+  /** Stops the follower's takeover retries. Called first thing in `close()`; set by the opener once the retries start. */
+  stopTakeover?: () => void;
+  /** Told when this process gives the lease up at `close()` (takeover is reported by the opener). */
+  readonly leaseChanged?: (held: boolean) => void;
+}
+
+/**
+ * The `degradedNow` of a store: the degraded codes that hold for the whole process right now. A process that
+ * does not hold the writer lease is a follower, and every answer it gives says so.
+ */
+export function processDegraded(lifecycle: StoreLifecycle): () => readonly DegradedCode[] {
+  return () => (lifecycle.lease !== undefined && !lifecycle.lease.held ? ['follower'] : []);
+}
+
+function status(parts: StoreParts, lifecycle: StoreLifecycle): StoreStatus {
   return readTransaction(parts, (db) => {
     const worktrees = db
       .prepare(
@@ -53,7 +73,8 @@ function status(parts: StoreParts): StoreStatus {
       schemaVersion: version === undefined ? SCHEMA_VERSION : Number(version.value),
       worktrees,
       sizeBytes: pages * pageSize,
-      writerLeaseHeld: parts.state.writerTaken,
+      // With a cross-process lease the answer is whether this process holds it; without one, whether a writer is out.
+      writerLeaseHeld: lifecycle.lease === undefined ? parts.state.writerTaken : lifecycle.lease.held,
     };
   });
 }
@@ -64,7 +85,7 @@ function status(parts: StoreParts): StoreStatus {
  * `collect`, `compact`, `check` and `maintain` are unimplemented by design in this plan: they report an
  * empty, successful run until plan 02-18 replaces them, and the contract suite does not assert on them.
  */
-export function createStore(parts: StoreParts): FactStore {
+export function createStore(parts: StoreParts, lifecycle: StoreLifecycle = {}): FactStore {
   const idle = async (): Promise<MaintenanceResult> => {
     assertOpen(parts);
     return { complete: true, spentMs: 0, processed: 0 };
@@ -73,6 +94,8 @@ export function createStore(parts: StoreParts): FactStore {
     at: (worktree) => createReader(parts, worktree),
     writer() {
       assertOpen(parts);
+      // A follower never writes: while another process holds the cross-process lease there is no writer to give.
+      if (lifecycle.lease !== undefined && !lifecycle.lease.held) throw new WriterBusy();
       if (parts.state.writerTaken) throw new WriterBusy();
       parts.state.writerTaken = true;
       return createWriter(parts);
@@ -90,14 +113,21 @@ export function createStore(parts: StoreParts): FactStore {
     maintain: idle,
     async status() {
       assertOpen(parts);
-      return status(parts);
+      return status(parts, lifecycle);
     },
     async close() {
       if (parts.state.closed) return;
       parts.state.closed = true;
       parts.state.writerTaken = false;
+      lifecycle.stopTakeover?.();
       parts.readDb.close();
       parts.writeDb.close();
+      // Last: the lease goes after the database handles, so a successor never meets a leader that is still closing.
+      if (lifecycle.lease !== undefined) {
+        const wasHeld = lifecycle.lease.held;
+        await lifecycle.lease.release();
+        if (wasHeld) lifecycle.leaseChanged?.(false);
+      }
     },
   };
 }

@@ -3,10 +3,13 @@ import path from 'node:path';
 import { loadDriver, openDatabase, selfTest } from '../sqlite/index.ts';
 import type { Db, DriverName } from '../sqlite/index.ts';
 import { SchemaTooNew } from './errors.ts';
+import { createLease, startTakeover } from './lease.ts';
+import type { Lease } from './lease.ts';
 import type { StoreParts } from './parts.ts';
-import { SCHEMA_VERSION, STORE_FILE_NAME, createSchema } from './schema.ts';
+import { FUZZY_PATH_META, SCHEMA_VERSION, STORE_FILE_NAME, createSchema } from './schema.ts';
 import type { FuzzyIndex } from './schema.ts';
-import { createStore } from './store.ts';
+import { createStore, processDegraded } from './store.ts';
+import type { StoreLifecycle } from './store.ts';
 import type { FactStore, StoreDeps, StoreOptions } from './types.ts';
 
 /** The approved `sqlite.busyTimeoutMs` of 02-CONSTANTS.md: how long a writer waits on a locked database. */
@@ -77,6 +80,11 @@ function checkSchemaVersion(db: Db): void {
  * effect after a one-time VACUUM once the file is in WAL mode. Opening an existing store changes nothing. A
  * store written by a newer build throws `SchemaTooNew` carrying the build that created it.
  *
+ * With `lease: 'acquire'` the store first tries to take the cross-process writer lease. The process that gets
+ * it is the leader and does everything above. A process that does not is a follower: it never writes the
+ * database (an existing schema is not touched), `writer()` throws `WriterBusy`, every answer says `follower`,
+ * and it retries the lease on a jittered timer.
+ *
  * Assignable to `OpenStore`: the third parameter is optional.
  */
 export async function openFactStore(
@@ -84,7 +92,7 @@ export async function openFactStore(
   deps: StoreDeps,
   options: StoreOpenOptions = {},
 ): Promise<FactStore> {
-  fs.mkdirSync(dir, { recursive: true });
+  fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
   const file = path.join(dir, STORE_FILE_NAME);
   const timeoutMs = options.busyTimeoutMs ?? DEFAULT_BUSY_TIMEOUT_MS;
 
@@ -97,39 +105,69 @@ export async function openFactStore(
     contentlessDelete: capabilities.contentlessDelete,
   };
 
-  const writeDb = await openDatabase(file, { driver, timeoutMs });
+  const lease: Lease | undefined =
+    options.lease === 'acquire'
+      ? createLease({ dir, clock: deps.clock, version: options.version ?? 'unknown', driver })
+      : undefined;
+  const leader = lease === undefined ? true : await lease.tryAcquire();
+
+  let writeDb: Db | undefined;
   let readDb: Db | undefined;
+  let fuzzyTrigram = fuzzy.trigram;
   try {
-    if (hasTables(writeDb)) {
-      checkSchemaVersion(writeDb);
+    writeDb = await openDatabase(file, { driver, timeoutMs });
+    const existing = hasTables(writeDb);
+    if (existing) checkSchemaVersion(writeDb);
+    if (leader || !existing) {
+      if (!existing) {
+        writeDb.pragma('auto_vacuum', 'INCREMENTAL');
+        writeDb.exec('VACUUM');
+      }
+      const db = writeDb;
+      db.transaction(() => {
+        createSchema(db, fuzzy);
+        const seed = db.prepare('INSERT OR IGNORE INTO meta (name, value) VALUES (?, ?)');
+        seed.run('schema_version', String(options.schemaVersion ?? SCHEMA_VERSION));
+        seed.run('created_by', options.version ?? 'unknown');
+      });
     } else {
-      writeDb.pragma('auto_vacuum', 'INCREMENTAL');
-      writeDb.exec('VACUUM');
+      // A follower leaves an existing store untouched; it reads the fuzzy-name path the leader recorded.
+      fuzzyTrigram = fuzzy.trigram && readMeta(writeDb, FUZZY_PATH_META) === 'trigram';
     }
-    writeDb.transaction(() => {
-      createSchema(writeDb, fuzzy);
-      const seed = writeDb.prepare('INSERT OR IGNORE INTO meta (name, value) VALUES (?, ?)');
-      seed.run('schema_version', String(SCHEMA_VERSION));
-      seed.run('created_by', options.version ?? 'unknown');
-    });
     readDb = await openDatabase(file, { driver, readOnly: true, timeoutMs });
   } catch (error) {
     readDb?.close();
-    writeDb.close();
+    writeDb?.close();
+    await lease?.release();
     throw error;
   }
 
+  const lifecycle: StoreLifecycle = {
+    ...(lease === undefined ? {} : { lease }),
+    ...(options.onLeaseChange === undefined ? {} : { leaseChanged: options.onLeaseChange }),
+  };
   const parts: StoreParts = {
     writeDb,
     readDb,
     deps,
     repo: options.repo ?? path.basename(path.resolve(dir)),
-    canCache: options.canCache ?? (() => true),
+    canCache:
+      lease === undefined
+        ? (options.canCache ?? (() => true))
+        : () => lease.held && (options.canCache?.() ?? true),
     resolutionContext: options.resolutionContext ?? (() => ({ id: 'grammar', configHashes: [] })),
-    fuzzyTrigram: fuzzy.trigram,
+    fuzzyTrigram,
     snapshotIds: new Map(),
     state: { closed: false, writerTaken: false },
-    degradedNow: () => [],
+    degradedNow: processDegraded(lifecycle),
   };
-  return createStore(parts);
+
+  if (lease !== undefined && !lease.held) {
+    const range = options.takeover ?? {
+      retryMinMs: DEFAULT_LEASE_RETRY_MIN_MS,
+      retryMaxMs: DEFAULT_LEASE_RETRY_MAX_MS,
+    };
+    lifecycle.stopTakeover = startTakeover(lease, deps.clock, range, () => options.onLeaseChange?.(true));
+  }
+  return createStore(parts, lifecycle);
 }
