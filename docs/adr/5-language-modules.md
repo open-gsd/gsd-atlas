@@ -82,3 +82,9 @@ Decision 3 says the only code a module may add is an optional `PreciseResolver`.
 4. Repo or npm modules may name a `ProjectModel` by id but can never supply one (A44, A55). The only code a module may add therefore remains a `PreciseResolver` adapter, which is a refinement of decision 3.
 5. The Grammar Engine never reads tsconfig or `Package.swift`. Precise adapters take their file sets and context from the `ProjectModel`.
 6. Phase 3 (TSM-07) builds the TypeScript `ProjectModel` and Phase 5 builds the Swift one.
+
+## Amendment 2026-10-15: Parse-error budget unit
+
+Sources: D-06 of the Phase 1 context; DESIGN.md A48; 01-RESEARCH.md Open Question 5.
+
+Decision 6 states the parse-error budget as at most 0.5 % of files. The budget is instead the fraction of source bytes inside outermost ERROR nodes, so one large mis-parsed file weighs more than a small one and a single stray error in a big file does not fail a whole module. Each module declares its budget as `parseBudget` in its manifest (default 0.005, that is 0.5 %), and CI measures it over the module's fixtures and fails when it is exceeded. A module whose grammar cannot meet the default, such as Swift, declares its own measured number rather than an exception to a global threshold. For new work this unit replaces the file-count wording of decision 6. Files with parse errors are still reported in `status` and still use the precise tier where it exists.

@@ -31,3 +31,16 @@ The trust rules (who may run a command) were stated in three documents but enfor
 - **Each provider checks permission itself:** duplicated logic, and one forgotten check is a vulnerability.
 - **Provider asks the runner, then runs itself:** policy is shared but execution isn't, so a provider can skip the check.
 - **Permission the TypeScript adapter like any command:** safest, but turns off the headline TypeScript feature for every new user.
+
+## Amendment 2026-10-15: git runs repo-controlled code
+
+Sources: 01-RESEARCH.md Pitfall 3 and Open Question 5; PITFALLS B6; verified on git 2.54.0.
+
+git is a first-party built-in (decision 3), yet some git commands execute commands named in the repo's own `.git/config`. Verified: `git hash-object --stdin-paths` ran a `filter.<name>.clean` command, `git ls-files -o` ran `core.fsmonitor`, and `git status` ran clean filters even with `core.fsmonitor=false`. The built-in git `CommandSpec` therefore carries these rules, and the runner applies them to every git start:
+
+- It prepends `-c core.fsmonitor=false`, `-c core.hooksPath=<null device>` and `-c core.quotepath=off`, and sets `GIT_OPTIONAL_LOCKS=0` and `GIT_TERMINAL_PROMPT=0`.
+- Every `filter` driver found by `git config --name-only --get-regexp '^filter\.'` (a read that executes nothing) is neutralised by name: `clean`, `smudge` and `process` are emptied and `required` is set false. There is no allowlist, not even for a driver named `lfs`, because repo config can give any command that name. LFS pointer files are skipped anyway (language-modules decision 7).
+- The built-in git entry allows only `ls-files`, `hash-object`, `cat-file`, `rev-parse`, `rev-list`, `config` (read form) and `check-attr`. `status`, which runs clean filters, is never started.
+- Each neutralised filter and each refused git subcommand is reported as a diagnostic, as decision 6 requires.
+
+The hostile-repo test of Phase 1 (plan 01-13) proves it against a poisoned `.git/config`.

@@ -358,6 +358,7 @@ const AMENDED: readonly AmendedAdr[] = [
     ],
     amendments: [
       { title: 'ProjectModel seam', keywords: ['ProjectModel', 'compiler-free', 'built-in', 'A44', 'project.model'] },
+      { title: 'Parse-error budget unit', keywords: ['bytes inside', 'parseBudget'], extra: 'parse-budget' },
     ],
   },
   {
@@ -398,6 +399,7 @@ const AMENDED: readonly AmendedAdr[] = [
     ],
     amendments: [
       { title: 'SQLite-access wording', keywords: ['sqlite/', 'Metrics'] },
+      { title: 'Node floor and open-time self-test', keywords: ['24.16.0', 'NUL'], extra: 'node-floor' },
     ],
   },
   {
@@ -418,6 +420,32 @@ const AMENDED: readonly AmendedAdr[] = [
         title: 'Open questions resolved',
         keywords: ['Indexer', 'EventSource', 'one', 'per request', 'file set'],
       },
+    ],
+  },
+  {
+    slug: 'command-runner',
+    preserved: [
+      'Nothing else imports `child_process`; a lint rule enforces it.',
+      'Argument arrays only, never a shell.',
+      'The TypeScript adapter** is a named built',
+      'Denials are reported,',
+      'The security rule has one place to review and test.',
+    ],
+    amendments: [
+      { title: 'git runs repo-controlled code', keywords: GIT_HARDENING_KEYWORDS, extra: 'git-hardening' },
+    ],
+  },
+  {
+    slug: 'trust-boundaries',
+    preserved: [
+      'Unix socket or named pipe preferred',
+      'A token is required on every route.',
+      'The token file is `0600`.',
+      'Network.** None by default.',
+      'Cloning and indexing a hostile repo',
+    ],
+    amendments: [
+      { title: 'git runs repo-controlled code', keywords: GIT_HARDENING_KEYWORDS, extra: 'git-hardening' },
     ],
   },
 ];
