@@ -3,16 +3,16 @@ gsd_state_version: "1.0"
 current_phase: 02
 current_phase_name: Grammar Tier, Store and stdio Host
 status: executing
-stopped_at: Completed 02-13-PLAN.md
-last_updated: "2026-10-16T21:24:13.212Z"
+stopped_at: Completed 02-14-PLAN.md
+last_updated: "2026-10-16T21:44:33.554Z"
 last_activity: 2026-10-16
-last_activity_desc: Completed 02-13 TypeScript and JavaScript queries and recall
-state_head: 5ca69b2739371c243d7b3665c282a027acef915a
+last_activity_desc: Completed 02-14 grammar worker pool
+state_head: e140f8e50fc73934154a54d2fd8b06ec30dd689a
 progress:
   total_phases: 9
   completed_phases: 1
   total_plans: 48
-  completed_plans: 34
+  completed_plans: 35
   percent: 11
 ---
 
@@ -28,16 +28,16 @@ See: .planning/PROJECT.md (updated 2026-10-15)
 ## Current Position
 
 Phase: 02 (Grammar Tier, Store and stdio Host) — EXECUTING
-Plan: 14 of 28 complete (plans 02-01 to 02-13 and 02-21 complete; they ran out of order, next is the lowest-numbered incomplete plan, 02-14)
+Plan: 15 of 28 complete (plans 02-01 to 02-14 and 02-21 complete; they ran out of order, next is the lowest-numbered incomplete plan, 02-15)
 Status: Ready to execute
-Last activity: 2026-10-16 — Completed 02-13 (TypeScript and JavaScript tags, imports and refs queries for ES and CommonJS; per-construct recall at 100 percent on curated fixture truth and on a compiler-oracle run over 574 pinned gsd-core files; scripts/recall.ts and scripts/recall-oracle.ts)
+Last activity: 2026-10-16 — Completed 02-14 (bounded worker-thread pool behind GrammarEngine: FIFO queue, lazy per-worker grammar load, hard per-run deadline that terminates the worker, crash recovery, recycling, RSS plateau test over 1,200 files; src/grammar-engine/pool)
 
 Progress: [█░░░░░░░░░] 11%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 30
+- Total plans completed: 35
 - Average duration: -
 - Total execution time: 0.0 hours
 
@@ -46,7 +46,7 @@ Progress: [█░░░░░░░░░] 11%
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 01 | 20 | - | - |
-| 02 | 14 of 28 | - | - |
+| 02 | 15 of 28 | - | - |
 
 **Recent Trend:**
 - Last 5 plans: -
@@ -71,6 +71,7 @@ Progress: [█░░░░░░░░░] 11%
 | Phase 02 P11 | 18 min | 3 tasks | 12 files |
 | Phase 02 P12 | 17 min | 3 tasks | 14 files |
 | Phase 02 P13 | 35 min | 3 tasks | 30 files |
+| Phase 02 P14 | 16 min | 3 tasks | 9 files |
 
 ## Accumulated Context
 
@@ -118,6 +119,9 @@ Recent decisions affecting current work:
 - [Phase 02]: 02-13: a const, let or var bound to require() (also behind 'as T') is an import binding, not a const definition; constructors are not method definitions — Keeps find results to navigable definitions; the import is recorded as a CJS require site with its binding
 - [Phase 02]: 02-13: module.exports = {a, b: c} yields one export site per property, any other right side yields the name module.exports; the typescript module reads CommonJS forms too — .cts files use them; the harness tells ES from CJS exports by the first token of the site span
 - [Phase 02]: 02-13: recall compares queries with hand-curated fixture truth and a TypeScript-compiler oracle (createSourceFile only) over 574 pinned gsd-core files; oracle lines count line feeds only — Independent implementation avoids circular proof (T-02-41); the compiler line map also breaks at U+2028 and lone CR, the engine does not
+- [Phase 02]: 02-14: the pool shares matchLimit GRAMMAR_LIMITS.matchLimitMax (65536, as the 02-13 recall engine) and defaults both its hard per-run deadline and the in-worker parse deadline to indexer.parseTimeoutMs (5000) — 02-CONSTANTS.md has no matchLimit row; at equal values the pool deadline usually wins (terminate and lazy reload), both give parse_timeout
+- [Phase 02]: 02-14: every way a pool worker ends (deadline, exit, error, recycle, dispose) goes through one detach() that fails in-flight requests and terminates in the background; workers load a grammar lazily on first run, and an invalid engine option comes back from the worker as a coded load error, not a dead worker
+- [Phase 02]: 02-14: RSS with two workers recycling every 400 runs climbs through warm-up (about 222, 307, 348 MiB over 1,200 files) and levels at about 397 MiB over 24 rounds; the test bound is relative; Linux and Windows unverified until three-OS CI
 
 ### Pending Todos
 
@@ -144,6 +148,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-10-16T21:24:13.149Z
-Stopped at: Completed 02-13-PLAN.md
+Last session: 2026-10-16T21:44:27.831Z
+Stopped at: Completed 02-14-PLAN.md
 Resume file: None

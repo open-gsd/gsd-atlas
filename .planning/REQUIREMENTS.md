@@ -45,7 +45,7 @@ Scope is the full PRD 1.0 (M0-M6), with M4 split into SDK facts, agent integrati
 - [x] **LNG-04**: Every fact carries `source_path`, `span`, `extractor`, `content_hash`, `first_seen`, `last_seen` and `confidence`
 - [ ] **LNG-05**: Only `git ls-files` plus untracked non-ignored files are indexed; `linguist-generated` and `linguist-vendored` are honoured; binaries and LFS pointers are skipped
 - [x] **LNG-06**: Grammar parse quality is measured as bytes inside ERROR nodes per module, with a CI budget
-- [ ] **LNG-07**: Parser objects are released deterministically and workers are recycled so WASM memory does not grow unbounded
+- [x] **LNG-07**: Parser objects are released deterministically and workers are recycled so WASM memory does not grow unbounded
 - [x] **LNG-08**: A second non-TypeScript fixture language runs through the Grammar Engine tests from M1
 
 ### Indexing and Freshness (IDX)
@@ -222,7 +222,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | LNG-04 | Phase 2 | Complete |
 | LNG-05 | Phase 2 | Pending |
 | LNG-06 | Phase 1 | Complete |
-| LNG-07 | Phase 2 | Pending |
+| LNG-07 | Phase 2 | Complete |
 | LNG-08 | Phase 2 | Complete |
 | IDX-01 | Phase 2 | Pending |
 | IDX-02 | Phase 2 | Complete |
