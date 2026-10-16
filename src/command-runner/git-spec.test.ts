@@ -77,6 +77,23 @@ describe('gitSpec: every git command is built here', () => {
     assert.equal(decide(gitSpec(['config', '--name-only', '--get-regexp', '^filter\\.'], { worktree: W }), {}).allowed, true);
   });
 
+  it('decide(gitSpec(...)) is allowed for every allowed subcommand, so the builder and the gate cannot drift', () => {
+    const subs: ReadonlyArray<readonly string[]> = [
+      ['ls-files', '-z', '-s'],
+      ['hash-object', '--stdin-paths'],
+      ['cat-file', '-e', 'a'.repeat(40)],
+      ['cat-file', 'blob', 'HEAD:a.txt'],
+      ['rev-parse', '--git-common-dir'],
+      ['rev-list', '--max-parents=0', 'HEAD'],
+      ['config', '--name-only', '--get-regexp', '^filter\\.'],
+      ['check-attr', '-a', 'a.txt'],
+    ];
+    for (const sub of subs) {
+      assert.equal(decide(gitSpec(sub, { worktree: W }), {}).allowed, true, sub.join(' '));
+      assert.equal(decide(gitSpec(sub, { worktree: W, filterNames: ['evil'], env: { GIT_CONFIG_GLOBAL: '/x/empty' } }), {}).allowed, true, `${sub.join(' ')} with an overlay`);
+    }
+  });
+
   it('denies git status: it runs clean filters even with fsmonitor disabled', () => {
     const d = decide(gitSpec(['status'], { worktree: W, filterNames: ['evil'] }), {});
     assert.equal(d.allowed, false);

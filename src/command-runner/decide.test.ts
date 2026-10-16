@@ -3,7 +3,46 @@ import { describe, it } from 'node:test';
 import { allowAll, decide } from './index.ts';
 import type { CommandSpec, Decision, UserPermissions } from './index.ts';
 
+/** A bare git spec: no overrides, no environment. Only `--version` may run like this. */
 const git = (...args: string[]): CommandSpec => ({ executable: 'git', args, builtinId: 'git' });
+
+// Literals on purpose, not imported from git-spec.ts: the gate must not trust the builder, and the test
+// proves the two agree (git-spec.test.ts loops decide over gitSpec's output).
+const NULL_DEVICE = process.platform === 'win32' ? 'NUL' : '/dev/null';
+const SAFE_OVERRIDES: readonly string[] = [
+  '-c', 'core.fsmonitor=false',
+  '-c', `core.hooksPath=${NULL_DEVICE}`,
+  '-c', 'core.quotepath=off',
+];
+const PINNED_ENV: Readonly<Record<string, string>> = {
+  GIT_OPTIONAL_LOCKS: '0',
+  GIT_TERMINAL_PROMPT: '0',
+  GIT_NO_LAZY_FETCH: '1',
+  GIT_ALLOW_PROTOCOL: 'none',
+};
+
+/** A git spec shaped like gitSpec's output: `-C`, the three overrides, then `args`, with the pinned environment. */
+const safeGit = (...args: string[]): CommandSpec => ({
+  executable: 'git',
+  args: ['-C', '/some/repo', ...SAFE_OVERRIDES, ...args],
+  builtinId: 'git',
+  env: { ...PINNED_ENV },
+});
+/** The same shape with one override pair dropped. */
+const withoutOverride = (key: string, ...args: string[]): CommandSpec => {
+  const kept: string[] = [];
+  for (let i = 0; i < SAFE_OVERRIDES.length; i += 2) {
+    if (!(SAFE_OVERRIDES[i + 1] as string).startsWith(`${key}=`)) kept.push('-c', SAFE_OVERRIDES[i + 1] as string);
+  }
+  return { executable: 'git', args: ['-C', '/some/repo', ...kept, ...args], builtinId: 'git', env: { ...PINNED_ENV } };
+};
+/** The same shape with one environment variable removed (`value` undefined) or changed. */
+const withEnv = (name: string, value: string | undefined, ...args: string[]): CommandSpec => {
+  const env: Record<string, string> = { ...PINNED_ENV };
+  if (value === undefined) delete env[name];
+  else env[name] = value;
+  return { ...safeGit(...args), env };
+};
 
 function assertDenied(d: Decision): asserts d is Extract<Decision, { allowed: false }> {
   assert.equal(d.allowed, false, 'expected a denial');
@@ -20,16 +59,23 @@ describe('decide: first-party git built-in', () => {
   });
 
   it('allows -C <dir> and the allowlisted -c keys before an allowed subcommand', () => {
-    const d = decide(
-      git('-C', '/some/repo', '-c', 'core.fsmonitor=false', '-c', 'core.quotepath=off', 'ls-files', '-z'),
-    );
+    const d = decide(safeGit('ls-files', '-z'));
     assert.deepEqual(d, { allowed: true, via: 'builtin', builtinId: 'git' });
+  });
+
+  it('denies the old partial -c form (a deliberate tightening): -C <dir> -c core.fsmonitor=false -c core.quotepath=off ls-files', () => {
+    const partial: CommandSpec = {
+      executable: 'git',
+      args: ['-C', '/some/repo', '-c', 'core.fsmonitor=false', '-c', 'core.quotepath=off', 'ls-files', '-z'],
+      builtinId: 'git',
+      env: { ...PINNED_ENV },
+    };
+    assertDenied(decide(partial));
   });
 
   it('allows the hooksPath null device and empty filter neutralisation', () => {
     const d = decide(
-      git(
-        '-c', 'core.hooksPath=/dev/null',
+      safeGit(
         '-c', 'filter.evil.clean=',
         '-c', 'filter.evil.smudge=',
         '-c', 'filter.evil.process=',
@@ -42,47 +88,94 @@ describe('decide: first-party git built-in', () => {
 
   it('allows every listed read-only subcommand', () => {
     for (const sub of ['ls-files', 'hash-object', 'cat-file', 'rev-parse', 'rev-list', 'check-attr']) {
-      assert.equal(decide(git(sub)).allowed, true, sub);
+      assert.equal(decide(safeGit(sub)).allowed, true, sub);
     }
   });
 
   it('allows config only in the read form --name-only --get-regexp <pattern>', () => {
-    assert.equal(decide(git('config', '--name-only', '--get-regexp', '^filter\\.')).allowed, true);
+    assert.equal(decide(safeGit('config', '--name-only', '--get-regexp', '^filter\\.')).allowed, true);
+  });
+
+  it('allows git --version with no overrides and no environment', () => {
+    assert.equal(decide({ executable: 'git', args: ['--version'], builtinId: 'git', env: {} }).allowed, true);
   });
 });
 
 describe('decide: git denials', () => {
   const denied: Array<[string, CommandSpec]> = [
-    ['status is not an allowed subcommand', git('status')],
-    ['push is not an allowed subcommand', git('push', 'origin', 'main')],
-    ['config --global is not the read form', git('config', '--global', 'user.name', 'x')],
-    ['config writes are not the read form', git('config', 'core.editor', 'vim')],
-    ['config --get-regexp without --name-only is not the read form', git('config', '--get-regexp', 'x')],
-    ['config with trailing arguments is not the read form', git('config', '--name-only', '--get-regexp', 'x', 'y')],
-    ['alias via -c alias.x=!sh', git('-c', 'alias.x=!sh', 'ls-files')],
-    ['core.sshCommand via -c', git('-c', 'core.sshCommand=x', 'ls-files')],
-    ['core.fsmonitor set to a script path', git('-c', 'core.fsmonitor=/tmp/evil', 'ls-files')],
-    ['core.hooksPath pointing at a directory', git('-c', 'core.hooksPath=/tmp/hooks', 'ls-files')],
-    ['a filter clean command that is not empty', git('-c', 'filter.x.clean=sh -c evil', 'hash-object')],
-    ['a -c without key=value', git('-c', 'core.fsmonitor', 'ls-files')],
-    ['a -c with a missing argument', git('-c')],
-    ['a -C with a missing argument', git('-C')],
-    ['an attached -c form', git('-ccore.fsmonitor=false', 'ls-files')],
-    ['--exec-path as a global option', git('--exec-path=/tmp/x', 'ls-files')],
-    ['--git-dir as a global option', git('--git-dir=/tmp/x', 'ls-files')],
+    ['status is not an allowed subcommand', safeGit('status')],
+    ['push is not an allowed subcommand', safeGit('push', 'origin', 'main')],
+    ['config --global is not the read form', safeGit('config', '--global', 'user.name', 'x')],
+    ['config writes are not the read form', safeGit('config', 'core.editor', 'vim')],
+    ['config --get-regexp without --name-only is not the read form', safeGit('config', '--get-regexp', 'x')],
+    ['config with trailing arguments is not the read form', safeGit('config', '--name-only', '--get-regexp', 'x', 'y')],
+    ['alias via -c alias.x=!sh', safeGit('-c', 'alias.x=!sh', 'ls-files')],
+    ['core.sshCommand via -c', safeGit('-c', 'core.sshCommand=x', 'ls-files')],
+    ['core.fsmonitor set to a script path', safeGit('-c', 'core.fsmonitor=/tmp/evil', 'ls-files')],
+    ['core.hooksPath pointing at a directory', safeGit('-c', 'core.hooksPath=/tmp/hooks', 'ls-files')],
+    ['a filter clean command that is not empty', safeGit('-c', 'filter.x.clean=sh -c evil', 'hash-object')],
+    ['a -c without key=value', safeGit('-c', 'core.fsmonitor', 'ls-files')],
+    ['a -c with a missing argument', safeGit('-c')],
+    ['a -C with a missing argument', safeGit('-C')],
+    ['an attached -c form', safeGit('-ccore.fsmonitor=false', 'ls-files')],
+    ['--exec-path as a global option', safeGit('--exec-path=/tmp/x', 'ls-files')],
+    ['--git-dir as a global option', safeGit('--git-dir=/tmp/x', 'ls-files')],
     ['--version with extra arguments', git('--version', 'x')],
     ['-C then --version', git('-C', '/r', '--version')],
     ['no subcommand at all', git()],
-    ['cat-file --textconv runs repo-configured drivers', git('cat-file', '--textconv', 'HEAD:a')],
-    ['cat-file --filters runs repo-configured drivers', git('cat-file', '--filters', 'HEAD:a')],
-    ['hash-object -w writes to the object database', git('hash-object', '-w', 'a')],
-    ['--help opens a pager', git('rev-parse', '--help')],
+    ['cat-file --textconv runs repo-configured drivers', safeGit('cat-file', '--textconv', 'HEAD:a')],
+    ['cat-file --filters runs repo-configured drivers', safeGit('cat-file', '--filters', 'HEAD:a')],
+    ['hash-object -w writes to the object database', safeGit('hash-object', '-w', 'a')],
+    ['--help opens a pager', safeGit('rev-parse', '--help')],
   ];
   for (const [name, spec] of denied) {
     it(`denies ${name}`, () => {
       assertDenied(decide(spec));
     });
   }
+
+  const missingOverride: Array<[string, CommandSpec]> = [
+    ['core.fsmonitor override is missing', withoutOverride('core.fsmonitor', 'ls-files')],
+    ['core.hooksPath override is missing', withoutOverride('core.hooksPath', 'ls-files')],
+    ['core.quotepath override is missing', withoutOverride('core.quotepath', 'ls-files')],
+  ];
+  for (const [name, spec] of missingOverride) {
+    it(`denies a spec when the ${name}`, () => {
+      assertDenied(decide(spec));
+    });
+  }
+
+  const badEnv: Array<[string, CommandSpec]> = [
+    ['GIT_OPTIONAL_LOCKS is missing', withEnv('GIT_OPTIONAL_LOCKS', undefined, 'ls-files')],
+    ['GIT_OPTIONAL_LOCKS is not 0', withEnv('GIT_OPTIONAL_LOCKS', '1', 'ls-files')],
+    ['GIT_TERMINAL_PROMPT is missing', withEnv('GIT_TERMINAL_PROMPT', undefined, 'ls-files')],
+    ['GIT_TERMINAL_PROMPT is not 0', withEnv('GIT_TERMINAL_PROMPT', '1', 'ls-files')],
+    ['GIT_NO_LAZY_FETCH is missing', withEnv('GIT_NO_LAZY_FETCH', undefined, 'cat-file', '-e', 'a')],
+    ['GIT_NO_LAZY_FETCH is not 1', withEnv('GIT_NO_LAZY_FETCH', '0', 'cat-file', '-e', 'a')],
+    ['GIT_ALLOW_PROTOCOL is missing', withEnv('GIT_ALLOW_PROTOCOL', undefined, 'cat-file', '-e', 'a')],
+    ['GIT_ALLOW_PROTOCOL is file', withEnv('GIT_ALLOW_PROTOCOL', 'file', 'cat-file', '-e', 'a')],
+    ['GIT_ALLOW_PROTOCOL is ssh', withEnv('GIT_ALLOW_PROTOCOL', 'ssh', 'cat-file', '-e', 'a')],
+  ];
+  for (const [name, spec] of badEnv) {
+    it(`denies a spec when ${name}`, () => {
+      assertDenied(decide(spec));
+    });
+  }
+
+  it('denies a spec with no env at all, even with every override present', () => {
+    const { env: _env, ...noEnv } = safeGit('ls-files');
+    assertDenied(decide(noEnv));
+  });
+
+  it('denies a missing-override or missing-env spec with code command_denied, starting nothing, naming permissions.commands', () => {
+    for (const spec of [withoutOverride('core.hooksPath', 'ls-files'), withEnv('GIT_NO_LAZY_FETCH', undefined, 'ls-files')]) {
+      const d = decide(spec);
+      assertDenied(d);
+      assert.equal(d.diagnostic.code, 'command_denied');
+      assert.ok(d.diagnostic.message.includes('permissions.commands'), d.diagnostic.message);
+      assert.ok(d.diagnostic.message.includes('was not started'), d.diagnostic.message);
+    }
+  });
 
   it('denies a non-git executable', () => {
     assertDenied(decide({ executable: 'sh', args: ['-c', 'id'] }));
@@ -148,7 +241,7 @@ describe('decide: user permissions', () => {
   });
 
   it('a user entry does not widen the git built-in', () => {
-    const d = decide(git('push'), { repo: '/repo/a' }, user);
+    const d = decide(safeGit('push'), { repo: '/repo/a' }, user);
     assertDenied(d);
   });
 

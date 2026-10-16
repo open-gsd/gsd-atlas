@@ -55,12 +55,42 @@ function gitConfigOverrideAllowed(kv: string | undefined): boolean {
   return false;
 }
 
+/**
+ * The three `-c` keys every git spec except `--version` must carry (a pair per key, value checked by
+ * {@link GIT_C_VALUES}). They mirror what `gitSpec` prepends BY VALUE, not by import, and a test verifies
+ * that `decide` accepts every `gitSpec` output, so a drift between builder and gate is visible. The gate
+ * must not trust the builder (WR-01, T-01-44).
+ */
+const GIT_REQUIRED_C_KEYS: readonly string[] = ['core.fsmonitor', 'core.hooksPath', 'core.quotepath'];
+
+/**
+ * The environment every git spec except `--version` must carry, exactly. It mirrors `gitSpec` by value
+ * (verified by test): no read blocks on the index lock or a credential prompt, and a missing object never
+ * triggers a lazy fetch that would start a transport the repository configures (CR-01, T-01-43).
+ */
+const GIT_REQUIRED_ENV: ReadonlyMap<string, string> = new Map([
+  ['GIT_OPTIONAL_LOCKS', '0'],
+  ['GIT_TERMINAL_PROMPT', '0'],
+  ['GIT_NO_LAZY_FETCH', '1'],
+  ['GIT_ALLOW_PROTOCOL', 'none'],
+]);
+
+function gitEnvPinned(env: CommandSpec['env']): boolean {
+  if (env === undefined) return false;
+  for (const [name, value] of GIT_REQUIRED_ENV) {
+    if (!Object.hasOwn(env, name) || env[name] !== value) return false;
+  }
+  return true;
+}
+
 function matchGit(spec: CommandSpec): boolean {
   if (spec.executable !== 'git') return false;
   const args = spec.args;
   if (args.length === 1 && args[0] === '--version') return true;
+  if (!gitEnvPinned(spec.env)) return false;
 
   let i = 0;
+  const seenKeys = new Set<string>();
   while (i < args.length) {
     const a = args[i];
     if (a === '-C') {
@@ -68,12 +98,15 @@ function matchGit(spec: CommandSpec): boolean {
       if (dir === undefined || dir === '') return false;
       i += 2;
     } else if (a === '-c') {
-      if (!gitConfigOverrideAllowed(args[i + 1])) return false;
+      const kv = args[i + 1];
+      if (!gitConfigOverrideAllowed(kv)) return false;
+      seenKeys.add((kv as string).slice(0, (kv as string).indexOf('=')));
       i += 2;
     } else {
       break;
     }
   }
+  if (!GIT_REQUIRED_C_KEYS.every((key) => seenKeys.has(key))) return false;
 
   const sub = args[i];
   if (sub === undefined) return false;
