@@ -39,6 +39,7 @@ async function typeCheckedUsage(store: FactStore, w: WorktreeId, id: SymbolIdent
   const found: Answer<readonly SymbolRecord[]> = await store.at(w).find('getUserName', { mode: 'fuzzy', limit: 10 });
   const one: Answer<SymbolRecord | null> = await store.at(w).symbol(id);
   const file: Answer<FileFacts | null> = await store.at(w).fileFacts('src/a.ts');
+  const importers = await store.at(w).importers('src/a.ts', { depth: 1, limit: 5 });
   const writer = store.writer();
   const result = await writer.commitFile({ worktree: w, path: 'src/a.ts', hash: 'abc', facts });
   await writer.commitFile({ worktree: w, path: 'src/gone.ts', hash: 'def', facts: null });
@@ -54,7 +55,7 @@ async function typeCheckedUsage(store: FactStore, w: WorktreeId, id: SymbolIdent
   await store.maintain(50);
   await store.status();
   await store.close();
-  void [refs, hops, found, one, file, result];
+  void [refs, hops, found, one, file, importers, result];
 }
 
 // A `Reader` literal must return `Answer` values. Type-level only; it is not a store and nothing uses it.
@@ -64,6 +65,7 @@ const readerShape = {
   callers: async () => ({ data: [], watermark: { seq: 0, stalePaths: [] }, degraded: ['cache_unavailable'] }),
   symbol: async () => ({ data: null, watermark: { seq: 0, stalePaths: [] } }),
   fileFacts: async () => ({ data: null, watermark: { seq: 0, stalePaths: [] } }),
+  importers: async () => ({ data: [], watermark: { seq: 0, stalePaths: [] } }),
 } satisfies Reader;
 
 describe('fact-store interface', () => {

@@ -12,6 +12,8 @@ import type {
   Confidence,
   Diagnostic,
   FileFacts,
+  ImportStyle,
+  RefKind,
   RefSiteKey,
   ResolutionContext,
   ResolvedEdge,
@@ -64,6 +66,29 @@ export interface RefRecord extends Provenance {
   readonly site: RefSiteKey;
   readonly target: SymbolIdentity | null;
   readonly tier: Tier;
+  /** What the site does with the name (call, new, read, type, heritage or member); absent when the extractor did not say. */
+  readonly kind?: RefKind;
+  /** The innermost symbol that contains the site; `null` for a top-level site, absent when not known. */
+  readonly enclosing?: SymbolIdentity | null;
+}
+
+/**
+ * A file that imports another file. `importer` is the importing file's path, `specifier` the import path as
+ * written, and `hops` how many import steps away it is (1 for a direct import). The edge from specifier to
+ * file is a path match, so it is `INFERRED`; the import statement itself is the cited span.
+ */
+export interface ImporterRecord extends Provenance {
+  readonly importer: string;
+  readonly specifier: string;
+  readonly style?: ImportStyle;
+  readonly hops: number;
+}
+
+export interface ImportersOptions {
+  /** How many import hops to walk. Default 1; this release returns direct importers whatever the depth. */
+  readonly depth?: number;
+  /** Truncate after ordering by importer path. */
+  readonly limit?: number;
 }
 
 /** A call edge, `hops` calls away from the symbol asked about. */
@@ -77,8 +102,13 @@ export interface CallerRecord extends Provenance {
 export type FindMode = 'exact' | 'prefix' | 'fuzzy';
 
 export interface FindOptions {
-  /** Default `exact`. `fuzzy` uses the trigram index; a query shorter than three characters returns no rows. */
+  /**
+   * Default `exact`. `prefix` matches names that start with the query (case-sensitive). `fuzzy` matches names
+   * that contain the query, case-insensitively for ASCII; a query shorter than three characters returns no
+   * rows. An empty query returns no rows in every mode.
+   */
   readonly mode?: FindMode;
+  /** Truncate after ordering by path, line, column and definition order. `prefix` and `fuzzy` default to 50. */
   readonly limit?: number;
 }
 
@@ -134,6 +164,13 @@ export interface Reader {
 
   /** The local facts of one file as the overlay sees it; `data` is null when the path is not in the overlay. */
   fileFacts(path: string): Promise<Answer<FileFacts | null>>;
+
+  /**
+   * The files of this overlay that import `path`: a relative import specifier, resolved against the importing
+   * file's directory with POSIX normalisation and compared with `path` with its extension removed on both
+   * sides, names it. Non-relative specifiers never match. Ordered by importer path; no match is empty data.
+   */
+  importers(path: string, options?: ImportersOptions): Promise<Answer<readonly ImporterRecord[]>>;
 }
 
 export interface CommitFileInput {

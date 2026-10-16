@@ -323,6 +323,10 @@ export function createReader(parts: StoreParts, worktree: WorktreeId): Reader {
         return match === undefined ? null : symbolRecord(snap, id.path, file, match);
       });
     },
+    async importers() {
+      assertOpen(parts);
+      return notYet();
+    },
     async fileFacts(path) {
       return answer(parts, worktree, (snap) => {
         const fileId = fileIdAt(snap, path);

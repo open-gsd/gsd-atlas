@@ -15,6 +15,8 @@ export type {
   FactStore,
   FindMode,
   FindOptions,
+  ImporterRecord,
+  ImportersOptions,
   MaintenanceOptions,
   MaintenanceResult,
   OpenStore,

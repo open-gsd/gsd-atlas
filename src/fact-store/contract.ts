@@ -7,7 +7,7 @@
 import assert from 'node:assert/strict';
 import path from 'node:path';
 import { describe, it } from 'node:test';
-import type { FileFacts, Span } from '../facts/index.ts';
+import type { FileFacts, ImportSite, Span, SymbolIdentity } from '../facts/index.ts';
 import { openDatabase } from '../sqlite/index.ts';
 import type { Db, DriverName } from '../sqlite/index.ts';
 import { FakeClock, makeTempDir } from '../test-kit/index.ts';
@@ -15,7 +15,7 @@ import { SchemaTooNew, StoreClosed, UnknownWorktree, WriterBusy } from './errors
 import { openFactStore } from './open.ts';
 import type { OpenFactStoreOptions } from './open.ts';
 import { SCHEMA_VERSION, STORE_FILE_NAME } from './schema.ts';
-import type { CommitFileInput, CommitResult, FactStore, StoreDeps, Writer } from './types.ts';
+import type { CommitFileInput, CommitResult, FactStore, FindOptions, StoreDeps, Writer } from './types.ts';
 
 interface Fixture {
   readonly store: FactStore;
@@ -188,6 +188,55 @@ async function expectRejected(fx: Fixture, writer: Writer, input: CommitFileInpu
 }
 
 const FILE_STATES_SQL = 'SELECT hash, state, retired_at FROM files ORDER BY id';
+
+/** The identity of a definition in the repo the fixtures use. */
+function identity(filePath: string, qualifiedName: string, kind: string): SymbolIdentity {
+  return { repo: 'repo', path: filePath, qualifiedName, kind };
+}
+
+/** `load` is defined at the top and called twice inside `main`, read once, and called once at the top level. */
+const loadA = parseFacts('src/a.ts', H(1), {
+  symbols: [
+    { name: 'load', kind: 'function', span: span(0, 0, 5, 1), exported: true },
+    { name: 'main', kind: 'function', span: span(7, 0, 12, 1) },
+  ],
+  refSites: [
+    { name: 'load', span: span(8, 2, 8, 6), kind: 'call', enclosing: 1 },
+    { name: 'load', span: span(14, 0, 14, 4), kind: 'call' },
+    { name: 'load', span: span(9, 2, 9, 6), kind: 'read', enclosing: 1 },
+  ],
+  imports: [],
+  exports: [],
+});
+
+/** A second definition also called `load`, one call inside the method `Job.run` and one type use at the top level. */
+const loadB = parseFacts('src/b.ts', H(2), {
+  symbols: [
+    { name: 'load', kind: 'function', span: span(0, 0, 2, 1) },
+    { name: 'run', kind: 'method', qualifiedName: 'Job.run', span: span(4, 2, 8, 3) },
+  ],
+  refSites: [
+    { name: 'load', span: span(5, 4, 5, 8), kind: 'call', enclosing: 1 },
+    { name: 'load', span: span(1, 0, 1, 4), kind: 'type' },
+  ],
+  imports: [],
+  exports: [],
+});
+
+/** Definitions for the prefix and fuzzy cases, plus a name that is only ever referenced. */
+const namesFacts = parseFacts('src/names.ts', H(20), {
+  symbols: [
+    { name: 'getUserName', kind: 'function', span: span(1, 0, 2, 1) },
+    { name: 'getUser', kind: 'function', span: span(3, 0, 4, 1) },
+    { name: 'setUser', kind: 'function', span: span(5, 0, 6, 1) },
+    { name: 'fetchUser', kind: 'function', span: span(7, 0, 8, 1) },
+    { name: 'ab', kind: 'function', span: span(9, 0, 10, 1) },
+    { name: 'Get', kind: 'variable', span: span(11, 0, 11, 3) },
+  ],
+  refSites: [{ name: 'userRefOnly', span: span(12, 0, 12, 11) }],
+  imports: [],
+  exports: [],
+});
 
 export function defineFactStoreContract(label: string, driver: DriverName): void {
   describe(`fact store contract (${label})`, () => {
@@ -852,6 +901,210 @@ export function defineFactStoreContract(label: string, driver: DriverName): void
           pathToHash: new Map([['p.ts', H(5)], ['q.ts', H(1)]]),
         });
         assert.deepStrictEqual(waiting.reindex, ['p.ts', 'q.ts'], 'a pending path and a stale path still need extraction');
+        writer.release();
+      });
+    });
+
+    it('refs returns every name-matching reference site (grammar tier, INFERRED) ordered by path then span; scoping by imports is plan 02-11', async () => {
+      await withStore(driver, async (fx) => {
+        const writer = fx.store.writer();
+        await writer.commitFile({ worktree: 'main', path: 'src/a.ts', hash: H(1), facts: loadA });
+        await writer.commitFile({ worktree: 'main', path: 'src/b.ts', hash: H(2), facts: loadB });
+        const idA = identity('src/a.ts', 'load', 'function');
+        const idB = identity('src/b.ts', 'load', 'function');
+        const reader = fx.store.at('main');
+
+        const refs = await reader.refs(idA);
+        assert.equal(refs.degraded, undefined);
+        assert.deepStrictEqual(refs.watermark, { seq: 2, stalePaths: [] });
+        assert.deepStrictEqual(
+          refs.data.map((record) => [record.source_path, record.kind, record.span.startLine]),
+          [['src/a.ts', 'call', 8], ['src/a.ts', 'read', 9], ['src/a.ts', 'call', 14], ['src/b.ts', 'type', 1], ['src/b.ts', 'call', 5]],
+        );
+        for (const record of refs.data) {
+          assert.equal(record.tier, 'grammar');
+          assert.equal(record.confidence, 'INFERRED');
+          assert.deepStrictEqual(record.target, idA);
+          assert.equal(record.site.name, 'load');
+          assert.equal(record.site.path, record.source_path);
+          assert.deepStrictEqual(record.site.span, record.span);
+          assert.equal(record.extractor, 'grammar:typescript@0.23.2');
+        }
+        const [first, second, third, fourth, fifth] = refs.data;
+        assert.equal(first?.content_hash, H(1));
+        assert.equal(first?.debug, `ref/src%2Fa.ts/${H(1)}/0`);
+        assert.equal(second?.debug, `ref/src%2Fa.ts/${H(1)}/2`);
+        assert.deepStrictEqual(first?.enclosing, identity('src/a.ts', 'main', 'function'));
+        assert.equal(third?.enclosing, null, 'a top-level site has no enclosing symbol');
+        assert.equal(fourth?.enclosing, null);
+        assert.deepStrictEqual(fifth?.enclosing, identity('src/b.ts', 'Job.run', 'method'));
+        assert.equal(fifth?.content_hash, H(2));
+
+        const forB = await reader.refs(idB);
+        assert.equal(forB.data.length, 5, 'both definitions are named load, so both see every name-matching site');
+        for (const record of forB.data) assert.deepStrictEqual(record.target, idB);
+
+        const none = await reader.refs(identity('src/a.ts', 'ghost', 'function'));
+        assert.deepStrictEqual(none.data, []);
+        assert.deepStrictEqual(none.watermark, { seq: 2, stalePaths: [] });
+        writer.release();
+      });
+    });
+
+    it('refs matches a method by its bare name, taken from the symbol the identity names', async () => {
+      await withStore(driver, async (fx) => {
+        const writer = fx.store.writer();
+        await writer.commitFile({ worktree: 'main', path: 'lib/box.ts', hash: H(2), facts: richFacts('lib/box.ts', H(2)) });
+        const reader = fx.store.at('main');
+        const put = await reader.refs(identity('lib/box.ts', 'Box.put', 'method'));
+        assert.equal(put.data.length, 1);
+        assert.equal(put.data[0]?.kind, 'member');
+        assert.deepStrictEqual(put.data[0]?.enclosing, identity('lib/box.ts', 'Box.put', 'method'));
+        const box = await reader.refs(identity('lib/box.ts', 'Box', 'class'));
+        assert.equal(box.data.length, 1);
+        assert.equal(box.data[0]?.kind, 'new');
+        assert.equal(box.data[0]?.enclosing, null);
+        writer.release();
+      });
+    });
+
+    it('callers (one hop) returns the enclosing symbol of each call site and skips top-level calls and non-call sites', async () => {
+      await withStore(driver, async (fx) => {
+        const writer = fx.store.writer();
+        await writer.commitFile({ worktree: 'main', path: 'src/a.ts', hash: H(1), facts: loadA });
+        await writer.commitFile({ worktree: 'main', path: 'src/b.ts', hash: H(2), facts: loadB });
+        const idA = identity('src/a.ts', 'load', 'function');
+        const reader = fx.store.at('main');
+
+        const callers = await reader.callers(idA, { hops: 1 });
+        assert.deepStrictEqual(
+          callers.data.map((record) => [record.caller, record.source_path, record.span.startLine]),
+          [
+            [identity('src/a.ts', 'main', 'function'), 'src/a.ts', 8],
+            [identity('src/b.ts', 'Job.run', 'method'), 'src/b.ts', 5],
+          ],
+        );
+        for (const record of callers.data) {
+          assert.deepStrictEqual(record.callee, idA);
+          assert.equal(record.hops, 1);
+          assert.equal(record.tier, 'grammar');
+          assert.equal(record.confidence, 'INFERRED');
+        }
+        assert.equal(callers.data[0]?.debug, `ref/src%2Fa.ts/${H(1)}/0`);
+
+        const deeper = await reader.callers(idA, { hops: 3 });
+        assert.deepStrictEqual(deeper.data, callers.data, 'hops above 1 return the same one-hop set in this plan');
+        assert.deepStrictEqual((await reader.callers(idA)).data, callers.data);
+        assert.deepStrictEqual((await reader.callers(identity('src/a.ts', 'ghost', 'function'))).data, []);
+        writer.release();
+      });
+    });
+
+    it('importers resolves relative specifiers against the importing directory and compares paths without their extension', async () => {
+      await withStore(driver, async (fx) => {
+        const writer = fx.store.writer();
+        const imp = (specifier: string, line: number, style: 'es' | 'cjs' = 'es'): ImportSite => ({
+          path: specifier,
+          span: span(line, 0, line, 20),
+          style,
+        });
+        const files: Array<[string, number, string, ImportSite[]]> = [
+          ['src/lib/util.ts', 10, 'util', []],
+          ['src/app/main.ts', 11, 'main', [imp('../lib/util', 0), imp('lodash', 1), imp('../lib/util', 2, 'cjs')]],
+          ['src/app/other.ts', 12, 'other', [imp('../lib/util.js', 0)]],
+          ['src/lib/sibling.ts', 13, 'sibling', [imp('./util', 3)]],
+          ['src/lib/misc.ts', 14, 'misc', [imp('./utility', 0), imp('util', 1), imp('../../node_modules/util', 2), imp('./util/', 3)]],
+        ];
+        for (const [filePath, n, name, imports] of files) {
+          await writer.commitFile({ worktree: 'main', path: filePath, hash: H(n), facts: named(filePath, n, name, { imports }) });
+        }
+        const reader = fx.store.at('main');
+
+        const found = await reader.importers('src/lib/util.ts');
+        assert.deepStrictEqual(
+          found.data.map((record) => [record.importer, record.specifier, record.style, record.hops]),
+          [
+            ['src/app/main.ts', '../lib/util', 'es', 1],
+            ['src/app/main.ts', '../lib/util', 'cjs', 1],
+            ['src/app/other.ts', '../lib/util.js', 'es', 1],
+            ['src/lib/sibling.ts', './util', 'es', 1],
+          ],
+        );
+        const first = found.data[0];
+        assert.equal(first?.source_path, 'src/app/main.ts');
+        assert.deepStrictEqual(first?.span, span(0, 0, 0, 20));
+        assert.equal(first?.confidence, 'INFERRED');
+        assert.equal(first?.content_hash, H(11));
+        assert.equal(first?.extractor, 'grammar:typescript@0.23.2');
+        assert.equal(first?.debug, `imp/src%2Fapp%2Fmain.ts/${H(11)}/0`);
+
+        assert.equal((await reader.importers('src/lib/util.ts', { limit: 2 })).data.length, 2);
+        assert.deepStrictEqual((await reader.importers('src/lib/util.ts', { depth: 3 })).data, found.data);
+        assert.deepStrictEqual((await reader.importers('src/lib/util')).data, found.data, 'a path without its extension names the same file');
+        const none = await reader.importers('src/lib/none.ts');
+        assert.deepStrictEqual(none.data, []);
+        assert.deepStrictEqual(none.watermark, { seq: 5, stalePaths: [] });
+        writer.release();
+      });
+    });
+
+    it('find in prefix mode returns definitions whose name starts with the query, case-sensitively', async () => {
+      await withStore(driver, async (fx) => {
+        const writer = fx.store.writer();
+        await writer.commitFile({ worktree: 'main', path: 'src/names.ts', hash: H(20), facts: namesFacts });
+        const reader = fx.store.at('main');
+        const names = async (query: string, options: FindOptions = {}): Promise<string[]> =>
+          (await reader.find(query, { mode: 'prefix', ...options })).data.map((record) => record.identity.qualifiedName);
+        assert.deepStrictEqual(await names('getUser'), ['getUserName', 'getUser']);
+        assert.deepStrictEqual(await names('get'), ['getUserName', 'getUser']);
+        assert.deepStrictEqual(await names('Get'), ['Get']);
+        assert.deepStrictEqual(await names('userRef'), [], 'a name used only as a reference is not a definition');
+        assert.deepStrictEqual(await names(''), []);
+        assert.deepStrictEqual(await names('get', { limit: 1 }), ['getUserName'], 'limit truncates after ordering');
+        assert.deepStrictEqual(await names('get', { limit: 0 }), []);
+        assert.deepStrictEqual((await reader.find('getUser')).data.map((record) => record.identity.qualifiedName), ['getUser']);
+        writer.release();
+      });
+    });
+
+    it('find in fuzzy mode returns definitions containing the query case-insensitively, and nothing for a query under three characters', async () => {
+      await withStore(driver, async (fx) => {
+        const writer = fx.store.writer();
+        await writer.commitFile({ worktree: 'main', path: 'src/names.ts', hash: H(20), facts: namesFacts });
+        const reader = fx.store.at('main');
+        const names = async (query: string, options: FindOptions = {}): Promise<string[]> =>
+          (await reader.find(query, { mode: 'fuzzy', ...options })).data.map((record) => record.identity.qualifiedName);
+        assert.deepStrictEqual(await names('user'), ['getUserName', 'getUser', 'setUser', 'fetchUser']);
+        assert.deepStrictEqual(await names('USERNAME'), ['getUserName']);
+        assert.deepStrictEqual(await names('get'), ['getUserName', 'getUser', 'Get']);
+        assert.deepStrictEqual(await names('ab'), [], 'under three characters');
+        assert.deepStrictEqual(await names('ge'), []);
+        assert.deepStrictEqual(await names(''), []);
+        assert.deepStrictEqual(await names('user', { limit: 2 }), ['getUserName', 'getUser']);
+        writer.release();
+      });
+    });
+
+    it('find bounds prefix and fuzzy results at 50 unless a limit is given, and treats query text as data, never as SQL', async () => {
+      await withStore(driver, async (fx) => {
+        const writer = fx.store.writer();
+        const many = Array.from({ length: 60 }, (_, i) => ({ name: `item${i}`, kind: 'function', span: span(i, 0, i, 5) }));
+        await writer.commitFile({ worktree: 'main', path: 'src/many.ts', hash: H(21), facts: named('src/many.ts', 21, 'x', { symbols: many }) });
+        const peek = await fx.peek();
+        const before = counts(peek);
+        const reader = fx.store.at('main');
+        assert.equal((await reader.find('item', { mode: 'fuzzy' })).data.length, 50);
+        assert.equal((await reader.find('item', { mode: 'prefix' })).data.length, 50);
+        assert.equal((await reader.find('item', { mode: 'fuzzy', limit: 55 })).data.length, 55);
+        assert.equal((await reader.find('item', { mode: 'prefix', limit: 200 })).data.length, 60);
+
+        for (const mode of ['exact', 'prefix', 'fuzzy'] as const) {
+          for (const query of ["'; DROP TABLE names; --", '%', '_', 'item1%', "x' OR '1'='1"]) {
+            assert.deepStrictEqual((await reader.find(query, { mode })).data, [], `${mode} ${query}`);
+          }
+        }
+        assert.deepStrictEqual(counts(peek), before);
+        assert.equal((await reader.find('item7')).data.length, 1);
         writer.release();
       });
     });
