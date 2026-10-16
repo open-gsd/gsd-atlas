@@ -20,8 +20,9 @@ Scope is the full PRD 1.0 (M0-M6), with M4 split into SDK facts, agent integrati
 - [ ] **FND-07**: Module-boundary lint rules are enforced from day one (child_process only in the runner; `sqlite/` only for the Fact Store, Metrics and SDK stores; imports via `index.ts`; Policy imports only `facts/`; adapters import only `HostClient`)
 - [ ] **FND-08**: Each eval corpus is pinned to a commit SHA in a corpus manifest
 - [ ] **FND-09**: Each ADR is ratified (issue opened, file renamed to `<issue#>-<slug>.md`, Proposed to Accepted) before the first phase that depends on it
-- [ ] **FND-10**: The five ADR gaps found in research (writer contention, ProjectModel seam, read-triggered cache write, metrics migrations, SQLite-access wording) are amended in the relevant ADRs
+- [ ] **FND-10**: Three of the five ADR gaps found in research (ProjectModel seam, read-triggered cache write, SQLite-access wording) are amended in the language-modules, fact-store-interface and sqlite-store ADRs as they are ratified in Phase 1; the other two are FND-12
 - [ ] **FND-11**: `gsd-atlas lang test` runs a fixture module end to end on all three OSes (walking skeleton)
+- [ ] **FND-12**: The other two ADR gaps found in research (writer contention and leader/follower, metrics migrations) are amended in the worktree-lifecycle and value-dashboard ADRs as they are ratified at the start of Phase 2
 
 ### Fact Store and Lifecycle (STO)
 
@@ -204,6 +205,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | FND-09 | Phase 1 | Pending |
 | FND-10 | Phase 1 | Pending |
 | FND-11 | Phase 1 | Pending |
+| FND-12 | Phase 2 | Pending |
 | STO-01 | Phase 2 | Pending |
 | STO-02 | Phase 2 | Pending |
 | STO-03 | Phase 2 | Pending |
@@ -296,10 +298,10 @@ Which phases cover which requirements. Updated during roadmap creation.
 | REL-04 | Phase 9 | Pending |
 
 **Coverage:**
-- v1 requirements: 101 total
-- Mapped to phases: 101
+- v1 requirements: 102 total
+- Mapped to phases: 102
 - Unmapped: 0
 
 ---
 *Requirements defined: 2026-10-15*
-*Last updated: 2026-10-15 after initial definition*
+*Last updated: 2026-10-15 after phase 1 plan revision (FND-10 split: three amendments stay in Phase 1, two move to FND-12 in Phase 2)*
