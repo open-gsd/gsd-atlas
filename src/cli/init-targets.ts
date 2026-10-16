@@ -140,7 +140,8 @@ const claude: Target = {
 };
 
 // Cursor and Codex file shapes follow the shapes gsd-graph's installer uses; they are not checked against
-// current host documentation (research assumption A3).
+// current host documentation (research assumption A3). Cursor keeps its user scope servers in
+// ~/.cursor/mcp.json; Codex keeps its in ~/.codex/config.toml.
 const cursor: Target = {
   agent: 'cursor',
   file: (home) => path.join(home, '.cursor', 'mcp.json'),
@@ -149,7 +150,7 @@ const cursor: Target = {
   render: (existing, launch) => renderJsonServers(existing, { command: launch.command, args: [...launch.args] }),
 };
 
-const CODEX_HEADER = `[mcp_servers.${SERVER_NAME}]`;
+const CODEX_HEADER = '[mcp_servers.gsd-atlas]';
 /** The same table spelled with a quoted key: it is the same table in TOML, so a second one would be a duplicate. */
 const CODEX_QUOTED_HEADER = /^\s*\[\s*mcp_servers\s*\.\s*["']gsd-atlas["']\s*\]/;
 
