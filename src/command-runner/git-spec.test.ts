@@ -135,6 +135,15 @@ describe('gitSpec: every git command is built here', () => {
     }
   });
 
+  it('decide allows gitSpec output for names containing "=", "." and the empty name, so builder and gate agree', () => {
+    for (const name of ['evil', 'a=b', 'a=b=c', 'my.driver', 'Mixed Case', 'x"y', '']) {
+      for (const sub of [['hash-object', '--stdin-paths'], ['ls-files', '-z'], ['config', '--name-only', '--get-regexp', '^filter\\.']]) {
+        const spec = gitSpec(sub, { worktree: W, filterNames: [name, 'other'], env: { GIT_CONFIG_GLOBAL: '/x/empty' } });
+        assert.equal(decide(spec, {}).allowed, true, `${JSON.stringify(name)} ${sub.join(' ')}`);
+      }
+    }
+  });
+
   it('denies git status: it runs clean filters even with fsmonitor disabled', () => {
     const d = decide(gitSpec(['status'], { worktree: W, filterNames: ['evil'] }), {});
     assert.equal(d.allowed, false);

@@ -206,6 +206,103 @@ describe('decide: git denials', () => {
   });
 });
 
+/** A safe git spec whose env also carries the given GIT_CONFIG_* variables (verbatim, so malformed shapes can be built). */
+const withChannel = (channel: Record<string, string>, ...args: string[]): CommandSpec => ({
+  ...safeGit(...args),
+  env: { ...PINNED_ENV, ...channel },
+});
+/** A well-formed channel for `entries` [key, value]. */
+const channelOf = (entries: ReadonlyArray<readonly [string, string]>): Record<string, string> => {
+  const out: Record<string, string> = { GIT_CONFIG_COUNT: String(entries.length) };
+  entries.forEach(([k, v], i) => {
+    out[`GIT_CONFIG_KEY_${String(i)}`] = k;
+    out[`GIT_CONFIG_VALUE_${String(i)}`] = v;
+  });
+  return out;
+};
+const driverEntries = (name: string): Array<readonly [string, string]> => [
+  [`filter.${name}.clean`, ''],
+  [`filter.${name}.smudge`, ''],
+  [`filter.${name}.process`, ''],
+  [`filter.${name}.required`, 'false'],
+];
+
+describe('decide: the GIT_CONFIG_COUNT/KEY_n/VALUE_n env channel (CR-02, T-01-48)', () => {
+  it('allows a neutralisation overlay for names containing "=", ".", spaces, a quote, and the empty name', () => {
+    for (const name of ['evil', 'a=b', 'a=b=c', 'my.driver', 'Mixed Case', 'x"y', '']) {
+      const d = decide(withChannel(channelOf(driverEntries(name)), 'hash-object', '--stdin-paths'));
+      assert.equal(d.allowed, true, JSON.stringify(name));
+    }
+  });
+
+  it('allows required=false and required empty, and several drivers at once', () => {
+    assert.equal(decide(withChannel(channelOf([['filter.x.required', '']]), 'ls-files')).allowed, true);
+    assert.equal(decide(withChannel(channelOf([...driverEntries('a'), ...driverEntries('b=c')]), 'ls-files')).allowed, true);
+  });
+
+  it('allows GIT_CONFIG_COUNT 0, and no GIT_CONFIG_* entry at all', () => {
+    assert.equal(decide(withChannel({ GIT_CONFIG_COUNT: '0' }, 'ls-files')).allowed, true);
+    assert.equal(decide(safeGit('ls-files')).allowed, true);
+  });
+
+  it('does not touch GIT_CONFIG_GLOBAL, GIT_CONFIG_SYSTEM and GIT_CONFIG_NOSYSTEM', () => {
+    const env = { ...channelOf(driverEntries('x')), GIT_CONFIG_GLOBAL: '/e', GIT_CONFIG_SYSTEM: '/e', GIT_CONFIG_NOSYSTEM: '1' };
+    assert.equal(decide(withChannel(env, 'ls-files')).allowed, true);
+  });
+
+  const good = channelOf([['filter.x.clean', '']]);
+  const bad: Array<[string, Record<string, string>]> = [
+    ["GIT_CONFIG_COUNT '01'", { ...good, GIT_CONFIG_COUNT: '01' }],
+    ["GIT_CONFIG_COUNT '+1'", { ...good, GIT_CONFIG_COUNT: '+1' }],
+    ["GIT_CONFIG_COUNT '-1'", { ...good, GIT_CONFIG_COUNT: '-1' }],
+    ["GIT_CONFIG_COUNT '1e1'", { ...good, GIT_CONFIG_COUNT: '1e1' }],
+    ["GIT_CONFIG_COUNT ' 2'", { ...good, GIT_CONFIG_COUNT: ' 2' }],
+    ["GIT_CONFIG_COUNT ''", { ...good, GIT_CONFIG_COUNT: '' }],
+    ['GIT_CONFIG_COUNT non-numeric', { ...good, GIT_CONFIG_COUNT: 'many' }],
+    ['GIT_CONFIG_COUNT larger than the entries present', { ...good, GIT_CONFIG_COUNT: '2' }],
+    ['a huge GIT_CONFIG_COUNT with no entries', { GIT_CONFIG_COUNT: '99999999999999999999' }],
+    ['a stray GIT_CONFIG_KEY_5 and GIT_CONFIG_VALUE_5 with count 1', { ...good, GIT_CONFIG_KEY_5: 'filter.y.clean', GIT_CONFIG_VALUE_5: '' }],
+    ['GIT_CONFIG_KEY_0 without GIT_CONFIG_VALUE_0', { GIT_CONFIG_COUNT: '1', GIT_CONFIG_KEY_0: 'filter.x.clean' }],
+    ['GIT_CONFIG_VALUE_0 without GIT_CONFIG_KEY_0', { GIT_CONFIG_COUNT: '1', GIT_CONFIG_VALUE_0: '' }],
+    ['GIT_CONFIG_KEY_ and GIT_CONFIG_VALUE_ entries without GIT_CONFIG_COUNT', { GIT_CONFIG_KEY_0: 'filter.x.clean', GIT_CONFIG_VALUE_0: '' }],
+    ['core.sshCommand through GIT_CONFIG_KEY_0', channelOf([['core.sshCommand', '']])],
+    ['alias.x through GIT_CONFIG_KEY_0', channelOf([['alias.x', '!sh']])],
+    ['core.fsmonitor through GIT_CONFIG_KEY_0', channelOf([['core.fsmonitor', 'false']])],
+    ['core.hooksPath through GIT_CONFIG_KEY_0', channelOf([['core.hooksPath', '/dev/null']])],
+    ['an unknown filter variable filter.x.foo', channelOf([['filter.x.foo', '']])],
+    ['a non-empty filter.x.clean value (sh -c evil)', channelOf([['filter.x.clean', 'sh -c evil']])],
+    ['filter.x.required with value true', channelOf([['filter.x.required', 'true']])],
+    ['a driver name containing a newline', channelOf([['filter.a\nb.clean', '']])],
+    ['a driver name containing a carriage return', channelOf([['filter.a\rb.clean', '']])],
+    ['a driver name containing NUL', channelOf([['filter.a\0b.clean', '']])],
+    ['GIT_CONFIG_PARAMETERS present', { ...good, GIT_CONFIG_PARAMETERS: "'core.sshcommand=evil'" }],
+    ['GIT_CONFIG_PARAMETERS present alone', { GIT_CONFIG_PARAMETERS: "'core.sshcommand=evil'" }],
+    ['a lower-case git_config_count', { ...good, git_config_count: '1' }],
+    ['a lower-case git_config_key_0', { ...good, git_config_key_0: 'core.sshCommand' }],
+    ['an upper-case-index variant GIT_CONFIG_KEY_00', { ...good, GIT_CONFIG_KEY_00: 'core.sshCommand', GIT_CONFIG_VALUE_00: '' }],
+  ];
+  for (const [name, channel] of bad) {
+    it(`denies ${name}`, () => {
+      const d = decide(withChannel(channel, 'hash-object', '--stdin-paths'));
+      assertDenied(d);
+      assert.equal(d.diagnostic.code, 'command_denied');
+      assert.ok(d.diagnostic.message.includes('permissions.commands'), d.diagnostic.message);
+    });
+  }
+
+  it('applies the channel check to every git built-in subcommand, including config', () => {
+    for (const sub of [['ls-files'], ['cat-file', '-e', 'a'], ['config', '--name-only', '--get-regexp', '^filter\\.']]) {
+      assertDenied(decide(withChannel(channelOf([['core.sshCommand', '']]), ...sub)));
+    }
+  });
+
+  it('does not stall on a huge declared count', () => {
+    const started = Date.now();
+    assertDenied(decide(withChannel({ GIT_CONFIG_COUNT: '9'.repeat(400) }, 'ls-files')));
+    assert.ok(Date.now() - started < 1000);
+  });
+});
+
 describe('decide: user permissions', () => {
   const tool = process.execPath;
   const user: UserPermissions = { allow: [{ repo: '/repo/a', executable: tool }] };
