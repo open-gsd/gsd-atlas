@@ -1,4 +1,5 @@
 import { diagnostic } from '../facts/index.ts';
+import { isNeutralisableFilterName } from './filter-name.ts';
 import type { CommandSpec, Decision, RunContext, UserPermissions } from './spec.ts';
 import { COMMAND_CODES } from './spec.ts';
 
@@ -87,7 +88,21 @@ function gitEnvPinned(env: CommandSpec['env']): boolean {
 const CHANNEL_NAME = /^GIT_CONFIG_(COUNT|PARAMETERS|KEY_|VALUE_)/i;
 const CHANNEL_INDEXED = /^GIT_CONFIG_(KEY|VALUE)_(0|[1-9][0-9]*)$/;
 const CANONICAL_COUNT = /^(0|[1-9][0-9]*)$/;
-const FILTER_ENV_KEY = /^filter\.([^\0\r\n]*)\.(clean|smudge|process|required)$/;
+const FILTER_ENV_VARIABLES: ReadonlySet<string> = new Set(['clean', 'smudge', 'process', 'required']);
+
+/**
+ * The variable (`clean`, `smudge`, `process` or `required`) of a channel key `filter.<name>.<variable>`, or
+ * `null` when the key is not of that shape or its name is one the shared rule refuses. The name is everything
+ * between the `filter.` prefix and the LAST dot, so it may be empty and may hold dots and `=`.
+ */
+function filterEnvKeyVariable(key: string): string | null {
+  if (!key.startsWith('filter.')) return null;
+  const lastDot = key.lastIndexOf('.');
+  if (lastDot < 'filter.'.length) return null; // `filter.clean` has no name segment at all
+  const variable = key.slice(lastDot + 1);
+  if (!FILTER_ENV_VARIABLES.has(variable)) return null;
+  return isNeutralisableFilterName(key.slice('filter.'.length, lastDot)) ? variable : null;
+}
 
 /**
  * Validates the environment config channel (`GIT_CONFIG_COUNT`, `GIT_CONFIG_KEY_n`, `GIT_CONFIG_VALUE_n`),
@@ -99,8 +114,11 @@ const FILTER_ENV_KEY = /^filter\.([^\0\r\n]*)\.(clean|smudge|process|required)$/
  *   - the `KEY_n` index set and the `VALUE_n` index set are each exactly 0 to count-1. The sets are built by
  *     scanning the env and compared with the count BEFORE any loop runs to the count, so a huge declared
  *     count cannot stall the gate;
- *   - every key is `filter.<name>.<clean|smudge|process|required>`; the name may be empty and may contain
- *     any character except NUL, CR and LF (including `=` and `.`);
+ *   - every key is `filter.<name>.<clean|smudge|process|required>`; the name is any name the shared rule
+ *     in `filter-name.ts` accepts: it may be empty and may contain `=`, `.`, whitespace and non-ASCII
+ *     letters; it may not contain NUL, LF or CR, U+FFFD or an unpaired surrogate, nor exceed 1024 UTF-16
+ *     code units. `decide` imports that leaf rule but never the builder (`git-spec.ts`), so the gate still
+ *     does not trust `gitSpec`; a test proves the two agree (WR-01);
  *   - every value is empty (`required` also allows `false`);
  *   - `GIT_CONFIG_PARAMETERS` and every other spelling (case variants, non-canonical indexes) are denied.
  * The three isolation variables `GIT_CONFIG_GLOBAL`, `GIT_CONFIG_SYSTEM` and `GIT_CONFIG_NOSYSTEM` do not
@@ -129,9 +147,9 @@ function gitConfigChannelAllowed(env: CommandSpec['env']): boolean {
     const key = env[`GIT_CONFIG_KEY_${String(i)}`];
     const value = env[`GIT_CONFIG_VALUE_${String(i)}`];
     if (key === undefined || value === undefined) return false;
-    const m = FILTER_ENV_KEY.exec(key);
-    if (m === null) return false;
-    if (m[2] === 'required' ? value !== '' && value !== 'false' : value !== '') return false;
+    const variable = filterEnvKeyVariable(key);
+    if (variable === null) return false;
+    if (variable === 'required' ? value !== '' && value !== 'false' : value !== '') return false;
   }
   return true;
 }
