@@ -62,11 +62,12 @@
       (function_signature name: (identifier) @name)
     ] @definition.function))
 
-(ambient_declaration
-  [
-    (function_declaration name: (identifier) @name)
-    (function_signature name: (identifier) @name)
-  ] @definition.function)
+(program
+  (ambient_declaration
+    [
+      (function_declaration name: (identifier) @name)
+      (function_signature name: (identifier) @name)
+    ] @definition.function))
 
 ; --- function: const, let and var bound arrow and function expressions ---
 (program
@@ -160,8 +161,9 @@
       (abstract_class_declaration name: (type_identifier) @name)
     ] @definition.class))
 
-(ambient_declaration
-  (class_declaration name: (type_identifier) @name) @definition.class)
+(program
+  (ambient_declaration
+    (class_declaration name: (type_identifier) @name) @definition.class))
 
 ; --- interface ---
 (program
@@ -184,8 +186,9 @@
   (export_statement
     declaration: (interface_declaration name: (type_identifier) @name) @definition.interface))
 
-(ambient_declaration
-  (interface_declaration name: (type_identifier) @name) @definition.interface)
+(program
+  (ambient_declaration
+    (interface_declaration name: (type_identifier) @name) @definition.interface))
 
 ; --- type alias ---
 (program
@@ -202,8 +205,9 @@
   (export_statement
     declaration: (type_alias_declaration name: (type_identifier) @name) @definition.type))
 
-(ambient_declaration
-  (type_alias_declaration name: (type_identifier) @name) @definition.type)
+(program
+  (ambient_declaration
+    (type_alias_declaration name: (type_identifier) @name) @definition.type))
 
 ; --- enum: plain, const and declared ---
 (program
@@ -225,8 +229,9 @@
   (export_statement
     declaration: (enum_declaration name: (identifier) @name) @definition.enum))
 
-(ambient_declaration
-  (enum_declaration name: (identifier) @name) @definition.enum)
+(program
+  (ambient_declaration
+    (enum_declaration name: (identifier) @name) @definition.enum))
 
 ; --- namespace: a namespace is an expression statement in this grammar ---
 (program
@@ -245,8 +250,9 @@
   (export_statement
     declaration: (internal_module name: (identifier) @name) @definition.namespace))
 
-(ambient_declaration
-  (internal_module name: (identifier) @name) @definition.namespace)
+(program
+  (ambient_declaration
+    (internal_module name: (identifier) @name) @definition.namespace))
 
 ; --- const at module top level (a function-valued or require() value is not a plain const) ---
 (program

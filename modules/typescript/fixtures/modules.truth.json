@@ -19,6 +19,8 @@
     { "construct": "CJS require", "name": "./member", "line": 29 },
     { "construct": "CJS require", "name": "./bare", "line": 30 },
     { "construct": "CJS require", "name": "./old-style", "line": 31 },
+    { "construct": "CJS require", "name": "./typed", "line": 36 },
+    { "construct": "CJS require", "name": "./typed-destructured", "line": 37 },
 
     { "construct": "ES export", "name": "*", "line": 14 },
     { "construct": "ES export", "name": "grouped", "line": 15 },

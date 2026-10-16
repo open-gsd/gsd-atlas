@@ -1758,6 +1758,87 @@
       "endLine": 147,
       "endColumn": 12,
       "text": "1"
+    },
+    {
+      "query": "tags",
+      "name": "export",
+      "startLine": 148,
+      "startColumn": 0,
+      "endLine": 148,
+      "endColumn": 57,
+      "text": "export declare function exportedAmbient(x: number): void;"
+    },
+    {
+      "query": "tags",
+      "name": "definition.function",
+      "startLine": 148,
+      "startColumn": 15,
+      "endLine": 148,
+      "endColumn": 57,
+      "text": "function exportedAmbient(x: number): void;"
+    },
+    {
+      "query": "tags",
+      "name": "name",
+      "startLine": 148,
+      "startColumn": 24,
+      "endLine": 148,
+      "endColumn": 39,
+      "text": "exportedAmbient"
+    },
+    {
+      "query": "tags",
+      "name": "export",
+      "startLine": 149,
+      "startColumn": 0,
+      "endLine": 149,
+      "endColumn": 44,
+      "text": "export declare class ExportedAmbientClass {}"
+    },
+    {
+      "query": "tags",
+      "name": "definition.class",
+      "startLine": 149,
+      "startColumn": 15,
+      "endLine": 149,
+      "endColumn": 44,
+      "text": "class ExportedAmbientClass {}"
+    },
+    {
+      "query": "tags",
+      "name": "name",
+      "startLine": 149,
+      "startColumn": 21,
+      "endLine": 149,
+      "endColumn": 41,
+      "text": "ExportedAmbientClass"
+    },
+    {
+      "query": "tags",
+      "name": "export",
+      "startLine": 150,
+      "startColumn": 0,
+      "endLine": 150,
+      "endColumn": 45,
+      "text": "export declare enum ExportedAmbientEnum { Y }"
+    },
+    {
+      "query": "tags",
+      "name": "definition.enum",
+      "startLine": 150,
+      "startColumn": 15,
+      "endLine": 150,
+      "endColumn": 45,
+      "text": "enum ExportedAmbientEnum { Y }"
+    },
+    {
+      "query": "tags",
+      "name": "name",
+      "startLine": 150,
+      "startColumn": 20,
+      "endLine": 150,
+      "endColumn": 39,
+      "text": "ExportedAmbientEnum"
     }
   ]
 }

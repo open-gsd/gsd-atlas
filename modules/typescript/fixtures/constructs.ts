@@ -146,3 +146,6 @@ class Ünïcode {
 }
 const tag = '😀'; function afterEmoji(): void {}
 const 变量 = 1;
+export declare function exportedAmbient(x: number): void;
+export declare class ExportedAmbientClass {}
+export declare enum ExportedAmbientEnum { Y }

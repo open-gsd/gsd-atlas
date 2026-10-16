@@ -23,6 +23,7 @@
     { "construct": "function", "name": "ambientFn", "line": 138 },
     { "construct": "function", "name": "café", "line": 143 },
     { "construct": "function", "name": "afterEmoji", "line": 147 },
+    { "construct": "function", "name": "exportedAmbient", "line": 149 },
 
     { "construct": "class", "name": "Plain", "line": 47 },
     { "construct": "class", "name": "Shape", "line": 73 },
@@ -32,6 +33,7 @@
     { "construct": "class", "name": "Child", "line": 96 },
     { "construct": "class", "name": "AmbientClass", "line": 139 },
     { "construct": "class", "name": "Ünïcode", "line": 144 },
+    { "construct": "class", "name": "ExportedAmbientClass", "line": 150 },
 
     { "construct": "interface", "name": "Named", "line": 100 },
     { "construct": "interface", "name": "Extended", "line": 106 },
@@ -44,6 +46,7 @@
     { "construct": "enum", "name": "Level", "line": 120 },
     { "construct": "enum", "name": "Flags", "line": 124 },
     { "construct": "enum", "name": "Ambient", "line": 127 },
+    { "construct": "enum", "name": "ExportedAmbientEnum", "line": 151 },
 
     { "construct": "const/var", "name": "LIMIT", "line": 40 },
     { "construct": "const/var", "name": "counter", "line": 41 },
@@ -92,7 +95,10 @@
     { "construct": "ES export", "name": "Child", "line": 96 },
     { "construct": "ES export", "name": "Named", "line": 100 },
     { "construct": "ES export", "name": "Pair", "line": 113 },
-    { "construct": "ES export", "name": "Level", "line": 120 }
+    { "construct": "ES export", "name": "Level", "line": 120 },
+    { "construct": "ES export", "name": "exportedAmbient", "line": 149 },
+    { "construct": "ES export", "name": "ExportedAmbientClass", "line": 150 },
+    { "construct": "ES export", "name": "ExportedAmbientEnum", "line": 151 }
   ],
   "parents": [
     { "child": "inner", "parent": "outer", "line": 26 },

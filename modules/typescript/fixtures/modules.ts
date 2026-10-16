@@ -33,3 +33,5 @@ var oldStyle = require('./old-style');
 module.exports = { localOne, publicOne: localTwo, inline() {} };
 exports.direct = 1;
 module.exports.nested = 2;
+const typed = require('./typed') as { a: number };
+const { named: renamedTyped } = require('./typed-destructured') satisfies object;

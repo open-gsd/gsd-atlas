@@ -1,17 +1,21 @@
+import crypto from 'node:crypto';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { parseArgs } from 'node:util';
 import { pathToFileURL } from 'node:url';
 
 import type { FileFacts } from '../src/facts/index.ts';
-import { createGrammarEngine, extractFileFacts } from '../src/grammar-engine/index.ts';
+import { GRAMMAR_LIMITS, createGrammarEngine, extractFileFacts } from '../src/grammar-engine/index.ts';
 import type { GrammarEngine, GrammarInput, LoadedGrammar, QueryKind } from '../src/grammar-engine/index.ts';
 import { readModuleInputs } from '../src/lang/index.ts';
 import { TRUTH_SUFFIX } from '../src/lang/test-runner.ts';
+import { fetchCorpus } from './corpus-fetch.ts';
 import type { FetchCorpusOptions, FetchedCorpus } from './corpus-fetch.ts';
 
 /**
  * node scripts/recall.ts [--module typescript|javascript] [--min 0.9]
+ * node scripts/recall.ts --corpus gsd-core [--sample-size 300] [--module typescript|javascript]
  *
  * The per-construct recall gate of LNG-02 / D-05. For every language module it runs the real
  * Grammar Engine and extractor over the module's fixtures and compares what was found with the
@@ -22,7 +26,19 @@ import type { FetchCorpusOptions, FetchedCorpus } from './corpus-fetch.ts';
  *
  * Truth is written by hand from the fixture text before the extractor is run on it. It is never
  * generated from the extractor's output (threat T-02-41).
+ *
+ * With `--corpus <id>` the pinned corpus is fetched into a new temporary directory (never into this
+ * repository or a user's checkout), a fixed sample of its files is selected by a rule in this file
+ * (every `.cts` under `src/` plus `--sample-size` `.cjs` files ordered by the sha256 of their path),
+ * and each construct is compared with the TypeScript compiler as an independent oracle
+ * (scripts/recall-oracle.ts). The temporary directory is removed when the run ends, however it ends.
  */
+
+/** `indexer.parseTimeoutMs` of 02-CONSTANTS.md (Status: Approved): the per-file parse cut-off the engine is given here too. */
+export const RECALL_PARSE_TIMEOUT_MS = 5000;
+
+/** How many `.cjs` files a corpus run takes by default. */
+export const DEFAULT_SAMPLE_SIZE = 300;
 
 const repoRoot = path.resolve(import.meta.dirname, '..');
 const defaultModuleRoot = path.join(repoRoot, 'modules');
@@ -337,11 +353,59 @@ export interface RecallOptions {
   readonly tmpRoot?: string;
 }
 
-/** The files a corpus run measures. Not implemented yet. */
+function sha256Hex(text: string): string {
+  return crypto.createHash('sha256').update(text, 'utf8').digest('hex');
+}
+
+function compareStrings(a: string, b: string): number {
+  return a < b ? -1 : a > b ? 1 : 0;
+}
+
+/**
+ * The files a corpus run measures, chosen by a fixed rule so two runs measure the same files: every
+ * `.cts` under `src/` (sorted by path), then the first `size` `.cjs` files ordered by the sha256 of
+ * their path (ties by path). `files` are repository-relative paths with `/` separators; the result
+ * does not depend on the order they come in or on repeated entries.
+ */
 export function selectSample(files: readonly string[], size: number): string[] {
-  void files;
-  void size;
-  return [];
+  const unique = [...new Set(files)];
+  const typescript = unique.filter((file) => file.startsWith('src/') && file.endsWith('.cts')).sort(compareStrings);
+  const javascript = unique
+    .filter((file) => file.endsWith('.cjs'))
+    .map((file) => ({ file, hash: sha256Hex(file) }))
+    .sort((a, b) => compareStrings(a.hash, b.hash) || compareStrings(a.file, b.file))
+    .slice(0, Math.max(0, size))
+    .map((entry) => entry.file);
+  return [...typescript, ...javascript];
+}
+
+/** Every regular file below `root` as a `/`-separated relative path, skipping `.git` and `node_modules`. */
+function listFiles(root: string): string[] {
+  const found: string[] = [];
+  const walk = (directory: string): void => {
+    for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+      if (entry.name === '.git' || entry.name === 'node_modules') {
+        continue;
+      }
+      const full = path.join(directory, entry.name);
+      if (entry.isDirectory()) {
+        walk(full);
+      } else if (entry.isFile()) {
+        found.push(path.relative(root, full).split(path.sep).join('/'));
+      }
+    }
+  };
+  walk(root);
+  return found;
+}
+
+function isInside(child: string, parent: string): boolean {
+  return child === parent || child.startsWith(parent.endsWith(path.sep) ? parent : parent + path.sep);
+}
+
+/** Windows keeps files locked briefly after a child exits, hence the retries. */
+function removeTree(directory: string): void {
+  fs.rmSync(directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 }
 
 function rowsFrom(truth: readonly RecallItem[], found: readonly RecallItem[], min: number): RecallRow[] {
@@ -393,9 +457,60 @@ export async function measureFixtures(
   };
 }
 
+/** The lower-case extension of `file`: `.cts` for `src/a.cts`. */
+function extensionOf(file: string): string {
+  return path.extname(file).toLowerCase();
+}
+
+/**
+ * Per-construct recall of one module over a sample of a corpus: the extractor's findings against the
+ * compiler oracle's, file by file. A file the engine cannot run is counted as a failure of that file
+ * and left out of both sides, so one pathological file never decides a construct.
+ */
+export async function measureCorpus(
+  root: string,
+  files: readonly string[],
+  opened: OpenedModule,
+  label: string,
+  min: number,
+): Promise<ModuleReport> {
+  const { classifyWithCompiler } = await import('./recall-oracle.ts');
+  const claimed = new Set(opened.extensions.map((extension) => extension.toLowerCase()));
+  const mine = files.filter((file) => claimed.has(extensionOf(file)));
+  const truth: RecallItem[] = [];
+  const found: RecallItem[] = [];
+  const failures: string[] = [];
+  for (const file of mine) {
+    const text = decodeSource(fs.readFileSync(path.join(root, ...file.split('/'))));
+    let measured: Awaited<ReturnType<OpenedModule['measure']>>;
+    try {
+      measured = await opened.measure(file, text);
+    } catch (error) {
+      failures.push(`${file}: ${error instanceof Error ? error.message : String(error)}`);
+      continue;
+    }
+    for (const item of measured.items) {
+      found.push({ ...item, file });
+    }
+    for (const item of classifyWithCompiler(file, text)) {
+      truth.push({ ...item, file });
+    }
+  }
+  return {
+    module: opened.name,
+    mode: 'corpus',
+    sources: [`${String(mine.length)} files of ${label}`],
+    rows: rowsFrom(truth, found, min),
+    failures,
+  };
+}
+
 function percent(recall: number | null): string {
   return recall === null ? 'n/a' : `${(recall * 100).toFixed(1)}%`;
 }
+
+/** The most failed files a table lists; the rest are counted. */
+const MAX_FAILURES_LISTED = 10;
 
 /** One table per module: a row per construct, never a pooled total. */
 export function renderReport(report: ModuleReport, min: number): string[] {
@@ -407,8 +522,11 @@ export function renderReport(report: ModuleReport, min: number): string[] {
       `${row.construct.padEnd(widest)}  ${String(row.truth).padStart(6)}  ${String(row.found).padStart(6)}  ${String(row.matched).padStart(7)}  ${percent(row.recall).padStart(7)}  ${row.status}`,
     );
   }
-  for (const failure of report.failures) {
+  for (const failure of report.failures.slice(0, MAX_FAILURES_LISTED)) {
     lines.push(`FAILED ${failure}`);
+  }
+  if (report.failures.length > MAX_FAILURES_LISTED) {
+    lines.push(`FAILED and ${String(report.failures.length - MAX_FAILURES_LISTED)} more files`);
   }
   return lines;
 }
@@ -421,27 +539,86 @@ export function recallExitCode(report: RecallReport): 0 | 1 {
   return report.ok ? 0 : 1;
 }
 
-/** Measure the requested modules, print one table per module, and say whether every applicable construct passed. */
+/**
+ * The engine every recall run uses: the largest documented query match limit, so a pathological file
+ * fails loudly instead of returning a silently truncated capture list (T-02-42), and the approved
+ * per-file parse cut-off.
+ */
+function recallEngine(): GrammarEngine {
+  return createGrammarEngine({ matchLimit: GRAMMAR_LIMITS.matchLimitMax, parseTimeoutMs: RECALL_PARSE_TIMEOUT_MS });
+}
+
+/**
+ * Fetch the pinned corpus into a new directory under the system temp directory (or `tmpRoot`), measure the
+ * sample against the compiler oracle, and remove the directory in `finally` (T-02-43).
+ */
+async function measureCorpusRun(
+  options: RecallOptions,
+  corpus: string,
+  names: readonly string[],
+  moduleRoot: string,
+  min: number,
+  engine: GrammarEngine,
+  out: (line: string) => void,
+): Promise<ModuleReport[]> {
+  const tmpRoot = path.resolve(options.tmpRoot ?? os.tmpdir());
+  const realRepo = fs.realpathSync(repoRoot);
+  if (isInside(path.join(fs.realpathSync(tmpRoot)), realRepo)) {
+    throw new Error(`${tmpRoot} is inside the repository (${repoRoot}); a corpus checkout must never land in a checkout`);
+  }
+  const destination = fs.mkdtempSync(path.join(tmpRoot, 'gsd-atlas-recall-'));
+  try {
+    const fetched = await (options.fetch ?? fetchCorpus)({ id: corpus, destination });
+    const sample = selectSample(listFiles(fetched.dir), options.sampleSize ?? DEFAULT_SAMPLE_SIZE);
+    const label = `${corpus} at ${fetched.sha.slice(0, 12)}`;
+    const reports: ModuleReport[] = [];
+    for (const name of names) {
+      const opened = await openModule(path.join(moduleRoot, name), engine, options.queryTransform);
+      const report = await measureCorpus(fetched.dir, sample, opened, label, min);
+      reports.push(report);
+      for (const line of renderReport(report, min)) {
+        out(line);
+      }
+    }
+    return reports;
+  } finally {
+    removeTree(destination);
+  }
+}
+
+/**
+ * Measure the requested modules, print one table per module, and say whether every applicable construct passed.
+ * With `corpus` set the measurement is the compiler-oracle run on a pinned sample; otherwise it is the fixtures.
+ */
 export async function runRecall(options: RecallOptions = {}): Promise<RecallReport> {
   const min = options.min ?? DEFAULT_MIN_RECALL;
   const moduleRoot = options.moduleRoot ?? defaultModuleRoot;
   const out = options.out ?? ((line: string) => process.stdout.write(`${line}\n`));
-  const names = options.modules ?? defaultModules.filter((name) => moduleHasTruth(path.join(moduleRoot, name)));
-  const engine = createGrammarEngine();
+  const engine = recallEngine();
   const modules: ModuleReport[] = [];
   try {
-    for (const name of names) {
-      const report = await measureFixtures(path.join(moduleRoot, name), engine, min, options.queryTransform);
-      modules.push(report);
-      for (const line of renderReport(report, min)) {
-        out(line);
+    if (options.corpus !== undefined) {
+      const names = options.modules ?? defaultModules.filter((name) => fs.existsSync(path.join(moduleRoot, name)));
+      modules.push(...(await measureCorpusRun(options, options.corpus, names, moduleRoot, min, engine, out)));
+    } else {
+      const names = options.modules ?? defaultModules.filter((name) => moduleHasTruth(path.join(moduleRoot, name)));
+      for (const name of names) {
+        const report = await measureFixtures(path.join(moduleRoot, name), engine, min, options.queryTransform);
+        modules.push(report);
+        for (const line of renderReport(report, min)) {
+          out(line);
+        }
       }
     }
   } finally {
     await engine.dispose();
   }
-  const ok = modules.length > 0 && modules.every((report) => report.failures.length === 0 && report.rows.every((row) => row.status !== 'fail'));
-  return { ok, min, modules };
+  const rowsPass = modules.every((report) => report.rows.every((row) => row.status !== 'fail'));
+  // A fixture that cannot run is a broken fixture; a corpus file that cannot run is counted and the rest measured.
+  const fixturesRan = options.corpus !== undefined || modules.every((report) => report.failures.length === 0);
+  // Nothing measured is not a pass.
+  const measuredSomething = modules.some((report) => report.rows.some((row) => row.status !== 'n/a'));
+  return { ok: rowsPass && fixturesRan && measuredSomething, min, modules };
 }
 
 function isEntryPoint(): boolean {
@@ -452,16 +629,30 @@ function isEntryPoint(): boolean {
 if (isEntryPoint()) {
   try {
     const { values } = parseArgs({
-      options: { module: { type: 'string', multiple: true }, min: { type: 'string' } },
+      options: {
+        module: { type: 'string', multiple: true },
+        min: { type: 'string' },
+        corpus: { type: 'string' },
+        'sample-size': { type: 'string' },
+      },
       strict: true,
     });
     const min = values.min === undefined ? DEFAULT_MIN_RECALL : Number(values.min);
     if (!Number.isFinite(min) || min < 0 || min > 1) {
       throw new Error(`--min must be a number from 0 to 1, got ${String(values.min)}`);
     }
+    const sampleSize = values['sample-size'] === undefined ? undefined : Number(values['sample-size']);
+    if (sampleSize !== undefined && (!Number.isInteger(sampleSize) || sampleSize < 0)) {
+      throw new Error(`--sample-size must be a whole number of files, got ${String(values['sample-size'])}`);
+    }
+    if (sampleSize !== undefined && values.corpus === undefined) {
+      throw new Error('--sample-size only applies with --corpus');
+    }
     const report = await runRecall({
       min,
       ...(values.module === undefined ? {} : { modules: values.module }),
+      ...(values.corpus === undefined ? {} : { corpus: values.corpus }),
+      ...(sampleSize === undefined ? {} : { sampleSize }),
     });
     process.exitCode = recallExitCode(report);
   } catch (error) {

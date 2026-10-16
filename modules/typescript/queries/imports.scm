@@ -65,6 +65,41 @@
     property: (property_identifier) @import.named)
   (#eq? @require.callee "require"))
 
+; --- the same bindings when a type assertion wraps the call: const m = require("./path") as T ---
+(variable_declarator
+  name: (identifier) @import.namespace
+  value: [
+    (as_expression
+      . (call_expression
+        function: (identifier) @require.callee
+        arguments: (arguments . (string) @import.path)) @import.cjs)
+    (satisfies_expression
+      . (call_expression
+        function: (identifier) @require.callee
+        arguments: (arguments . (string) @import.path)) @import.cjs)
+  ]
+  (#eq? @require.callee "require"))
+
+(variable_declarator
+  name: (object_pattern
+    [
+      (shorthand_property_identifier_pattern) @import.named
+      (pair_pattern
+        key: (property_identifier) @import.named
+        value: (identifier) @import.local)
+    ])
+  value: [
+    (as_expression
+      . (call_expression
+        function: (identifier) @require.callee
+        arguments: (arguments . (string) @import.path)) @import.cjs)
+    (satisfies_expression
+      . (call_expression
+        function: (identifier) @require.callee
+        arguments: (arguments . (string) @import.path)) @import.cjs)
+  ]
+  (#eq? @require.callee "require"))
+
 ; --- ES re-exports: the statement is both an export and a re-export import ---
 (export_statement
   "*" @export.name

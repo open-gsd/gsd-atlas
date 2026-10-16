@@ -137,7 +137,11 @@ describe('typescript fixture recall (LNG-02)', () => {
       ['enum'],
     );
     assert.equal(report.ok, false);
-    assert.equal(module.rows.find((row) => row.construct === 'enum')?.matched, 1, 'only the exported Level is still found');
+    assert.equal(
+      module.rows.find((row) => row.construct === 'enum')?.matched,
+      2,
+      'only the exported enums (Level and the exported ambient one) are still found',
+    );
   });
 
   it('scopes definitions as the truth states: no constructor, destructuring, locals, type-literal or enum members', async () => {
@@ -221,8 +225,11 @@ describe('typescript fixture recall (LNG-02)', () => {
     assert.deepEqual(at(29), ['./member', 'cjs', [{ imported: 'thing', local: 'member' }]]);
     assert.deepEqual(at(30), ['./bare', 'cjs', undefined]);
     assert.deepEqual(at(31), ['./old-style', 'cjs', [{ imported: '*', local: 'oldStyle' }]]);
+    // A type assertion around the require call (const m = require(p) as T) still binds the name.
+    assert.deepEqual(at(36), ['./typed', 'cjs', [{ imported: '*', local: 'typed' }]]);
+    assert.deepEqual(at(37), ['./typed-destructured', 'cjs', [{ imported: 'named', local: 'renamedTyped' }]]);
     const names = new Set(facts.symbols.map((symbol) => symbol.name));
-    for (const absent of ['fsLike', 'destructured', 'member', 'oldStyle', 'renamedAlias']) {
+    for (const absent of ['fsLike', 'destructured', 'member', 'oldStyle', 'renamedAlias', 'typed', 'renamedTyped']) {
       assert.ok(!names.has(absent), `${absent} is an import binding, not a definition`);
     }
   });
@@ -367,6 +374,18 @@ describe('fixture variants and manifests', () => {
         const bom = sortedKeys((await opened().measure(truth.fixture, `﻿${lf}`)).items);
         assert.deepEqual(crlf, base, `${truth.fixture} with CRLF`);
         assert.deepEqual(bom, base, `${truth.fixture} with a BOM`);
+      }
+    });
+
+    it(`${name}: no declaration is defined twice, so each pattern context is disjoint from the others`, async () => {
+      for (const truth of readTruths(dir)) {
+        const { facts } = await opened().measure(truth.fixture, fixtureText(dir, truth.fixture));
+        const seen = new Set<string>();
+        for (const symbol of facts.symbols) {
+          const key = JSON.stringify([symbol.kind, symbol.name, symbol.span]);
+          assert.ok(!seen.has(key), `${truth.fixture}: ${symbol.kind} ${symbol.name} is defined twice at line ${String(symbol.span.startLine + 1)}`);
+          seen.add(key);
+        }
       }
     });
 
@@ -564,6 +583,22 @@ describe('classifyWithCompiler (the dev-only oracle)', () => {
         .map((item) => [item.construct, item.name, item.line].join('|'))
         .sort(),
       ['class|A|1', 'method|s|4', 'method|v|3', 'property|#p|2'],
+    );
+  });
+
+  it('counts lines by line feeds only, so a U+2028 or a lone CR inside a string does not shift later lines', () => {
+    const items = classifyWithCompiler('d.cjs', "const s = 'a b\rc';\nfunction after() {}\n");
+    assert.deepEqual(
+      items.filter((item) => item.construct === 'function').map((item) => [item.name, item.line]),
+      [['after', 2]],
+    );
+  });
+
+  it('treats a require() value wrapped in a type assertion as an import, like the query does', () => {
+    const items = classifyWithCompiler('e.cts', "const m = require('./m') as { a: number };\nconst n = 1;\n");
+    assert.deepEqual(
+      items.map((item) => [item.construct, item.name, item.line].join('|')).sort(),
+      ['CJS require|./m|1', 'const/var|n|2'],
     );
   });
 

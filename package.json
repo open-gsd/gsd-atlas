@@ -32,6 +32,7 @@
     "grammar:verify": "node scripts/grammar-verify.ts",
     "grammar:budget": "node scripts/grammar-budget.ts",
     "recall": "node scripts/recall.ts",
+    "recall:corpus": "node scripts/recall.ts --corpus gsd-core",
     "prepack": "npm run build"
   },
   "dependencies": {

@@ -1416,6 +1416,159 @@
       "endLine": 34,
       "endColumn": 25,
       "text": "2"
+    },
+    {
+      "query": "imports",
+      "name": "import.namespace",
+      "startLine": 35,
+      "startColumn": 6,
+      "endLine": 35,
+      "endColumn": 11,
+      "text": "typed"
+    },
+    {
+      "query": "imports",
+      "name": "require.callee",
+      "startLine": 35,
+      "startColumn": 14,
+      "endLine": 35,
+      "endColumn": 21,
+      "text": "require"
+    },
+    {
+      "query": "imports",
+      "name": "require.callee",
+      "startLine": 35,
+      "startColumn": 14,
+      "endLine": 35,
+      "endColumn": 21,
+      "text": "require"
+    },
+    {
+      "query": "refs",
+      "name": "reference.call",
+      "startLine": 35,
+      "startColumn": 14,
+      "endLine": 35,
+      "endColumn": 21,
+      "text": "require"
+    },
+    {
+      "query": "imports",
+      "name": "import.cjs",
+      "startLine": 35,
+      "startColumn": 14,
+      "endLine": 35,
+      "endColumn": 32,
+      "text": "require('./typed')"
+    },
+    {
+      "query": "imports",
+      "name": "import.cjs",
+      "startLine": 35,
+      "startColumn": 14,
+      "endLine": 35,
+      "endColumn": 32,
+      "text": "require('./typed')"
+    },
+    {
+      "query": "imports",
+      "name": "import.path",
+      "startLine": 35,
+      "startColumn": 22,
+      "endLine": 35,
+      "endColumn": 31,
+      "text": "'./typed'"
+    },
+    {
+      "query": "imports",
+      "name": "import.path",
+      "startLine": 35,
+      "startColumn": 22,
+      "endLine": 35,
+      "endColumn": 31,
+      "text": "'./typed'"
+    },
+    {
+      "query": "imports",
+      "name": "import.named",
+      "startLine": 36,
+      "startColumn": 8,
+      "endLine": 36,
+      "endColumn": 13,
+      "text": "named"
+    },
+    {
+      "query": "imports",
+      "name": "import.local",
+      "startLine": 36,
+      "startColumn": 15,
+      "endLine": 36,
+      "endColumn": 27,
+      "text": "renamedTyped"
+    },
+    {
+      "query": "imports",
+      "name": "require.callee",
+      "startLine": 36,
+      "startColumn": 32,
+      "endLine": 36,
+      "endColumn": 39,
+      "text": "require"
+    },
+    {
+      "query": "imports",
+      "name": "require.callee",
+      "startLine": 36,
+      "startColumn": 32,
+      "endLine": 36,
+      "endColumn": 39,
+      "text": "require"
+    },
+    {
+      "query": "refs",
+      "name": "reference.call",
+      "startLine": 36,
+      "startColumn": 32,
+      "endLine": 36,
+      "endColumn": 39,
+      "text": "require"
+    },
+    {
+      "query": "imports",
+      "name": "import.cjs",
+      "startLine": 36,
+      "startColumn": 32,
+      "endLine": 36,
+      "endColumn": 63,
+      "text": "require('./typed-destructured')"
+    },
+    {
+      "query": "imports",
+      "name": "import.cjs",
+      "startLine": 36,
+      "startColumn": 32,
+      "endLine": 36,
+      "endColumn": 63,
+      "text": "require('./typed-destructured')"
+    },
+    {
+      "query": "imports",
+      "name": "import.path",
+      "startLine": 36,
+      "startColumn": 40,
+      "endLine": 36,
+      "endColumn": 62,
+      "text": "'./typed-destructured'"
+    },
+    {
+      "query": "imports",
+      "name": "import.path",
+      "startLine": 36,
+      "startColumn": 40,
+      "endLine": 36,
+      "endColumn": 62,
+      "text": "'./typed-destructured'"
     }
   ]
 }
