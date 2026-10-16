@@ -9,7 +9,7 @@ import path from 'node:path';
 import { detectHomeFile } from './init-files.ts';
 import type { Eol, UserFile } from './init-files.ts';
 
-export type AgentId = 'claude';
+export type AgentId = 'claude' | 'cursor' | 'codex';
 
 /** What the host must run to start the stdio server: absolute paths, supplied by the bin. */
 export interface McpLaunch {
@@ -139,6 +139,111 @@ const claude: Target = {
       .join(' '),
 };
 
-export const TARGETS: readonly Target[] = [claude];
+// Cursor and Codex file shapes follow the shapes gsd-graph's installer uses; they are not checked against
+// current host documentation (research assumption A3).
+const cursor: Target = {
+  agent: 'cursor',
+  file: (home) => path.join(home, '.cursor', 'mcp.json'),
+  detect: (home) => detectBy(path.join(home, '.cursor', 'mcp.json'), [path.join(home, '.cursor')]),
+  createsFile: true,
+  render: (existing, launch) => renderJsonServers(existing, { command: launch.command, args: [...launch.args] }),
+};
+
+const CODEX_HEADER = `[mcp_servers.${SERVER_NAME}]`;
+/** The same table spelled with a quoted key: it is the same table in TOML, so a second one would be a duplicate. */
+const CODEX_QUOTED_HEADER = /^\s*\[\s*mcp_servers\s*\.\s*["']gsd-atlas["']\s*\]/;
+
+const TOML_ESCAPES: Readonly<Record<string, string>> = {
+  '\\': '\\\\',
+  '"': '\\"',
+  '\b': '\\b',
+  '\t': '\\t',
+  '\n': '\\n',
+  '\f': '\\f',
+  '\r': '\\r',
+};
+
+/** A TOML basic string: backslash, double quote and control characters escaped. */
+function tomlString(value: string): string {
+  let out = '"';
+  for (const char of value) {
+    const code = char.codePointAt(0) ?? 0;
+    if (TOML_ESCAPES[char] !== undefined) {
+      out += TOML_ESCAPES[char];
+    } else if (code < 0x20 || code === 0x7f) {
+      out += `\\u${code.toString(16).toUpperCase().padStart(4, '0')}`;
+    } else {
+      out += char;
+    }
+  }
+  return `${out}"`;
+}
+
+/**
+ * Put the `[mcp_servers.gsd-atlas]` table into a Codex config by text edit (no TOML parser is a
+ * dependency). A new table is appended after a blank line. An existing one is replaced from its header
+ * to the next line that starts with `[` (blank lines before that line stay); every other byte is kept.
+ */
+function renderCodex(existing: UserFile | null, launch: McpLaunch): RenderResult {
+  const eol: Eol = existing?.eol ?? '\n';
+  const block = [CODEX_HEADER, `command = ${tomlString(launch.command)}`, `args = [${launch.args.map(tomlString).join(', ')}]`];
+  if (existing === null) {
+    return { kind: 'ok', text: `${block.join(eol)}${eol}`, changed: true };
+  }
+  const text = existing.text;
+  if (text.includes('\0')) {
+    return refused('the file contains a NUL byte');
+  }
+  const lines = text.split('\n'); // a CR stays attached to its line, so untouched lines keep their endings
+  for (const [index, line] of lines.entries()) {
+    const trimmed = line.trimStart();
+    if (trimmed.startsWith('[') && !trimmed.includes(']')) {
+      return refused(`line ${index + 1} starts a table header without a closing bracket`);
+    }
+    if (CODEX_QUOTED_HEADER.test(line)) {
+      return refused(`line ${index + 1} writes the ${CODEX_HEADER} table with a quoted key; edit it by hand`);
+    }
+  }
+
+  const start = lines.findIndex((line) => line.trim() === CODEX_HEADER);
+  if (start === -1) {
+    let base = text;
+    if (base.length > 0) {
+      if (!base.endsWith('\n')) {
+        base += eol;
+      }
+      if (!/\n\r?\n$/.test(base)) {
+        base += eol; // the blank line before the new table
+      }
+    }
+    return { kind: 'ok', text: `${base}${block.join(eol)}${eol}`, changed: true };
+  }
+
+  let end = lines.findIndex((line, index) => index > start && line.trimStart().startsWith('['));
+  if (end === -1) {
+    end = lines.length;
+  }
+  let contentEnd = end;
+  while (contentEnd > start + 1 && lines[contentEnd - 1]?.trim() === '') {
+    contentEnd -= 1;
+  }
+  const current = lines.slice(start, contentEnd).map((line) => line.trimEnd());
+  if (current.length === block.length && current.every((line, index) => line === block[index])) {
+    return { kind: 'ok', text, changed: false };
+  }
+  const cr = eol === '\r\n' ? '\r' : '';
+  const next = [...lines.slice(0, start), ...block.map((line) => `${line}${cr}`), ...lines.slice(contentEnd)];
+  return { kind: 'ok', text: next.join('\n'), changed: true };
+}
+
+const codex: Target = {
+  agent: 'codex',
+  file: (home) => path.join(home, '.codex', 'config.toml'),
+  detect: (home) => detectBy(path.join(home, '.codex', 'config.toml'), [path.join(home, '.codex')]),
+  createsFile: true,
+  render: renderCodex,
+};
+
+export const TARGETS: readonly Target[] = [claude, cursor, codex];
 
 export const AGENT_IDS: readonly AgentId[] = TARGETS.map((target) => target.agent);
