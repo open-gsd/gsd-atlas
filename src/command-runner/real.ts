@@ -42,8 +42,6 @@ export interface RealRunnerOptions {
   readonly env?: Readonly<Record<string, string | undefined>>;
   /** Defaults to `process.platform`. */
   readonly platform?: NodeJS.Platform;
-  /** Wall-clock limit for specs that set no `timeoutMs`. Absent means no limit. */
-  readonly defaultTimeoutMs?: number;
 }
 
 /** After a kill, how long to wait for the child's pipes to close before abandoning them (a grandchild may hold them open). */
@@ -257,7 +255,7 @@ export function createRealRunner(opts: RealRunnerOptions = {}): CommandRunner {
       }
     });
 
-    const limit = spec.timeoutMs ?? opts.defaultTimeoutMs;
+    const limit = spec.timeoutMs;
     if (limit !== undefined && Number.isFinite(limit) && limit > 0) {
       timer = setTimeout(() => {
         timedOut = true;

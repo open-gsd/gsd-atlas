@@ -40,8 +40,8 @@ export interface CommandSpec {
   /** Batched stdin: written in full (honouring backpressure), then closed. */
   readonly stdin?: StdinSource;
   /**
-   * Kills the child with SIGKILL when exceeded. When absent the runner's own `defaultTimeoutMs` applies
-   * (see `createRealRunner`); a runner built without one imposes no wall-clock limit.
+   * Kills the child with SIGKILL when exceeded. Absent means no wall-clock limit: plan 01-09 asks for a
+   * 60 s default, which is held back until a human confirms that value (see the plan summary).
    */
   readonly timeoutMs?: number;
   /** Exceeding this kills the child and marks the result truncated. Default {@link DEFAULT_MAX_STDOUT_BYTES}. */
