@@ -1,6 +1,6 @@
 # Phase 2 Constants
 
-Status: Proposed
+Status: Approved (2026-10-16, by the user)
 
 ## Purpose
 
@@ -97,4 +97,9 @@ Audit note: @parcel/watcher is OK in the audit; @modelcontextprotocol/server and
 
 ## Approvals
 
-None yet. Task 2 (constants) and Task 3 (package legitimacy) are blocking-human checkpoints awaiting the user's replies.
+Both blocking-human checkpoints were answered by the user on 2026-10-16, each with the single word "approved", relayed by the orchestrator in the user's own session turn.
+
+| Checkpoint | Date | User reply (verbatim) | Effect |
+|------------|------|-----------------------|--------|
+| Task 2: proposed constants | 2026-10-16 | "approved" | Every value in the Constants table accepted unchanged; no keys changed, no rows removed. Status set to Approved. |
+| Task 3: `@modelcontextprotocol/server` 2.3.1 | 2026-10-16 | "approved" | Plan 02-23 may run `npm install --save-exact @modelcontextprotocol/server@2.3.1` (scripts disabled). Nothing was installed by plan 02-04. `@modelcontextprotocol/node` stays uninstalled in Phase 2. |
