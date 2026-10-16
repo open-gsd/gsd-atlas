@@ -1,9 +1,12 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { existsSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, statSync } from 'node:fs';
 import path from 'node:path';
-import { test } from 'node:test';
+import { after, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
+
+import { allowAll, createRealRunner } from '../src/command-runner/index.ts';
+import { makeTempDir } from '../src/test-kit/index.ts';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const distDir = path.join(root, 'dist');
@@ -12,6 +15,7 @@ type DepMap = Record<string, string>;
 
 interface PackageJson {
   name?: string;
+  version?: string;
   license?: string;
   type?: string;
   engines?: { node?: string };
@@ -192,5 +196,236 @@ test('build output is production-only: no contract, test or test-kit code in dis
         );
       }
     }
+  }
+});
+
+// ---------------------------------------------------------------------------------------------
+// The published artifact (FND-02, ROADMAP SC1): pack the tarball, install it in a clean directory
+// and run the installed bins. These tests use the network: the tarball install resolves
+// `web-tree-sitter` and `zod` from the registry (exact pins in package.json), with --ignore-scripts.
+// npm itself is started as `node <npm-cli.js> ...` through the CommandRunner: never an npm shim,
+// an `.cmd` file or a shell (FND-06; those fail on Windows).
+// No wall-clock limit is set here on purpose: the CI job timeout bounds a hung install.
+// ---------------------------------------------------------------------------------------------
+
+const runner = createRealRunner({ decide: allowAll });
+
+/** Locates npm's `npm-cli.js` without spawning an npm shim. */
+export function findNpmCli(): string {
+  const fromEnv = process.env['npm_execpath'];
+  if (fromEnv !== undefined && fromEnv.endsWith('npm-cli.js') && existsSync(fromEnv)) {
+    return fromEnv;
+  }
+  const nodeDir = path.dirname(realpathSync(process.execPath));
+  const candidates = [
+    path.join(nodeDir, 'node_modules', 'npm', 'bin', 'npm-cli.js'),
+    path.join(nodeDir, '..', 'lib', 'node_modules', 'npm', 'bin', 'npm-cli.js'),
+  ];
+  for (const candidate of candidates) {
+    if (existsSync(candidate)) {
+      return candidate;
+    }
+  }
+  // Homebrew and similar layouts keep npm outside the node prefix: `<node dir>/npm` is a link to npm-cli.js.
+  const sibling = path.join(nodeDir, 'npm');
+  if (existsSync(sibling) && realpathSync(sibling).endsWith('npm-cli.js')) {
+    return realpathSync(sibling);
+  }
+  throw new Error(
+    `npm-cli.js not found: npm_execpath is ${fromEnv ?? 'unset'}; tried ${candidates.join(' and ')}`,
+  );
+}
+
+interface Run {
+  readonly exitCode: number | null;
+  readonly stdout: string;
+  readonly stderr: string;
+}
+
+async function runChild(executable: string, args: string[], cwd: string): Promise<Run> {
+  const result = await runner.run({ executable, args, cwd });
+  assert.equal(result.spawnError, undefined, `could not start ${executable}: ${JSON.stringify(result.spawnError)}`);
+  assert.equal(result.denied, undefined);
+  return {
+    exitCode: result.exitCode,
+    stdout: Buffer.from(result.stdout).toString('utf8'),
+    stderr: Buffer.from(result.stderr).toString('utf8'),
+  };
+}
+
+function runNpm(args: string[], cwd: string): Promise<Run> {
+  return runChild(process.execPath, [findNpmCli(), ...args], cwd);
+}
+
+interface PackedTarball {
+  readonly tarball: string;
+  readonly files: string[];
+}
+
+const scratch = makeTempDir();
+after(() => {
+  scratch.cleanup();
+});
+
+let packed: Promise<PackedTarball> | undefined;
+
+/** Builds dist/ and packs it once per test process. */
+function packOnce(): Promise<PackedTarball> {
+  packed ??= (async () => {
+    ensureBuild();
+    const destination = path.join(scratch.path, 'pack');
+    mkdirSync(destination);
+    const result = await runNpm(['pack', '--json', '--ignore-scripts', '--pack-destination', destination], root);
+    assert.equal(result.exitCode, 0, `npm pack failed:\n${result.stdout}\n${result.stderr}`);
+    const parsed = JSON.parse(result.stdout) as Array<{ filename: string; files: Array<{ path: string }> }>;
+    assert.equal(parsed.length, 1, 'npm pack must produce exactly one tarball');
+    const entry = parsed[0] as { filename: string; files: Array<{ path: string }> };
+    return {
+      tarball: path.join(destination, path.basename(entry.filename)),
+      files: entry.files.map((file) => file.path.split('\\').join('/')),
+    };
+  })();
+  return packed;
+}
+
+test('pack contents', async () => {
+  const pkg = readPackage();
+  const { files } = await packOnce();
+  const has = (file: string): boolean => files.includes(file);
+
+  for (const required of [
+    'package.json',
+    'dist/bin/gsd-atlas.js',
+    'dist/bin/gsd-atlas-mcp.js',
+    'schemas/atlas-lang.schema.json',
+  ]) {
+    assert.ok(has(required), `tarball must contain ${required}`);
+  }
+  for (const [name, target] of Object.entries(pkg.bin ?? {})) {
+    assert.ok(has(target), `bin ${name} points at ${target}, which is not in the tarball`);
+  }
+  for (const dir of ['lang', 'grammar-engine', 'cli']) {
+    assert.ok(
+      files.some((file) => file.startsWith(`dist/${dir}/`) && file.endsWith('.js')),
+      `tarball must contain compiled dist/${dir}/ modules`,
+    );
+  }
+
+  const forbiddenPrefixes = ['src/', 'test/', 'scripts/', 'docs/', '.planning/', '.github/', 'node_modules/'];
+  for (const file of files) {
+    for (const prefix of forbiddenPrefixes) {
+      assert.ok(!file.startsWith(prefix), `tarball must not contain ${file}`);
+    }
+    const base = file.split('/').pop() as string;
+    assert.ok(
+      base !== 'contract.js' && base !== 'contract.d.ts' && !base.endsWith('.test.js') && !base.endsWith('.test.d.ts'),
+      `tarball must not contain a contract suite or test output: ${file}`,
+    );
+    assert.ok(!file.split('/').includes('test-kit'), `tarball must not contain test-kit output: ${file}`);
+    // Strict whitelist: what the files list names plus what npm adds on its own.
+    assert.ok(
+      /^(dist|schemas|modules)\//.test(file) || ['package.json', 'README.md', 'LICENSE'].includes(file),
+      `unexpected path in tarball: ${file}`,
+    );
+  }
+});
+
+test('installed tarball runs the bins', async () => {
+  const { tarball } = await packOnce();
+  const prefix = path.join(scratch.path, 'clean install');
+  mkdirSync(prefix);
+  const install = await runNpm(
+    ['install', '--prefix', prefix, '--ignore-scripts', '--no-audit', '--no-fund', tarball],
+    prefix,
+  );
+  assert.equal(install.exitCode, 0, `npm install of the tarball failed:\n${install.stdout}\n${install.stderr}`);
+
+  const installed = path.join(prefix, 'node_modules', '@opengsd', 'gsd-atlas');
+  const bin = path.join(installed, 'dist', 'bin', 'gsd-atlas.js');
+  const mcpBin = path.join(installed, 'dist', 'bin', 'gsd-atlas-mcp.js');
+  assert.ok(existsSync(bin) && existsSync(mcpBin), 'both bin targets exist in the installed package');
+  for (const dependency of ['web-tree-sitter', 'zod']) {
+    assert.ok(
+      existsSync(path.join(prefix, 'node_modules', dependency, 'package.json')),
+      `${dependency} must be installed from the tarball's own dependencies`,
+    );
+  }
+
+  // No installed production file may load test code (T-01-40): scan every dist .js file's specifiers.
+  const distFiles = walk(path.join(installed, 'dist')).filter((file) => file.endsWith('.js'));
+  assert.ok(distFiles.length > 0, 'installed dist/ has compiled files');
+  for (const file of distFiles) {
+    for (const specifier of moduleSpecifiers(readFileSync(file, 'utf8'))) {
+      assert.ok(
+        specifier !== 'node:test' && !specifier.includes('test-kit'),
+        `${path.relative(installed, file)} imports ${specifier}, which is test-only`,
+      );
+    }
+  }
+
+  const version = await runChild(process.execPath, [bin, '--version'], prefix);
+  assert.equal(version.exitCode, 0, version.stderr);
+  assert.equal(version.stdout, `gsd-atlas ${readPackage().version ?? ''}\n`);
+
+  const empty = (name: string): string => {
+    const dir = path.join(scratch.path, name);
+    mkdirSync(dir);
+    return dir;
+  };
+  const list = await runChild(
+    process.execPath,
+    [
+      bin,
+      'lang',
+      'list',
+      '--repo-root',
+      empty('empty repo'),
+      '--user-dir',
+      empty('empty user'),
+      '--npm-root',
+      empty('empty npm'),
+    ],
+    prefix,
+  );
+  assert.equal(list.exitCode, 0, list.stderr);
+  const listEnvelope = JSON.parse(list.stdout.trim()) as { ok: boolean; data: { modules: unknown[] } };
+  assert.equal(listEnvelope.ok, true);
+  assert.deepEqual(listEnvelope.data.modules, []);
+
+  const toy = path.join(root, 'test', 'fixtures', 'modules', 'toy');
+  const langTest = await runChild(process.execPath, [bin, 'lang', 'test', toy], prefix);
+  assert.equal(langTest.exitCode, 0, `lang test from the installed package failed:\n${langTest.stdout}\n${langTest.stderr}`);
+  const report = JSON.parse(langTest.stdout.trim()) as {
+    ok: boolean;
+    data: { ok: boolean; fixtures: Array<{ file: string; ok: boolean }> };
+  };
+  assert.equal(report.ok, true);
+  assert.equal(report.data.fixtures.length, 4, 'the toy module has four fixtures');
+  assert.ok(report.data.fixtures.every((fixture) => fixture.ok), 'every toy fixture matches its golden');
+
+  const mcp = await runChild(process.execPath, [mcpBin], prefix);
+  assert.equal(mcp.exitCode, 1);
+  assert.match(mcp.stderr, /Phase 2/);
+});
+
+test('README npm scripts exist', () => {
+  const readme = readFileSync(path.join(root, 'README.md'), 'utf8');
+  const scripts = readPackage().scripts ?? {};
+  assert.match(readme, /^#{1,6} Developer quickstart$/m);
+  for (const command of [
+    'npm ci --ignore-scripts',
+    'node scripts/ensure-tree-sitter.ts',
+    'node dist/bin/gsd-atlas.js lang test test/fixtures/modules/toy',
+    'node dist/bin/gsd-atlas.js lang list',
+  ]) {
+    assert.ok(readme.includes(command), `README must document \`${command}\``);
+  }
+  const names = [...readme.matchAll(/npm run ([A-Za-z0-9:_-]+)/g)].map((match) => match[1] as string);
+  for (const required of ['build', 'lint', 'typecheck', 'schema:check', 'grammar:budget', 'grammar:verify']) {
+    assert.ok(names.includes(required), `README must document \`npm run ${required}\``);
+  }
+  assert.ok(/npm test\b/.test(readme), 'README must document `npm test`');
+  for (const name of names) {
+    assert.ok(typeof scripts[name] === 'string', `README mentions \`npm run ${name}\`, which is not in package.json scripts`);
   }
 });

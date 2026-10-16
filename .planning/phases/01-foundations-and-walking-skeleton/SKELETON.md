@@ -29,11 +29,11 @@ This project is a CLI and library, not a web app. The "stack" the skeleton touch
 
 ## Stack Touched in Phase 1
 
-- [ ] Project scaffold (package, tsconfig pair, ESLint boundaries, node:test runner, lockfile, `.gitattributes` for CRLF and BOM fixtures)
-- [ ] Routing: CLI subcommands `lang list` and `lang test` reach the HostClient and nothing else
-- [ ] Database: one real SQLite read and one real write through the driver layer on both drivers (conformance suite), including the NUL round-trip self-test
-- [ ] Interaction: `gsd-atlas lang test` wired from argv to the Grammar Engine to golden comparison and exit code
-- [ ] Deployment: documented local-run commands in `README.md` plus a green three-OS CI run; packed tarball installs and runs both bins
+- [x] Project scaffold (package, tsconfig pair, ESLint boundaries, node:test runner, lockfile, `.gitattributes` for CRLF and BOM fixtures) - evidence: `scripts/package.test.ts` (identity, exact pins, build output), `src/lint/boundaries.test.ts` (one violation fixture per rule), `npm run lint`, `npm run typecheck`, `npm test`; `.gitattributes` and `package-lock.json` are committed; CI jobs `Static checks` and `Test (...)`.
+- [x] Routing: CLI subcommands `lang list` and `lang test` reach the HostClient and nothing else - evidence: `src/cli/cli.test.ts` and `src/host-client/host-client.test.ts` (adapter drives a recording HostClient; lint rule keeps `src/cli` from importing anything but the HostClient seam).
+- [x] Database: one real SQLite read and one real write through the driver layer on both drivers (conformance suite), including the NUL round-trip self-test - evidence: `src/sqlite/contract.ts` run by `src/sqlite/node-sqlite.test.ts` and `src/sqlite/better-sqlite3.test.ts`; NUL self-test in `src/sqlite/open.ts` (`open.test.ts`); green on Node 24.16.0 and 26 on all three OSes in CI.
+- [x] Interaction: `gsd-atlas lang test` wired from argv to the Grammar Engine to golden comparison and exit code - evidence: `src/lang/lang-test.e2e.test.ts` (real bin through the real CommandRunner, exit codes and envelope), and `scripts/package.test.ts` test `installed tarball runs the bins` (the same command from the installed tarball).
+- [x] Deployment: documented local-run commands in `README.md` plus a green three-OS CI run; packed tarball installs and runs both bins - evidence: README "Developer quickstart" (test `README npm scripts exist`); `scripts/package.test.ts` tests `pack contents` and `installed tarball runs the bins`; CI run https://github.com/open-gsd/gsd-atlas/actions/runs/38841954238 on commit 2e59fc7 (all 10 jobs success, including the package tests on Windows, macOS and Linux). Tarball install used the registry only for `web-tree-sitter` and `zod`.
 
 ## Out of Scope (Deferred to Later Slices)
 
