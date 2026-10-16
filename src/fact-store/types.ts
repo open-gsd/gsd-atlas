@@ -55,6 +55,8 @@ export interface SymbolRecord extends Provenance {
   readonly version: string;
   /** Set when a rename or move was detected with a matching signature (A45). */
   readonly renamed_from?: SymbolIdentity;
+  /** True when the definition is visible outside its file; absent when the extractor did not say. */
+  readonly exported?: boolean;
 }
 
 /** A reference to a symbol. `target` is null for a site no tier could resolve. */
@@ -288,7 +290,28 @@ export interface StoreDeps {
 }
 
 /**
- * The shape of the Phase 2 constructor. A type only: there is deliberately no value that opens a store in
- * this phase. Throws `SchemaTooNew` when the store on disk is newer than this build.
+ * Options of the real constructor, `openFactStore` (open.ts). All optional. The SQL engine choice is an
+ * extra option of `openFactStore` itself and is deliberately not declared here, so this file stays free of
+ * any engine vocabulary.
+ */
+export interface StoreOptions {
+  /** The repo name used in symbol identities. Default: the base name of the store directory. */
+  readonly repo?: string;
+  /** How long a writer waits on a locked database. Default: the approved `sqlite.busyTimeoutMs`. */
+  readonly busyTimeoutMs?: number;
+  /** The version of this build, recorded as `meta.created_by` when the store is created. */
+  readonly version?: string;
+  /**
+   * Whether this process may write derived caches (the resolved-edge cache). Plan 02-12 wires it to the
+   * writer lease. Default: always true.
+   */
+  readonly canCache?: () => boolean;
+  /** The resolution context of the current configuration (plan 02-11 reads it). Default: id `grammar`, no config hashes. */
+  readonly resolutionContext?: () => ResolutionContext;
+}
+
+/**
+ * The shape of the constructor. Throws `SchemaTooNew` when the store on disk is newer than this build.
+ * `openFactStore` (open.ts) is assignable to it: its extra third parameter is optional.
  */
 export type OpenStore = (dir: string, deps: StoreDeps) => Promise<FactStore>;

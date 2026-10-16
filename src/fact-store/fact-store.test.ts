@@ -31,8 +31,8 @@ describe('fact-store errors', () => {
   });
 });
 
-// Compile-time proof that the frozen signatures type-check. These functions are never called: there is
-// deliberately no FactStore value to call them with (no fake, no implementation).
+// Compile-time proof that the frozen signatures type-check. This function is never called: the runtime
+// behaviour of every member is proven by the contract suite (contract.ts) against the real store.
 async function typeCheckedUsage(store: FactStore, w: WorktreeId, id: SymbolIdentity, facts: FileFacts): Promise<void> {
   const refs: Answer<readonly RefRecord[]> = await store.at(w).refs(id, { timeoutMs: 1500 });
   const hops = await store.at(w).callers(id, { hops: 2, timeoutMs: 1500 });
@@ -75,16 +75,35 @@ describe('fact-store interface', () => {
     assert.equal(open, undefined);
   });
 
-  it('exports only the four error classes as values: no value opens a store', async () => {
+  it('exports the four error classes and openFactStore as values, and nothing else (no fake store)', async () => {
     const mod = await import('./index.ts');
-    assert.deepStrictEqual(Object.keys(mod).sort(), ['SchemaTooNew', 'StoreClosed', 'UnknownWorktree', 'WriterBusy']);
+    assert.deepStrictEqual(Object.keys(mod).sort(), [
+      'SchemaTooNew',
+      'StoreClosed',
+      'UnknownWorktree',
+      'WriterBusy',
+      'openFactStore',
+    ]);
+    assert.equal(typeof mod.openFactStore, 'function');
   });
 
-  it('contains exactly index.ts, types.ts, errors.ts and this test: no fake, no implementation', () => {
-    assert.deepStrictEqual(fs.readdirSync(here).sort(), ['errors.ts', 'fact-store.test.ts', 'index.ts', 'types.ts']);
+  it('names a driver option only in open.ts, and reaches the SQLite kit only through its index', () => {
+    const production = fs
+      .readdirSync(here)
+      .filter((file) => file.endsWith('.ts') && !file.endsWith('.test.ts') && file !== 'contract.ts');
+    assert.ok(production.includes('open.ts'));
+    for (const file of production) {
+      const text = fs.readFileSync(path.join(here, file), 'utf8');
+      if (file !== 'open.ts') {
+        assert.doesNotMatch(text, /\bdriver\??\s*:|\bDriverName\b/, `${file} names a driver option`);
+      }
+      for (const match of text.matchAll(/from\s+['"]([^'"]*sqlite[^'"]*)['"]/g)) {
+        assert.equal(match[1], '../sqlite/index.ts', `${file} imports the SQLite kit by a path other than its index`);
+      }
+    }
   });
 
-  it('imports nothing from src/sqlite (the interface owns no engine)', () => {
+  it('keeps types.ts, errors.ts and index.ts free of the SQLite kit (the interface owns no engine)', () => {
     for (const file of ['errors.ts', 'index.ts', 'types.ts']) {
       const text = fs.readFileSync(path.join(here, file), 'utf8');
       assert.doesNotMatch(text, /from\s+['"][^'"]*sqlite[^'"]*['"]/, `${file} imports a SQLite module`);

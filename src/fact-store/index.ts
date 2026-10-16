@@ -1,8 +1,11 @@
 /**
- * The Fact Store seam. Interface, types and errors only: no implementation and no fake (fact-store-interface
- * ADR decision 8). `OpenStore` is a type; no value in this module opens a store until Phase 2.
+ * The Fact Store seam: the frozen interface, its types and errors, and the one constructor, `openFactStore`
+ * (fact-store-interface ADR decision 8). There is no fake here: tests run the real store on a temp directory
+ * through this interface only. The conformance suite (`contract.ts`) is test code and is not exported.
  */
 export { SchemaTooNew, StoreClosed, UnknownWorktree, WriterBusy } from './errors.ts';
+export { openFactStore } from './open.ts';
+export type { OpenFactStoreOptions } from './open.ts';
 export type {
   CallerRecord,
   CallersOptions,
@@ -23,6 +26,7 @@ export type {
   ResolveOptions,
   Resolver,
   StoreDeps,
+  StoreOptions,
   StoreStatus,
   SymbolRecord,
   Tier,
