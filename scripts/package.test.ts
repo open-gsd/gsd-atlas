@@ -407,3 +407,25 @@ test('installed tarball runs the bins', async () => {
   assert.equal(mcp.exitCode, 1);
   assert.match(mcp.stderr, /Phase 2/);
 });
+
+test('README npm scripts exist', () => {
+  const readme = readFileSync(path.join(root, 'README.md'), 'utf8');
+  const scripts = readPackage().scripts ?? {};
+  assert.match(readme, /^#{1,6} Developer quickstart$/m);
+  for (const command of [
+    'npm ci --ignore-scripts',
+    'node scripts/ensure-tree-sitter.ts',
+    'node dist/bin/gsd-atlas.js lang test test/fixtures/modules/toy',
+    'node dist/bin/gsd-atlas.js lang list',
+  ]) {
+    assert.ok(readme.includes(command), `README must document \`${command}\``);
+  }
+  const names = [...readme.matchAll(/npm run ([A-Za-z0-9:_-]+)/g)].map((match) => match[1] as string);
+  for (const required of ['build', 'lint', 'typecheck', 'schema:check', 'grammar:budget', 'grammar:verify']) {
+    assert.ok(names.includes(required), `README must document \`npm run ${required}\``);
+  }
+  assert.ok(/npm test\b/.test(readme), 'README must document `npm test`');
+  for (const name of names) {
+    assert.ok(typeof scripts[name] === 'string', `README mentions \`npm run ${name}\`, which is not in package.json scripts`);
+  }
+});
