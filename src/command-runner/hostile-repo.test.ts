@@ -86,6 +86,79 @@ async function poisonedRepo(t: { after(fn: () => void): void }, extraFiles: Reco
 
 const exists = (p: string): boolean => fs.existsSync(p);
 
+interface Promisor {
+  readonly repo: TempGitRepo;
+  /** Written by core.sshCommand, which a lazy fetch of a missing promisor object would start. */
+  readonly m4: string;
+  /** The blob of kept.txt, deleted from the object database after the config is poisoned. */
+  readonly blob: string;
+}
+
+/** A well-formed object id that is in no object database (the fixture repository is SHA-1). */
+const UNKNOWN_ID = '1234567890abcdef1234567890abcdef12345678';
+
+/**
+ * A repository that declares a promisor remote and a `core.sshCommand` (verification gap CR-01). When an
+ * object is missing locally git lazily fetches it from the promisor remote by starting the transport the
+ * repository configures; here that transport is a marker-writing command outside the repo. The commit is
+ * made BEFORE the poison is configured, then the loose blob of kept.txt is deleted so that `HEAD:kept.txt`
+ * names an object that is absent locally, which is how a partial clone looks.
+ */
+async function promisorRepo(t: { after(fn: () => void): void }): Promise<Promisor> {
+  const repo = await createTempGitRepo({ runner: setup, files: { 'kept.txt': 'kept\n' } });
+  t.after(() => repo.cleanup());
+  const base = path.dirname(repo.dir);
+  const m4 = path.join(base, 'M4');
+  const touch = path.join(base, 'touch4.cjs');
+  fs.writeFileSync(touch, "require('node:fs').writeFileSync(process.argv[2], 'ran');\n");
+
+  await repo.setConfig('core.repositoryformatversion', '1');
+  await repo.setConfig('extensions.partialClone', 'origin');
+  await repo.setConfig('remote.origin.promisor', 'true');
+  await repo.setConfig('remote.origin.url', 'ssh://example.invalid/x.git');
+  await repo.setConfig('core.sshCommand', `'${slash(process.execPath)}' '${slash(touch)}' '${slash(m4)}'`);
+
+  const blob = blobId('kept\n');
+  const loose = path.join(repo.dir, '.git', 'objects', blob.slice(0, 2), blob.slice(2));
+  assert.ok(exists(loose), 'the fixture blob must be a loose object');
+  fs.chmodSync(loose, 0o644);
+  fs.rmSync(loose);
+  return { repo, m4, blob };
+}
+
+describe('hostile repository: promisor remote with core.sshCommand (CR-01, T-01-43)', () => {
+  it('positive control: hasObject on an unknown id starts the repo-configured transport when git runs unprotected', async (t) => {
+    const p = await promisorRepo(t);
+    await setup.run({ executable: 'git', args: ['-C', p.repo.dir, 'cat-file', '-e', UNKNOWN_ID], env: p.repo.envOverlay });
+    if (!exists(p.m4)) t.skip('poison did not fire unprotected on this platform: hasObject trigger (cat-file -e <unknown id>)');
+  });
+
+  it('positive control: read of a locally absent blob starts the repo-configured transport when git runs unprotected', async (t) => {
+    const p = await promisorRepo(t);
+    await setup.run({ executable: 'git', args: ['-C', p.repo.dir, 'cat-file', 'blob', 'HEAD:kept.txt'], env: p.repo.envOverlay });
+    if (!exists(p.m4)) t.skip('poison did not fire unprotected on this platform: read trigger (cat-file blob HEAD:kept.txt)');
+  });
+
+  it('hasObject and read through the default decide start no transport, only built-in git specs', async (t) => {
+    const p = await promisorRepo(t);
+    const recording = createRecordingRunner({ delegate: createRealRunner() });
+    const tree = createSourceTree({ runner: recording, repoDir: p.repo.dir, envOverlay: p.repo.envOverlay });
+
+    assert.equal(await tree.hasObject(UNKNOWN_ID), false);
+    assert.equal(exists(p.m4), false, 'core.sshCommand ran during hasObject (lazy fetch of a missing object)');
+
+    // The answer for an absent blob is not asserted (null or a git_failed error are both acceptable);
+    // what matters is that nothing outside git was started.
+    await tree.read('HEAD', 'kept.txt').catch(() => null);
+    assert.equal(exists(p.m4), false, 'core.sshCommand ran during read (lazy fetch of a missing blob)');
+
+    assert.equal(recording.denials.length, 0);
+    assert.ok(recording.starts.length >= 2);
+    assert.ok(recording.starts.every((s) => s.executable === 'git' && s.builtinId === 'git'), 'a start was not a built-in git spec');
+    assert.deepEqual(recording.starts.map(subcommand), ['cat-file', 'cat-file']);
+  });
+});
+
 describe('hostile repository (ROADMAP SC4)', () => {
   it('positive control: the poison fires when git runs unprotected', async (t) => {
     const p = await poisonedRepo(t);
