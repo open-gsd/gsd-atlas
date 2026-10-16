@@ -6,6 +6,7 @@
  * A snapshot costs four git starts however large the tree is: enumerate filter drivers, list tracked
  * files, list untracked-not-ignored files, and ONE batched `hash-object --stdin-paths` over all of them.
  */
+import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { gitSpec, listFilterNames } from '../command-runner/index.ts';
@@ -13,6 +14,7 @@ import type { CommandRunner, CommandSpec, RunContext } from '../command-runner/i
 import { diagnostic } from '../facts/index.ts';
 import type { Diagnostic } from '../facts/index.ts';
 import { SOURCE_TREE_CODES, SourceTreeError } from './types.ts';
+import { assertReadArguments, isObjectId } from './validate.ts';
 import type { SnapshotResult, SourceTree, SourceTreeIdentity } from './types.ts';
 
 export interface SourceTreeOptions {
@@ -28,7 +30,6 @@ export interface SourceTreeOptions {
 const BIG_OUTPUT_BYTES = 512 * 1024 * 1024;
 /** How many paths are lstat-ed at once. */
 const LSTAT_BATCH = 256;
-const OBJECT_ID = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
 
 const decoder = new TextDecoder();
 
@@ -157,7 +158,7 @@ export function createSourceTree(options: SourceTreeOptions): SourceTree {
       );
       const ids = out.split('\n');
       if (ids[ids.length - 1] === '') ids.pop();
-      if (ids.length !== hashable.length || !ids.every((id) => OBJECT_ID.test(id))) {
+      if (ids.length !== hashable.length || !ids.every(isObjectId)) {
         throw new SourceTreeError(
           SOURCE_TREE_CODES.hashOutputMismatch,
           `git hash-object returned ${ids.length} ids for ${hashable.length} paths`,
@@ -168,14 +169,40 @@ export function createSourceTree(options: SourceTreeOptions): SourceTree {
     return { files, diagnostics };
   }
 
-  const notYet = (): never => {
-    throw new SourceTreeError('not_implemented', 'not implemented yet');
-  };
+  /** Runs an object read where exit 1 (`-e`) or 128 (not found) are answers, not failures. */
+  async function probe(s: CommandSpec, label: string): Promise<{ stdout: Uint8Array; found: boolean }> {
+    const result = await runner.run(s, ctx);
+    if (result.denied !== undefined || result.spawnError !== undefined || result.timedOut || result.truncated) {
+      const why = result.denied?.message ?? result.spawnError?.message ?? 'timed out or output exceeded its cap';
+      throw new SourceTreeError('git_failed', `git ${label} failed: ${why}`);
+    }
+    return { stdout: result.stdout, found: result.exitCode === 0 };
+  }
 
-  return {
-    snapshot,
-    hasObject: (): Promise<boolean> => Promise.resolve(notYet()),
-    read: (): Promise<Uint8Array | null> => Promise.resolve(notYet()),
-    identity: (): Promise<SourceTreeIdentity> => Promise.resolve(notYet()),
-  };
+  async function hasObject(hash: string): Promise<boolean> {
+    if (!isObjectId(hash)) return false;
+    const { found } = await probe(spec(['cat-file', '-e', hash], repoDir), 'cat-file -e');
+    return found;
+  }
+
+  async function read(commit: string, relPath: string): Promise<Uint8Array | null> {
+    assertReadArguments(commit, relPath);
+    const { stdout, found } = await probe(
+      spec(['cat-file', 'blob', `${commit}:${relPath}`], repoDir, { maxStdoutBytes: BIG_OUTPUT_BYTES }),
+      'cat-file blob',
+    );
+    return found ? stdout : null;
+  }
+
+  async function identity(): Promise<SourceTreeIdentity> {
+    // An unborn branch has no HEAD: rev-list fails with 128 and the repository has no root commit yet.
+    const roots = await probe(spec(['rev-list', '--max-parents=0', 'HEAD'], repoDir), 'rev-list --max-parents=0');
+    const rootCommit = roots.found ? (decoder.decode(roots.stdout).split('\n')[0] ?? '') || null : null;
+    const common = (await gitText(spec(['rev-parse', '--git-common-dir'], repoDir), 'rev-parse --git-common-dir')).trim();
+    const realCommon = fs.realpathSync.native(path.resolve(repoDir, common));
+    const storeId = createHash('sha256').update(`${rootCommit ?? ''}\n${realCommon}`).digest('hex').slice(0, 16);
+    return { rootCommit, storeId };
+  }
+
+  return { snapshot, hasObject, read, identity };
 }
