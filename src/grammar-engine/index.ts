@@ -8,6 +8,8 @@ export { GrammarLoadError, GrammarRunError } from './errors.ts';
 export type { GrammarLoadErrorCode, GrammarRunErrorCode } from './errors.ts';
 export { GRAMMAR_LIMITS } from './limits.ts';
 export { measureErrors } from './measure.ts';
+export { createPooledGrammarEngine } from './pool/pool.ts';
+export type { PoolOptions, PoolStatus } from './pool/pool.ts';
 export type { ErrorMeasurement } from './measure.ts';
 export { createFakeGrammarEngine } from './fake.ts';
 export type { FakeGrammarScript, ScriptedCapture, ScriptedRunResult } from './fake.ts';

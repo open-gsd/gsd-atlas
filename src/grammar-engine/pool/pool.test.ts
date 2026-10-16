@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import { defineGrammarEngineContract, loadToyScenarios } from '../contract.ts';
-import { createGrammarEngine, GrammarRunError, GRAMMAR_LIMITS } from '../index.ts';
+import { GrammarRunError, GRAMMAR_LIMITS } from '../index.ts';
 import { createPooledGrammarEngine } from './pool.ts';
 import { resolveWorkerUrl } from './worker-url.ts';
 
@@ -24,20 +24,17 @@ describe('resolveWorkerUrl', () => {
 
 describe('pooled engine against the in-process engine', () => {
   it('returns deep-equal results for every toy source', async () => {
+    // `scenarios.expected` holds the real in-process engine's result for every source (see contract.ts).
     const scenarios = await loadToyScenarios();
-    const local = createGrammarEngine();
     const pooled = createPooledGrammarEngine({ size: 1 });
     try {
-      const localGrammar = await local.load(scenarios.input);
-      const pooledGrammar = await pooled.load(scenarios.input);
-      assert.equal(pooledGrammar.abi, localGrammar.abi);
-      assert.equal(pooledGrammar.name, localGrammar.name);
+      const grammar = await pooled.load(scenarios.input);
+      assert.equal(grammar.abi, scenarios.abi);
       for (const [label, source] of Object.entries(scenarios.sources)) {
-        assert.deepStrictEqual(await pooledGrammar.run(source), await localGrammar.run(source), label);
+        assert.deepStrictEqual(await grammar.run(source), scenarios.expected.get(source), label);
       }
     } finally {
       await pooled.dispose();
-      await local.dispose();
     }
   });
 

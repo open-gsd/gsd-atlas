@@ -5,5 +5,6 @@
  * `moduleUrl` exists so a test can exercise the compiled layout; callers pass nothing.
  */
 export function resolveWorkerUrl(moduleUrl: string = import.meta.url): URL {
-  return new URL('./worker.js', moduleUrl);
+  const url = new URL(moduleUrl);
+  return new URL(url.pathname.endsWith('.ts') ? './worker.ts' : './worker.js', url);
 }
