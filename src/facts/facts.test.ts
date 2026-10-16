@@ -148,8 +148,10 @@ describe('validateFileFacts', () => {
   });
 
   it('flags a span whose end precedes its start as span_invalid', () => {
-    const bad = goodFacts();
-    bad.refSites[0]!.span = span(5, 4, 5, 1);
+    const bad: FileFacts = {
+      ...goodFacts(),
+      refSites: [{ name: 'B', span: span(5, 4, 5, 1) }],
+    };
     const out = validateFileFacts(bad);
     assert.equal(out.length, 1);
     assert.equal(out[0]!.code, 'span_invalid');
@@ -157,10 +159,8 @@ describe('validateFileFacts', () => {
   });
 
   it('flags negative parse numbers as parse_invalid', () => {
-    const a = goodFacts();
-    a.parse.errorBytes = -1;
-    const b = goodFacts();
-    b.parse.totalBytes = -5;
+    const a: FileFacts = { ...goodFacts(), parse: { errorBytes: -1, totalBytes: 120 } };
+    const b: FileFacts = { ...goodFacts(), parse: { errorBytes: 0, totalBytes: -5 } };
     for (const bad of [a, b]) {
       const out = validateFileFacts(bad);
       assert.equal(out.length, 1);
