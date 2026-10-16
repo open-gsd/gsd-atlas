@@ -579,6 +579,84 @@ describe('compareHashes (grammar:verify decision)', () => {
   });
 });
 
+describe('built-in modules (modules/*)', () => {
+  const modulesDir = path.join(repoRoot, 'modules');
+  /** The archive hashes pinned by plan 02-08; a different archive fails with archive_hash_mismatch. */
+  const archiveHashes: Record<string, { sha256: string; abi: number; subdir: string | undefined }> = {
+    typescript: { sha256: '0fdf63c35930a75885145d75ee63cb879da2d49db9bfe454bd8e60b08ba778a1', abi: 14, subdir: 'typescript' },
+    javascript: { sha256: '6214ce23d03aba525ba8edd6ca7caf365c969f2c2dbfc353e376ca54507ffb92', abi: 15, subdir: undefined },
+  };
+
+  function readBuiltIn(name: string): { lock: GrammarLock; extensions: string[] } {
+    const dir = path.join(modulesDir, name);
+    const parsed = parseGrammarLock(fs.readFileSync(path.join(dir, 'grammar.lock'), 'utf8'), `modules/${name}/grammar.lock`);
+    assert.equal(parsed.ok, true, `modules/${name}/grammar.lock must parse`);
+    if (!parsed.ok) {
+      throw new Error('unreachable');
+    }
+    const manifest = JSON.parse(fs.readFileSync(path.join(dir, 'atlas-lang.json'), 'utf8')) as { extensions: string[] };
+    return { lock: parsed.lock, extensions: manifest.extensions };
+  }
+
+  it('ships exactly the typescript and javascript modules', () => {
+    const present = fs
+      .readdirSync(modulesDir, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => entry.name);
+    for (const name of Object.keys(archiveHashes)) {
+      assert.ok(present.includes(name), `modules/${name} must exist`);
+    }
+  });
+
+  for (const [name, expected] of Object.entries(archiveHashes)) {
+    it(`pins the ${name} grammar to its npm archive hash, skips generate and records an artifact-platform hash`, () => {
+      const { lock } = readBuiltIn(name);
+      assert.equal(lock.name, name);
+      assert.equal(lock.license, 'MIT');
+      assert.equal(lock.abi, expected.abi);
+      assert.equal(lock.source.type, 'upstream');
+      if (lock.source.type === 'upstream') {
+        assert.equal(lock.source.archiveSha256, expected.sha256);
+        assert.equal(lock.source.subdir, expected.subdir);
+        assert.equal(lock.source.generate, false);
+        assert.ok(lock.source.url.startsWith('https://registry.npmjs.org/'));
+      }
+      assert.notEqual(lock.wasm.sha256, '0'.repeat(64));
+      assert.equal(lock.wasm.platforms['darwin-arm64'], lock.wasm.sha256);
+      assert.equal(lock.wasm.platforms['linux-x64'], lock.wasm.sha256);
+      const bytes = fs.readFileSync(path.join(modulesDir, name, lock.wasm.file));
+      assert.equal(sha256Hex(bytes), lock.wasm.sha256, 'the committed wasm must hash to wasm.sha256');
+      assert.ok(bytes.length < 8 * 1024 * 1024, 'the committed wasm must stay under 8 MiB');
+    });
+  }
+
+  it('claims disjoint extension sets and no .tsx', () => {
+    const claimed = new Map<string, string>();
+    for (const name of Object.keys(archiveHashes)) {
+      for (const extension of readBuiltIn(name).extensions) {
+        assert.equal(claimed.get(extension), undefined, `${extension} is claimed by both ${claimed.get(extension) ?? ''} and ${name}`);
+        claimed.set(extension, name);
+      }
+    }
+    assert.equal(claimed.has('.tsx'), false, 'user decision 1: no module claims .tsx in Phase 2');
+    assert.deepEqual(
+      [...claimed.entries()].filter(([, name]) => name === 'typescript').map(([extension]) => extension),
+      ['.ts', '.cts', '.mts'],
+    );
+    assert.deepEqual(
+      [...claimed.entries()].filter(([, name]) => name === 'javascript').map(([extension]) => extension),
+      ['.js', '.cjs', '.mjs', '.jsx'],
+    );
+  });
+
+  it('writes each committed grammar.lock byte-for-byte in canonical form', () => {
+    for (const name of Object.keys(archiveHashes)) {
+      const text = fs.readFileSync(path.join(modulesDir, name, 'grammar.lock'), 'utf8');
+      assert.equal(serializeLock(readBuiltIn(name).lock), text);
+    }
+  });
+});
+
 describe('committed toy grammar.wasm', () => {
   it('has the sha256 recorded in grammar.lock (catches line-ending corruption)', () => {
     const lock = readToyLock();
