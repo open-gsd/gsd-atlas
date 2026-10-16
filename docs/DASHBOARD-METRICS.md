@@ -228,4 +228,4 @@ Last A/B      (none run)  ·  run: gsd-atlas eval
 - SPACE: Forsgren, Storey, Maddila, Zimmermann, Houck, Butler, [The SPACE of Developer Productivity, ACM Queue 19(1)](https://queue.acm.org/detail.cfm?id=3454124)
 - METR: [Measuring the impact of early‑2025 AI on experienced open‑source developer productivity](https://arxiv.org/abs/2507.09089)
 - Anthropic: [Writing effective tools for agents](https://www.anthropic.com/engineering/writing-tools-for-agents)
-- Repo: `DESIGN.md` A16, A18, A32, A33–A38, A50, A52; `AGENT-INTEGRATION.md` §4 (local metrics), §5 (evaluation); `DIAGNOSTICS.md` §1; `adr/draft-query-and-policy.md`; `adr/9-tenant-composition.md`; `GLOSSARY.md`
+- Repo: `DESIGN.md` A16, A18, A32, A33–A38, A50, A52; `AGENT-INTEGRATION.md` §4 (local metrics), §5 (evaluation); `DIAGNOSTICS.md` §1; `adr/12-query-and-policy.md`; `adr/9-tenant-composition.md`; `GLOSSARY.md`

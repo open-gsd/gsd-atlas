@@ -1,7 +1,8 @@
 # ADR: Query and Policy modules
 
-- **Status:** Proposed
-- **Issue:** to be opened (rename to `<issue#>-query-and-policy.md`)
+- **Status:** Accepted
+- **Issue:** [#12](https://github.com/open-gsd/gsd-atlas/issues/12)
+- **Ratified:** 2026-10-16
 - **DESIGN.md:** A11, A12, A26, A32, A33, A34, A35, A36, A37, A44, A51, A58
 - **Refines:** [draft-mcp-contract](draft-mcp-contract.md), `AGENT-INTEGRATION.md`
 - **Review findings addressed:** design-it-twice review, finding 1
@@ -37,3 +38,24 @@ Ranking, the token budget, citations, fencing, the watermark and `degraded` flag
 ## Open questions
 - Resolved in `AGENT-INTEGRATION.md`: the SessionStart brief (R0) is a Query request kind (`platform_card` + status + routing); Policy only decides whether to inject it.
 - Should the ledger's eviction be an interface concern (a visible `evicted` flag) or hidden?
+
+## Amendment 2026-10-16: Phase 2 shape
+
+Sources: 02-CONTEXT.md D-01, D-07, D-10 and D-19; 02-RESEARCH.md Pattern 9; plan 02-01 user decision 3.
+
+Phase 2 builds the grammar-tier Query module. Five points differ from, or sharpen, the decision above. The original text stands unedited as the record of what was decided.
+
+1. **Line text is read through Source Tree (decision 5).** Decision 5 says Query depends on Source Tree "for nothing", because the store holds no source text. Matched line text is now read from disk through Source Tree `readText`, called by Query. A file listed in the watermark's stale paths, a file shorter than the matched span, and an unreadable file all yield no text for that result and add `degraded: ['stale']`. Query still never touches git or SQLite directly.
+2. **The Host runs in-process (D-01).** In Phase 2 the Host runs in-process, once per process, and the MCP, CLI and hook adapters reach it through a `HostClient`. Phase 4 swaps that client for a socket client without changing Query, the envelope or the adapters.
+3. **Line text is fenced (D-10).** Line text leaves Query only inside `untrusted_text` entries. Each response carries a random per-response nonce that fences every entry; the text is normalized and capped in width before fencing.
+4. **`code_impact` in a grammar-tier world.**
+   - Seeds are the definitions that match the requested name.
+   - Edges are references and calls made inside a symbol, which are `INFERRED`, and file-level importers of the defining file. An import edge is `EXTRACTED` when its specifier matches exactly one overlay path and `INFERRED` when it matches several.
+   - Expansion is transitive up to a `depth` argument (default 2, maximum 5), with a per-hop row cap.
+   - Every result reports `hop`, `via` (`call`, `reference` or `import`), its own `confidence`, and `chain_confidence`, which is `INFERRED` when any edge on the path from the seed is `INFERRED` and `EXTRACTED` otherwise.
+   - Results beyond a cap are dropped and the envelope sets `truncated`.
+5. **Worked acceptance example.** File `a` defines `parse`. File `b` imports `parse` from `a`, and its function `load` calls `parse`. File `c` imports `load` from `b`, and its function `main` calls `load`. `code_impact` on `parse` at depth 2 returns:
+   - hop 1: `b` `load` (via call, INFERRED, chain_confidence INFERRED) and `b` as a file (via import, EXTRACTED, chain_confidence EXTRACTED);
+   - hop 2: `c` `main` (via call, INFERRED, chain_confidence INFERRED) and `c` as a file (via import, EXTRACTED, chain_confidence EXTRACTED).
+
+   Plan 02-19 reproduces this example as a golden test.

@@ -22,7 +22,7 @@ These decisions shape the MVP's code and data, and are expensive to reverse once
 | [11-worktree-lifecycle](11-worktree-lifecycle.md) | Overlays; collect when in git or past grace; history from git; submodules; watch fallback | A5, A20, A21, A43 | Accepted |
 | [draft-mcp-contract](draft-mcp-contract.md) | MCP tool set, response envelope, ranking, token budgets, freshness and degraded flags, untrusted‑text fencing, CLI parity | A11, A12, A26, A32, A44, A51 | Proposed |
 | [draft-user-controlled-diagnostics](draft-user-controlled-diagnostics.md) | No telemetry; diagnostics off by default, approved per data type, submitted as GitHub issues; ↑ ↔ ↓ ratings; `gsd-atlas bug` defect forensics; automatic intake in the repo | A16, A52, A53 | Proposed |
-| [draft-query-and-policy](draft-query-and-policy.md) | One Query module behind MCP, CLI and hooks; a separate pure Policy module with the session ledger | A11, A12, A26, A32–A37, A44, A51, A58 | Proposed |
+| [12-query-and-policy](12-query-and-policy.md) | One Query module behind MCP, CLI and hooks; a separate pure Policy module with the session ledger | A11, A12, A26, A32–A37, A44, A51, A58 | Accepted |
 | [9-tenant-composition](9-tenant-composition.md) | Host composes per‑repo Tenants; Source Tree, Indexer and Governor modules; read‑your‑writes via the Indexer | A4, A19, A22, A24–A28, A40, A47, A49, A59–A62 | Accepted |
 | [4-command-runner](4-command-runner.md) | One CommandRunner for every child process; providers declare a CommandSpec, the runner alone decides; sandboxed TypeScript adapter | A9, A44, A54 | Accepted |
 | [draft-value-dashboard](draft-value-dashboard.md) | Local dashboard: separate Metrics module and database; every figure labeled measured/estimated/A/B; no single score; no telemetry | A16, A18, A32, A36, A50, A52, A63 | Proposed |
@@ -42,6 +42,7 @@ Phase 1 ratification (FND-09): one issue per ADR in open-gsd/gsd-atlas, each dra
 | sqlite-store | [#8](https://github.com/open-gsd/gsd-atlas/issues/8) | [8-sqlite-store.md](8-sqlite-store.md) | 2026-10-15 |
 | tenant-composition | [#9](https://github.com/open-gsd/gsd-atlas/issues/9) | [9-tenant-composition.md](9-tenant-composition.md) | 2026-10-15 |
 | worktree-lifecycle | [#11](https://github.com/open-gsd/gsd-atlas/issues/11) | [11-worktree-lifecycle.md](11-worktree-lifecycle.md) | 2026-10-16 |
+| query-and-policy | [#12](https://github.com/open-gsd/gsd-atlas/issues/12) | [12-query-and-policy.md](12-query-and-policy.md) | 2026-10-16 |
 
 Phase 2 ratification (FND-12): the four ADRs scheduled for Phase 2, same procedure.
 
@@ -63,13 +64,13 @@ Dated amendment sections appended to Accepted ADRs, one line per amendment. The 
 - Amendment 2026-10-15: trust-boundaries - git runs repo-controlled code (extra, approved at plan 01-08 Task 1)
 - Amendment 2026-10-15: language-modules - Parse-error budget unit (extra, approved at plan 01-08 Task 1)
 - Amendment 2026-10-15: sqlite-store - Node floor and open-time self-test (extra, approved at plan 01-08 Task 1)
+- Amendment 2026-10-16: query-and-policy - Phase 2 shape
 
 ## Ratification schedule
 The six ADRs that remain Proposed, and the phase whose first plan ratifies each (from the ROADMAP schedule). Ratifying means: open the issue, rename `draft-<slug>.md` to `<issue#>-<slug>.md`, move Proposed to Accepted, and apply the listed amendments as dated sections.
 
 | ADR | Ratify before | Amendments applied at that ratification |
 |-----|---------------|------------------------------------------|
-| query-and-policy | Phase 2 | None |
 | mcp-contract | Phase 2 | None |
 | value-dashboard | Phase 2 | Metrics migrations |
 | user-controlled-diagnostics | Phase 3 | None |

@@ -32,11 +32,11 @@ const RATIFIED: readonly string[] = [
   'sqlite-store',
   'tenant-composition',
   'worktree-lifecycle',
+  'query-and-policy',
 ];
 
 // The ADRs that stay Proposed, and the phase that must ratify each.
 const REMAINING: Readonly<Record<string, string>> = {
-  'query-and-policy': 'Phase 2',
   'mcp-contract': 'Phase 2',
   'value-dashboard': 'Phase 2',
   'user-controlled-diagnostics': 'Phase 3',
@@ -476,6 +476,23 @@ const AMENDED: readonly AmendedAdr[] = [
     ],
     amendments: [
       { title: 'git runs repo-controlled code', keywords: GIT_HARDENING_KEYWORDS, extra: 'git-hardening' },
+    ],
+  },
+  {
+    slug: 'query-and-policy',
+    preserved: [
+      'One module, Query,',
+      'MCP, CLI and hooks are adapters:',
+      'CLI parity (A12) is structural, not a convention.',
+      'A timeout is reported as `degraded: [\'fresh_timeout\']` with the old watermark.',
+      'it never touches git or SQLite directly.',
+      'Policy never calls Query.',
+      'Overrides come only from the user',
+      'A ranking or envelope fix lands once and shows up in MCP, CLI and hooks.',
+      'Gate inside Query:',
+    ],
+    amendments: [
+      { title: 'Phase 2 shape', keywords: ['chain_confidence', 'readText', 'untrusted_text', 'in-process'] },
     ],
   },
   {
