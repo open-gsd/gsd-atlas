@@ -38,3 +38,13 @@ Three groups of behaviour had no owner:
 - Does `Indexer.ensureFresh` take a `fresh` priority class slot from the Governor per call, or one per request?
 - Where does the file watcher live: inside the Indexer (events are its input) or as a separate Source Tree feature? Leaning Indexer, with Source Tree supplying git events.
 - A compiler program is per file set (A25): does the Governor's LRU key on (tenant, overlay) or on the file set?
+
+## Amendment 2026-10-15: Open questions resolved
+
+Sources: D-17 of the Phase 1 context; ARCHITECTURE.md Open Questions Q3, Q5 and Q6.
+
+The three open questions above are answered here. The original bullets stand unedited as the record of what was asked.
+
+- *Does `Indexer.ensureFresh` take a `fresh` priority class slot from the Governor per call, or one per request?* `Indexer.ensureFresh` takes one `fresh` priority slot from the Governor per request, not per call. Waiting consumes no slot, named paths are promoted to class `fresh` in the Indexer queue, and one deadline covers the whole request.
+- *Where does the file watcher live?* The file watcher lives inside the Indexer, behind an `EventSource` port with two adapters: fs-watch for production and a manual source for tests. Source Tree supplies only git events.
+- *A compiler program is per file set (A25): does the Governor's LRU key on (tenant, overlay) or on the file set?* The compiler-program LRU keys on the file set, not on (tenant, overlay), because a program is per file set (A25). The Governor lease key is therefore a tenant plus a file-set id, and eviction is by file-set id.

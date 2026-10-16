@@ -49,3 +49,9 @@ gsd‑atlas indexes code the user didn't write: cloned repos, dependencies, SDKs
 - **All commands opt‑in (earlier draft):** the headline SDK feature was off by default.
 - **Trust repo config:** remote code execution on index.
 - **HTTP with token only:** DNS rebinding and simple cross‑site requests still reach unauthenticated routes.
+
+## Amendment 2026-10-15: git runs repo-controlled code
+
+Sources: 01-RESEARCH.md Pitfall 3 and Open Question 5; PITFALLS B6; verified on git 2.54.0.
+
+The first consequence below, that cloning and indexing a hostile repo cannot run its code, needs one more rule, because git itself runs commands named in a repo's own configuration. Verified on git 2.54.0: `git hash-object --stdin-paths` ran a configured `filter` clean command, `git ls-files -o` ran `core.fsmonitor`, and `git status` ran clean filters. Decision 2's "built-in first-party providers with fixed command lines run by default" therefore does not let repo config steer git. The git `CommandSpec` forces `core.fsmonitor=false` and `core.hooksPath` to the null device, sets `GIT_OPTIONAL_LOCKS=0`, neutralises every configured `filter` driver by name with no allowlist, and allows only read-side git subcommands, as the same-dated amendment in [4-command-runner](4-command-runner.md) specifies. The hostile-repo test proves that a poisoned `.git/config` starts nothing.

@@ -69,3 +69,22 @@ The design review measured grammar drift: the third‑party `tree-sitter-wasms` 
 - **LSP as the base tier:** needs a running language server per language and project; candidate later tier.
 - **SCIP only:** requires a build and an indexer per language; no freshness on save.
 - **Third‑party WASM grammar bundles:** already mis‑parse current TypeScript.
+
+## Amendment 2026-10-15: ProjectModel seam
+
+Sources: ARCHITECTURE.md Gap 1 (FND-10); D-16 of the Phase 1 context; DESIGN.md A2, A44, A55; PRD section 4.5.
+
+Decision 3 says the only code a module may add is an optional `PreciseResolver`. It does not say where a project's configuration (tsconfig, `Package.swift`) is read, and the Grammar Engine must stay language-agnostic. This amendment adds one seam and refines decision 3 without replacing it.
+
+1. A `ProjectModel` is a built-in, compiler-free seam registered by id. A language module names one through the optional `project.model` field of its manifest (a kebab-case id, next to `project.markers`, exactly as `src/lang/manifest.ts` commits it). The manifest holds only the id, never code.
+2. A `ProjectModel` supplies the config-file set that defines the resolution context (A2); the project file sets (`include` and `exclude`); the emit mapping behind `emitted_as` (`.cts` to `.cjs`, `rootDir` and `outDir`); the targets and deployment targets; and the language level.
+3. It works with no compiler installed, so the grammar tier, Linux CI and Windows get project structure without TypeScript or Xcode.
+4. Repo or npm modules may name a `ProjectModel` by id but can never supply one (A44, A55). The only code a module may add therefore remains a `PreciseResolver` adapter, which is a refinement of decision 3.
+5. The Grammar Engine never reads tsconfig or `Package.swift`. Precise adapters take their file sets and context from the `ProjectModel`.
+6. Phase 3 (TSM-07) builds the TypeScript `ProjectModel` and Phase 5 builds the Swift one.
+
+## Amendment 2026-10-15: Parse-error budget unit
+
+Sources: D-06 of the Phase 1 context; DESIGN.md A48; 01-RESEARCH.md Open Question 5.
+
+Decision 6 states the parse-error budget as at most 0.5 % of files. The budget is instead the fraction of source bytes inside outermost ERROR nodes, so one large mis-parsed file weighs more than a small one and a single stray error in a big file does not fail a whole module. Each module declares its budget as `parseBudget` in its manifest (default 0.005, that is 0.5 %), and CI measures it over the module's fixtures and fails when it is exceeded. A module whose grammar cannot meet the default, such as Swift, declares its own measured number rather than an exception to a global threshold. For new work this unit replaces the file-count wording of decision 6. Files with parse errors are still reported in `status` and still use the precise tier where it exists.

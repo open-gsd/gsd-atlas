@@ -48,6 +48,19 @@ Phase 1 ratification (FND-09): one issue per ADR in open-gsd/gsd-atlas, each dra
 - `6-fact-model.md` decision 2 and `../PRD.md` section 4.7 intro: removed the token; the following sentence stands on its own.
 - `../SDK-PROVIDERS.md` (normalized result paragraph) has the same token ending mid-sentence. Its lost clause cannot be recovered from any source, so the file is left unchanged and flagged for the user.
 
+### Amendment log
+Dated amendment sections appended to Accepted ADRs, one line per amendment. The original text is never edited.
+
+- Amendment 2026-10-15: language-modules - ProjectModel seam (FND-10, D-16)
+- Amendment 2026-10-15: fact-store-interface - Read-triggered cache write and SQLite-access wording (FND-10, D-16)
+- Amendment 2026-10-15: fact-store-interface - Open questions resolved (D-17)
+- Amendment 2026-10-15: sqlite-store - SQLite-access wording (FND-10, D-16)
+- Amendment 2026-10-15: tenant-composition - Open questions resolved (D-17)
+- Amendment 2026-10-15: command-runner - git runs repo-controlled code (extra, approved at plan 01-08 Task 1)
+- Amendment 2026-10-15: trust-boundaries - git runs repo-controlled code (extra, approved at plan 01-08 Task 1)
+- Amendment 2026-10-15: language-modules - Parse-error budget unit (extra, approved at plan 01-08 Task 1)
+- Amendment 2026-10-15: sqlite-store - Node floor and open-time self-test (extra, approved at plan 01-08 Task 1)
+
 ## Ratification schedule
 The six ADRs that remain Proposed, and the phase whose first plan ratifies each (from the ROADMAP schedule). Ratifying means: open the issue, rename `draft-<slug>.md` to `<issue#>-<slug>.md`, move Proposed to Accepted, and apply the listed amendments as dated sections.
 
