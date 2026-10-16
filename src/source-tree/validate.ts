@@ -16,6 +16,17 @@ export function unhashableReason(rel: string): string | null {
   return null;
 }
 
+/**
+ * True for a path that is not a plain repo-relative one: empty, NUL, absolute (either flavour), drive-relative
+ * (`C:x`) or with a `..` segment split on either separator. `readText` answers `escape` for it without touching
+ * the file system (T-02-11); the real tree and the fake share it.
+ */
+export function escapesWorktree(rel: string): boolean {
+  if (rel === '' || rel.includes('\0')) return true;
+  if (path.posix.isAbsolute(rel) || path.win32.isAbsolute(rel) || /^[A-Za-z]:/.test(rel)) return true;
+  return rel.split(/[\\/]/).includes('..');
+}
+
 /** A git object id: lowercase hex, 40 characters (SHA-1) or 64 (SHA-256). Never assume 40. */
 const OBJECT_ID = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
 

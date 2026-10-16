@@ -15,9 +15,20 @@ import { diagnostic } from '../facts/index.ts';
 import type { Diagnostic } from '../facts/index.ts';
 import { SOURCE_TREE_CODES, SourceTreeError } from './types.ts';
 import { assertReadArguments, isObjectId, unhashableReason } from './validate.ts';
+import { DEFAULT_READ_TEXT_BYTES, readConfinedText } from './read-text.ts';
 import { filterSourceSet, SOURCE_PEEK_BYTES } from './source-set.ts';
 import type { PathAttributes, PeekResult } from './source-set.ts';
-import type { HashPathsResult, SnapshotResult, SourceSetOptions, SourceSetResult, SourceTree, SourceTreeIdentity } from './types.ts';
+import type {
+  HashPathsResult,
+  ReadTextResult,
+  SnapshotResult,
+  SourceSetOptions,
+  SourceSetResult,
+  SourceTree,
+  SourceTreeIdentity,
+  WorktreeInfo,
+} from './types.ts';
+import { parseWorktreeList } from './worktrees.ts';
 
 export interface SourceTreeOptions {
   /** The only way this module starts anything. */
@@ -301,8 +312,35 @@ export function createSourceTree(options: SourceTreeOptions): SourceTree {
     const common = (await gitText(spec(['rev-parse', '--git-common-dir'], repoDir), 'rev-parse --git-common-dir')).trim();
     const realCommon = fs.realpathSync.native(path.resolve(repoDir, common));
     const storeId = createHash('sha256').update(`${rootCommit ?? ''}\n${realCommon}`).digest('hex').slice(0, 16);
-    return { rootCommit, storeId };
+    return { rootCommit, storeId, commonDir: realCommon };
   }
 
-  return { snapshot, hashPaths, sourceSet, hasObject, read, identity };
+  async function worktrees(): Promise<readonly WorktreeInfo[]> {
+    let output: string;
+    try {
+      output = await gitText(
+        spec(['worktree', 'list', '--porcelain', '-z'], repoDir, { maxStdoutBytes: BIG_OUTPUT_BYTES, timeoutMs: GIT_TIMEOUT_MS }),
+        'worktree list --porcelain -z',
+      );
+    } catch (error) {
+      if (error instanceof SourceTreeError && error.code === 'git_failed') {
+        throw new SourceTreeError('git_failed', `${error.message} (listing worktrees needs git 2.36 or newer for the -z form)`);
+      }
+      throw error;
+    }
+    return parseWorktreeList(output).map((w) => {
+      try {
+        return { ...w, path: fs.realpathSync.native(w.path) };
+      } catch {
+        // The directory is gone (deleted checkout): keep the path git reports, and say so.
+        return { ...w, prunable: true };
+      }
+    });
+  }
+
+  function readText(worktree: string, relPath: string, readOptions?: { readonly maxBytes?: number }): Promise<ReadTextResult> {
+    return readConfinedText(worktree, relPath, readOptions?.maxBytes ?? DEFAULT_READ_TEXT_BYTES);
+  }
+
+  return { snapshot, hashPaths, sourceSet, worktrees, readText, hasObject, read, identity };
 }

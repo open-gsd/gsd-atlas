@@ -104,6 +104,8 @@ export interface SourceTreeIdentity {
   readonly rootCommit: string | null;
   /** 16 hex characters of sha256(rootCommit, newline, real path of the common git directory). */
   readonly storeId: string;
+  /** The canonical real path of the repository's common git directory (shared by every linked worktree); the store lives under it. */
+  readonly commonDir: string;
 }
 
 /**
@@ -135,6 +137,17 @@ export interface SourceTree {
    * not over `options.maxBytes`. One batched `check-attr` run at most; no git at all when nothing is left to ask.
    */
   sourceSet(worktree: string, files: ReadonlyMap<string, string>, options: SourceSetOptions): Promise<SourceSetResult>;
+  /**
+   * Every worktree of the repository (the main one first), from one `git worktree list --porcelain -z` run.
+   * Needs git 2.36 or newer for `-z`; an older git makes this throw `git_failed` naming that version.
+   */
+  worktrees(): Promise<readonly WorktreeInfo[]>;
+  /**
+   * The text of `path` inside `worktree`, only if it stays inside after realpath, is a regular non-link file and
+   * is at most `options.maxBytes` (default 2 MiB). A leading BOM and CRLF are kept as they are. Never throws for
+   * bad input or bad content: see {@link ReadTextResult}.
+   */
+  readText(worktree: string, path: string, options?: { readonly maxBytes?: number }): Promise<ReadTextResult>;
   /** True when the object database holds the object. False for an unknown or malformed id. */
   hasObject(hash: string): Promise<boolean>;
   /** The bytes of `path` at `commit`, or null when the commit has no such blob. */
@@ -158,4 +171,10 @@ export interface SourceTreeWorld {
    * `.git/info/attributes`, so they never appear in a snapshot.
    */
   readonly attributes?: Readonly<Record<string, { readonly generated?: boolean; readonly vendored?: boolean }>>;
+  /**
+   * What `worktrees()` returns from the fake. Absent: one main worktree on `main` at the fake's HEAD. The real
+   * harness does not realise this field (the contract never sets it); linked worktrees are exercised against git
+   * directly in the real-only tests.
+   */
+  readonly worktrees?: readonly WorktreeInfo[];
 }

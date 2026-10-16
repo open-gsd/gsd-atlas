@@ -11,18 +11,24 @@ import { createHash } from 'node:crypto';
 import { diagnostic } from '../facts/index.ts';
 import type { Diagnostic } from '../facts/index.ts';
 import { SOURCE_TREE_CODES } from './types.ts';
+import { DEFAULT_READ_TEXT_BYTES } from './read-text.ts';
 import { filterSourceSet, SOURCE_PEEK_BYTES } from './source-set.ts';
 import type { PathAttributes, PeekResult } from './source-set.ts';
 import type {
   HashPathsResult,
+  ReadTextResult,
   SnapshotResult,
   SourceSetOptions,
   SourceSetResult,
   SourceTree,
   SourceTreeIdentity,
   SourceTreeWorld,
+  WorktreeInfo,
 } from './types.ts';
-import { assertReadArguments, isObjectId, unhashableReason } from './validate.ts';
+import { assertReadArguments, escapesWorktree, isObjectId, unhashableReason } from './validate.ts';
+
+/** The one worktree the fake has when the world describes none, and the root of its fake git directory. */
+const FAKE_WORKTREE = '/fake';
 
 const encoder = new TextEncoder();
 
@@ -65,6 +71,20 @@ export function createFakeSourceTree(world: Partial<SourceTreeWorld> = {}): Sour
   };
 
   return {
+    worktrees(): Promise<readonly WorktreeInfo[]> {
+      return Promise.resolve(
+        world.worktrees ?? [{ path: FAKE_WORKTREE, head: rootCommit, branch: 'main', detached: false, bare: false, locked: false, prunable: false }],
+      );
+    },
+
+    readText(_worktree: string, relPath: string, options?: { readonly maxBytes?: number }): Promise<ReadTextResult> {
+      if (escapesWorktree(relPath)) return Promise.resolve({ kind: 'escape' });
+      const content = onDisk(relPath);
+      if (content === null) return Promise.resolve({ kind: isDirectory(relPath) ? 'not_file' : 'missing' });
+      if (Buffer.byteLength(content) > (options?.maxBytes ?? DEFAULT_READ_TEXT_BYTES)) return Promise.resolve({ kind: 'too_large' });
+      return Promise.resolve({ kind: 'ok', text: content });
+    },
+
     hashPaths(_worktree: string, paths: readonly string[]): Promise<HashPathsResult> {
       const diagnostics: Diagnostic[] = [];
       const files = new Map<string, string>();
@@ -143,7 +163,7 @@ export function createFakeSourceTree(world: Partial<SourceTreeWorld> = {}): Sour
     },
 
     identity(): Promise<SourceTreeIdentity> {
-      return Promise.resolve({ rootCommit, storeId });
+      return Promise.resolve({ rootCommit, storeId, commonDir: `${FAKE_WORKTREE}/.git` });
     },
   };
 }
