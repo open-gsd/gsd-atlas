@@ -8,13 +8,17 @@ export { diagnostic } from './diagnostic.ts';
 export type { Diagnostic, Severity } from './diagnostic.ts';
 export { systemClock } from './clock.ts';
 export type { Clock } from './clock.ts';
-export { FACT_PREDICATES, validateFileFacts } from './file-facts.ts';
+export { FACT_PREDICATES, IMPORT_STYLES, REF_KINDS, validateFileFacts } from './file-facts.ts';
 export type {
   Confidence,
+  ExportSite,
   FactPredicate,
   FileFacts,
+  ImportBinding,
   ImportSite,
+  ImportStyle,
   LocalSymbol,
+  RefKind,
   RefSite,
 } from './file-facts.ts';
 export { DEGRADED_CODES, isDegradedCode } from './degraded.ts';

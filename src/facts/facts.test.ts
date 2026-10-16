@@ -4,7 +4,9 @@ import { describe, it } from 'node:test';
 import {
   DEGRADED_CODES,
   FACT_PREDICATES,
+  IMPORT_STYLES,
   PROTOCOL_VERSION,
+  REF_KINDS,
   diagnostic,
   failEnvelope,
   isDegradedCode,
@@ -14,7 +16,6 @@ import {
   systemClock,
   validateFileFacts,
 } from './index.ts';
-import * as kernel from './index.ts';
 import type {
   Answer,
   FileFacts,
@@ -211,14 +212,14 @@ describe('validateFileFacts with the Phase 2 optional fields', () => {
   });
 
   it('accepts every declared reference kind and import style', () => {
-    for (const kind of kernel.REF_KINDS) {
+    for (const kind of REF_KINDS) {
       const facts: FileFacts = {
         ...goodFacts(),
         refSites: [{ name: 'B', span: span(5, 0, 5, 1), kind }],
       };
       assert.deepEqual(validateFileFacts(facts), [], kind);
     }
-    for (const style of kernel.IMPORT_STYLES) {
+    for (const style of IMPORT_STYLES) {
       const facts: FileFacts = {
         ...goodFacts(),
         imports: [{ path: './b', span: span(6, 0, 6, 12), style }],
@@ -228,8 +229,8 @@ describe('validateFileFacts with the Phase 2 optional fields', () => {
   });
 
   it('declares the closed reference-kind and import-style sets', () => {
-    assert.deepEqual([...kernel.REF_KINDS], ['call', 'new', 'read', 'type', 'heritage', 'member']);
-    assert.deepEqual([...kernel.IMPORT_STYLES], ['es', 'cjs', 'side-effect', 'reexport']);
+    assert.deepEqual([...REF_KINDS], ['call', 'new', 'read', 'type', 'heritage', 'member']);
+    assert.deepEqual([...IMPORT_STYLES], ['es', 'cjs', 'side-effect', 'reexport']);
   });
 
   it('still accepts a Phase 1 shaped value with none of the new fields', () => {
