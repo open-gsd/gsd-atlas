@@ -8,6 +8,7 @@ import { createGrammarEngine, extractFileFacts } from '../src/grammar-engine/ind
 import type { GrammarEngine, GrammarInput, LoadedGrammar, QueryKind } from '../src/grammar-engine/index.ts';
 import { readModuleInputs } from '../src/lang/index.ts';
 import { TRUTH_SUFFIX } from '../src/lang/test-runner.ts';
+import type { FetchCorpusOptions, FetchedCorpus } from './corpus-fetch.ts';
 
 /**
  * node scripts/recall.ts [--module typescript|javascript] [--min 0.9]
@@ -326,6 +327,21 @@ export interface RecallOptions {
   readonly queryTransform?: QueryTransform;
   /** Where the table goes. Default stdout. */
   readonly out?: (line: string) => void;
+  /** Corpus id from corpora/corpora.json. Measures a pinned sample against the compiler oracle instead of the fixtures. */
+  readonly corpus?: string;
+  /** How many .cjs files the sample takes (every .cts under src/ is always taken). Default 300. */
+  readonly sampleSize?: number;
+  /** Replaces the corpus fetch. Tests inject a local tree here so they need no network. */
+  readonly fetch?: (options: FetchCorpusOptions) => Promise<FetchedCorpus>;
+  /** Directory the corpus temp directory is created in. Default the system temp directory. */
+  readonly tmpRoot?: string;
+}
+
+/** The files a corpus run measures. Not implemented yet. */
+export function selectSample(files: readonly string[], size: number): string[] {
+  void files;
+  void size;
+  return [];
 }
 
 function rowsFrom(truth: readonly RecallItem[], found: readonly RecallItem[], min: number): RecallRow[] {

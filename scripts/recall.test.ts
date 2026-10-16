@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
+import os from 'node:os';
 import { after, before, describe, it } from 'node:test';
 
 import { validateFileFacts } from '../src/facts/index.ts';
@@ -9,7 +10,9 @@ import type { FileFacts } from '../src/facts/index.ts';
 import { createGrammarEngine } from '../src/grammar-engine/index.ts';
 import type { GrammarEngine } from '../src/grammar-engine/index.ts';
 import { readModuleInputs } from '../src/lang/index.ts';
-import { CONSTRUCTS, compareConstruct, decodeSource, openModule, readTruths, runRecall } from './recall.ts';
+import type { FetchCorpusOptions } from './corpus-fetch.ts';
+import { classifyWithCompiler } from './recall-oracle.ts';
+import { CONSTRUCTS, compareConstruct, decodeSource, openModule, readTruths, runRecall, selectSample } from './recall.ts';
 import type { OpenedModule, RecallItem } from './recall.ts';
 
 const repoRoot = path.resolve(import.meta.dirname, '..');
@@ -479,6 +482,300 @@ describe('reference extraction (D-06)', () => {
         ['LIMIT', 'read', 4],
       ],
     );
+  });
+});
+
+describe('classifyWithCompiler (the dev-only oracle)', () => {
+  const source = [
+    "import a from './a';",
+    'export function f() {',
+    '  const g = () => 1;',
+    '  return g;',
+    '}',
+    'class C {',
+    '  m(): void {}',
+    '  p = 1;',
+    '}',
+    'const x = 1;',
+    'let y = 2;',
+    "const z = require('./z');",
+    'module.exports = { f, k: x };',
+    'exports.q = 3;',
+    '',
+  ].join('\n');
+
+  it('classifies a small source into exactly the hand-written items', () => {
+    const items = classifyWithCompiler('a.cts', source).map((item) => [item.construct, item.parent ?? '', item.name, item.line].join('|'));
+    assert.deepEqual(
+      items.sort(),
+      [
+        'CJS module.exports||f|13',
+        'CJS module.exports||k|13',
+        'CJS module.exports||q|14',
+        'CJS require||./z|12',
+        'ES export||f|2',
+        'ES import||./a|1',
+        'class||C|6',
+        'const/var||x|10',
+        'const/var||y|11',
+        'containment|C|m|7',
+        'containment|C|p|8',
+        'containment|f|g|3',
+        'function||f|2',
+        'function||g|3',
+        'method||m|7',
+        'property||p|8',
+      ].sort(),
+    );
+  });
+
+  it('does not count constructors, parameter properties, type literal members, enum members or object methods', () => {
+    const items = classifyWithCompiler('b.ts', [
+      'class K {',
+      '  constructor(public id: number) {}',
+      '}',
+      'type T = { run(): void; size: number };',
+      'enum E { A, B }',
+      'const o = { method() {} };',
+      'interface I { a: string; b(): void; (x: number): void; [k: string]: unknown }',
+      '',
+    ].join('\n'));
+    assert.deepEqual(
+      items.map((item) => [item.construct, item.parent ?? '', item.name, item.line].join('|')).sort(),
+      [
+        'class||K|1',
+        'const/var||o|6',
+        'containment|I|a|7',
+        'containment|I|b|7',
+        'enum||E|5',
+        'interface||I|7',
+        'method||b|7',
+        'property||a|7',
+        'type alias||T|4',
+      ].sort(),
+    );
+  });
+
+  it('reads JavaScript with the JavaScript script kind: class fields, private names and accessors', () => {
+    const items = classifyWithCompiler('c.cjs', ['class A {', '  #p = 1;', '  get v() { return this.#p; }', '  static s() {}', '}', ''].join('\n'));
+    assert.deepEqual(
+      items
+        .filter((item) => item.construct !== 'containment')
+        .map((item) => [item.construct, item.name, item.line].join('|'))
+        .sort(),
+      ['class|A|1', 'method|s|4', 'method|v|3', 'property|#p|2'],
+    );
+  });
+
+  it('is built on createSourceFile alone: no program, no checker', () => {
+    const text = fs.readFileSync(path.join(repoRoot, 'scripts', 'recall-oracle.ts'), 'utf8');
+    assert.ok(text.includes('createSourceFile'));
+    assert.ok(!text.includes('createProgram'));
+    assert.ok(!text.includes('getTypeChecker'));
+  });
+});
+
+describe('selectSample (the fixed sample rule)', () => {
+  const files = [
+    'src/z.cts',
+    'lib/a.cjs',
+    'README.md',
+    'src/a.cts',
+    'lib/e.cjs',
+    'test/t.cts',
+    'src/c.mts',
+    'lib/b.cjs',
+    'src/sub/b.cts',
+    'bin/x.cjs',
+    'lib/c.cjs',
+    'src/inner.cjs',
+    'lib/d.cjs',
+  ];
+
+  it('takes every .cts under src plus the first N .cjs by sha256 of the path (a pinned literal)', () => {
+    assert.deepEqual(selectSample(files, 3), ['src/a.cts', 'src/sub/b.cts', 'src/z.cts', 'lib/e.cjs', 'lib/c.cjs', 'src/inner.cjs']);
+    assert.deepEqual(selectSample(files, 0), ['src/a.cts', 'src/sub/b.cts', 'src/z.cts']);
+    assert.deepEqual(selectSample(files, 100).slice(3), [
+      'lib/e.cjs',
+      'lib/c.cjs',
+      'src/inner.cjs',
+      'lib/b.cjs',
+      'lib/a.cjs',
+      'bin/x.cjs',
+      'lib/d.cjs',
+    ]);
+  });
+
+  it('gives the same files for the same input whatever order the directory listing came in', () => {
+    const expected = selectSample(files, 4);
+    assert.deepEqual(selectSample([...files].reverse(), 4), expected);
+    assert.deepEqual(selectSample([...files].sort(), 4), expected);
+    assert.deepEqual(selectSample([...files, ...files], 4), expected, 'a repeated path is selected once');
+  });
+
+  it('ignores a .cts that is not under src/ and any other extension', () => {
+    const picked = selectSample(files, 100);
+    assert.ok(!picked.includes('test/t.cts'));
+    assert.ok(!picked.includes('src/c.mts'));
+    assert.ok(!picked.includes('README.md'));
+  });
+});
+
+describe('corpus mode (compiler oracle on a pinned sample)', () => {
+  const treeFiles: Record<string, string> = {
+    'src/one.cts': [
+      "import { two } from './two.cjs';",
+      'export function one(): number {',
+      '  const local = (): number => two();',
+      '  return local();',
+      '}',
+      'export interface Shape { area(): number }',
+      'class Impl implements Shape { area(): number { return 1; } v = 1; }',
+      'export default Impl;',
+      '',
+    ].join('\n'),
+    'src/two.cts': 'export const two = (): number => 2;\nexport type Pair = [number, number];\n',
+    'lib/a.cjs': "const x = require('./b.cjs');\nfunction a() { return x; }\nmodule.exports = { a };\n",
+    'lib/b.cjs': 'exports.b = 1;\nclass B { m() {} }\nmodule.exports.B = B;\n',
+    'README.md': '# not source\n',
+  };
+  const tmpRoots: string[] = [];
+
+  function makeTmpRoot(): string {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ga-recall-test-'));
+    tmpRoots.push(dir);
+    return dir;
+  }
+
+  after(() => {
+    for (const dir of tmpRoots) {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  interface FetchProbe {
+    readonly calls: FetchCorpusOptions[];
+    readonly fetch: (options: FetchCorpusOptions) => Promise<{ dir: string; sha: string }>;
+  }
+
+  function probeFetch(files: Record<string, string>): FetchProbe {
+    const calls: FetchCorpusOptions[] = [];
+    return {
+      calls,
+      fetch: (options) => {
+        calls.push(options);
+        const dir = path.join(options.destination, `${options.id}-tree`);
+        for (const [name, text] of Object.entries(files)) {
+          fs.mkdirSync(path.dirname(path.join(dir, name)), { recursive: true });
+          fs.writeFileSync(path.join(dir, name), text);
+        }
+        return Promise.resolve({ dir, sha: 'f'.repeat(40) });
+      },
+    };
+  }
+
+  it('fetches the corpus into a temp directory outside the repository, prints one table per module and removes the directory', async () => {
+    const tmpRoot = makeTmpRoot();
+    const probe = probeFetch(treeFiles);
+    const lines: string[] = [];
+    const report = await runRecall({
+      corpus: 'gsd-core',
+      tmpRoot,
+      fetch: probe.fetch,
+      sampleSize: 10,
+      out: (line) => lines.push(line),
+    });
+    assert.equal(probe.calls.length, 1);
+    assert.equal(probe.calls[0]?.id, 'gsd-core');
+    const destination = probe.calls[0]?.destination ?? '';
+    assert.ok(destination.startsWith(tmpRoot), 'the destination is under the temp root');
+    assert.ok(!destination.startsWith(repoRoot), 'the destination is outside the repository');
+    assert.ok(!fs.existsSync(destination), 'the temp directory is removed');
+    assert.deepEqual(
+      report.modules.map((module) => [module.module, module.mode]),
+      [
+        ['typescript', 'corpus'],
+        ['javascript', 'corpus'],
+      ],
+    );
+    assert.deepEqual(
+      report.modules.flatMap((module) => module.rows.filter((row) => row.status === 'fail')),
+      [],
+    );
+    assert.equal(report.ok, true);
+    assert.equal(lines.filter((line) => line.startsWith('module ')).length, 2);
+    const typescriptRows = report.modules[0]?.rows ?? [];
+    assert.ok((typescriptRows.find((row) => row.construct === 'function')?.truth ?? 0) >= 3, 'the oracle found the functions');
+    assert.ok((report.modules[1]?.rows.find((row) => row.construct === 'CJS module.exports')?.truth ?? 0) >= 3);
+  });
+
+  it('removes the temp directory even when the fetch fails, and passes the failure on', async () => {
+    const tmpRoot = makeTmpRoot();
+    let destination = '';
+    await assert.rejects(
+      runRecall({
+        corpus: 'gsd-core',
+        tmpRoot,
+        out: () => undefined,
+        fetch: (options) => {
+          destination = options.destination;
+          fs.mkdirSync(path.join(options.destination, 'half-made'), { recursive: true });
+          return Promise.reject(new Error('fetch_failed: no network'));
+        },
+      }),
+      /fetch_failed: no network/,
+    );
+    assert.ok(destination.startsWith(tmpRoot));
+    assert.ok(!fs.existsSync(destination));
+  });
+
+  it('refuses a temp root inside the repository', async () => {
+    await assert.rejects(
+      runRecall({
+        corpus: 'gsd-core',
+        tmpRoot: path.join(repoRoot, 'scripts'),
+        out: () => undefined,
+        fetch: () => Promise.reject(new Error('must not be called')),
+      }),
+      /inside the repository/,
+    );
+  });
+
+  it('a pattern the oracle disagrees with shows as a failing row of its own and fails the run', async () => {
+    const withoutFunctions = (_module: string, kind: string, text: string): string =>
+      kind === 'tags'
+        ? text
+            .split(/\n\s*\n/)
+            .filter((block) => !block.includes('@definition.function'))
+            .join('\n\n')
+        : text;
+    const report = await runRecall({
+      corpus: 'gsd-core',
+      tmpRoot: makeTmpRoot(),
+      fetch: probeFetch(treeFiles).fetch,
+      out: () => undefined,
+      queryTransform: withoutFunctions,
+    });
+    assert.equal(report.ok, false);
+    for (const module of report.modules) {
+      assert.equal(module.rows.find((row) => row.construct === 'function')?.status, 'fail', `${module.module} function row`);
+      assert.equal(module.rows.find((row) => row.construct === 'class')?.status, 'ok', `${module.module} class row is unaffected`);
+    }
+  });
+
+  it('counts a file the engine cannot run as a failure of that file and keeps measuring the rest', async () => {
+    const huge = 'const a = 1;\n'.repeat(Math.ceil((2 * 1024 * 1024) / 13) + 10);
+    const report = await runRecall({
+      corpus: 'gsd-core',
+      tmpRoot: makeTmpRoot(),
+      fetch: probeFetch({ ...treeFiles, 'src/huge.cts': huge }).fetch,
+      out: () => undefined,
+    });
+    const typescript = report.modules[0];
+    assert.ok(typescript);
+    assert.equal(typescript.failures.length, 1);
+    assert.ok(typescript.failures[0]?.startsWith('src/huge.cts'));
+    assert.equal(report.ok, true, 'a failed file is counted, not fatal');
   });
 });
 
