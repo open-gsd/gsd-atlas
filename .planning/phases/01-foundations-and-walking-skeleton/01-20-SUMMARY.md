@@ -3,7 +3,7 @@ phase: 01-foundations-and-walking-skeleton
 plan: 20
 subsystem: command-runner
 tags: [git, command-runner, decide, filter-driver, utf-8, env-config, hostile-repo, gap-closure, CR-01, WR-01]
-status: draft
+status: complete
 gap_closure: true
 
 requires:
@@ -17,7 +17,7 @@ provides:
 affects: [phase-02 indexer, any later git call site]
 
 plan_head_before: 1e9d0775f0005d5bc0899695c4dd4e386864d8c1
-plan_head_after: b28e273
+plan_head_after: 5a1caa0
 commits: 4
 requirements-completed: []
 requirements-pending: [FND-05, FND-06]
@@ -46,7 +46,7 @@ completed: 2026-10-16
 
 **A repository whose filter driver name is not valid UTF-8 (or holds U+FFFD, an unpaired surrogate, NUL, LF, CR, or more than 1024 UTF-16 code units) can no longer run its clean command during SourceTree.snapshot(): enumeration fails closed with a GitConfigError before any hash-object, while valid but unusual names (non-ASCII, emoji, tab, leading or trailing space, exactly 1024 units) still snapshot normally, and the builder and the permission gate now share one name rule.**
 
-CI evidence: PENDING (Task 3). Status stays `draft` until the human replies with the push run id.
+CI evidence: push run 38896073556 and pull-request run 38896083789, both green on all ten jobs at head 5a1caa0 (see Task 3).
 
 ## Commits
 
@@ -114,7 +114,14 @@ Human items 1, 2, 3 and 5 of 01-VERIFICATION.md remain human decisions and are n
 
 ## Task 3: CI evidence
 
-PENDING (Task 3). To record after the human reply: push-event run id, `headSha`, conclusion of each of the ten jobs, any skipped positive control per OS, the pull-request-event run id or `pr-waived` with the reason, and confirmation from the Windows and Linux Test job logs that both new hostile groups ran without the `poison did not fire unprotected on this platform` line.
+Task 3 was done by the orchestrator under the user's standing authorization to push (the user stated there is no restriction on pushing or opening the PR).
+
+- Push to `ci/phase-1`: `2e59fc7..5a1caa0`. Push-event run **38896073556**, `headSha` 5a1caa09160e0e9dfadd93092579f3251d1c8d66, conclusion success.
+- Pull-request-event run **38896083789** (draft PR #10, `ci/phase-1` into `main`), same `headSha`, conclusion success. Not waived.
+- All ten jobs in both runs concluded success: Static checks; Test on ubuntu-latest, macos-latest and windows-latest at Node 24.16.0 and 26 (six); Grammar rebuild on the three OSes (three).
+- `git diff --quiet b28e273 5a1caa0 -- src scripts .github package.json package-lock.json` exits 0: the runs tested this plan's source (CODE_SHA b28e273).
+- Push-run logs, all six Test jobs (ubuntu, macos, windows at Node 24.16.0 and 26): both new hostile groups ('filter driver names the environment channel cannot carry' and 'unusual but representable filter driver names') ran, and the line `poison did not fire unprotected on this platform` appears zero times. No positive control was skipped on any of ubuntu, macos or windows.
+- Known risk from the plan (tab, space and 1024-unit names on the Windows environment channel) did not materialise: the Windows jobs pass.
 
 ## Known Stubs
 
