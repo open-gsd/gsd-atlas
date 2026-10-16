@@ -3,16 +3,16 @@ gsd_state_version: "1.0"
 current_phase: 02
 current_phase_name: Grammar Tier, Store and stdio Host
 status: executing
-stopped_at: Completed 02-18-PLAN.md
-last_updated: "2026-10-16T23:22:30.267Z"
+stopped_at: Completed 02-19-PLAN.md
+last_updated: "2026-10-16T23:45:55.286Z"
 last_activity: 2026-10-16
-last_activity_desc: Completed 02-18 Store upkeep and the size gate
-state_head: 462770020b5d85d3de1bbf641fc3f156318c31df
+last_activity_desc: Completed 02-19 Query answer surface (refs, context, impact, status)
+state_head: 5f19c11bff1f5fedcf5db0d03da602c6de294e3a
 progress:
   total_phases: 9
   completed_phases: 1
   total_plans: 48
-  completed_plans: 39
+  completed_plans: 40
   percent: 11
 ---
 
@@ -28,9 +28,9 @@ See: .planning/PROJECT.md (updated 2026-10-15)
 ## Current Position
 
 Phase: 02 (Grammar Tier, Store and stdio Host) — EXECUTING
-Plan: 19 of 28 complete (plans 02-01 to 02-18 and 02-21 complete; they ran out of order, next is the lowest-numbered incomplete plan, 02-19)
+Plan: 20 of 28 complete (plans 02-01 to 02-19 and 02-21 complete; they ran out of order, next is the lowest-numbered incomplete plan, 02-20)
 Status: Ready to execute
-Last activity: 2026-10-16 — Completed 02-18 (store upkeep: collect with guarded chunked deletes and name GC, compact in measured slices, check with rebuild, maintain under one budget; the 20,000-edit size gate reads ratio 1.0000 after a full compaction, 1.39 from the idle loop alone; src/fact-store, scripts/size-gate.ts)
+Last activity: 2026-10-16 — Completed 02-19 (Query answer surface: code_refs, code_context, code_impact with per-hop and chain confidence and the ADR golden example, atlas_status from injected ports, one shared keyset paging mechanism; src/query)
 
 Progress: [█░░░░░░░░░] 11%
 
@@ -46,7 +46,7 @@ Progress: [█░░░░░░░░░] 11%
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 01 | 20 | - | - |
-| 02 | 18 of 28 | - | - |
+| 02 | 20 of 28 | - | - |
 
 **Recent Trend:**
 - Last 5 plans: -
@@ -76,6 +76,7 @@ Progress: [█░░░░░░░░░] 11%
 | Phase 02 P16 | 15 min | 3 tasks | 19 files |
 | Phase 02 P17 | 21 min | 3 tasks | 19 files |
 | Phase 02 P18 | 24 min | 3 tasks | 10 files |
+| Phase 02 P19 | 16 min | 3 tasks | 19 files |
 
 ## Accumulated Context
 
@@ -142,6 +143,10 @@ Recent decisions affecting current work:
 - [Phase 02]: 02-18: deleting from the contentless FTS5 table leaves the connection's last-insert rowid above 2^53 and the SQLite kit then throws on the next run(); trigram rows go through exec and an ordinary insert-then-delete resets the rowid — Found when the second collect call threw IntegerOutOfRangeError; the Writer's first UPDATE after a collection would have thrown too. A kit-level fix (read lastInsertRowid only for inserts) is open for the kit owner
 - [Phase 02]: 02-18: a full compaction request also vacuums a file over a third empty inside pages (dbstat), not only one over a quarter free pages; the idle loop never vacuums — Measured: scattered deletes leave pages 45 percent empty that incremental vacuum never returns, so the 20,000-edit gate read 1.34 until a full compaction; after it the edited store equals a fresh build (655360 bytes, ratio 1.0000); idle-loop-only is 1.39, so plan 02-28 should schedule an occasional full compaction
 - [Phase 02]: 02-18: store.maintain takes the in-process writer slot and throws WriterBusy while the Indexer's writer is out; collect, compact and check need write authority only; stale-file refresh already worked in Writer.commitFile but Reconcile still attaches stale hashes through link (open for 02-20) — Specified WriterBusy contract; the Host releases the Indexer's writer around maintain or calls the three tasks directly; processBatch must extract and commit a path the store reports stale
+- [Phase 02]: 02-19: code_impact orders symbols before files inside a hop, then edge confidence, chain confidence and via; the plan prose (confidence first) contradicted its own ADR golden example — The golden worked example is the contract: load (INFERRED) must precede b.ts (EXTRACTED) at hop 1. Chain confidence is exact per path: importers are walked one hop at a time from each impacted file.
+- [Phase 02]: 02-19: every code tool pages through src/query/page.ts pageItems; hops, targets and candidates are capped (5 targets, per-hop row cap, 4x cap pre-cut) and any cut sets truncated plus a hint — T-02-65: depth clamp, row caps and target caps bound the work; the QRY-02 prohibition forbids hiding a capped expansion. Internal bounds not in 02-CONSTANTS.md: 5 targets or seeds, 5 alternatives, 10 context references, candidate factor 4.
+- [Phase 02]: 02-19: code_context composes imp/ and exp/ handles for a file's own imports and exports in Query, because the Reader returns no handle for them; parent and child handles come from Reader.symbol — Citation.debug is required. The imp/ shape matches the store's own importer records; open item for the explain work (Phase 3) to resolve or replace them.
+- [Phase 02]: 02-19: atlas_status counts stale and failed paths and never lists them, reduces the corrupt-file path to a rebuilt flag, and answers unavailable (without echoing the port's text) when a port is missing or throws — T-02-66 and the QRY-03 prohibition: state not benefit, no source text, no file paths beyond the repository root. StatusPort and IndexerStatusLike are structural so Query imports no Indexer; plan 02-20 wires them.
 
 ### Pending Todos
 
@@ -168,6 +173,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-10-16T23:22:30.213Z
-Stopped at: Completed 02-18-PLAN.md
+Last session: 2026-10-16T23:45:55.232Z
+Stopped at: Completed 02-19-PLAN.md
 Resume file: None

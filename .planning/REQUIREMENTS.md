@@ -58,8 +58,8 @@ Scope is the full PRD 1.0 (M0-M6), with M4 split into SDK facts, agent integrati
 ### Query, CLI and MCP (QRY)
 
 - [x] **QRY-01**: Every response carries `schema`, citations with debug handles, a watermark, a `degraded` flag and `untrusted_text`
-- [ ] **QRY-02**: `code_find`, `code_refs`, `code_context` and `code_impact` return ranked, cited results with inline matched line text, `budget_tokens` (default 2,000), a `more` cursor and a server-side output ceiling
-- [ ] **QRY-03**: `atlas_status` and `lang_list` report freshness, health, policy mode and active tiers
+- [x] **QRY-02**: `code_find`, `code_refs`, `code_context` and `code_impact` return ranked, cited results with inline matched line text, `budget_tokens` (default 2,000), a `more` cursor and a server-side output ceiling
+- [x] **QRY-03**: `atlas_status` and `lang_list` report freshness, health, policy mode and active tiers
 - [ ] **QRY-04**: The CLI and MCP tools return identical JSON for the same request; the CLI uses JSON on stdout, reasons on stderr and exit codes 0/1/2/3
 - [ ] **QRY-05**: Repo- and package-derived text is fenced with a random nonce and every derived field is normalized; injection text in a doc comment returns fenced
 - [ ] **QRY-06**: The default MCP tool profile is about 6 tools; the rest are opt-in or deferred
@@ -229,8 +229,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | IDX-03 | Phase 2 | Complete |
 | IDX-04 | Phase 2 | Pending |
 | QRY-01 | Phase 2 | Complete |
-| QRY-02 | Phase 2 | Pending |
-| QRY-03 | Phase 2 | Pending |
+| QRY-02 | Phase 2 | Complete |
+| QRY-03 | Phase 2 | Complete |
 | QRY-04 | Phase 2 | Pending |
 | QRY-05 | Phase 2 | Pending |
 | QRY-06 | Phase 2 | Pending |
