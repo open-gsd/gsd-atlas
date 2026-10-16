@@ -141,3 +141,59 @@ describe('runLangTest', () => {
     }
   });
 });
+
+describe('runLangTest confinement (T-01-37)', () => {
+  const skip = process.platform === 'win32' ? 'creating symlinks needs elevated rights on Windows' : false;
+
+  it('does not read a fixture that is a symlink pointing out of the module folder', { skip }, async () => {
+    const dir = copyToy(['basic.toy']);
+    const outside = path.join(tmp.path, 'outside.toy');
+    fs.writeFileSync(outside, 'fn secret {\n}\n');
+    const link = path.join(dir, 'fixtures', 'basic.toy');
+    fs.rmSync(link);
+    fs.symlinkSync(outside, link);
+    const report = await runLangTest({ target: dir, engine });
+    assert.equal(report.ok, false);
+    assert.deepEqual(
+      report.diagnostics.map((d) => d.code),
+      ['path_escape'],
+    );
+    assert.ok(!JSON.stringify(report).includes('secret'));
+  });
+
+  it('does not read a golden that is a symlink pointing out of the module folder', { skip }, async () => {
+    const dir = copyToy(['basic.toy']);
+    const outside = path.join(tmp.path, 'outside.golden.json');
+    fs.copyFileSync(path.join(dir, 'fixtures', 'basic.toy.golden.json'), outside);
+    const link = path.join(dir, 'fixtures', 'basic.toy.golden.json');
+    fs.rmSync(link);
+    fs.symlinkSync(outside, link);
+    const report = await runLangTest({ target: dir, engine });
+    assert.equal(report.ok, false);
+    assert.deepEqual(
+      report.diagnostics.map((d) => d.code),
+      ['path_escape'],
+    );
+  });
+
+  it('refuses a fixture over the size cap without reading it into the engine', async () => {
+    const dir = copyToy(['basic.toy']);
+    fs.writeFileSync(path.join(dir, 'fixtures', 'basic.toy'), Buffer.alloc(2 * 1024 * 1024 + 1, 0x61));
+    const report = await runLangTest({ target: dir, engine });
+    assert.equal(report.ok, false);
+    assert.deepEqual(
+      report.diagnostics.map((d) => d.code),
+      ['fixture_unreadable'],
+    );
+  });
+
+  it('reports a fixture that is not valid UTF-8 as fixture_unreadable', async () => {
+    const dir = copyToy(['basic.toy']);
+    fs.writeFileSync(path.join(dir, 'fixtures', 'basic.toy'), Buffer.from([0x66, 0x6e, 0xc3, 0x28]));
+    const report = await runLangTest({ target: dir, engine });
+    assert.deepEqual(
+      report.diagnostics.map((d) => d.code),
+      ['fixture_unreadable'],
+    );
+  });
+});

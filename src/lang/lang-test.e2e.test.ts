@@ -32,15 +32,22 @@ interface Outcome {
   readonly envelope: { readonly schema: string; readonly ok: boolean; readonly data: unknown; readonly diagnostics: Diag[] };
 }
 
-async function atlas(args: readonly string[]): Promise<Outcome> {
+async function spawnAtlas(args: readonly string[]): Promise<{ exitCode: number | null; stdout: string; stderr: string }> {
   const result = await runner.run({ executable: process.execPath, args: [BIN, ...args] });
-  const stdout = Buffer.from(result.stdout).toString('utf8');
-  const stderr = Buffer.from(result.stderr).toString('utf8');
   assert.equal(result.spawnError, undefined, 'the bin must start');
+  return {
+    exitCode: result.exitCode,
+    stdout: Buffer.from(result.stdout).toString('utf8'),
+    stderr: Buffer.from(result.stderr).toString('utf8'),
+  };
+}
+
+async function atlas(args: readonly string[]): Promise<Outcome> {
+  const { stdout, stderr, exitCode } = await spawnAtlas(args);
   const lines = stdout.split('\n').filter((line) => line !== '');
   assert.equal(lines.length, 1, `stdout carries exactly one JSON envelope, got: ${stdout}`);
   assert.ok(stdout.endsWith('\n'));
-  return { exitCode: result.exitCode, stdout, stderr, envelope: JSON.parse(lines[0]!) as Outcome['envelope'] };
+  return { exitCode, stdout, stderr, envelope: JSON.parse(lines[0]!) as Outcome['envelope'] };
 }
 
 let counter = 0;
@@ -133,5 +140,186 @@ describe('gsd-atlas lang test, as a real process', () => {
     );
     assert.match(out.stderr, /^gsd-atlas: error module_not_found: /);
     assert.ok(!out.stderr.includes('    at '), 'no stack trace');
+  });
+});
+
+/** [query, name, startLine, startColumn, endLine, endColumn, text], typed by hand from the fixture bytes (not from the engine). */
+type Row = readonly [string, string, number, number, number, number, string];
+
+function rowsOf(fixture: string): Row[] {
+  return readGolden(fixture).captures.map((c): Row => [c.query, c.name, c.startLine, c.startColumn, c.endLine, c.endColumn, c.text]);
+}
+
+const BASIC_ROWS: readonly Row[] = [
+  ['imports', 'import.path', 1, 4, 1, 14, '"lib/util"'],
+  ['tags', 'definition.function', 2, 0, 4, 1, 'fn main {\n  helper();\n}'],
+  ['tags', 'name', 2, 3, 2, 7, 'main'],
+  ['refs', 'reference.call', 3, 2, 3, 8, 'helper'],
+  ['tags', 'definition.type', 5, 0, 6, 1, 'type Widget {\n}'],
+  ['tags', 'name', 5, 5, 5, 11, 'Widget'],
+];
+
+describe('toy goldens: hand-verified UTF-16, CRLF and BOM numbers (D-02)', () => {
+  it('emoji.toy: the emoji counts as two UTF-16 units, so later columns move by two, not four', () => {
+    // line 1 is `use "a<U+1F600>b";`: `use ` is 4 units, the string is quote, a, 2 emoji units, b, quote = 6 units.
+    // line 2 is `fn h<e-acute>llo {`: the name starts after `fn ` (3) and has 5 units.
+    // line 3 is `  call();`: the call target starts after two spaces and has 4 units.
+    const rows = rowsOf('emoji.toy');
+    assert.deepEqual(rows, [
+      ['imports', 'import.path', 1, 4, 1, 10, '"a\u{1F600}b"'],
+      ['tags', 'definition.function', 2, 0, 4, 1, 'fn héllo {\n  call();\n}'],
+      ['tags', 'name', 2, 3, 2, 8, 'héllo'],
+      ['refs', 'reference.call', 3, 2, 3, 6, 'call'],
+    ]);
+    assert.equal(rows[0]![6].length, 6, 'the string token is six UTF-16 code units');
+    assert.equal(readGolden('emoji.toy').hadBom, false);
+  });
+
+  it('crlf.toy: same positions as basic.toy; text differs only by the \\r the file really contains', () => {
+    const rows = rowsOf('crlf.toy');
+    assert.equal(rows.length, BASIC_ROWS.length);
+    rows.forEach((row, i) => {
+      const want = BASIC_ROWS[i]!;
+      assert.deepEqual(row.slice(0, 6), want.slice(0, 6), `capture ${String(i)} span`);
+      assert.equal(row[6], want[6].replaceAll('\n', '\r\n'), `capture ${String(i)} text`);
+    });
+    assert.equal(readGolden('crlf.toy').hadBom, false);
+  });
+
+  it('bom.toy: hadBom is true and the name a sits at line 0 columns 3 to 4 once the BOM is stripped', () => {
+    const golden = readGolden('bom.toy');
+    assert.equal(golden.hadBom, true);
+    assert.deepEqual(rowsOf('bom.toy'), [
+      ['tags', 'definition.function', 0, 0, 1, 1, 'fn a {\n}'],
+      ['tags', 'name', 0, 3, 0, 4, 'a'],
+    ]);
+  });
+
+  it('basic.toy keeps its typed numbers', () => {
+    assert.deepEqual(rowsOf('basic.toy'), BASIC_ROWS);
+  });
+
+  it('writes the goldens as LF-only JSON with the convention text', () => {
+    for (const name of ['basic', 'emoji', 'crlf', 'bom']) {
+      const bytes = fs.readFileSync(path.join(TOY, 'fixtures', `${name}.toy.golden.json`));
+      assert.ok(!bytes.includes(0x0d), `${name}.toy.golden.json has no CR byte`);
+      assert.equal(bytes[0], 0x7b, `${name}.toy.golden.json has no BOM`);
+      assert.ok(bytes.toString('utf8').includes('"convention": "0-based line, 0-based UTF-16 column, end exclusive"'));
+    }
+  });
+});
+
+describe('gsd-atlas lang test: exit codes and diagnostics', () => {
+  it('runs the unmodified toy module over all four fixtures and exits 0', async () => {
+    const out = await atlas(['lang', 'test', TOY]);
+    assert.equal(out.exitCode, 0, out.stderr);
+    assert.deepEqual(out.envelope.data, {
+      ok: true,
+      module: 'toy',
+      fixtures: [
+        { file: 'basic.toy', ok: true },
+        { file: 'bom.toy', ok: true },
+        { file: 'crlf.toy', ok: true },
+        { file: 'emoji.toy', ok: true },
+      ],
+      diagnostics: [],
+    });
+  });
+
+  it('works when the module folder is an absolute path containing spaces', async () => {
+    const dir = copyToy();
+    assert.ok(dir.includes(' '));
+    assert.ok(path.isAbsolute(dir));
+    const out = await atlas(['lang', 'test', dir]);
+    assert.equal(out.exitCode, 0, out.stderr);
+  });
+
+  it('exits 2 with golden_mismatch naming the fixture, the capture and both values', async () => {
+    const dir = copyToy();
+    const goldenPath = path.join(dir, 'fixtures', 'emoji.toy.golden.json');
+    const golden = JSON.parse(fs.readFileSync(goldenPath, 'utf8')) as { captures: Array<Record<string, unknown>> };
+    assert.equal(golden.captures[0]!['endColumn'], 10);
+    golden.captures[0]!['endColumn'] = 9;
+    fs.writeFileSync(goldenPath, `${JSON.stringify(golden, null, 2)}\n`);
+
+    const out = await atlas(['lang', 'test', dir]);
+    assert.equal(out.exitCode, 2);
+    assert.equal(out.envelope.ok, false);
+    const [problem, ...rest] = out.envelope.diagnostics;
+    assert.deepEqual(rest, []);
+    assert.equal(problem?.code, 'golden_mismatch');
+    assert.ok(problem.message.includes('emoji.toy'));
+    assert.ok(problem.message.includes('capture 0 field endColumn'));
+    assert.ok(problem.message.includes('expected 9, actual 10'));
+    assert.match(out.stderr, /^gsd-atlas: error golden_mismatch: emoji\.toy: /);
+  });
+
+  it('exits 2 with golden_missing when a golden file is absent', async () => {
+    const dir = copyToy();
+    fs.rmSync(path.join(dir, 'fixtures', 'bom.toy.golden.json'));
+    const out = await atlas(['lang', 'test', dir]);
+    assert.equal(out.exitCode, 2);
+    assert.deepEqual(
+      out.envelope.diagnostics.map((d) => d.code),
+      ['golden_missing'],
+    );
+    assert.ok(out.envelope.diagnostics[0]!.message.includes('bom.toy'));
+  });
+
+  it('exits 2 with wasm_hash_mismatch when grammar.wasm was tampered with, without an ABI crash', async () => {
+    const dir = copyToy();
+    const wasmPath = path.join(dir, 'grammar.wasm');
+    const bytes = fs.readFileSync(wasmPath);
+    bytes[bytes.length - 1] = bytes[bytes.length - 1]! ^ 0xff;
+    fs.writeFileSync(wasmPath, bytes);
+    const out = await atlas(['lang', 'test', dir]);
+    assert.equal(out.exitCode, 2);
+    assert.deepEqual(
+      out.envelope.diagnostics.map((d) => d.code),
+      ['wasm_hash_mismatch'],
+    );
+    assert.ok(!out.stderr.includes('    at '), 'no stack trace');
+  });
+
+  it('exits 2 with manifest_invalid and no stack trace for an invalid manifest', async () => {
+    const dir = copyToy();
+    fs.writeFileSync(path.join(dir, 'atlas-lang.json'), '{}');
+    const out = await atlas(['lang', 'test', dir]);
+    assert.equal(out.exitCode, 2);
+    assert.equal(out.envelope.ok, false);
+    assert.ok(out.envelope.diagnostics.length > 0);
+    assert.ok(out.envelope.diagnostics.every((d) => d.code === 'manifest_invalid'));
+    assert.match(out.stderr, /^gsd-atlas: warning manifest_invalid: /);
+    assert.ok(!out.stderr.includes('    at '), 'no stack trace');
+  });
+
+  it('exits 2 with manifest_unreadable for a folder without a manifest', async () => {
+    const dir = path.join(temp.path, 'bare folder');
+    fs.mkdirSync(dir);
+    const out = await atlas(['lang', 'test', dir]);
+    assert.equal(out.exitCode, 2);
+    assert.deepEqual(
+      out.envelope.diagnostics.map((d) => d.code),
+      ['manifest_unreadable'],
+    );
+  });
+
+  it('exits 1 for a missing target, an unknown command and an unsupported flag', async () => {
+    for (const args of [['lang', 'test'], ['lang', 'test', 'a', 'b'], ['lang', 'frobnicate'], ['lang', 'test', TOY, '--json'], []]) {
+      const out = await spawnAtlas(args);
+      assert.equal(out.exitCode, 1, `args ${JSON.stringify(args)}`);
+      assert.equal(out.stdout, '', 'a usage error prints no envelope');
+      assert.match(out.stderr, /^gsd-atlas: /);
+      assert.ok(!out.stderr.includes('    at '), 'no stack trace');
+    }
+  });
+
+  it('prints the version and usage with exit 0', async () => {
+    const version = await spawnAtlas(['--version']);
+    assert.equal(version.exitCode, 0);
+    assert.match(version.stdout, /^gsd-atlas \d+\.\d+\.\d+/);
+    const help = await spawnAtlas(['--help']);
+    assert.equal(help.exitCode, 0);
+    assert.match(help.stdout, /lang test <module-folder>/);
   });
 });

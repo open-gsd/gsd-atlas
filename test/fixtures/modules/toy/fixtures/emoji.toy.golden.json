@@ -1,0 +1,44 @@
+{
+  "schema": 1,
+  "fixture": "emoji.toy",
+  "convention": "0-based line, 0-based UTF-16 column, end exclusive",
+  "hadBom": false,
+  "captures": [
+    {
+      "query": "imports",
+      "name": "import.path",
+      "startLine": 1,
+      "startColumn": 4,
+      "endLine": 1,
+      "endColumn": 10,
+      "text": "\"a😀b\""
+    },
+    {
+      "query": "tags",
+      "name": "definition.function",
+      "startLine": 2,
+      "startColumn": 0,
+      "endLine": 4,
+      "endColumn": 1,
+      "text": "fn héllo {\n  call();\n}"
+    },
+    {
+      "query": "tags",
+      "name": "name",
+      "startLine": 2,
+      "startColumn": 3,
+      "endLine": 2,
+      "endColumn": 8,
+      "text": "héllo"
+    },
+    {
+      "query": "refs",
+      "name": "reference.call",
+      "startLine": 3,
+      "startColumn": 2,
+      "endLine": 3,
+      "endColumn": 6,
+      "text": "call"
+    }
+  ]
+}
