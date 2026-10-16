@@ -13,4 +13,6 @@ export const GRAMMAR_LIMITS = {
   manifestBytes: 64 * 1024,
   /** Longest captured node whose text is kept, in UTF-16 code units; a longer node yields an empty string (T-02-21). */
   captureTextChars: 256,
+  /** The largest `matchLimit` web-tree-sitter 0.27.1 documents for a query (QueryOptions.matchLimit: > 0 and <= 65536). */
+  matchLimitMax: 65536,
 } as const;

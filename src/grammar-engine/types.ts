@@ -59,6 +59,30 @@ export interface LoadedGrammar {
   dispose(): Promise<void>;
 }
 
+/**
+ * Optional run limits for an engine (T-02-19). Both are off by default: the engine has no deadline
+ * of its own, the caller (the Indexer and the worker pool) passes the approved indexer.parseTimeoutMs.
+ */
+export interface GrammarEngineOptions {
+  /**
+   * Most query matches in flight at once, an integer from 1 to `GRAMMAR_LIMITS.matchLimitMax`. A run
+   * that goes over rejects with `GrammarRunError` code `match_limit_exceeded` rather than returning
+   * a silently truncated capture list. web-tree-sitter reuses capture lists it allocated earlier in
+   * the process, so a limit below an earlier run's high-water mark is not retroactive: give every
+   * engine of one process the same limit.
+   */
+  readonly matchLimit?: number;
+  /**
+   * Per-file parse deadline in milliseconds (finite and above 0). web-tree-sitter 0.27.1 cancels a
+   * parse when its progress callback returns true (documented on `ParseOptions.progressCallback`
+   * and `Parser.parse`, although the typings declare the callback as returning void); the engine
+   * then rejects with code `parse_timeout` and resets the parser so the next parse starts clean.
+   * The deadline is checked inside the parse only, not while queries run. The worker pool still
+   * enforces a hard deadline by terminating a stuck worker.
+   */
+  readonly parseTimeoutMs?: number;
+}
+
 export interface GrammarEngine {
   load(input: GrammarInput): Promise<LoadedGrammar>;
   /** Dispose every grammar still loaded. Safe to call twice. */

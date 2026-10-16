@@ -17,6 +17,7 @@ export { stripBom } from './normalize.ts';
 export type {
   Capture,
   GrammarEngine,
+  GrammarEngineOptions,
   GrammarInput,
   GrammarRunResult,
   LoadedGrammar,
