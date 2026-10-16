@@ -1,0 +1,62 @@
+{
+  "schema": 1,
+  "fixture": "basic.cjs",
+  "convention": "0-based line, 0-based UTF-16 column, end exclusive",
+  "hadBom": false,
+  "captures": [
+    {
+      "query": "tags",
+      "name": "definition.function",
+      "startLine": 2,
+      "startColumn": 0,
+      "endLine": 4,
+      "endColumn": 1,
+      "text": "function greet(name) {\n  return `hello ${name}`;\n}"
+    },
+    {
+      "query": "tags",
+      "name": "name",
+      "startLine": 2,
+      "startColumn": 9,
+      "endLine": 2,
+      "endColumn": 14,
+      "text": "greet"
+    },
+    {
+      "query": "tags",
+      "name": "definition.class",
+      "startLine": 6,
+      "startColumn": 0,
+      "endLine": 10,
+      "endColumn": 1,
+      "text": "class Greeter {\n  constructor(prefix) {\n    this.prefix = prefix;\n  }\n}"
+    },
+    {
+      "query": "tags",
+      "name": "name",
+      "startLine": 6,
+      "startColumn": 6,
+      "endLine": 6,
+      "endColumn": 13,
+      "text": "Greeter"
+    },
+    {
+      "query": "tags",
+      "name": "name",
+      "startLine": 12,
+      "startColumn": 6,
+      "endLine": 12,
+      "endColumn": 11,
+      "text": "shout"
+    },
+    {
+      "query": "tags",
+      "name": "definition.function",
+      "startLine": 12,
+      "startColumn": 6,
+      "endLine": 12,
+      "endColumn": 42,
+      "text": "shout = (text) => text.toUpperCase()"
+    }
+  ]
+}

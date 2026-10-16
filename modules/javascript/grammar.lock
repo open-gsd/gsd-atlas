@@ -1,0 +1,25 @@
+{
+  "lockVersion": 2,
+  "name": "javascript",
+  "source": {
+    "type": "upstream",
+    "url": "https://registry.npmjs.org/tree-sitter-javascript/-/tree-sitter-javascript-0.25.0.tgz",
+    "ref": "0.25.0",
+    "archiveSha256": "6214ce23d03aba525ba8edd6ca7caf365c969f2c2dbfc353e376ca54507ffb92",
+    "generate": false
+  },
+  "patches": [],
+  "license": "MIT",
+  "cli": {
+    "version": "0.27.1"
+  },
+  "abi": 15,
+  "wasm": {
+    "file": "grammar.wasm",
+    "sha256": "7ccbce5ba189363aee524c4be7f3a0bdb25b961d4c6d2472a8f3aeb526eecbfe",
+    "platforms": {
+      "linux-x64": "7ccbce5ba189363aee524c4be7f3a0bdb25b961d4c6d2472a8f3aeb526eecbfe",
+      "darwin-arm64": "7ccbce5ba189363aee524c4be7f3a0bdb25b961d4c6d2472a8f3aeb526eecbfe"
+    }
+  }
+}
