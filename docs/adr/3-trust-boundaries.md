@@ -1,7 +1,8 @@
 # ADR: Trust boundaries
 
-- **Status:** Proposed
-- **Issue:** to be opened (rename to `<issue#>-trust-boundaries.md`)
+- **Status:** Accepted
+- **Issue:** [#3](https://github.com/open-gsd/gsd-atlas/issues/3)
+- **Ratified:** 2026-10-15
 - **DESIGN.md:** A9, A16, A27, A44
 - **Review findings addressed:** S‑1, S‑2, S‑3, S‑4, SDK‑1
 
@@ -21,7 +22,11 @@ gsd‑atlas indexes code the user didn't write: cloned repos, dependencies, SDKs
    | Repo or npm language modules | No. Grammars (sandboxed WebAssembly) and queries are data; their commands need user approval per repo and per command |
    | Agents | No. Policy overrides come only from the user |
 
-\1 All of them start through one CommandRunner that alone decides permission from a provider's `CommandSpec` ([draft-command-runner](draft-command-runner.md)). The TypeScript adapter's in‑process load of the project's `typescript` is a sandboxed built‑in: worker, no network, tsconfig `plugins` ignored.
+2. **Commands.**
+   - Grammars (sandboxed WebAssembly) and queries (data) are always allowed.
+   - Built‑in first‑party providers with fixed command lines run by default and can be turned off.
+   - Any other command needs user approval per repo and per command, and never runs through MCP unless the host was started with `--allow-build`.
+   - All of them start through one CommandRunner that alone decides permission from a provider's `CommandSpec` ([4-command-runner](4-command-runner.md)). The TypeScript adapter's in‑process load of the project's `typescript` is a sandboxed built‑in: worker, no network, tsconfig `plugins` ignored.
 3. **Endpoint.**
    - Unix socket or named pipe preferred; loopback HTTP at a fixed port otherwise.
    - A token is required on every route.

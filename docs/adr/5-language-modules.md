@@ -1,7 +1,8 @@
 # ADR: Languages are modules (data, not code)
 
-- **Status:** Proposed
-- **Issue:** to be opened (rename to `<issue#>-language-modules.md`)
+- **Status:** Accepted
+- **Issue:** [#5](https://github.com/open-gsd/gsd-atlas/issues/5)
+- **Ratified:** 2026-10-15
 - **DESIGN.md:** A6, A7, A9, A25, A47, A48
 - **Review findings addressed:** LM‑1, LM‑2, LM‑3, LM‑4, LM‑5, SDK‑1, S‑1 (module side)
 
@@ -33,7 +34,8 @@ The design review measured grammar drift: the third‑party `tree-sitter-wasms` 
 5. **Who may run commands** (with the trust‑boundaries ADR):
    - Grammars (sandboxed WebAssembly) and queries (data) are always allowed.
    - Built‑in first‑party providers with fixed command lines run by default and can be turned off. Examples: the TypeScript adapter loading the project's `typescript` package; `git`; on macOS, `xcrun` and `swift symbolgraph-extract`.
-\1\n   - All of it runs through the one CommandRunner ([draft-command-runner](draft-command-runner.md)).
+   - Any other command (a module's `precise.command`, a third‑party SCIP indexer) runs only when allowed in user‑level config (`~/.config/gsd-atlas/`), per repo and per command. Repo‑committed config and repo or npm modules can never grant it, and it never runs through MCP unless the host was started with `--allow-build`.
+   - All of it runs through the one CommandRunner ([4-command-runner](4-command-runner.md)).
 6. **Grammar supply:**
    - Grammars are built by gsd‑atlas's own build from pinned upstream tree‑sitter releases, never taken from third‑party WASM bundles.
    - Each module has a parse‑error budget (≤ 0.5 % of files) checked in CI on the reference corpora.

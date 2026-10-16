@@ -1,10 +1,11 @@
 # ADR: Fact Store module and its interface
 
-- **Status:** Proposed
-- **Issue:** to be opened (rename to `<issue#>-fact-store-interface.md`)
+- **Status:** Accepted
+- **Issue:** [#7](https://github.com/open-gsd/gsd-atlas/issues/7)
+- **Ratified:** 2026-10-15
 - **DESIGN.md:** A2, A3, A5, A17, A20, A21, A26, A45, A46
-- **Edits in place (drafts):** [draft-sqlite-store](draft-sqlite-store.md) decision 1 and DESIGN.md A3 now point here instead of describing a SQL‑level "driver interface".
-- **Refines:** [draft-worktree-lifecycle](draft-worktree-lifecycle.md), [draft-fact-model](draft-fact-model.md)
+- **Edits in place (drafts):** [8-sqlite-store](8-sqlite-store.md) decision 1 and DESIGN.md A3 now point here instead of describing a SQL‑level "driver interface".
+- **Refines:** [draft-worktree-lifecycle](draft-worktree-lifecycle.md), [6-fact-model](6-fact-model.md)
 
 ## Context
 The store's behaviour is described across A2, A3, A5, A17, A20, A21, A26 and A45, and by the table list in DESIGN.md. No decision names the module, so each caller (indexer, MCP tools, hooks, daemon maintenance, `history`, CLI) would learn the schema and the lifecycle rules itself. A3's "driver interface" is a SQL-level seam: it would let callers write SQL, which makes the "swap the engine without touching modules, tools or the CLI" escape hatch false.
@@ -18,7 +19,7 @@ Four interfaces were designed independently (minimal, flexible, optimised for th
    - Cheap, lock-free, read-only connection.
    - Methods: `find(name, {mode, limit})`, `refs(id, opts)`, `callers(id, {hops})`, `symbol(id)`, `fileFacts(path)`.
    - Every method returns `Answer<T> = { data, watermark, degraded? }`, which is the MCP envelope's core (see draft-mcp-contract).
-   - Reads report `stalePaths` in the watermark and never wait. Read‑your‑writes (A26) is `Indexer.ensureFresh`, called by Query before it reads ([draft-tenant-composition](draft-tenant-composition.md)).
+   - Reads report `stalePaths` in the watermark and never wait. Read‑your‑writes (A26) is `Indexer.ensureFresh`, called by Query before it reads ([9-tenant-composition](9-tenant-composition.md)).
    - Reads never throw for missing data; they return empty `data` with `degraded`. They throw only `UnknownWorktree` and `StoreClosed`.
 4. **Resolution is hidden.**
    - `refs` and `callers` call the injected resolver lazily and cache by (overlay snapshot, resolution context hash).
@@ -51,5 +52,5 @@ Four interfaces were designed independently (minimal, flexible, optimised for th
 ## Alternatives considered
 - **SQL-level driver as the external seam (A3 as written):** every caller knows the schema and the one-transaction-per-file rule; nothing is hidden.
 - **Two entry points, `read(q)` / `write(op)` over tagged unions:** maximal leverage per entry point, but becomes stringly typed; `maintain` bundles unrelated tasks and `status` blurs queries and health.
-- **Predicate registry with generic queries:** extensible, but about twice the interface, loosely typed rows, and the 0.7 ms / 5 ms budgets hold only for built-in predicates. Conflicts with draft-fact-model's rule that new predicates need an ADR.
+- **Predicate registry with generic queries:** extensible, but about twice the interface, loosely typed rows, and the 0.7 ms / 5 ms budgets hold only for built-in predicates. Conflicts with 6-fact-model's rule that new predicates need an ADR.
 - **In-memory fake FactStore:** a second adapter of little value that drifts from real behaviour.

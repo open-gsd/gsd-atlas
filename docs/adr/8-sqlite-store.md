@@ -1,7 +1,8 @@
 # ADR: SQLite store, durability and size discipline
 
-- **Status:** Proposed
-- **Issue:** to be opened (rename to `<issue#>-sqlite-store.md`)
+- **Status:** Accepted
+- **Issue:** [#8](https://github.com/open-gsd/gsd-atlas/issues/8)
+- **Ratified:** 2026-10-15
 - **DESIGN.md:** A3, A4, A13, A17, A18, A50
 - **Review findings addressed:** ST‑1, ST‑2, ST‑3, ST‑4, E‑1
 
@@ -9,7 +10,7 @@
 The store must answer in milliseconds, update per file save, survive crashes, stay small and never corrupt, on macOS, Linux and Windows. Other local tools have shown multi‑GB stores and frequent corruption (MemPalace keeps verbatim text in ChromaDB by default; Chroma's own maintenance guide describes index growth and fragmentation). The design review found that the benchmarks didn't cover fuzzy search or real reference distributions, and that refusing synced folders would strand common setups.
 
 ## Decision
-1. **Engine:** SQLite through `node:sqlite`, WAL mode, `synchronous=NORMAL`, behind the Fact Store module ([draft-fact-store-interface](draft-fact-store-interface.md)), whose interface is fact‑level. The SQL driver is internal to it. `better-sqlite3` is kept working, not just listed, and one conformance suite runs against both drivers on every supported Node minor in CI.
+1. **Engine:** SQLite through `node:sqlite`, WAL mode, `synchronous=NORMAL`, behind the Fact Store module ([7-fact-store-interface](7-fact-store-interface.md)), whose interface is fact‑level. The SQL driver is internal to it. `better-sqlite3` is kept working, not just listed, and one conformance suite runs against both drivers on every supported Node minor in CI.
 2. **Runtime and platforms:** TypeScript, Node ≥ 24; macOS, Linux and Windows.
 3. **Location:** per‑repo store in `$(git rev-parse --git-common-dir)/gsd-atlas/`. It moves automatically (one notice, never a refusal) to `${XDG_CACHE_HOME:-~/.cache}/gsd-atlas/<repo-id>` for non‑git roots, a read‑only `.git`, or a repo inside iCloud Drive, Dropbox, OneDrive, Google Drive or a network mount. `store.dir` overrides. Never committed.
 4. **Derived, rebuildable:** source is the truth. A failed `quick_check` moves the file aside and rebuilds. A schema change rebuilds each repo lazily at low priority on first use, serving still‑valid facts marked stale meanwhile.

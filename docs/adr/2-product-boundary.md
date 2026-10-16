@@ -1,7 +1,8 @@
 # ADR: gsd‑atlas product boundary
 
-- **Status:** Proposed
-- **Issue:** to be opened (rename this file to `<issue#>-product-boundary.md`)
+- **Status:** Accepted
+- **Issue:** [#2](https://github.com/open-gsd/gsd-atlas/issues/2)
+- **Ratified:** 2026-10-15
 - **DESIGN.md:** A1, A13, A14, A16
 - **Review findings addressed:** P‑1, P‑2, P‑3, O‑1
 

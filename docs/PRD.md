@@ -190,7 +190,7 @@ Full model: trust‑boundaries ADR.
 | `uses_sdk_symbol` | Symbol → SdkSymbol | Precise / Platform |
 | `targets_platform` | Target → Platform version | Platform |
 
-Entity kinds: `File`, `Package`, `Symbol` (with `kind`), `SdkSymbol`, `Sdk` (e.g. `sdk:ios-27.0-27A266a-device`), `Target`. \1 Availability (introduced, deprecated, obsoleted, renamed, per axis) is data on SDK symbols, not predicates; storage is typed tables.
+Entity kinds: `File`, `Package`, `Symbol` (with `kind`), `SdkSymbol`, `Sdk` (e.g. `sdk:ios-27.0-27A266a-device`), `Target`. Availability (introduced, deprecated, obsoleted, renamed, per axis) is data on SDK symbols, not predicates; storage is typed tables.
 
 **Two layers (fact‑model ADR):** *local facts* (definitions, containment, imports and reference sites as written) are keyed by file content and shared across branches; *resolved edges* (a reference bound to its target) depend on the rest of the project and are keyed by the overlay snapshot plus the resolution context (config files and lockfile). Symbol identity is (repo, path, qualified name, kind, overload discriminator), so edits don't break references. ADR ids resolve against the repo's ADR directory; ambiguous ids point at every candidate as `INFERRED`.
 
