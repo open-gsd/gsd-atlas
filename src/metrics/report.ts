@@ -1,6 +1,6 @@
 import type { Db } from '../sqlite/index.ts';
 import { LAG_BUCKETS_MS, LATENCY_BUCKETS_MS, OVERFLOW_LABEL, bucketLabels, dayBucket, hourBucket } from './types.ts';
-import type { HistogramReport, MetricsRange, MetricsReport } from './types.ts';
+import type { HistogramReport, IndexHealthReport, MetricsRange, MetricsReport } from './types.ts';
 
 /** A histogram with every bucket at zero and no percentiles. */
 export function emptyHistogram(edges: readonly number[]): HistogramReport {
@@ -89,6 +89,8 @@ export function buildReport(db: Db, range: MetricsRange): MetricsReport {
   const truncated = new Map<string, number>();
   const tokens = new Map<string, number>();
   const latency = new Map<string, number>();
+  const lag = new Map<string, number>();
+  const degraded = new Map<string, number>();
   for (const row of rows) {
     const metric = String(row.metric);
     const dim = String(row.dim);
@@ -97,6 +99,8 @@ export function buildReport(db: Db, range: MetricsRange): MetricsReport {
     else if (metric === 'answers_ok') add(oks, dim, value);
     else if (metric === 'answers_truncated') add(truncated, dim, value);
     else if (metric === 'tokens_estimated') add(tokens, dim, value);
+    else if (metric === 'degraded') add(degraded, dim, value);
+    else if (metric === 'freshness_lag_ms_bucket') add(lag, dim, value);
     else if (metric === 'latency_ms_bucket') add(latency, dim.slice(dim.indexOf('|') + 1), value);
   }
   const sum = (map: ReadonlyMap<string, number>): number => [...map.values()].reduce((a, b) => a + b, 0);
@@ -110,9 +114,27 @@ export function buildReport(db: Db, range: MetricsRange): MetricsReport {
       truncated: sum(truncated),
       latency: histogramReport(LATENCY_BUCKETS_MS, latency),
     },
-    degraded: {},
-    freshness: emptyHistogram(LAG_BUCKETS_MS),
-    indexHealth: null,
+    degraded: nonZero(degraded),
+    freshness: histogramReport(LAG_BUCKETS_MS, lag),
+    indexHealth: readIndexHealth(db),
     tokens: { estimatedTotal: sum(tokens), byTool: nonZero(tokens), label: 'estimate' },
+  };
+}
+
+/** The latest index-health gauges, whatever the report range; null when none was ever recorded. */
+function readIndexHealth(db: Db): IndexHealthReport | null {
+  const values = new Map<string, number>();
+  let at = 0;
+  for (const row of db.prepare('select metric, value, at from gauges').all()) {
+    values.set(String(row.metric), Number(row.value));
+    at = Math.max(at, Number(row.at));
+  }
+  if (values.size === 0) return null;
+  return {
+    files: values.get('index_files') ?? 0,
+    errorFiles: values.get('index_error_files') ?? 0,
+    staleFiles: values.get('index_stale_files') ?? 0,
+    sizeBytes: values.get('index_size_bytes') ?? 0,
+    at,
   };
 }

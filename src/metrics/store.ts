@@ -5,8 +5,19 @@ import type { Db } from '../sqlite/index.ts';
 import { MIGRATIONS, migrate } from './migrations.ts';
 import { createNoopMetrics } from './noop.ts';
 import { buildReport, emptyReport } from './report.ts';
-import { DIM_NONE, LATENCY_BUCKETS_MS, METRICS_DEFAULTS, bucketLabelFor, hourBucket } from './types.ts';
-import type { AnswerEvent, CounterMetric, Metrics, MetricsDeps, MetricsEvent, MetricsOptions, MetricsReport } from './types.ts';
+import { rollupCounters } from './rollup.ts';
+import { DIM_NONE, LAG_BUCKETS_MS, LATENCY_BUCKETS_MS, METRICS_DEFAULTS, bucketLabelFor, hourBucket } from './types.ts';
+import type {
+  AnswerEvent,
+  CounterMetric,
+  GaugeMetric,
+  IndexHealthEvent,
+  Metrics,
+  MetricsDeps,
+  MetricsEvent,
+  MetricsOptions,
+  MetricsReport,
+} from './types.ts';
 import { validateEvent } from './validate.ts';
 
 /** An accepted event with the instant the recorder stamped on it. */
@@ -51,11 +62,23 @@ function answerDeltas(event: AnswerEvent): Delta[] {
   const out: Delta[] = [
     ['answers_calls', event.tool, 1],
     ['answers_ok', event.tool, event.ok ? 1 : 0],
+    ['answers_truncated', event.tool, event.truncated ? 1 : 0],
     ['answers_results', event.tool, Math.round(event.results)],
     ['tokens_estimated', event.tool, Math.round(event.estimatedTokens)],
     ['latency_ms_bucket', `${event.tool}|${bucketLabelFor(LATENCY_BUCKETS_MS, event.latencyMs)}`, 1],
+    ...event.degraded.map((code): Delta => ['degraded', code, 1]),
   ];
   return out.filter(([, , delta]) => delta !== 0);
+}
+
+/** The gauge values an index-health event sets. */
+function healthGauges(event: IndexHealthEvent): ReadonlyArray<readonly [GaugeMetric, number]> {
+  return [
+    ['index_files', Math.round(event.files)],
+    ['index_error_files', Math.round(event.errorFiles)],
+    ['index_stale_files', Math.round(event.staleFiles)],
+    ['index_size_bytes', Math.round(event.sizeBytes)],
+  ];
 }
 
 interface Pending {
@@ -72,8 +95,16 @@ function writeBatch(db: Db, batch: readonly Queued[], pending: Pending, now: num
     if (entry === undefined) sums.set(key, { bucket, metric, dim, delta });
     else entry.delta += delta;
   };
+  const gauges = new Map<GaugeMetric, { value: number; at: number }>();
   for (const { event, at } of batch) {
-    if (event.kind === 'answer') for (const delta of answerDeltas(event)) add(hourBucket(at), delta);
+    if (event.kind === 'answer') {
+      for (const delta of answerDeltas(event)) add(hourBucket(at), delta);
+    } else if (event.kind === 'freshness') {
+      add(hourBucket(at), ['freshness_lag_ms_bucket', bucketLabelFor(LAG_BUCKETS_MS, event.lagMs), 1]);
+    } else {
+      // Batch order is arrival order, so the last event of a batch is the newest.
+      for (const [metric, value] of healthGauges(event)) gauges.set(metric, { value, at });
+    }
   }
   if (pending.dropped > 0) add(hourBucket(now), ['dropped_events', DIM_NONE, pending.dropped]);
   if (pending.rejected > 0) add(hourBucket(now), ['rejected_events', DIM_NONE, pending.rejected]);
@@ -83,6 +114,12 @@ function writeBatch(db: Db, batch: readonly Queued[], pending: Pending, now: num
        on conflict (grain, bucket, metric, dim) do update set value = value + excluded.value`,
     );
     for (const { bucket, metric, dim, delta } of sums.values()) upsert.run(bucket, metric, dim, delta);
+    // Latest wins: a requeued older batch never overwrites newer gauges.
+    const setGauge = db.prepare(
+      `insert into gauges (metric, value, at) values (?, ?, ?)
+       on conflict (metric) do update set value = excluded.value, at = excluded.at where excluded.at >= gauges.at`,
+    );
+    for (const [metric, { value, at }] of gauges) setGauge.run(metric, value, at);
   });
 }
 
@@ -191,8 +228,23 @@ function createRecorder(db: Db, deps: MetricsDeps, options: Resolved): Metrics {
         return buildReport(db, range);
       }, emptyReport(range));
     },
-    reset: async () => undefined,
-    rollup: async () => undefined,
+    reset: () => {
+      // The queue and the unpersisted totals go now, so nothing recorded earlier is written after the delete.
+      queue = [];
+      pendingDropped = 0;
+      pendingRejected = 0;
+      disarm();
+      return enqueue(() => {
+        db.transaction(() => {
+          db.exec('delete from counters');
+          db.exec('delete from gauges');
+        });
+      }, undefined);
+    },
+    rollup: () =>
+      enqueue(() => {
+        rollupCounters(db, deps.clock.now(), options.rollupAfterDays, options.retentionDays);
+      }, undefined),
     status: () => ({
       recording: !closed,
       ...(closed ? { reason: 'closed' } : {}),
