@@ -3,16 +3,16 @@ gsd_state_version: "1.0"
 current_phase: 02
 current_phase_name: Grammar Tier, Store and stdio Host
 status: executing
-stopped_at: Completed 02-10-PLAN.md
-last_updated: "2026-10-16T19:57:36.267Z"
+stopped_at: Completed 02-11-PLAN.md
+last_updated: "2026-10-16T20:26:26.782Z"
 last_activity: 2026-10-16
-last_activity_desc: Completed 02-10 Metrics module
-state_head: 821325512253b5f65ef1c5f69926aa6789e215c1
+last_activity_desc: Completed 02-11 Resolution depth
+state_head: 88b49425e49122a9f8011779a77f4710cd57b345
 progress:
   total_phases: 9
   completed_phases: 1
   total_plans: 48
-  completed_plans: 31
+  completed_plans: 32
   percent: 11
 ---
 
@@ -28,16 +28,16 @@ See: .planning/PROJECT.md (updated 2026-10-15)
 ## Current Position
 
 Phase: 02 (Grammar Tier, Store and stdio Host) — EXECUTING
-Plan: 11 of 28 complete (plans 02-01 to 02-10 and 02-21 complete; they ran out of order, next is the lowest-numbered incomplete plan, 02-11)
+Plan: 12 of 28 complete (plans 02-01 to 02-11 and 02-21 complete; they ran out of order, next is the lowest-numbered incomplete plan, 02-12)
 Status: Ready to execute
-Last activity: 2026-10-16 — Completed 02-10 (Metrics module: migrated metrics.db, allow-listed events, bounded non-blocking recorder, rollups with 30-day retention, estimate-labelled report)
+Last activity: 2026-10-16 — Completed 02-11 (resolution depth: scoped refs with candidates, transitive callers and importers, trigram fuzzy find, resolved-edge cache with timeout, failure and cache-unavailable degradations)
 
 Progress: [█░░░░░░░░░] 11%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 29
+- Total plans completed: 30
 - Average duration: -
 - Total execution time: 0.0 hours
 
@@ -46,7 +46,7 @@ Progress: [█░░░░░░░░░] 11%
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 01 | 20 | - | - |
-| 02 | 11 of 28 | - | - |
+| 02 | 12 of 28 | - | - |
 
 **Recent Trend:**
 - Last 5 plans: -
@@ -68,6 +68,7 @@ Progress: [█░░░░░░░░░] 11%
 | Phase 02 P07 | 20 min | 3 tasks | 21 files |
 | Phase 02 P09 | 25min | 2 tasks | 5 files |
 | Phase 02 P10 | 9 min | 3 tasks | 9 files |
+| Phase 02 P11 | 18 min | 3 tasks | 12 files |
 
 ## Accumulated Context
 
@@ -105,6 +106,9 @@ Recent decisions affecting current work:
 - [Phase 02]: [02-10] A failed metrics batch is requeued ahead of newer events (bounded by metrics.queueMax, overflow dropped and counted) and the flush timer re-arms, so an outage loses nothing within the bound.
 - [Phase 02]: [02-10] Report percentiles that fall in the overflow bucket report the largest finite edge with overflow: true (a lower bound); Infinity was rejected because JSON turns it into null. report() flushes first and returns the all-zero report on a database error. Plan 02-22 must render both honestly.
 - [Phase 02]: [02-10] Metrics events accept no caller-supplied time or free text: an 'at' key is an unknown key and rejects the event; openMetrics never throws and returns a noop instance with a fixed reason (open_failed, newer_schema, invalid_migrations, invalid_options). Plan 02-28 owns calling rollup() from the idle loop.
+- [Phase 02]: [02-11] refs scopes sites by file, import binding and export alias; a site that can reach several definitions is given to each with RefRecord.candidates (set only above one); named bindings skip member sites, namespace bindings match member sites; re-exports are not followed before Phase 3
+- [Phase 02]: [02-11] Resolver reads run in three phases (sync grammar read, bounded resolver call, merge); a precise edge supersedes or removes a grammar edge, a timed-out resolver keeps running and fills the cache, and callers prune through removed edges. A site with no cached edge is re-asked (no negative marker): Phase 3 should add one before a real compiler resolver ships
+- [Phase 02]: [02-11] names_fts is a contentless trigram table filled once per interned name; meta.fuzzy_path records the last session that kept it in step and a switch rebuilds it. Fuzzy find under three characters stays empty. resolved_edges are keyed by overlay snapshot id plus context and superseded snapshots are pruned on write
 
 ### Pending Todos
 
@@ -131,6 +135,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-10-16T19:57:36.082Z
-Stopped at: Completed 02-10-PLAN.md
+Last session: 2026-10-16T20:26:26.714Z
+Stopped at: Completed 02-11-PLAN.md
 Resume file: None

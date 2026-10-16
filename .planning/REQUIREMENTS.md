@@ -41,7 +41,7 @@ Scope is the full PRD 1.0 (M0-M6), with M4 split into SDK facts, agent integrati
 
 - [x] **LNG-01**: A language module is a folder (manifest, grammar.wasm, queries, fixtures) resolved repo > user > npm > built-in, and `lang list` shows source and active tiers
 - [ ] **LNG-02**: The Grammar Engine extracts definitions, containment and imports with per-construct recall >= 90% against ground truth
-- [ ] **LNG-03**: Name-matched references are recorded as `INFERRED`; definitions and imports as `EXTRACTED`
+- [x] **LNG-03**: Name-matched references are recorded as `INFERRED`; definitions and imports as `EXTRACTED`
 - [x] **LNG-04**: Every fact carries `source_path`, `span`, `extractor`, `content_hash`, `first_seen`, `last_seen` and `confidence`
 - [ ] **LNG-05**: Only `git ls-files` plus untracked non-ignored files are indexed; `linguist-generated` and `linguist-vendored` are honoured; binaries and LFS pointers are skipped
 - [x] **LNG-06**: Grammar parse quality is measured as bytes inside ERROR nodes per module, with a CI budget
@@ -218,7 +218,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | STO-10 | Phase 2 | Pending |
 | LNG-01 | Phase 1 | Complete |
 | LNG-02 | Phase 2 | Pending |
-| LNG-03 | Phase 2 | Pending |
+| LNG-03 | Phase 2 | Complete |
 | LNG-04 | Phase 2 | Complete |
 | LNG-05 | Phase 2 | Pending |
 | LNG-06 | Phase 1 | Complete |
