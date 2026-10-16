@@ -250,9 +250,13 @@ describe('Query tools: the shared definitions behind the CLI and the MCP server'
   });
 });
 
-/** Add `name` as an exported one-line function in `file`, with its definition on line 1 at column 17. */
+/**
+ * Add `name` as an exported one-line function in `file`, with its definition on line 1 at column 17. The file
+ * names itself in a comment because the store keys facts by content hash: two files with identical bytes share
+ * one set of facts, which would hide the difference these tests plant between them.
+ */
 async function addFn(h: Harness, file: string, name: string, extra: Partial<SymbolSpec> = {}): Promise<void> {
-  await h.addFile(file, `export function ${name}() {}\n`, [{ name, kind: 'function', line: 0, col: 16, exported: true, ...extra }]);
+  await h.addFile(file, `export function ${name}() {}\n// ${file}\n`, [{ name, kind: 'function', line: 0, col: 16, exported: true, ...extra }]);
 }
 
 const namesOf = (envelope: Envelope): string[] => dataOf(envelope).results.map((result) => result.name);

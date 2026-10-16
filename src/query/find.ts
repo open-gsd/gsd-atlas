@@ -1,15 +1,26 @@
 /**
- * `code_find`: where is this symbol defined. The Reader supplies definitions, the store supplies positions
- * (0-based) and Source Tree supplies the matched line. Positions leave Query 1-based, the way an editor shows
- * them (the store keeps 0-based lines and UTF-16 columns).
+ * `code_find`: where is this symbol defined. The Reader supplies definitions (positions 0-based, as the store
+ * keeps them), Source Tree supplies the matched line, and this file ranks, cuts to the budget and pages.
+ * Positions leave Query 1-based, the way an editor shows them.
+ *
+ * Paging is keyset: every call re-queries the store and resumes strictly after the cursor's sort key, so the
+ * server holds nothing between calls. The candidate set is bounded (four times the maximum limit per read); a
+ * request that hits the bound says so with `truncated` and a hint rather than cutting silently.
  */
+import path from 'node:path';
 import { UnknownWorktree } from '../fact-store/index.ts';
-import type { SymbolRecord } from '../fact-store/index.ts';
-import type { Answer, Citation, DegradedCode, Envelope, UntrustedEntry } from '../facts/index.ts';
+import type { FindMode, SymbolRecord } from '../fact-store/index.ts';
+import type { Answer, Citation, DegradedCode, Envelope, UntrustedEntry, Watermark } from '../facts/index.ts';
 import { diagnostic, okEnvelope } from '../facts/index.ts';
-import { CODE_FIND_SCHEMA, errorWith, withDegraded } from './envelope.ts';
+import { cutToBudget, estimateTokens } from './budget.ts';
+import { encodeCursor } from './cursor.ts';
+import type { CursorPayload } from './cursor.ts';
+import { CODE_FIND_SCHEMA, errorEnvelope, errorWith, withDegraded } from './envelope.ts';
 import { FIELD_MAX_CHARS, fenceText, normalizeText } from './fence.ts';
+import { compareRanked, cwdHintDir, directoryDistance, nameAndTier, sortKeyOf } from './ranking.ts';
+import type { SortKey } from './ranking.ts';
 import { createLineReader } from './text.ts';
+import type { LineText } from './text.ts';
 import type { CodeFindInput } from './tools.ts';
 import type { QueryConfig, QueryDeps } from './types.ts';
 
@@ -19,6 +30,10 @@ export interface FindContext {
   readonly worktree: string;
   /** The nonce of this response. */
   readonly nonce: string;
+  /** The hash of this query, carried by every cursor it issues. */
+  readonly queryHash: string;
+  /** The decoded `more` cursor of this request, when it sent one. */
+  readonly cursor: CursorPayload | null;
 }
 
 /** One entry of `data.results`. */
@@ -36,6 +51,14 @@ export interface FoundResult {
 
 export const NO_MATCH_HINT =
   'No definition matched this name. Check the spelling, try mode "fuzzy", or run "gsd-atlas build" if the repository changed since it was indexed.';
+export const TRUNCATED_HINT = 'Results were cut to fit the budget or the limit. Pass the "more" value from this response to get the next page.';
+export const CURSOR_TOO_LONG_HINT =
+  'Results were cut, but a path is too long to continue from. Narrow the query with kind or a longer name instead.';
+export const CAPPED_HINT = 'More definitions match than one answer can rank. Narrow the query with kind or a longer name.';
+export const OUTPUT_TOO_LARGE_MESSAGE = 'A single result is larger than the output ceiling. Narrow the query with kind or a longer name.';
+
+/** Candidates read per read mode, as a multiple of the maximum limit (the bound of T-02-55). */
+const CANDIDATE_FACTOR = 4;
 
 export function notIndexed(): Envelope {
   return errorWith([
@@ -49,68 +72,167 @@ export function notIndexed(): Envelope {
 
 const clean = (value: string): string => normalizeText(value, FIELD_MAX_CHARS);
 
-function simpleName(record: SymbolRecord): string {
-  const qualified = record.identity.qualifiedName;
-  const dot = qualified.lastIndexOf('.');
-  return dot < 0 ? qualified : qualified.slice(dot + 1);
+/** The reads a mode asks of the Reader. Fuzzy reads need three characters; shorter queries get exact and prefix. */
+function readsFor(mode: NonNullable<CodeFindInput['mode']>, name: string): FindMode[] {
+  if (mode === 'exact') return ['exact'];
+  if (mode === 'prefix') return ['exact', 'prefix'];
+  return name.length >= 3 ? ['exact', 'prefix', 'fuzzy'] : ['exact', 'prefix'];
+}
+
+interface Ranked {
+  readonly record: SymbolRecord;
+  readonly name: string;
+  readonly key: SortKey;
+}
+
+interface Prepared {
+  readonly ranked: Ranked;
+  readonly line: LineText;
 }
 
 export async function runFind(ctx: FindContext, input: CodeFindInput): Promise<Envelope> {
-  let answer: Answer<readonly SymbolRecord[]>;
+  const { config } = ctx;
+  const reads = readsFor(input.mode ?? 'auto', input.name);
+  const candidateLimit = config.maxLimit * CANDIDATE_FACTOR;
+  const reader = ctx.deps.store.at(ctx.worktree);
+
+  let answers: Answer<readonly SymbolRecord[]>[];
   try {
-    answer = await ctx.deps.store.at(ctx.worktree).find(input.name, { mode: 'exact' });
+    answers = await Promise.all(reads.map((mode) => reader.find(input.name, { mode, limit: candidateLimit })));
   } catch (error) {
     if (error instanceof UnknownWorktree) return notIndexed();
     throw error;
   }
 
-  const lines = createLineReader(ctx.deps.text, ctx.worktree, new Set(answer.watermark.stalePaths));
-  const results: FoundResult[] = [];
-  const citations: Citation[] = [];
-  const entries: UntrustedEntry[] = [];
-  const degraded = new Set<DegradedCode>(answer.degraded ?? []);
-
-  for (const record of answer.data) {
-    const id = `c${String(citations.length + 1)}`;
-    const line = await lines.lineAt(record.source_path, record.span);
-    let textRef: string | undefined;
-    if (line.kind === 'ok') {
-      textRef = `ut${String(entries.length + 1)}`;
-      entries.push({ ref: textRef, text: fenceText(line.text, ctx.nonce, ctx.config.lineTextMaxChars) });
-    } else {
-      degraded.add('stale');
+  // One entry per debug handle; a definition the exact read returned is remembered as exact.
+  const found = new Map<string, { record: SymbolRecord; exact: boolean }>();
+  for (const [index, answer] of answers.entries()) {
+    for (const record of answer.data) {
+      const known = found.get(record.debug);
+      if (known === undefined) found.set(record.debug, { record, exact: reads[index] === 'exact' });
+      else if (reads[index] === 'exact') known.exact = true;
     }
-    const path = clean(record.source_path);
-    const startLine = record.span.startLine + 1;
-    const startCol = record.span.startColumn + 1;
-    citations.push({
-      id,
-      path,
-      line: startLine,
-      col: startCol,
-      endLine: record.span.endLine + 1,
-      endCol: record.span.endColumn + 1,
-      confidence: record.confidence,
-      debug: record.debug,
-      ...(textRef === undefined ? {} : { text_ref: textRef }),
-    });
-    results.push({
-      name: clean(simpleName(record)),
-      kind: clean(record.identity.kind),
-      path,
-      line: startLine,
-      col: startCol,
-      ...(record.exported === undefined ? {} : { exported: record.exported }),
-      confidence: record.confidence,
-      citation: id,
-    });
   }
+  const capped = answers.some((answer) => answer.data.length >= candidateLimit);
 
-  const envelope = okEnvelope(CODE_FIND_SCHEMA, { results }, [], {
-    ...(citations.length === 0 ? {} : { citations }),
-    watermark: answer.watermark,
-    ...(entries.length === 0 ? {} : { untrusted_text: { nonce: ctx.nonce, entries } }),
-    ...(results.length === 0 ? { hints: [NO_MATCH_HINT] } : {}),
-  });
-  return withDegraded(envelope, degraded);
+  let watermark: Watermark = answers[0]?.watermark ?? { seq: 0, stalePaths: [] };
+  const degraded = new Set<DegradedCode>();
+  for (const answer of answers) {
+    if (answer.watermark.seq > watermark.seq) watermark = answer.watermark;
+    for (const code of answer.degraded ?? []) degraded.add(code);
+  }
+  if (ctx.cursor !== null && ctx.cursor.seq !== watermark.seq) degraded.add('watermark_moved');
+
+  const hint = cwdHintDir(ctx.worktree, input.cwd);
+  const ranked: Ranked[] = [];
+  for (const { record, exact } of found.values()) {
+    if (input.kind !== undefined && record.identity.kind !== input.kind) continue;
+    const { name, tier } = nameAndTier(record.identity.qualifiedName, input.name, exact);
+    const dir = path.posix.dirname(record.source_path);
+    const key = sortKeyOf({
+      tier,
+      isReference: false,
+      confidence: record.confidence,
+      exported: record.exported === true,
+      distance: directoryDistance(dir === '.' ? '' : dir, hint),
+      path: record.source_path,
+      line: record.span.startLine,
+      col: record.span.startColumn,
+      handle: record.debug,
+    });
+    ranked.push({ record, name, key });
+  }
+  ranked.sort((a, b) => compareRanked(a.key, b.key));
+
+  // Keyset: resume strictly after the cursor's key.
+  const bound = ctx.cursor?.key;
+  const remaining = bound === undefined ? ranked : ranked.filter((item) => compareRanked(item.key, bound) > 0);
+  const limit = Math.min(input.limit ?? config.defaultLimit, config.maxLimit);
+  const limited = remaining.slice(0, limit);
+  const limitCut = remaining.length > limit;
+
+  const lines = createLineReader(ctx.deps.text, ctx.worktree, new Set(watermark.stalePaths));
+  const prepared: Prepared[] = [];
+  const prepareUpTo = async (count: number): Promise<void> => {
+    while (prepared.length < count) {
+      const item = limited[prepared.length];
+      if (item === undefined) return;
+      prepared.push({ ranked: item, line: await lines.lineAt(item.record.source_path, item.record.span) });
+    }
+  };
+
+  /** The response that carries exactly `kept`, marked as cut when `cut` is true. */
+  const assemble = (kept: readonly Prepared[], cut: boolean): Envelope => {
+    const results: FoundResult[] = [];
+    const citations: Citation[] = [];
+    const entries: UntrustedEntry[] = [];
+    const codes = new Set<DegradedCode>(degraded);
+    for (const { ranked: item, line } of kept) {
+      const { record } = item;
+      const id = `c${String(citations.length + 1)}`;
+      let textRef: string | undefined;
+      if (line.kind === 'ok') {
+        textRef = `ut${String(entries.length + 1)}`;
+        entries.push({ ref: textRef, text: fenceText(line.text, ctx.nonce, config.lineTextMaxChars) });
+      } else {
+        codes.add('stale');
+      }
+      const itemPath = clean(record.source_path);
+      const startLine = record.span.startLine + 1;
+      const startCol = record.span.startColumn + 1;
+      citations.push({
+        id,
+        path: itemPath,
+        line: startLine,
+        col: startCol,
+        endLine: record.span.endLine + 1,
+        endCol: record.span.endColumn + 1,
+        confidence: record.confidence,
+        debug: record.debug,
+        ...(textRef === undefined ? {} : { text_ref: textRef }),
+      });
+      results.push({
+        name: clean(item.name),
+        kind: clean(record.identity.kind),
+        path: itemPath,
+        line: startLine,
+        col: startCol,
+        ...(record.exported === undefined ? {} : { exported: record.exported }),
+        confidence: record.confidence,
+        citation: id,
+      });
+    }
+
+    const last = kept[kept.length - 1];
+    const more =
+      cut && last !== undefined
+        ? encodeCursor({ key: last.ranked.key, query: ctx.queryHash, seq: watermark.seq }, config.cursorMaxChars)
+        : null;
+    const hints: string[] = [];
+    if (results.length === 0) hints.push(NO_MATCH_HINT);
+    else if (cut) hints.push(more === null ? CURSOR_TOO_LONG_HINT : TRUNCATED_HINT);
+    if (capped) hints.push(CAPPED_HINT);
+
+    const envelope = okEnvelope(CODE_FIND_SCHEMA, { results }, [], {
+      ...(citations.length === 0 ? {} : { citations }),
+      watermark,
+      ...(entries.length === 0 ? {} : { untrusted_text: { nonce: ctx.nonce, entries } }),
+      ...(cut || capped ? { truncated: true } : {}),
+      ...(more === null ? {} : { more }),
+      ...(hints.length === 0 ? {} : { hints }),
+    });
+    return withDegraded(envelope, codes);
+  };
+
+  const cut = await cutToBudget(
+    limited,
+    async (kept, truncated) => {
+      await prepareUpTo(kept.length);
+      return estimateTokens(assemble(prepared.slice(0, kept.length), truncated));
+    },
+    { budget: input.budget_tokens ?? config.defaultBudgetTokens, ceiling: config.hardCeilingTokens },
+    limitCut,
+  );
+  if (cut.tooLarge) return errorEnvelope('output_too_large', OUTPUT_TOO_LARGE_MESSAGE);
+  return assemble(prepared.slice(0, cut.kept.length), cut.truncated);
 }

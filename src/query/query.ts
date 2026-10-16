@@ -4,6 +4,8 @@
  */
 import { PROTOCOL_VERSION } from '../facts/index.ts';
 import type { Envelope, Request } from '../facts/index.ts';
+import { decodeCursor, queryHash } from './cursor.ts';
+import type { CursorPayload, CursorProblem } from './cursor.ts';
 import { resolveQueryConfig } from './defaults.ts';
 import { errorEnvelope } from './envelope.ts';
 import { newNonce, normalizeText } from './fence.ts';
@@ -13,6 +15,13 @@ import type { Query, QueryConfig, QueryDeps } from './types.ts';
 
 /** The cap on any message that quotes something the caller supplied. */
 const MESSAGE_MAX_CHARS = 200;
+
+/** Fixed, short messages for a refused cursor: nothing from the cursor is echoed back. */
+const BAD_CURSOR: Readonly<Record<CursorProblem, string>> = {
+  malformed: 'The "more" cursor is malformed. Pass the value from a previous answer unchanged.',
+  oversized: 'The "more" cursor is longer than allowed. Pass the value from a previous answer unchanged.',
+  other_query: 'The "more" cursor was issued for a different query. Pass it only with the query that produced it.',
+};
 
 const say = (text: string): string => normalizeText(text, MESSAGE_MAX_CHARS);
 
@@ -57,7 +66,21 @@ export function createQuery(deps: QueryDeps): Query {
         return errorEnvelope('invalid_args', 'code_find needs a repository: pass repo or a worktree');
       }
 
-      return runFind({ deps, config, worktree, nonce: (deps.nonce ?? newNonce)() }, input);
+      const hash = queryHash('code_find', {
+        worktree,
+        name: input.name,
+        kind: input.kind,
+        mode: input.mode ?? 'auto',
+        cwd: input.cwd,
+      });
+      let cursor: CursorPayload | null = null;
+      if (input.more !== undefined) {
+        const decoded = decodeCursor(input.more, hash, config.cursorMaxChars);
+        if (!decoded.ok) return errorEnvelope('bad_cursor', BAD_CURSOR[decoded.problem]);
+        cursor = decoded.payload;
+      }
+
+      return runFind({ deps, config, worktree, nonce: (deps.nonce ?? newNonce)(), queryHash: hash, cursor }, input);
     },
   };
 }
