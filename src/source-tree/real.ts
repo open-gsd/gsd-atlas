@@ -15,7 +15,9 @@ import { diagnostic } from '../facts/index.ts';
 import type { Diagnostic } from '../facts/index.ts';
 import { SOURCE_TREE_CODES, SourceTreeError } from './types.ts';
 import { assertReadArguments, isObjectId, unhashableReason } from './validate.ts';
-import type { HashPathsResult, SnapshotResult, SourceTree, SourceTreeIdentity } from './types.ts';
+import { filterSourceSet, SOURCE_PEEK_BYTES } from './source-set.ts';
+import type { PathAttributes, PeekResult } from './source-set.ts';
+import type { HashPathsResult, SnapshotResult, SourceSetOptions, SourceSetResult, SourceTree, SourceTreeIdentity } from './types.ts';
 
 export interface SourceTreeOptions {
   /** The only way this module starts anything. */
@@ -34,6 +36,8 @@ const LSTAT_BATCH = 256;
 const GIT_TIMEOUT_MS = 60000;
 /** Timeout of the one batched `hash-object`. Value: `git.hashBatchTimeoutMs` in 02-CONSTANTS.md (Approved 2026-10-16). */
 const GIT_HASH_BATCH_TIMEOUT_MS = 120000;
+/** `O_NOFOLLOW` where the platform has it (Windows has none; lstat is the guard there). */
+const O_NOFOLLOW: number = (fs.constants as Partial<Record<string, number>>)['O_NOFOLLOW'] ?? 0;
 
 const decoder = new TextDecoder();
 
@@ -190,6 +194,81 @@ export function createSourceTree(options: SourceTreeOptions): SourceTree {
     return { files: await hashBatch(worktree, hashable, filterNames), diagnostics };
   }
 
+  /**
+   * One `git check-attr -z --stdin` run for every path. With `-z` the input is NUL-separated and the output is
+   * `<path> NUL <attribute> NUL <value> NUL` per path and attribute, so no name can be misread. A value of
+   * `set` or `true` turns the attribute on; `unset`, `unspecified`, `false` and anything else leave it off.
+   */
+  async function checkAttr(worktree: string, paths: readonly string[]): Promise<Map<string, PathAttributes>> {
+    const attributes = ['linguist-generated', 'linguist-vendored'] as const;
+    const out = await gitText(
+      spec(['check-attr', '-z', '--stdin', ...attributes], worktree, {
+        stdin: paths.map((p) => `${p}\0`).join(''),
+        maxStdoutBytes: BIG_OUTPUT_BYTES,
+        timeoutMs: GIT_TIMEOUT_MS,
+      }),
+      'check-attr',
+    );
+    const fields = out.split('\0');
+    if (fields[fields.length - 1] === '') fields.pop();
+    if (fields.length !== paths.length * attributes.length * 3) {
+      throw new SourceTreeError('git_failed', `git check-attr returned ${String(fields.length / 3)} records for ${String(paths.length * attributes.length)} expected`);
+    }
+    const found = new Map<string, { generated: boolean; vendored: boolean }>();
+    for (let at = 0; at < fields.length; at += 3) {
+      const rel = fields[at] as string;
+      const name = fields[at + 1];
+      const on = fields[at + 2] === 'set' || fields[at + 2] === 'true';
+      const entry = found.get(rel) ?? { generated: false, vendored: false };
+      if (name === 'linguist-generated') entry.generated = on;
+      else if (name === 'linguist-vendored') entry.vendored = on;
+      found.set(rel, entry);
+    }
+    return found;
+  }
+
+  /**
+   * Size and first 8 KB of one file. lstat refuses a link or a non-regular file up front, and the open adds
+   * O_NOFOLLOW where the platform has it, so a file swapped for a link after the lstat is still never followed.
+   */
+  async function peek(worktree: string, rel: string): Promise<PeekResult> {
+    const full = path.join(worktree, rel);
+    try {
+      const st = await fs.promises.lstat(full);
+      if (st.isSymbolicLink()) return { kind: 'symlink' };
+      if (st.isDirectory()) return { kind: 'dir' };
+      if (!st.isFile()) return { kind: 'special' };
+    } catch {
+      return { kind: 'missing' };
+    }
+    let handle: fs.promises.FileHandle;
+    try {
+      handle = await fs.promises.open(full, fs.constants.O_RDONLY | O_NOFOLLOW);
+    } catch (error) {
+      return { kind: (error as NodeJS.ErrnoException).code === 'ELOOP' ? 'symlink' : 'missing' };
+    }
+    try {
+      const st = await handle.stat();
+      if (!st.isFile()) return { kind: 'special' };
+      const buffer = Buffer.alloc(Math.min(SOURCE_PEEK_BYTES, st.size));
+      const { bytesRead } = await handle.read(buffer, 0, buffer.length, 0);
+      return { kind: 'ok', size: st.size, head: buffer.subarray(0, bytesRead) };
+    } catch {
+      return { kind: 'missing' };
+    } finally {
+      await handle.close();
+    }
+  }
+
+  function sourceSet(worktree: string, files: ReadonlyMap<string, string>, options: SourceSetOptions): Promise<SourceSetResult> {
+    return filterSourceSet({
+      files,
+      options,
+      checkAttr: (paths) => checkAttr(worktree, paths),
+      peek: (rel) => peek(worktree, rel),
+    });
+  }
+
   /** Runs an object read where exit 1 (`-e`) or 128 (not found) are answers, not failures. */
   async function probe(s: CommandSpec, label: string): Promise<{ stdout: Uint8Array; found: boolean }> {
     const result = await runner.run(s, ctx);
@@ -225,5 +304,5 @@ export function createSourceTree(options: SourceTreeOptions): SourceTree {
     return { rootCommit, storeId };
   }
 
-  return { snapshot, hashPaths, hasObject, read, identity };
+  return { snapshot, hashPaths, sourceSet, hasObject, read, identity };
 }

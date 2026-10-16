@@ -58,6 +58,24 @@ export interface HashPathsResult {
   readonly diagnostics: Diagnostic[];
 }
 
+/** What {@link SourceTree.sourceSet} keeps and why it drops the rest. */
+export interface SourceSetOptions {
+  /** Extensions a loaded module claims: lower-case, with the dot (`.ts`). Matched case-insensitively on the last path segment. */
+  readonly extensions: readonly string[];
+  /** Files larger than this many bytes are dropped with `source_too_large`. */
+  readonly maxBytes: number;
+}
+
+export interface SourceSetResult {
+  /** The surviving path to blob id entries (ids as given), sorted by path in code-unit order. */
+  readonly files: ReadonlyMap<string, string>;
+  /**
+   * One diagnostic per dropped file (its path as subject, a {@link SOURCE_TREE_CODES} code), plus at most one
+   * leading `extension_not_claimed` info with the count of paths no module claims. Sorted by path.
+   */
+  readonly skipped: readonly Diagnostic[];
+}
+
 /** Which repository this is, stable across clones' checkouts of the same history at the same git directory. */
 export interface SourceTreeIdentity {
   /** The first root commit of HEAD's history, or null for a repository with no commits. */
@@ -89,6 +107,12 @@ export interface SourceTree {
    * so a caller holding watcher paths must drop ignored ones first (T-02-14).
    */
   hashPaths(worktree: string, paths: readonly string[]): Promise<HashPathsResult>;
+  /**
+   * The files of `files` (a snapshot or hashPaths result, so never an ignored one) that are source (LNG-05): a
+   * claimed extension, not `linguist-generated` or `linguist-vendored`, not binary, not a Git LFS pointer and
+   * not over `options.maxBytes`. One batched `check-attr` run at most; no git at all when nothing is left to ask.
+   */
+  sourceSet(worktree: string, files: ReadonlyMap<string, string>, options: SourceSetOptions): Promise<SourceSetResult>;
   /** True when the object database holds the object. False for an unknown or malformed id. */
   hasObject(hash: string): Promise<boolean>;
   /** The bytes of `path` at `commit`, or null when the commit has no such blob. */
@@ -106,4 +130,10 @@ export interface SourceTreeWorld {
   readonly committed: Readonly<Record<string, string>>;
   readonly working: Readonly<Record<string, string | null>>;
   readonly ignored: readonly string[];
+  /**
+   * `linguist-generated` / `linguist-vendored` per exact repo-relative path: `true` sets it, `false` sets it
+   * explicitly off (`-linguist-generated`), absent leaves it unspecified. The real harness writes these to
+   * `.git/info/attributes`, so they never appear in a snapshot.
+   */
+  readonly attributes?: Readonly<Record<string, { readonly generated?: boolean; readonly vendored?: boolean }>>;
 }

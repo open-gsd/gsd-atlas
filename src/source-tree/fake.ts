@@ -11,7 +11,17 @@ import { createHash } from 'node:crypto';
 import { diagnostic } from '../facts/index.ts';
 import type { Diagnostic } from '../facts/index.ts';
 import { SOURCE_TREE_CODES } from './types.ts';
-import type { HashPathsResult, SnapshotResult, SourceTree, SourceTreeIdentity, SourceTreeWorld } from './types.ts';
+import { filterSourceSet, SOURCE_PEEK_BYTES } from './source-set.ts';
+import type { PathAttributes, PeekResult } from './source-set.ts';
+import type {
+  HashPathsResult,
+  SnapshotResult,
+  SourceSetOptions,
+  SourceSetResult,
+  SourceTree,
+  SourceTreeIdentity,
+  SourceTreeWorld,
+} from './types.ts';
 import { assertReadArguments, isObjectId, unhashableReason } from './validate.ts';
 
 const encoder = new TextEncoder();
@@ -34,6 +44,7 @@ export function createFakeSourceTree(world: Partial<SourceTreeWorld> = {}): Sour
   const committed = world.committed ?? {};
   const working = world.working ?? {};
   const ignored = world.ignored ?? [];
+  const attributes = world.attributes ?? {};
   const isIgnored = (rel: string): boolean => ignored.some((entry) => (entry.endsWith('/') ? rel.startsWith(entry) : rel === entry));
 
   const committedPaths = Object.keys(committed);
@@ -77,6 +88,26 @@ export function createFakeSourceTree(world: Partial<SourceTreeWorld> = {}): Sour
         files.set(rel, blobId(content));
       }
       return Promise.resolve({ files, diagnostics });
+    },
+
+    sourceSet(_worktree: string, files: ReadonlyMap<string, string>, options: SourceSetOptions): Promise<SourceSetResult> {
+      return filterSourceSet({
+        files,
+        options,
+        checkAttr: (paths) =>
+          Promise.resolve(
+            new Map(paths.map((rel): [string, PathAttributes] => [
+              rel,
+              { generated: attributes[rel]?.generated === true, vendored: attributes[rel]?.vendored === true },
+            ])),
+          ),
+        peek: (rel): Promise<PeekResult> => {
+          const content = onDisk(rel);
+          if (content === null) return Promise.resolve({ kind: isDirectory(rel) ? 'dir' : 'missing' });
+          const bytes = Buffer.from(content);
+          return Promise.resolve({ kind: 'ok', size: bytes.length, head: bytes.subarray(0, SOURCE_PEEK_BYTES) });
+        },
+      });
     },
 
     snapshot(): Promise<SnapshotResult> {
