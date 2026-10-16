@@ -3,7 +3,7 @@ import type { Writer } from '../fact-store/index.ts';
 import type { WorktreeInfo } from '../source-tree/index.ts';
 import { runBuild } from './build.ts';
 import { DEFAULT_INDEXER_CONFIG } from './defaults.ts';
-import type { EventSource, SourceEvent, SourceHandler } from './event-source.ts';
+import type { EventSource, GitHandler, GitSourceEvent, SourceEvent, SourceHandler } from './event-source.ts';
 import { createPathFilter } from './ignore.ts';
 import { createModuleHost } from './modules.ts';
 import { isRepoRelative, realRoot, staysInside } from './paths.ts';
@@ -13,6 +13,7 @@ import { createCoalescingQueue } from './queue.ts';
 import { reconcileWorktree } from './reconcile.ts';
 import type { ReconcilePriority } from './reconcile.ts';
 import { IndexerError } from './types.ts';
+import { eligibleWorktrees, syncWorktrees } from './worktrees.ts';
 import type {
   BuildResult,
   FailedPath,
@@ -56,8 +57,10 @@ interface ReconcileSlot {
   next?: Promise<ReconcileOutcome>;
 }
 
-/** A worktree the Indexer covers: its file subscription, when it has one. */
+/** A worktree the Indexer covers: the name of its git directory and its file subscription, when it has one. */
 interface Covered {
+  /** `''` for the main worktree, else the name under `<common git directory>/worktrees/`. */
+  readonly gitDirName: string;
   unsubscribe?: () => Promise<void>;
 }
 
@@ -98,6 +101,13 @@ export function createIndexer(deps: IndexerDeps): Indexer {
   /** True once a subscription could not start; answers stay fresh through Reconcile alone. */
   let degraded = false;
   let idleCancel: (() => void) | undefined;
+  /** True when `start()` was asked for every worktree: one that appears later is covered too. */
+  let coverAll = false;
+  let gitUnsubscribe: (() => Promise<void>) | undefined;
+  let gitSubscribed = false;
+  let commonDirOnce: Promise<string> | undefined;
+  /** Worktree set changes are applied one at a time, in the order they were reported. */
+  let syncTail: Promise<void> = Promise.resolve();
   /** Sleeps that a stop wakes early. */
   const wakers = new Set<() => void>();
   /** Work in progress, so `stop()` can wait for it. */
@@ -386,9 +396,9 @@ export function createIndexer(deps: IndexerDeps): Indexer {
   }
 
   /** Subscribe the file watch of one worktree root, once. A source that cannot start leaves Reconcile as the only path. */
-  async function cover(worktree: string): Promise<void> {
+  async function cover(worktree: string, gitDirName: string): Promise<void> {
     if (covered.has(worktree)) return;
-    const entry: Covered = {};
+    const entry: Covered = { gitDirName };
     covered.set(worktree, entry);
     if (activeSource === undefined) return;
     try {
@@ -396,6 +406,91 @@ export function createIndexer(deps: IndexerDeps): Indexer {
     } catch {
       degraded = true;
     }
+  }
+
+  /** The canonical common git directory Source Tree reports: the only directory the git watch is ever pointed at. */
+  function commonDirOf(): Promise<string> {
+    commonDirOnce ??= deps.tree.identity().then(
+      (identity) => identity.commonDir,
+      (error: unknown) => {
+        commonDirOnce = undefined;
+        throw error;
+      },
+    );
+    return commonDirOnce;
+  }
+
+  /** What a HEAD change, a worktree change or a problem of the git watch makes the Indexer do. */
+  function gitHandler(commonDir: string): GitHandler {
+    return (event: GitSourceEvent): void => {
+      if (stopped) return;
+      if (event.kind === 'head') {
+        for (const [root, entry] of covered) {
+          if (entry.gitDirName === event.gitDirName) reconcileInBackground(root, 'indexing');
+        }
+        return;
+      }
+      if (event.kind === 'worktrees') {
+        scheduleSync();
+        return;
+      }
+      const key = `${commonDir}\0${event.problem}`;
+      const seen = problems.get(key);
+      problems.set(key, { worktree: commonDir, kind: event.problem, count: (seen?.count ?? 0) + 1 });
+      for (const root of covered.keys()) reconcileInBackground(root, 'indexing');
+      scheduleSync();
+    };
+  }
+
+  /** Subscribe the git directory, once for the whole repository. */
+  async function watchGitDir(commonDir: string): Promise<void> {
+    if (activeSource === undefined || gitSubscribed) return;
+    gitSubscribed = true;
+    try {
+      gitUnsubscribe = await activeSource.subscribeGit(commonDir, gitHandler(commonDir));
+    } catch {
+      degraded = true;
+    }
+  }
+
+  /** Bring the covered worktrees in step with `git worktree list`: subscribe new ones, drop the overlay of gone ones. */
+  async function syncNow(): Promise<void> {
+    if (stopped) return;
+    const listed = await listWorktrees();
+    const commonDir = await commonDirOf();
+    await syncWorktrees({
+      listed,
+      commonDir,
+      covered: [...covered.keys()],
+      addNew: coverAll,
+      subscribe: async (root, gitDirName) => {
+        await cover(root, gitDirName);
+        await requestReconcile(root, 'indexing', false);
+      },
+      unsubscribe: async (root) => {
+        const entry = covered.get(root);
+        covered.delete(root);
+        try {
+          await entry?.unsubscribe?.();
+        } catch {
+          // a watcher that fails to stop must not keep the worktree from being dropped
+        }
+      },
+      drop: async (root) => {
+        for (const key of [...failures.keys()]) if (failures.get(key)?.worktree === root) failures.delete(key);
+        try {
+          await takeWriter().dropOverlay(root);
+        } catch (error) {
+          if (!(error instanceof IndexerError)) throw error;
+        }
+      },
+    });
+  }
+
+  function scheduleSync(): void {
+    if (stopped) return;
+    syncTail = syncTail.then(syncNow).catch(ignore);
+    track(syncTail);
   }
 
   /** The idle timer: re-armed first, so a long Reconcile never delays the next tick; runs share per worktree. */
@@ -448,22 +543,25 @@ export function createIndexer(deps: IndexerDeps): Indexer {
 
     async start(options: StartOptions = {}): Promise<void> {
       assertRunning();
-      const listed = await listWorktrees();
-      const eligible = (info: WorktreeInfo): boolean => !info.bare && !info.prunable;
-      const targets =
-        options.worktrees === undefined
-          ? listed.filter(eligible)
-          : options.worktrees.map((root) => {
-              const found = worktrees.get(root);
-              if (found === undefined || found.bare) {
-                throw new IndexerError('unknown_worktree', `${root} is not a worktree of this repository`);
-              }
-              return found;
-            });
+      const eligible = eligibleWorktrees(await listWorktrees(), await commonDirOf());
+      const targets: Array<readonly [string, string]> = [];
+      if (options.worktrees === undefined) {
+        coverAll = true;
+        targets.push(...eligible);
+      } else {
+        for (const root of options.worktrees) {
+          const name = eligible.get(root);
+          if (name === undefined) {
+            throw new IndexerError('unknown_worktree', `${root} is not a worktree of this repository that can be watched`);
+          }
+          targets.push([root, name]);
+        }
+      }
       armIdle();
       // Every subscription first, so an edit made while the first Reconcile runs is not missed.
-      for (const info of targets) await cover(info.path);
-      for (const info of targets) await requestReconcile(info.path, 'indexing', false);
+      await watchGitDir(await commonDirOf());
+      for (const [root, name] of targets) await cover(root, name);
+      for (const [root] of targets) await requestReconcile(root, 'indexing', false);
     },
 
     async reconcile(worktree?: string): Promise<ReconcileOutcome> {
@@ -475,8 +573,13 @@ export function createIndexer(deps: IndexerDeps): Indexer {
     async attach(first: EventSource | string, roots?: readonly string[]): Promise<void> {
       assertRunning();
       if (typeof first === 'string') {
-        await resolveWorktree(first, true);
-        await cover(first);
+        const commonDir = await commonDirOf();
+        const name = eligibleWorktrees(await listWorktrees(), commonDir).get(first);
+        if (name === undefined) {
+          throw new IndexerError('unknown_worktree', `${first} is not a worktree of this repository that can be watched`);
+        }
+        await watchGitDir(commonDir);
+        await cover(first, name);
         await requestReconcile(first, 'indexing', false);
         return;
       }
@@ -497,6 +600,12 @@ export function createIndexer(deps: IndexerDeps): Indexer {
         idleCancel = undefined;
         for (const wake of [...wakers]) wake();
         for (const unsubscribe of unsubscribes.splice(0)) await unsubscribe();
+        try {
+          await gitUnsubscribe?.();
+        } catch {
+          // a watcher that fails to stop must not keep the Indexer from stopping
+        }
+        gitUnsubscribe = undefined;
         for (const entry of covered.values()) {
           try {
             await entry.unsubscribe?.();
