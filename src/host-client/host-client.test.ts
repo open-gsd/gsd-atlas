@@ -6,7 +6,7 @@ import { after, describe, it } from 'node:test';
 import { createGrammarEngine } from '../grammar-engine/index.ts';
 import { makeTempDir } from '../test-kit/index.ts';
 import { PROTOCOL_VERSION, createInProcessHostClient } from './index.ts';
-import type { Diagnostic, Envelope, HostClient, Request } from './index.ts';
+import type { Diagnostic, Envelope, HostClient, Request, Roots } from './index.ts';
 
 const TOY = path.resolve(import.meta.dirname, '..', '..', 'test', 'fixtures', 'modules', 'toy');
 
@@ -35,8 +35,14 @@ describe('HostClient', () => {
 
 describe('createInProcessHostClient', () => {
   const engine = createGrammarEngine();
-  const client = createInProcessHostClient({ engine });
   const temp = makeTempDir();
+  const roots: Roots = {
+    repoRoot: path.join(temp.path, 'repo'),
+    userDir: path.join(temp.path, 'user'),
+    builtinDir: null,
+    npmRoots: [],
+  };
+  const client = createInProcessHostClient({ roots, engine });
   after(async () => {
     await engine.dispose();
     temp.cleanup();
@@ -84,12 +90,79 @@ describe('createInProcessHostClient', () => {
   });
 
   it('answers an unknown kind with unknown_kind', async () => {
-    const reply = await client.handle({ protocol: PROTOCOL_VERSION, kind: 'lang_list' });
+    const reply = await client.handle({ protocol: PROTOCOL_VERSION, kind: 'frobnicate' });
     assert.equal(reply.ok, false);
     assert.deepEqual(
       reply.diagnostics.map((d) => d.code),
       ['unknown_kind'],
     );
+  });
+
+  describe('lang_list and root overrides', () => {
+    function rootsWithToy(): Roots {
+      const userDir = path.join(temp.path, `user-${String(fs.readdirSync(temp.path).length)}`);
+      fs.cpSync(TOY, path.join(userDir, 'languages', 'toy'), { recursive: true });
+      return { ...roots, userDir };
+    }
+
+    it('serves lang_list from the default roots: an empty list is still an ok envelope', async () => {
+      const reply = await client.handle({ protocol: PROTOCOL_VERSION, kind: 'lang_list' });
+      assert.equal(reply.schema, 'gsd-atlas.lang-list/1');
+      assert.equal(reply.ok, true);
+      assert.deepEqual(reply.data, { modules: [] });
+      assert.deepEqual(reply.diagnostics, []);
+    });
+
+    it('serves lang_list with the roots a request overrides', async () => {
+      const reply = await client.handle({ protocol: PROTOCOL_VERSION, kind: 'lang_list', args: { roots: rootsWithToy() } });
+      assert.equal(reply.ok, true);
+      const { modules } = reply.data as { modules: Array<{ name: string; source: string; extensions: string[] }> };
+      assert.equal(modules.length, 1);
+      assert.equal(modules[0]!.name, 'toy');
+      assert.equal(modules[0]!.source, 'user');
+      assert.deepEqual(modules[0]!.extensions, ['.toy']);
+    });
+
+    it('resolves a lang_test id through the roots a request overrides', async () => {
+      const reply = await client.handle({
+        protocol: PROTOCOL_VERSION,
+        kind: 'lang_test',
+        args: { target: 'toy', roots: rootsWithToy() },
+      });
+      assert.equal(reply.ok, true, JSON.stringify(reply.diagnostics));
+      assert.equal((reply.data as { module: string }).module, 'toy');
+    });
+
+    it('keeps the default for a root field a request leaves out', async () => {
+      const userDir = rootsWithToy().userDir;
+      const withUser = createInProcessHostClient({ roots: { ...roots, userDir }, engine });
+      const reply = await withUser.handle({ protocol: PROTOCOL_VERSION, kind: 'lang_list', args: { roots: { builtinDir: null } } });
+      assert.equal((reply.data as { modules: unknown[] }).modules.length, 1);
+    });
+
+    it('answers a malformed or relative roots override with invalid_args', async () => {
+      const bad: unknown[] = [
+        'x',
+        [],
+        { repoRoot: 'relative/dir' },
+        { userDir: 3 },
+        { builtinDir: 'relative' },
+        { npmRoots: 'nope' },
+        { npmRoots: ['/abs', 'rel'] },
+        { surprise: '/abs' },
+      ];
+      for (const override of bad) {
+        for (const kind of ['lang_list', 'lang_test']) {
+          const reply = await client.handle({ protocol: PROTOCOL_VERSION, kind, args: { target: 'toy', roots: override } });
+          assert.equal(reply.ok, false, JSON.stringify(override));
+          assert.deepEqual(
+            reply.diagnostics.map((d) => d.code),
+            ['invalid_args'],
+            JSON.stringify(override),
+          );
+        }
+      }
+    });
   });
 
   it('answers lang_test without a usable target with invalid_args', async () => {

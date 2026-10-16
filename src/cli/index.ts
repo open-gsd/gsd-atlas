@@ -5,8 +5,10 @@
  *
  * Output contract: stdout carries exactly one JSON envelope per request (nothing else), stderr
  * carries the human reasons, one line per error or warning diagnostic.
- * Exit codes: 0 ok; 1 usage error or a target that is not an existing module folder; 2 any other failure.
+ * Exit codes: 0 ok; 1 usage error or a target that is neither a module folder nor a known module id;
+ * 2 any other failure.
  */
+import path from 'node:path';
 import { parseArgs } from 'node:util';
 
 import { PROTOCOL_VERSION } from '../host-client/index.ts';
@@ -24,7 +26,14 @@ export interface CliIo {
   readonly stderr: { write(text: string): unknown };
 }
 
-const USAGE = ['Usage: gsd-atlas [--version | -v] [--help | -h]', '       gsd-atlas lang test <module-folder>', ''].join('\n');
+const USAGE = [
+  'Usage: gsd-atlas [--version | -v] [--help | -h]',
+  '       gsd-atlas lang list [root flags]',
+  '       gsd-atlas lang test <module-folder>|<module-id> [root flags]',
+  'Root flags (where modules are searched; each one replaces its default):',
+  '       --repo-root <dir>  --user-dir <dir>  --builtin-dir <dir>  --npm-root <dir> (repeatable)',
+  '',
+].join('\n');
 
 function usageError(io: CliIo, message: string): number {
   io.stderr.write(`gsd-atlas: ${message}\n${USAGE}`);
@@ -42,10 +51,38 @@ function exitCodeFor(envelope: Envelope): number {
   return envelope.ok ? EXIT_OK : EXIT_FAILURE;
 }
 
-async function langTest(io: CliIo, target: string): Promise<number> {
+interface RootFlags {
+  readonly 'repo-root'?: string | undefined;
+  readonly 'user-dir'?: string | undefined;
+  readonly 'builtin-dir'?: string | undefined;
+  readonly 'npm-root'?: string[] | undefined;
+}
+
+/**
+ * The root flags the user gave, as absolute paths: a relative flag means relative to this process's
+ * working directory, so it is resolved here, before the host sees it. Undefined when no flag was given.
+ */
+function rootsFrom(flags: RootFlags): Record<string, unknown> | undefined {
+  const roots: Record<string, unknown> = {};
+  if (flags['repo-root'] !== undefined) {
+    roots['repoRoot'] = path.resolve(flags['repo-root']);
+  }
+  if (flags['user-dir'] !== undefined) {
+    roots['userDir'] = path.resolve(flags['user-dir']);
+  }
+  if (flags['builtin-dir'] !== undefined) {
+    roots['builtinDir'] = path.resolve(flags['builtin-dir']);
+  }
+  if (flags['npm-root'] !== undefined) {
+    roots['npmRoots'] = flags['npm-root'].map((root) => path.resolve(root));
+  }
+  return Object.keys(roots).length === 0 ? undefined : roots;
+}
+
+async function send(io: CliIo, kind: string, args: Record<string, unknown>): Promise<number> {
   let envelope: Envelope;
   try {
-    envelope = await io.client.handle({ protocol: PROTOCOL_VERSION, kind: 'lang_test', args: { target } });
+    envelope = await io.client.handle({ protocol: PROTOCOL_VERSION, kind, args });
   } catch (error) {
     io.stderr.write(`gsd-atlas: error internal_error: ${reasonOf(error)}\n`);
     return EXIT_FAILURE;
@@ -69,6 +106,10 @@ export async function runCli(argv: readonly string[], io: CliIo): Promise<number
       options: {
         version: { type: 'boolean', short: 'v' },
         help: { type: 'boolean', short: 'h' },
+        'repo-root': { type: 'string' },
+        'user-dir': { type: 'string' },
+        'builtin-dir': { type: 'string' },
+        'npm-root': { type: 'string', multiple: true },
       },
     });
   } catch (error) {
@@ -89,14 +130,21 @@ export async function runCli(argv: readonly string[], io: CliIo): Promise<number
   if (group === undefined) {
     return usageError(io, 'a command is required');
   }
-  if (group !== 'lang' || action !== 'test') {
+  if (group !== 'lang' || (action !== 'test' && action !== 'list')) {
     return usageError(io, 'unknown command');
   }
+  const roots = rootsFrom(values);
+  if (action === 'list') {
+    if (target !== undefined) {
+      return usageError(io, 'lang list takes no arguments, only root flags');
+    }
+    return send(io, 'lang_list', roots === undefined ? {} : { roots });
+  }
   if (target === undefined) {
-    return usageError(io, 'lang test needs a module folder');
+    return usageError(io, 'lang test needs a module folder or module id');
   }
   if (extra.length > 0) {
-    return usageError(io, 'lang test takes exactly one module folder');
+    return usageError(io, 'lang test takes exactly one module folder or module id');
   }
-  return langTest(io, target);
+  return send(io, 'lang_test', roots === undefined ? { target } : { target, roots });
 }

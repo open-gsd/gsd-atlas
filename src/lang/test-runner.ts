@@ -18,6 +18,8 @@ import type { GrammarEngine, LoadedGrammar } from '../grammar-engine/index.ts';
 import { GOLDEN_SUFFIX, compareGolden, goldenFileName, renderGolden } from './golden.ts';
 import type { GoldenDifference } from './golden.ts';
 import { readModuleFile, readModuleInputs } from './module-files.ts';
+import { resolveModule } from './registry.ts';
+import type { Roots } from './registry.ts';
 
 export const FIXTURES_DIR = 'fixtures';
 
@@ -36,8 +38,12 @@ export interface LangTestReport {
 }
 
 export interface LangTestOptions {
-  /** A module folder: an existing directory, absolute or relative to the working directory. */
+  /**
+   * A module folder (an existing directory, absolute or relative to the working directory) or a bare
+   * module id, resolved through the registry over `roots`. A directory wins over an id of the same name.
+   */
   readonly target: string;
+  readonly roots: Roots;
   readonly engine: GrammarEngine;
 }
 
@@ -48,22 +54,36 @@ function reasonOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+interface ResolvedTarget {
+  readonly dir: string;
+  /** Registry diagnostics (skipped copies of the module) when the target was an id. */
+  readonly diagnostics: readonly Diagnostic[];
+}
+
 /**
- * The one place a target becomes a module folder. Plan 01-17 adds the registry lookup by id in
- * the "not an existing directory" branch below; nothing else about target handling changes.
+ * The one place a target becomes a module folder: an existing directory is a folder; a bare id
+ * (no path separator) that is not a directory is looked up in the registry; anything else is not found.
  */
-function resolveTarget(target: string): { readonly dir: string } | undefined {
-  if (target !== '') {
-    const dir = path.resolve(target);
-    try {
-      if (fs.statSync(dir).isDirectory()) {
-        return { dir };
-      }
-    } catch {
-      // not an existing directory
-    }
+function resolveTarget(target: string, roots: Roots): ResolvedTarget | { readonly diagnostics: readonly Diagnostic[] } {
+  if (target === '') {
+    return { diagnostics: [] };
   }
-  return undefined;
+  const dir = path.resolve(target);
+  try {
+    if (fs.statSync(dir).isDirectory()) {
+      return { dir, diagnostics: [] };
+    }
+  } catch {
+    // not an existing directory
+  }
+  if (!/[\\/]/.test(target)) {
+    const found = resolveModule(roots, target);
+    if (found.entry !== undefined) {
+      return { dir: found.entry.dir, diagnostics: found.diagnostics };
+    }
+    return { diagnostics: found.diagnostics };
+  }
+  return { diagnostics: [] };
 }
 
 function show(value: unknown): string {
@@ -132,14 +152,15 @@ async function testFixture(moduleDir: string, grammar: LoadedGrammar, file: stri
 }
 
 export async function runLangTest(options: LangTestOptions): Promise<LangTestReport> {
-  const resolved = resolveTarget(options.target);
-  if (resolved === undefined) {
+  const resolved = resolveTarget(options.target, options.roots);
+  if (!('dir' in resolved)) {
     return {
       ok: false,
       module: options.target,
       fixtures: [],
       diagnostics: [
-        diagnostic('module_not_found', 'error', `${options.target}: is not an existing module folder`, options.target),
+        ...resolved.diagnostics,
+        diagnostic('module_not_found', 'error', `${options.target}: is not an existing module folder or a known module id`, options.target),
       ],
     };
   }
@@ -147,7 +168,7 @@ export async function runLangTest(options: LangTestOptions): Promise<LangTestRep
 
   const inputs = readModuleInputs(moduleDir);
   if (!inputs.ok) {
-    return { ok: false, module: options.target, fixtures: [], diagnostics: inputs.diagnostics };
+    return { ok: false, module: options.target, fixtures: [], diagnostics: [...resolved.diagnostics, ...inputs.diagnostics] };
   }
   const moduleName = inputs.manifest.name;
 
@@ -161,13 +182,13 @@ export async function runLangTest(options: LangTestOptions): Promise<LangTestRep
         ok: false,
         module: moduleName,
         fixtures: [],
-        diagnostics: [diagnostic(code, 'error', reasonOf(error), inputs.manifest.grammar.wasm)],
+        diagnostics: [...resolved.diagnostics, diagnostic(code, 'error', reasonOf(error), inputs.manifest.grammar.wasm)],
       };
     }
 
     const listing = listFixtures(moduleDir);
     if ('diagnostic' in listing) {
-      return { ok: false, module: moduleName, fixtures: [], diagnostics: [listing.diagnostic] };
+      return { ok: false, module: moduleName, fixtures: [], diagnostics: [...resolved.diagnostics, listing.diagnostic] };
     }
 
     const fixtures: LangTestFixtureResult[] = [];
@@ -177,7 +198,8 @@ export async function runLangTest(options: LangTestOptions): Promise<LangTestRep
       fixtures.push({ file, ok: problems.length === 0 });
       diagnostics.push(...problems);
     }
-    return { ok: diagnostics.length === 0, module: moduleName, fixtures, diagnostics };
+    // Registry warnings about skipped copies are informative; only the fixtures decide pass or fail.
+    return { ok: diagnostics.length === 0, module: moduleName, fixtures, diagnostics: [...resolved.diagnostics, ...diagnostics] };
   } catch (error) {
     return {
       ok: false,

@@ -119,25 +119,30 @@ export function readModuleFile(moduleDir: string, relative: string, role: 'fixtu
   return confinedRead(rootReal, moduleDir, relative, role);
 }
 
-/**
- * Read a module's manifest, lock, wasm and queries into a GrammarInput. Returns diagnostics
- * (codes: manifest_unreadable, manifest_too_large, manifest_invalid, lock_missing, lock_invalid,
- * wasm_missing, wasm_too_large, query_missing, query_too_large, path_escape) instead of throwing.
- */
-export function readModuleInputs(moduleDir: string): ReadModuleInputsResult {
-  let rootReal: string;
+export type ReadManifestResult =
+  | { readonly ok: true; readonly manifest: Manifest }
+  | { readonly ok: false; readonly diagnostics: readonly Diagnostic[] };
+
+type OpenedModuleRoot =
+  | { readonly ok: true; readonly rootReal: string }
+  | { readonly ok: false; readonly diagnostic: Diagnostic };
+
+function openModuleRoot(moduleDir: string): OpenedModuleRoot {
   try {
-    rootReal = fs.realpathSync(moduleDir);
+    const rootReal = fs.realpathSync(moduleDir);
     if (!fs.statSync(rootReal).isDirectory()) {
       throw new Error('not a directory');
     }
+    return { ok: true, rootReal };
   } catch (error) {
     return {
       ok: false,
-      diagnostics: [diagnostic('manifest_unreadable', 'warning', `${MANIFEST_FILE}: module folder is not readable (${reasonOf(error)})`, moduleDir)],
+      diagnostic: diagnostic('manifest_unreadable', 'warning', `${MANIFEST_FILE}: module folder is not readable (${reasonOf(error)})`, moduleDir),
     };
   }
+}
 
+function readManifestConfined(rootReal: string, moduleDir: string): ReadManifestResult {
   const manifestRead = confinedRead(rootReal, moduleDir, MANIFEST_FILE, 'manifest');
   if (!manifestRead.ok) {
     return { ok: false, diagnostics: [manifestRead.diagnostic] };
@@ -151,11 +156,39 @@ export function readModuleInputs(moduleDir: string): ReadModuleInputsResult {
       diagnostics: [diagnostic('manifest_invalid', 'warning', `manifest: not valid JSON (${reasonOf(error)})`, MANIFEST_FILE)],
     };
   }
-  const parsedManifest = parseManifest(manifestJson, MANIFEST_FILE);
-  if (!parsedManifest.ok) {
-    return { ok: false, diagnostics: parsedManifest.diagnostics };
+  return parseManifest(manifestJson, MANIFEST_FILE);
+}
+
+/**
+ * Read and validate only a module's manifest, with the same containment and size cap as the full
+ * load. The registry uses this to enumerate candidates cheaply. Never throws; codes:
+ * manifest_unreadable, manifest_too_large, manifest_invalid, path_escape.
+ */
+export function readManifest(moduleDir: string): ReadManifestResult {
+  const root = openModuleRoot(moduleDir);
+  if (!root.ok) {
+    return { ok: false, diagnostics: [root.diagnostic] };
   }
-  const { manifest } = parsedManifest;
+  return readManifestConfined(root.rootReal, moduleDir);
+}
+
+/**
+ * Read a module's manifest, lock, wasm and queries into a GrammarInput. Returns diagnostics
+ * (codes: manifest_unreadable, manifest_too_large, manifest_invalid, lock_missing, lock_invalid,
+ * wasm_missing, wasm_too_large, query_missing, query_too_large, path_escape) instead of throwing.
+ */
+export function readModuleInputs(moduleDir: string): ReadModuleInputsResult {
+  const root = openModuleRoot(moduleDir);
+  if (!root.ok) {
+    return { ok: false, diagnostics: [root.diagnostic] };
+  }
+  const { rootReal } = root;
+
+  const manifestResult = readManifestConfined(rootReal, moduleDir);
+  if (!manifestResult.ok) {
+    return { ok: false, diagnostics: manifestResult.diagnostics };
+  }
+  const { manifest } = manifestResult;
 
   // Independent reads: report every problem at once instead of one per run.
   const problems: Diagnostic[] = [];
