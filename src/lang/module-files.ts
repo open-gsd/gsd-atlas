@@ -30,7 +30,7 @@ export type ReadModuleInputsResult =
     }
   | { readonly ok: false; readonly diagnostics: readonly Diagnostic[] };
 
-type FileRole = 'manifest' | 'lock' | 'wasm' | 'query';
+type FileRole = 'manifest' | 'lock' | 'wasm' | 'query' | 'fixture' | 'golden';
 
 interface RoleSpec {
   readonly missing: string;
@@ -43,6 +43,9 @@ const ROLES: Readonly<Record<FileRole, RoleSpec>> = {
   lock: { missing: 'lock_missing', tooLarge: 'lock_invalid', cap: GRAMMAR_LIMITS.manifestBytes },
   wasm: { missing: 'wasm_missing', tooLarge: 'wasm_too_large', cap: GRAMMAR_LIMITS.wasmBytes },
   query: { missing: 'query_missing', tooLarge: 'query_too_large', cap: GRAMMAR_LIMITS.queryBytes },
+  // `lang test` reads fixtures and goldens through the same confined path (T-01-37).
+  fixture: { missing: 'fixture_unreadable', tooLarge: 'fixture_unreadable', cap: GRAMMAR_LIMITS.sourceBytes },
+  golden: { missing: 'golden_missing', tooLarge: 'golden_invalid', cap: GRAMMAR_LIMITS.sourceBytes },
 };
 
 type ConfinedRead = { readonly ok: true; readonly bytes: Buffer } | { readonly ok: false; readonly diagnostic: Diagnostic };
@@ -93,6 +96,27 @@ function confinedRead(rootReal: string, moduleDir: string, relative: string, rol
       fs.closeSync(fd);
     }
   }
+}
+
+export type ReadModuleFileResult = ConfinedRead;
+
+/**
+ * Read one fixture or golden file of a module folder (`relative` is module-relative) with the same
+ * realpath containment and size cap as every other module file. Never throws: a symlink pointing
+ * out of the folder, a missing or oversized file becomes a diagnostic
+ * (fixture_unreadable, golden_missing, golden_invalid, path_escape).
+ */
+export function readModuleFile(moduleDir: string, relative: string, role: 'fixture' | 'golden'): ReadModuleFileResult {
+  let rootReal: string;
+  try {
+    rootReal = fs.realpathSync(moduleDir);
+  } catch (error) {
+    return {
+      ok: false,
+      diagnostic: diagnostic(ROLES[role].missing, 'warning', `${relative}: module folder is not readable (${reasonOf(error)})`, relative),
+    };
+  }
+  return confinedRead(rootReal, moduleDir, relative, role);
 }
 
 /**

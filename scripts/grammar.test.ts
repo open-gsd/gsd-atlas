@@ -120,12 +120,14 @@ describe('toy fixtures: exact bytes', () => {
     for (const [relative, bytes] of Object.entries(FIXTURES)) {
       assert.ok(readFixture(relative).equals(bytes), `${relative} differs from scripts/toy-fixtures.ts`);
     }
-    assert.deepEqual(fs.readdirSync(path.join(toyDir, 'fixtures')).sort(), [
-      'basic.toy',
-      'bom.toy',
-      'crlf.toy',
-      'emoji.toy',
-    ]);
+    // The `<fixture>.golden.json` files belong to `lang test` (plan 01-14) and have their own checks.
+    assert.deepEqual(
+      fs
+        .readdirSync(path.join(toyDir, 'fixtures'))
+        .filter((name) => !name.endsWith('.golden.json'))
+        .sort(),
+      ['basic.toy', 'bom.toy', 'crlf.toy', 'emoji.toy'],
+    );
     assert.deepEqual(fs.readdirSync(path.join(toyDir, 'fixtures-negative')), ['broken.toy']);
   });
 

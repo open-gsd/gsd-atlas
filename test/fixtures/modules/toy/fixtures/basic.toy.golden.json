@@ -1,0 +1,62 @@
+{
+  "schema": 1,
+  "fixture": "basic.toy",
+  "convention": "0-based line, 0-based UTF-16 column, end exclusive",
+  "hadBom": false,
+  "captures": [
+    {
+      "query": "imports",
+      "name": "import.path",
+      "startLine": 1,
+      "startColumn": 4,
+      "endLine": 1,
+      "endColumn": 14,
+      "text": "\"lib/util\""
+    },
+    {
+      "query": "tags",
+      "name": "definition.function",
+      "startLine": 2,
+      "startColumn": 0,
+      "endLine": 4,
+      "endColumn": 1,
+      "text": "fn main {\n  helper();\n}"
+    },
+    {
+      "query": "tags",
+      "name": "name",
+      "startLine": 2,
+      "startColumn": 3,
+      "endLine": 2,
+      "endColumn": 7,
+      "text": "main"
+    },
+    {
+      "query": "refs",
+      "name": "reference.call",
+      "startLine": 3,
+      "startColumn": 2,
+      "endLine": 3,
+      "endColumn": 8,
+      "text": "helper"
+    },
+    {
+      "query": "tags",
+      "name": "definition.type",
+      "startLine": 5,
+      "startColumn": 0,
+      "endLine": 6,
+      "endColumn": 1,
+      "text": "type Widget {\n}"
+    },
+    {
+      "query": "tags",
+      "name": "name",
+      "startLine": 5,
+      "startColumn": 5,
+      "endLine": 5,
+      "endColumn": 11,
+      "text": "Widget"
+    }
+  ]
+}
