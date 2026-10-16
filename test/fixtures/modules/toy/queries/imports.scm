@@ -1,3 +1,3 @@
-; Imports of the toy language: the quoted path of a use statement.
+; Imports of the toy language: the whole use statement (the es-style import) and its quoted path.
 (use_stmt
-  path: (string) @import.path)
+  path: (string) @import.path) @import.es

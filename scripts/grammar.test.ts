@@ -354,7 +354,8 @@ describe('toy queries', () => {
     assert.deepEqual(byName('name'), ['main', 'Widget']);
     assert.deepEqual(byName('reference.call'), ['helper']);
     assert.deepEqual(byName('import.path'), ['"lib/util"']);
-    assert.equal(found.length, 6);
+    assert.deepEqual(byName('import.es'), ['use "lib/util";']);
+    assert.equal(found.length, 7);
   });
 });
 

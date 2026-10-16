@@ -6,6 +6,15 @@
   "captures": [
     {
       "query": "imports",
+      "name": "import.es",
+      "startLine": 1,
+      "startColumn": 0,
+      "endLine": 1,
+      "endColumn": 11,
+      "text": "use \"a😀b\";"
+    },
+    {
+      "query": "imports",
       "name": "import.path",
       "startLine": 1,
       "startColumn": 4,
