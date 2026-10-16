@@ -230,3 +230,67 @@ describe('real Source Tree git quirks', () => {
     assert.equal(await tree.hasObject(blobId('a\n')), true);
   });
 });
+
+describe('real Source Tree hashPaths', () => {
+  it('hashes a CRLF file under `*.ts text eol=lf` to the id git stores (CRLF case)', async (t) => {
+    const { repo, tree } = await realTree(t, { files: { '.gitattributes': '*.ts text eol=lf\n' } });
+    repo.write('crlf.ts', 'one\r\ntwo\r\n');
+    const { files, diagnostics } = await tree.hashPaths(repo.dir, ['crlf.ts']);
+    assert.deepEqual(diagnostics, []);
+    assert.equal(files.get('crlf.ts'), blobId('one\ntwo\n'));
+    await repo.git(['add', 'crlf.ts']);
+    assert.equal(files.get('crlf.ts'), (await repo.git(['rev-parse', ':crlf.ts'])).trim());
+  });
+
+  it('starts git exactly twice for N paths (filter enumeration, one batched hash) and hashes duplicates once', async (t) => {
+    const { repo, recording, tree } = await realTree(t, {
+      files: { 'a.txt': 'a\n', 'b.txt': 'b\n', 'c.txt': 'c\n' },
+    });
+    const { files } = await tree.hashPaths(repo.dir, ['c.txt', 'a.txt', 'b.txt', 'a.txt']);
+    assert.deepEqual([...files.keys()], ['a.txt', 'b.txt', 'c.txt']);
+    assert.equal(recording.starts.length, 2, recording.starts.map((s) => subcommand(s)).join(','));
+    assert.deepEqual(recording.starts.map(subcommand), ['config', 'hash-object']);
+    const [, hash] = recording.starts;
+    assert.deepEqual(String(hash?.stdin).split('\n').filter((l) => l !== ''), ['a.txt', 'b.txt', 'c.txt']);
+  });
+
+  it('starts no git for an empty list, and no hash run when nothing in the list can be hashed', async (t) => {
+    const { repo, recording, tree } = await realTree(t, { files: { 'a.txt': 'a\n' } });
+    assert.equal((await tree.hashPaths(repo.dir, [])).files.size, 0);
+    assert.equal(recording.starts.length, 0);
+    const { files, diagnostics } = await tree.hashPaths(repo.dir, ['no/such.txt']);
+    assert.equal(files.size, 0);
+    assert.deepEqual(codes(diagnostics), ['missing_on_disk:no/such.txt']);
+    assert.equal(hashStarts(recording), 0);
+  });
+
+  it('carries the approved git timeouts from 02-CONSTANTS.md on its specs (git.timeoutMs 60000, git.hashBatchTimeoutMs 120000)', async (t) => {
+    const { repo, recording, tree } = await realTree(t, { files: { 'a.txt': 'a\n' } });
+    await tree.hashPaths(repo.dir, ['a.txt']);
+    const hash = recording.starts.find((s) => subcommand(s) === 'hash-object');
+    assert.equal(hash?.timeoutMs, 120000);
+    await tree.snapshot(repo.dir);
+    const listings = recording.starts.filter((s) => subcommand(s) === 'ls-files');
+    assert.ok(listings.length > 0);
+    assert.ok(listings.every((s) => s.timeoutMs === 60000));
+  });
+
+  it('throws hash_output_mismatch when git returns a different number of ids than paths', async (t) => {
+    const repo = await createTempGitRepo({ runner: setupRunner, files: { 'a.txt': 'a\n', 'b.txt': 'b\n' } });
+    t.after(() => repo.cleanup());
+    const lying = createRecordingRunner({
+      respond: (spec) => (subcommand(spec) === 'config' ? { stdout: probeListing(spec) } : { stdout: `${'3'.repeat(40)}\n` }),
+    });
+    const tree = createSourceTree({ runner: lying, repoDir: repo.dir });
+    await assert.rejects(() => tree.hashPaths(repo.dir, ['a.txt', 'b.txt']), { code: 'hash_output_mismatch' });
+  });
+
+  it('fails closed: a failed filter enumeration rejects hashPaths and starts no hash-object', async (t) => {
+    const repo = await createTempGitRepo({ runner: setupRunner, files: { 'a.txt': 'a\n' } });
+    t.after(() => repo.cleanup());
+    const recording = createRecordingRunner({ respond: (spec) => (subcommand(spec) === 'config' ? { exitCode: 128 } : { stdout: '' }) });
+    const tree = createSourceTree({ runner: recording, repoDir: repo.dir });
+    await assert.rejects(() => tree.hashPaths(repo.dir, ['a.txt']), { code: 'filter_enumeration_failed' });
+    assert.equal(hashStarts(recording), 0);
+  });
+});

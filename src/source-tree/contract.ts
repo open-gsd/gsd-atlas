@@ -162,5 +162,43 @@ export function defineSourceTreeContract(label: string, make: MakeSourceTree): v
         assert.equal(await tree.hasObject(blobId('alpha\n')), false);
       }),
     );
+
+    it(
+      'hashPaths returns the snapshot ids for a coalesced path list, once per path, and an empty map for an empty list',
+      withTree(CONTRACT_WORLD, async ({ tree, worktree }) => {
+        const expected = new Map(expectedFiles(CONTRACT_WORLD));
+        const { files, diagnostics } = await tree.hashPaths(worktree, ['new.txt', 'a.txt', 'new.txt', 'dir/b.ts']);
+        assert.deepEqual(
+          [...files].sort(byPath),
+          ['a.txt', 'dir/b.ts', 'new.txt'].map((rel): [string, string] => [rel, expected.get(rel) ?? '']),
+        );
+        assert.deepEqual(diagnostics, []);
+        const snapshot = await tree.snapshot(worktree);
+        for (const [rel, id] of files) assert.equal(snapshot.files.get(rel), id, rel);
+        const none = await tree.hashPaths(worktree, []);
+        assert.equal(none.files.size, 0);
+        assert.deepEqual(none.diagnostics, []);
+      }),
+    );
+
+    it(
+      'hashPaths leaves out an absent path, a directory and an unhashable name with one coded diagnostic each and still hashes the rest',
+      withTree(CONTRACT_WORLD, async ({ tree, worktree }) => {
+        const { files, diagnostics } = await tree.hashPaths(worktree, [
+          'a.txt',
+          'keep/deleted.txt',
+          'no/such.txt',
+          'dir',
+          'bad\nname.txt',
+        ]);
+        assert.deepEqual([...files.keys()], ['a.txt']);
+        assert.deepEqual(diagnostics.map((d) => `${d.code}:${d.subject ?? ''}`).sort(), [
+          'gitlink_skipped:dir',
+          'missing_on_disk:keep/deleted.txt',
+          'missing_on_disk:no/such.txt',
+          'unhashable_path:bad\nname.txt',
+        ]);
+      }),
+    );
   });
 }
