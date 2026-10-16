@@ -1,0 +1,62 @@
+{
+  "name": "@opengsd/gsd-atlas",
+  "version": "0.0.0",
+  "description": "A local map of a codebase and the platform SDKs it targets, built for coding agents.",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=24.16.0"
+  },
+  "bin": {
+    "gsd-atlas": "dist/bin/gsd-atlas.js",
+    "gsd-atlas-mcp": "dist/bin/gsd-atlas-mcp.js"
+  },
+  "files": [
+    "dist",
+    "schemas",
+    "modules"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json",
+    "lint": "eslint src",
+    "test": "node --test \"src/**/*.test.ts\" \"scripts/**/*.test.ts\"",
+    "coverage": "c8 --reporter=text node --test \"src/**/*.test.ts\" \"scripts/**/*.test.ts\"",
+    "schema:build": "node scripts/schema-build.ts",
+    "schema:check": "node scripts/schema-build.ts --check",
+    "grammar:build": "node scripts/grammar-build.ts",
+    "grammar:verify": "node scripts/grammar-verify.ts",
+    "grammar:budget": "node scripts/grammar-budget.ts",
+    "prepack": "npm run build"
+  },
+  "dependencies": {
+    "web-tree-sitter": "0.27.1",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "24.19.2",
+    "ajv": "8.20.0",
+    "ajv-formats": "3.0.1",
+    "better-sqlite3": "13.0.3",
+    "c8": "12.0.0",
+    "eslint": "10.12.0",
+    "tree-sitter-cli": "0.27.1",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.71.2"
+  },
+  "peerDependencies": {
+    "better-sqlite3": "13.0.3"
+  },
+  "peerDependenciesMeta": {
+    "better-sqlite3": {
+      "optional": true
+    }
+  },
+  "allowScripts": {
+    "tree-sitter-cli": true
+  }
+}
