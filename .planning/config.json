@@ -32,8 +32,8 @@
     "human_verify_mode": "end-of-phase",
     "context_guard_mode": "warn",
     "text_mode": false,
-    "compact_content": false,
-    "research_before_questions": false,
+    "compact_content": true,
+    "research_before_questions": true,
     "discuss_mode": "discuss",
     "skip_discuss": false,
     "code_review": true,
@@ -47,7 +47,10 @@
     "post_planning_gaps": true,
     "security_enforcement": true,
     "security_asvs_level": 1,
-    "security_block_on": "high"
+    "security_block_on": "high",
+    "_auto_chain_active": false,
+    "use_worktrees": true,
+    "tdd_mode": true
   },
   "ship": {
     "pr_body_sections": [
@@ -89,5 +92,15 @@
   },
   "resolve_model_ids": "omit",
   "mode": "yolo",
-  "granularity": "standard"
+  "granularity": "standard",
+  "planner": {
+    "stall_detection_enabled": true
+  },
+  "graphify": {
+    "auto_update": true,
+    "enabled": true
+  },
+  "intel": {
+    "enabled": true
+  }
 }
