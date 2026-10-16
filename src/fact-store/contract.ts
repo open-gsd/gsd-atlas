@@ -8,7 +8,7 @@ import assert from 'node:assert/strict';
 import path from 'node:path';
 import { describe, it } from 'node:test';
 import type { FileFacts, ImportSite, Span, SymbolIdentity } from '../facts/index.ts';
-import { openDatabase } from '../sqlite/index.ts';
+import { loadDriver, openDatabase, selfTest } from '../sqlite/index.ts';
 import type { Db, DriverName } from '../sqlite/index.ts';
 import { FakeClock, makeTempDir } from '../test-kit/index.ts';
 import { SchemaTooNew, StoreClosed, UnknownWorktree, WriterBusy } from './errors.ts';
@@ -1218,7 +1218,7 @@ export function defineFactStoreContract(label: string, driver: DriverName): void
         assert.equal(callers.data[0]?.debug, `ref/src%2Fa.ts/${H(1)}/0`);
 
         const deeper = await reader.callers(idA, { hops: 3 });
-        assert.deepStrictEqual(deeper.data, callers.data, 'hops above 1 return the same one-hop set in this plan');
+        assert.deepStrictEqual(deeper.data, callers.data, 'nothing calls main or Job.run, so more hops add nothing');
         assert.deepStrictEqual((await reader.callers(idA)).data, callers.data);
         assert.deepStrictEqual((await reader.callers(identity('src/a.ts', 'ghost', 'function'))).data, []);
         writer.release();
@@ -1258,7 +1258,7 @@ export function defineFactStoreContract(label: string, driver: DriverName): void
         const first = found.data[0];
         assert.equal(first?.source_path, 'src/app/main.ts');
         assert.deepStrictEqual(first?.span, span(0, 0, 0, 20));
-        assert.equal(first?.confidence, 'INFERRED');
+        for (const record of found.data) assert.equal(record.confidence, 'EXTRACTED', 'each specifier matched exactly one overlay path');
         assert.equal(first?.content_hash, H(11));
         assert.equal(first?.extractor, 'grammar:typescript@0.23.2');
         assert.equal(first?.debug, `imp/src%2Fapp%2Fmain.ts/${H(11)}/0`);
@@ -1307,6 +1307,275 @@ export function defineFactStoreContract(label: string, driver: DriverName): void
         assert.deepStrictEqual(await names(''), []);
         assert.deepStrictEqual(await names('user', { limit: 2 }), ['getUserName', 'getUser']);
         writer.release();
+      });
+    });
+
+    it('callers hops: a chain returns each caller at its own hop, hop 1 equals the one-hop answer, and hops is clamped to 5', async () => {
+      await withStore(driver, async (fx) => {
+        const writer = fx.store.writer();
+        // main calls load calls parse
+        await writer.commitFile({
+          worktree: 'main',
+          path: 'src/chain.ts',
+          hash: H(1),
+          facts: fileOf('src/chain.ts', 1, {
+            symbols: [definition('main', 1), definition('load', 11), definition('parse', 21)],
+            refSites: [
+              { name: 'load', span: span(2, 2, 2, 6), kind: 'call', enclosing: 0 },
+              { name: 'parse', span: span(12, 2, 12, 7), kind: 'call', enclosing: 1 },
+            ],
+          }),
+        });
+        const reader = fx.store.at('main');
+        const parse = identity('src/chain.ts', 'parse', 'function');
+        const two = await reader.callers(parse, { hops: 2 });
+        assert.deepStrictEqual(
+          two.data.map((record) => [record.caller.qualifiedName, record.callee.qualifiedName, record.hops, record.span.startLine]),
+          [['load', 'parse', 1, 12], ['main', 'load', 2, 2]],
+        );
+        for (const record of two.data) {
+          assert.equal(record.tier, 'grammar');
+          assert.equal(record.confidence, 'INFERRED');
+        }
+        const one = await reader.callers(parse);
+        assert.deepStrictEqual(one.data, [two.data[0]], 'hop 1 of a deeper walk equals the one-hop answer');
+        assert.deepStrictEqual((await reader.callers(parse, { hops: 1 })).data, one.data);
+        assert.deepStrictEqual((await reader.callers(parse, { hops: 0 })).data, one.data, 'fewer than one hop still means one');
+
+        // f0 calls f1 calls ... f6: callers of f6 are f5 at hop 1 down to f1 at hop 5; f0 would be hop 6.
+        await writer.commitFile({
+          worktree: 'main',
+          path: 'src/long.ts',
+          hash: H(2),
+          facts: fileOf('src/long.ts', 2, {
+            symbols: Array.from({ length: 7 }, (_, i) => definition(`f${i}`, 10 * i + 1)),
+            refSites: Array.from({ length: 6 }, (_, i) => ({
+              name: `f${i + 1}`,
+              span: span(10 * i + 2, 2, 10 * i + 2, 4),
+              kind: 'call' as const,
+              enclosing: i,
+            })),
+          }),
+        });
+        const long = await reader.callers(identity('src/long.ts', 'f6', 'function'), { hops: 9 });
+        assert.deepStrictEqual(
+          long.data.map((record) => [record.caller.qualifiedName, record.hops]),
+          [['f5', 1], ['f4', 2], ['f3', 3], ['f2', 4], ['f1', 5]],
+        );
+        writer.release();
+      });
+    });
+
+    it('callers cycle: mutual recursion terminates with each caller once, and a self call is a hop-1 caller', async () => {
+      await withStore(driver, async (fx) => {
+        const writer = fx.store.writer();
+        await writer.commitFile({
+          worktree: 'main',
+          path: 'src/cycle.ts',
+          hash: H(1),
+          facts: fileOf('src/cycle.ts', 1, {
+            symbols: [definition('a', 1), definition('b', 11), definition('s', 21)],
+            refSites: [
+              { name: 'b', span: span(2, 2, 2, 3), kind: 'call', enclosing: 0 },
+              { name: 'a', span: span(12, 2, 12, 3), kind: 'call', enclosing: 1 },
+              { name: 's', span: span(22, 2, 22, 3), kind: 'call', enclosing: 2 },
+            ],
+          }),
+        });
+        const reader = fx.store.at('main');
+        const a = await reader.callers(identity('src/cycle.ts', 'a', 'function'), { hops: 4 });
+        assert.deepStrictEqual(a.data.map((record) => [record.caller.qualifiedName, record.hops]), [['b', 1]]);
+        const s = await reader.callers(identity('src/cycle.ts', 's', 'function'), { hops: 4 });
+        assert.deepStrictEqual(s.data.map((record) => [record.caller.qualifiedName, record.hops]), [['s', 1]]);
+        writer.release();
+      });
+    });
+
+    it('callers hops are ordered by hop, then caller path, then span, across files', async () => {
+      await withStore(driver, async (fx) => {
+        const writer = fx.store.writer();
+        await writer.commitFile({
+          worktree: 'main',
+          path: 'src/x.ts',
+          hash: H(1),
+          facts: fileOf('src/x.ts', 1, {
+            symbols: [definition('t', 1, { exported: true }), definition('p', 11), definition('q', 21), definition('top', 31)],
+            exports: [{ name: 't', span: span(1, 0, 3, 1) }],
+            refSites: [
+              { name: 't', span: span(22, 2, 22, 3), kind: 'call', enclosing: 2 },
+              { name: 'q', span: span(32, 2, 32, 3), kind: 'call', enclosing: 3 },
+              { name: 't', span: span(12, 2, 12, 3), kind: 'call', enclosing: 1 },
+            ],
+          }),
+        });
+        await writer.commitFile({
+          worktree: 'main',
+          path: 'src/y.ts',
+          hash: H(2),
+          facts: fileOf('src/y.ts', 2, {
+            symbols: [definition('r', 1)],
+            imports: [importOf('./x', 0, ['t', 't'])],
+            refSites: [{ name: 't', span: span(2, 2, 2, 3), kind: 'call', enclosing: 0, importPath: './x' }],
+          }),
+        });
+        const reader = fx.store.at('main');
+        const walked = await reader.callers(identity('src/x.ts', 't', 'function'), { hops: 2 });
+        assert.deepStrictEqual(
+          walked.data.map((record) => [record.hops, record.caller.qualifiedName, record.callee.qualifiedName]),
+          [[1, 'p', 't'], [1, 'q', 't'], [1, 'r', 't'], [2, 'top', 'q']],
+        );
+        writer.release();
+      });
+    });
+
+    it('importers depth: a chain returns each importer at its own hop with per-edge confidence, a cycle terminates, and depth is clamped to 5', async () => {
+      await withStore(driver, async (fx) => {
+        const writer = fx.store.writer();
+        const commit = async (filePath: string, n: number, imports: ImportSite[]): Promise<void> => {
+          await writer.commitFile({ worktree: 'main', path: filePath, hash: H(n), facts: fileOf(filePath, n, { symbols: [definition('x')], imports }) });
+        };
+        await commit('src/a.ts', 1, []);
+        await commit('src/b.ts', 2, [importOf('./a', 0)]);
+        await commit('src/c.ts', 3, [importOf('./b', 0)]);
+        const reader = fx.store.at('main');
+        const two = await reader.importers('src/a.ts', { depth: 2 });
+        assert.deepStrictEqual(
+          two.data.map((record) => [record.importer, record.hops, record.confidence]),
+          [['src/b.ts', 1, 'EXTRACTED'], ['src/c.ts', 2, 'EXTRACTED']],
+        );
+        assert.deepStrictEqual((await reader.importers('src/a.ts')).data, [two.data[0]], 'depth 1 is the default');
+        assert.deepStrictEqual((await reader.importers('src/a.ts', { depth: 2, limit: 1 })).data, [two.data[0]], 'limit truncates after ordering');
+
+        // p imports q and q imports p
+        await commit('src/p.ts', 4, [importOf('./q', 0)]);
+        await commit('src/q.ts', 5, [importOf('./p', 0)]);
+        const cycle = await reader.importers('src/p.ts', { depth: 4 });
+        assert.deepStrictEqual(cycle.data.map((record) => [record.importer, record.hops]), [['src/q.ts', 1]]);
+
+        // l1 imports l0, l2 imports l1, ... l6 imports l5
+        await commit('src/l0.ts', 10, []);
+        for (let i = 1; i <= 6; i += 1) await commit(`src/l${i}.ts`, 10 + i, [importOf(`./l${i - 1}`, 0)]);
+        const long = await reader.importers('src/l0.ts', { depth: 9 });
+        assert.deepStrictEqual(
+          long.data.map((record) => [record.importer, record.hops]),
+          [['src/l1.ts', 1], ['src/l2.ts', 2], ['src/l3.ts', 3], ['src/l4.ts', 4], ['src/l5.ts', 5]],
+        );
+        writer.release();
+      });
+    });
+
+    it('importers depth: a specifier that matches two files is INFERRED and the importer appears for each candidate target', async () => {
+      await withStore(driver, async (fx) => {
+        const writer = fx.store.writer();
+        const commit = async (filePath: string, n: number, imports: ImportSite[]): Promise<void> => {
+          await writer.commitFile({ worktree: 'main', path: filePath, hash: H(n), facts: fileOf(filePath, n, { symbols: [definition('x')], imports }) });
+        };
+        await commit('src/foo.cts', 1, []);
+        await commit('src/foo.cjs', 2, []);
+        await commit('src/user.cjs', 3, [importOf('./foo.cjs', 0)]);
+        const reader = fx.store.at('main');
+        for (const target of ['src/foo.cts', 'src/foo.cjs']) {
+          const found = await reader.importers(target);
+          assert.deepStrictEqual(found.data.map((record) => [record.importer, record.confidence]), [['src/user.cjs', 'INFERRED']], target);
+        }
+        writer.release();
+      });
+    });
+
+    it('find fuzzy uses the trigram table: it matches substrings case-insensitively, answers nothing under three characters, and is filled once per interned name', async () => {
+      await withStore(driver, async (fx) => {
+        const writer = fx.store.writer();
+        const configFacts = (filePath: string, n: number, symbolNames: string[]): FileFacts =>
+          fileOf(filePath, n, { symbols: symbolNames.map((name, i) => definition(name, 1 + 2 * i)) });
+        await writer.commitFile({
+          worktree: 'main',
+          path: 'src/config.ts',
+          hash: H(1),
+          facts: configFacts('src/config.ts', 1, ['getConfig', 'loadConfigFile', 'CONFIGURE', 'settings']),
+        });
+        const peek = await fx.peek();
+        const fuzzy = async (query: string): Promise<string[]> =>
+          (await fx.store.at('main').find(query, { mode: 'fuzzy' })).data.map((record) => record.identity.qualifiedName);
+        assert.equal(peek.prepare("SELECT value FROM meta WHERE name = 'fuzzy_path'").get()?.value, 'trigram');
+        assert.deepStrictEqual(await fuzzy('onfig'), ['getConfig', 'loadConfigFile', 'CONFIGURE']);
+        assert.deepStrictEqual(await fuzzy('ONFIG'), ['getConfig', 'loadConfigFile', 'CONFIGURE']);
+        assert.deepStrictEqual(await fuzzy('on'), [], 'under three characters nothing is answered');
+        assert.deepStrictEqual(await fuzzy('nothing-like-it'), []);
+
+        const ftsRows = (): number => Number(peek.prepare('SELECT count(*) AS n FROM names_fts').get()?.n);
+        const nameRows = (): number => Number(peek.prepare('SELECT count(*) AS n FROM names').get()?.n);
+        assert.equal(ftsRows(), nameRows(), 'one trigram row per interned name');
+        const before = ftsRows();
+        // The same facts again, then another file that reuses the names: no name is interned twice.
+        await writer.commitFile({ worktree: 'main', path: 'src/config.ts', hash: H(1), facts: configFacts('src/config.ts', 1, ['getConfig', 'loadConfigFile', 'CONFIGURE', 'settings']) });
+        await writer.commitFile({ worktree: 'main', path: 'src/copy.ts', hash: H(2), facts: configFacts('src/copy.ts', 2, ['getConfig', 'settings']) });
+        assert.equal(ftsRows(), before);
+        await writer.commitFile({ worktree: 'main', path: 'src/more.ts', hash: H(3), facts: configFacts('src/more.ts', 3, ['getConfig', 'brandNewName']) });
+        assert.equal(ftsRows(), before + 1);
+        assert.equal(ftsRows(), nameRows());
+        assert.deepStrictEqual(await fuzzy('andnew'), ['brandNewName']);
+        writer.release();
+      });
+    });
+
+    it('find fuzzy treats FTS5 operators in the query as data, never as syntax', async () => {
+      await withStore(driver, async (fx) => {
+        const writer = fx.store.writer();
+        await writer.commitFile({
+          worktree: 'main',
+          path: 'src/config.ts',
+          hash: H(1),
+          facts: fileOf('src/config.ts', 1, { symbols: [definition('getConfig', 1), definition('x', 5)] }),
+        });
+        const reader = fx.store.at('main');
+        for (const query of ['"', 'onfig" OR "x', 'onfig*', 'NEAR(onfig onfig)', 'name:onfig', 'onfig AND x', '^onfig', '"" OR ""', "onfig'", 'onfig)']) {
+          assert.deepStrictEqual((await reader.find(query, { mode: 'fuzzy' })).data, [], query);
+        }
+        assert.equal((await reader.find('onfig', { mode: 'fuzzy' })).data.length, 1);
+        writer.release();
+      });
+    });
+
+    it('find fuzzy capability: the trigram table drives the answer when the capability is on, the LIKE scan returns the same rows when it is forced off, and switching back repairs the table', async () => {
+      await withStore(driver, async (fx) => {
+        const writer = fx.store.writer();
+        await writer.commitFile({
+          worktree: 'main',
+          path: 'src/config.ts',
+          hash: H(1),
+          facts: fileOf('src/config.ts', 1, {
+            symbols: [definition('getConfig', 1), definition('loadConfigFile', 5), definition('CONFIGURE', 9)],
+          }),
+        });
+        writer.release();
+        const fuzzy = async (): Promise<string[]> =>
+          (await fx.store.at('main').find('onfig', { mode: 'fuzzy' })).data.map((record) => record.identity.qualifiedName);
+        const all = ['getConfig', 'loadConfigFile', 'CONFIGURE'];
+        assert.deepStrictEqual(await fuzzy(), all);
+
+        // Remove one name from the trigram table behind the store's back: only the trigram path can notice.
+        const capabilities = selfTest(await loadDriver(driver));
+        if (capabilities.contentlessDelete) {
+          const tamper = await fx.tamper();
+          const id = tamper.prepare('SELECT id FROM names WHERE name = ?').get('loadConfigFile')?.id;
+          tamper.prepare('DELETE FROM names_fts WHERE rowid = ?').run(id ?? null);
+          assert.deepStrictEqual(await fuzzy(), ['getConfig', 'CONFIGURE'], 'the answer follows the trigram table');
+        }
+
+        // Forced off: the bounded LIKE scan over names finds every row, and the store records which path is active.
+        await fx.reopen({ trigram: false });
+        assert.deepStrictEqual(await fuzzy(), all);
+        const peek = await fx.peek();
+        assert.equal(peek.prepare("SELECT value FROM meta WHERE name = 'fuzzy_path'").get()?.value, 'like');
+
+        // Back on: the table is rebuilt from the interned names, so the answer is complete again.
+        await fx.reopen({});
+        assert.equal(peek.prepare("SELECT value FROM meta WHERE name = 'fuzzy_path'").get()?.value, 'trigram');
+        assert.deepStrictEqual(await fuzzy(), all);
+        assert.equal(
+          Number(peek.prepare('SELECT count(*) AS n FROM names_fts').get()?.n),
+          Number(peek.prepare('SELECT count(*) AS n FROM names').get()?.n),
+        );
       });
     });
 

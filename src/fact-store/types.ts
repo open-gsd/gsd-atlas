@@ -365,6 +365,12 @@ export interface StoreOptions {
   readonly canCache?: () => boolean;
   /** The resolution context of the current configuration (plan 02-11 reads it). Default: id `grammar`, no config hashes. */
   readonly resolutionContext?: () => ResolutionContext;
+  /**
+   * TEST ONLY. Set `false` to force the bounded LIKE scan for fuzzy find even where the FTS5 trigram
+   * capability exists, so tests can compare both paths. It can not switch trigram on where the open-time
+   * capability probe found it missing. Default: use the detected capability.
+   */
+  readonly trigram?: boolean;
 }
 
 /**
