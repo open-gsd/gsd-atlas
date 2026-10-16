@@ -12,10 +12,37 @@ import type { FactStore, StoreDeps, StoreOptions } from './types.ts';
 /** The approved `sqlite.busyTimeoutMs` of 02-CONSTANTS.md: how long a writer waits on a locked database. */
 export const DEFAULT_BUSY_TIMEOUT_MS = 5000;
 
+/** The approved `lease.retryMinMs` of 02-CONSTANTS.md: the shortest wait before a follower tries to take the lease. */
+export const DEFAULT_LEASE_RETRY_MIN_MS = 10000;
+
+/** The approved `lease.retryMaxMs` of 02-CONSTANTS.md: the longest wait before a follower tries to take the lease. */
+export const DEFAULT_LEASE_RETRY_MAX_MS = 30000;
+
+/** The approved `store.dirtyIdleMs` of 02-CONSTANTS.md: quiet time after the last write before the dirty sentinel goes. */
+export const DEFAULT_DIRTY_IDLE_MS = 1000;
+
 /** Options of `openFactStore`: the engine-independent `StoreOptions` plus the SQL driver choice. */
 export interface OpenFactStoreOptions extends StoreOptions {
   /** Which SQLite driver to open. Default `node:sqlite`. */
   readonly driver?: DriverName;
+}
+
+/** Options of `openFactStore` that belong to the store's lifecycle (plan 02-12): the writer lease and recovery. */
+export interface StoreOpenOptions extends OpenFactStoreOptions {
+  /**
+   * `none` (default): no cross-process lease; only the in-process single-writer rule applies. `acquire`: take
+   * the cross-process writer lease (`lease.db`) at open. A process that cannot take it is a follower: it reads,
+   * never writes, and retries on a jittered timer so it takes over when the leader goes away.
+   */
+  readonly lease?: 'none' | 'acquire';
+  /** How a follower retries the lease. Default: the approved `lease.retryMinMs` to `lease.retryMaxMs`. `random` is the jitter source. */
+  readonly takeover?: { readonly retryMinMs: number; readonly retryMaxMs: number; readonly random?: () => number };
+  /** Quiet time after the last write before the dirty sentinel is removed. Default: the approved `store.dirtyIdleMs`. */
+  readonly dirtyIdleMs?: number;
+  /** Called when this process gains (`true`) or gives up (`false`) the writer lease after the store was opened. */
+  readonly onLeaseChange?: (held: boolean) => void;
+  /** TEST ONLY. The schema version written into a new store, so tests can make one that is newer or older than this build. */
+  readonly schemaVersion?: number;
 }
 
 function hasTables(db: Db): boolean {
@@ -55,7 +82,7 @@ function checkSchemaVersion(db: Db): void {
 export async function openFactStore(
   dir: string,
   deps: StoreDeps,
-  options: OpenFactStoreOptions = {},
+  options: StoreOpenOptions = {},
 ): Promise<FactStore> {
   fs.mkdirSync(dir, { recursive: true });
   const file = path.join(dir, STORE_FILE_NAME);
