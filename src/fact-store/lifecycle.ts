@@ -20,6 +20,10 @@ export const lifecycleTestHooks: {
   onSelected?: (hashes: readonly string[]) => void | Promise<void>;
   /** Called after every incremental-vacuum slice with the pages asked for and the real time it took. */
   onSlice?: (slice: { readonly pages: number; readonly ms: number }) => void;
+  /** Called just before a full `VACUUM` runs. */
+  onVacuum?: () => void;
+  /** Called as `maintain` starts each of its tasks, in order. A throw fails that task. */
+  onTask?: (name: 'collect' | 'compact' | 'check') => void;
 } = {};
 
 /** Where the last budget-limited `collect` stopped, so the next call goes on behind it (see `collectRetired`). */
