@@ -39,7 +39,7 @@ Decimal phases appear between their surrounding integers in numeric order.
   4. Each seam (Fact Store, Source Tree, CommandRunner, Grammar Engine, PreciseResolver, Governor) has a fixed interface plus a test double or conformance suite that passes in CI, and a hostile-repo test shows no child process starts except through the CommandRunner, including one batched `git hash-object --stdin-paths` over a whole snapshot.
   5. The corpus manifest pins each eval corpus to a commit SHA, and every ADR this phase depends on is Accepted (issue opened, file renamed to `<issue#>-<slug>.md`) with its research-gap amendments applied, alongside a schedule naming the phase that must ratify each remaining ADR.
 
-**Plans:** 19/20 plans executed
+**Plans:** 20/20 plans executed
 
 Plans:
 **Wave 1**
@@ -74,7 +74,7 @@ Plans:
 **Gap closure** *(from 01-VERIFICATION.md; run with `--gaps-only`)*
 - [x] 01-18-PLAN.md — Gap closure CR-01: pin lazy-fetch and transport off in every git spec, decide requires the safety overrides and env, promisor hostile-repo case (FND-05, FND-06)
 - [x] 01-19-PLAN.md — Gap closure CR-02: neutralise every filter driver name through the GIT_CONFIG_* env channel, strict decide validation, fail-closed enumeration probe (FND-05, FND-06)
-- [ ] 01-20-PLAN.md — Gap closure CR-01 (new) and WR-01: a non-UTF-8 filter driver name fails the snapshot closed, one shared name rule for builder and gate, Buffer-based hostile fixtures, three-OS CI run (FND-05, FND-06)
+- [x] 01-20-PLAN.md — Gap closure CR-01 (new) and WR-01: a non-UTF-8 filter driver name fails the snapshot closed, one shared name rule for builder and gate, Buffer-based hostile fixtures, three-OS CI run (FND-05, FND-06)
 
 ### Phase 2: Grammar Tier, Store and stdio Host
 
@@ -225,7 +225,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundations and Walking Skeleton | 19/19 | In Progress | - |
+| 1. Foundations and Walking Skeleton | 20/20 | In Progress | - |
 | 2. Grammar Tier, Store and stdio Host | 0/TBD | Not started | - |
 | 3. TypeScript Module and MVP Eval | 0/TBD | Not started | - |
 | 4. Host Hardening | 0/TBD | Not started | - |
