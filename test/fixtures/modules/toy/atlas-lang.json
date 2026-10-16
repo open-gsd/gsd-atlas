@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "name": "toy",
+  "version": "0.1.0",
+  "extensions": [".toy"],
+  "grammar": {
+    "wasm": "grammar.wasm",
+    "lock": "grammar.lock"
+  },
+  "queries": {
+    "tags": "queries/tags.scm",
+    "refs": "queries/refs.scm",
+    "imports": "queries/imports.scm"
+  },
+  "tiers": ["grammar"],
+  "parseBudget": 0.005
+}
