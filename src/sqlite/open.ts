@@ -8,6 +8,8 @@ export const NODE_FLOOR = '24.16.0';
 export interface Capabilities {
   readonly fts5Trigram: boolean;
   readonly json: boolean;
+  /** FTS5 `contentless_delete=1` (SQLite 3.43 and newer): the store picks its fuzzy-name path from this (research A11). */
+  readonly contentlessDelete: boolean;
 }
 
 export type Loaders = Readonly<Record<DriverName, () => Promise<DriverModule>>>;
@@ -99,6 +101,11 @@ export function selfTest(driver: DriverModule): Capabilities {
     const capabilities: Capabilities = {
       json: probe(() => open.prepare(`SELECT json('{"a":1}') AS j`).get()),
       fts5Trigram: probe(() => open.exec(`CREATE VIRTUAL TABLE self_test_fts USING fts5(name, tokenize='trigram')`)),
+      contentlessDelete: probe(() =>
+        open.exec(
+          `CREATE VIRTUAL TABLE self_test_fts_cd USING fts5(name, content='', contentless_delete=1, detail=full, tokenize='trigram')`,
+        ),
+      ),
     };
     selfTested.set(driver, capabilities);
     return capabilities;

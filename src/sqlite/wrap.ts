@@ -100,6 +100,30 @@ export function createDb(
     return String((row as { v: unknown }).v);
   });
 
+  const firstColumn = (sql: string): unknown => {
+    const row = raw.prepare(sql).all([])[0];
+    if (row === undefined || row === null) return undefined;
+    return Object.values(row as Record<string, unknown>)[0];
+  };
+
+  /**
+   * `PRAGMA incremental_vacuum(N)` frees one page per step, and the drivers differ in how many steps one call
+   * takes: node:sqlite drains the statement, better-sqlite3 steps a statement it believes returns no data only
+   * once. So the kit asks for the remaining pages, reads the freelist, and repeats until N pages are freed or
+   * the freelist is empty, which makes the result the same on both drivers. `N <= 0` or no `N` frees every page.
+   */
+  const incrementalVacuum = (pages: number | undefined): void => {
+    let remaining = pages === undefined || pages <= 0 ? Number.POSITIVE_INFINITY : pages;
+    let free = Number(firstColumn('PRAGMA freelist_count'));
+    while (remaining > 0 && free > 0) {
+      raw.prepare(Number.isFinite(remaining) ? `PRAGMA incremental_vacuum = ${remaining}` : 'PRAGMA incremental_vacuum').all([]);
+      const left = Number(firstColumn('PRAGMA freelist_count'));
+      if (left >= free) return; // no progress (not an incremental-vacuum database): stop rather than spin
+      remaining -= free - left;
+      free = left;
+    }
+  };
+
   const db: Db = {
     driver: meta.driver,
     path: meta.path,
@@ -112,11 +136,15 @@ export function createDb(
       }
       // Only validated tokens reach the SQL text; nothing here is data.
       const sql = value === undefined ? `PRAGMA ${name}` : `PRAGMA ${name} = ${checkPragmaValue(value)}`;
+      if (name === 'incremental_vacuum' && (value === undefined || typeof value === 'number')) {
+        guard(() => incrementalVacuum(value));
+        return undefined;
+      }
       return guard(() => {
-        const row = raw.prepare(sql).get([]);
-        if (row === undefined || row === null) return undefined;
-        const first = Object.values(row as Record<string, unknown>)[0];
-        return valueOut(first, bigints);
+        // `all`, not `get`: a pragma that yields several rows is run to completion. Every other allowlisted
+        // pragma returns at most a few rows, so the extra rows cost nothing.
+        const first = firstColumn(sql);
+        return first === undefined ? undefined : valueOut(first, bigints);
       });
     },
     transaction<T>(fn: () => T): T {

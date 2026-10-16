@@ -258,6 +258,17 @@ function fillAndEmpty(db: Db): void {
   db.exec('DELETE FROM bulk');
 }
 
+/**
+ * Turn on `auto_vacuum=INCREMENTAL` for a fresh database. `openDatabase` has already switched the file to WAL,
+ * which writes the header, so the pragma alone is accepted but ignored until a `VACUUM` rebuilds the (empty)
+ * file. The Fact Store does the same once, when it creates a store.
+ */
+function enableIncrementalVacuum(db: Db): void {
+  db.pragma('auto_vacuum', 'INCREMENTAL');
+  db.exec('VACUUM');
+  assert.equal(db.pragma('auto_vacuum'), 2);
+}
+
 const toInt = (value: unknown): number => {
   assert.equal(typeof value, 'number', `expected an integer, got ${String(value)}`);
   return value as number;
@@ -265,8 +276,7 @@ const toInt = (value: unknown): number => {
 
 define('incremental_vacuum returns freed pages to the file on an auto_vacuum INCREMENTAL database, run twice with the same result (STO-01 idempotency)', async (ctx) => {
   const db = await ctx.open();
-  db.pragma('auto_vacuum', 'INCREMENTAL'); // must be set before the first table exists
-  assert.equal(db.pragma('auto_vacuum'), 2);
+  enableIncrementalVacuum(db); // before the first table exists
   const results: number[] = [];
   for (let round = 0; round < 2; round += 1) {
     fillAndEmpty(db);
@@ -311,7 +321,7 @@ define('journal_size_limit can be set to an integer and read back, run twice (ST
 
 define('page_count is positive once a table exists and freelist_count is 0 on a fresh database, then positive after rows are deleted, run twice (STO-01 idempotency)', async (ctx) => {
   const db = await ctx.open();
-  db.pragma('auto_vacuum', 'INCREMENTAL');
+  enableIncrementalVacuum(db);
   db.exec('CREATE TABLE fresh (id INTEGER PRIMARY KEY)');
   assert.ok(toInt(db.pragma('page_count')) > 0);
   assert.equal(db.pragma('freelist_count'), 0);

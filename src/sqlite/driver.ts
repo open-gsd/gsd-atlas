@@ -52,6 +52,14 @@ export const PRAGMA_ALLOWLIST = [
   'temp_store',
   'secure_delete',
   'optimize',
+  // The Fact Store's maintenance needs (phase 2): compaction frees pages and truncates the WAL, the store
+  // sizes its journal, and status/compaction read the two size counters. All stay on the kit so the store
+  // never bypasses it with raw exec (research Pattern 4).
+  'incremental_vacuum',
+  'wal_checkpoint',
+  'journal_size_limit',
+  'page_count',
+  'freelist_count',
 ] as const;
 
 export type PragmaName = (typeof PRAGMA_ALLOWLIST)[number];
