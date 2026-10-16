@@ -2,7 +2,7 @@
  * Query: `ask(request)` returns the full envelope (QRY-01). It validates the request, resolves the worktree,
  * and routes to a tool. Every outcome, including every error, is an envelope.
  */
-import { PROTOCOL_VERSION } from '../facts/index.ts';
+import { PROTOCOL_VERSION, diagnostic } from '../facts/index.ts';
 import type { Envelope, Request } from '../facts/index.ts';
 import { decodeCursor, queryHash } from './cursor.ts';
 import type { CursorPayload, CursorProblem } from './cursor.ts';
@@ -10,6 +10,7 @@ import { resolveQueryConfig } from './defaults.ts';
 import { errorEnvelope } from './envelope.ts';
 import { newNonce, normalizeText } from './fence.ts';
 import { runFind } from './find.ts';
+import type { FreshOutcome } from './find.ts';
 import { codeFindSchema } from './tools.ts';
 import type { Query, QueryConfig, QueryDeps } from './types.ts';
 
@@ -36,6 +37,46 @@ function mergedInput(request: Request): Record<string, unknown> {
     ...(request.budget_tokens === undefined ? {} : { budget_tokens: request.budget_tokens }),
     ...(request.fresh === undefined ? {} : { fresh: request.fresh }),
   };
+}
+
+const NO_FRESH: FreshOutcome = { degraded: [], diagnostics: [], stalePaths: [] };
+const FRESH_UNFINISHED: FreshOutcome = { degraded: ['fresh_timeout'], diagnostics: [], stalePaths: [] };
+
+/**
+ * Read your own writes (A26, mcp-contract decision 7): ask the Indexer to bring the named paths up to date
+ * before anything is read. A request that names no paths costs nothing. Every way this can go wrong degrades
+ * the answer with `fresh_timeout` and still answers from the store: a port that did not finish, a port that
+ * throws, and no port at all. Refused paths are reported as one warning; they are not a timeout.
+ */
+async function freshOutcome(
+  deps: QueryDeps,
+  config: QueryConfig,
+  worktree: string,
+  paths: readonly string[] | undefined,
+): Promise<FreshOutcome> {
+  if (paths === undefined || paths.length === 0) return NO_FRESH;
+  if (deps.fresh === undefined) return FRESH_UNFINISHED;
+  try {
+    const report = await deps.fresh.ensureFresh(worktree, paths, config.ensureFreshWaitMs);
+    const refused = report.invalid[0];
+    return {
+      degraded: report.complete ? [] : ['fresh_timeout'],
+      diagnostics:
+        refused === undefined
+          ? []
+          : [
+              diagnostic(
+                'invalid_fresh_path',
+                'warning',
+                'Some fresh paths were refused. Name repo-relative paths that stay inside the worktree.',
+                say(refused),
+              ),
+            ],
+      stalePaths: report.stalePaths,
+    };
+  } catch {
+    return FRESH_UNFINISHED;
+  }
 }
 
 export function createQuery(deps: QueryDeps): Query {
@@ -80,7 +121,8 @@ export function createQuery(deps: QueryDeps): Query {
         cursor = decoded.payload;
       }
 
-      return runFind({ deps, config, worktree, nonce: (deps.nonce ?? newNonce)(), queryHash: hash, cursor }, input);
+      const fresh = await freshOutcome(deps, config, worktree, input.fresh);
+      return runFind({ deps, config, worktree, fresh, nonce: (deps.nonce ?? newNonce)(), queryHash: hash, cursor }, input);
     },
   };
 }

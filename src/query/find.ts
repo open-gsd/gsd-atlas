@@ -10,7 +10,7 @@
 import path from 'node:path';
 import { UnknownWorktree } from '../fact-store/index.ts';
 import type { FindMode, SymbolRecord } from '../fact-store/index.ts';
-import type { Answer, Citation, DegradedCode, Envelope, UntrustedEntry, Watermark } from '../facts/index.ts';
+import type { Answer, Citation, DegradedCode, Diagnostic, Envelope, UntrustedEntry, Watermark } from '../facts/index.ts';
 import { diagnostic, okEnvelope } from '../facts/index.ts';
 import { cutToBudget, estimateTokens } from './budget.ts';
 import { encodeCursor } from './cursor.ts';
@@ -24,10 +24,19 @@ import type { LineText } from './text.ts';
 import type { CodeFindInput } from './tools.ts';
 import type { QueryConfig, QueryDeps } from './types.ts';
 
+/** What the `fresh` step contributed to a response (see `freshOutcome` in query.ts). */
+export interface FreshOutcome {
+  readonly degraded: readonly DegradedCode[];
+  readonly diagnostics: readonly Diagnostic[];
+  /** Paths the Indexer could not finish: the file on disk is newer than the facts, so its line text is not trusted. */
+  readonly stalePaths: readonly string[];
+}
+
 export interface FindContext {
   readonly deps: QueryDeps;
   readonly config: QueryConfig;
   readonly worktree: string;
+  readonly fresh: FreshOutcome;
   /** The nonce of this response. */
   readonly nonce: string;
   /** The hash of this query, carried by every cursor it issues. */
@@ -116,7 +125,7 @@ export async function runFind(ctx: FindContext, input: CodeFindInput): Promise<E
   const capped = answers.some((answer) => answer.data.length >= candidateLimit);
 
   let watermark: Watermark = answers[0]?.watermark ?? { seq: 0, stalePaths: [] };
-  const degraded = new Set<DegradedCode>();
+  const degraded = new Set<DegradedCode>(ctx.fresh.degraded);
   for (const answer of answers) {
     if (answer.watermark.seq > watermark.seq) watermark = answer.watermark;
     for (const code of answer.degraded ?? []) degraded.add(code);
@@ -151,7 +160,7 @@ export async function runFind(ctx: FindContext, input: CodeFindInput): Promise<E
   const limited = remaining.slice(0, limit);
   const limitCut = remaining.length > limit;
 
-  const lines = createLineReader(ctx.deps.text, ctx.worktree, new Set(watermark.stalePaths));
+  const lines = createLineReader(ctx.deps.text, ctx.worktree, new Set([...watermark.stalePaths, ...ctx.fresh.stalePaths]));
   const prepared: Prepared[] = [];
   const prepareUpTo = async (count: number): Promise<void> => {
     while (prepared.length < count) {
@@ -213,7 +222,7 @@ export async function runFind(ctx: FindContext, input: CodeFindInput): Promise<E
     else if (cut) hints.push(more === null ? CURSOR_TOO_LONG_HINT : TRUNCATED_HINT);
     if (capped) hints.push(CAPPED_HINT);
 
-    const envelope = okEnvelope(CODE_FIND_SCHEMA, { results }, [], {
+    const envelope = okEnvelope(CODE_FIND_SCHEMA, { results }, ctx.fresh.diagnostics, {
       ...(citations.length === 0 ? {} : { citations }),
       watermark,
       ...(entries.length === 0 ? {} : { untrusted_text: { nonce: ctx.nonce, entries } }),
