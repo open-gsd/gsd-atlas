@@ -1,0 +1,14 @@
+/**
+ * The language-module seam: manifest and lock parsing, the confined module reader, and the
+ * `lang test` runner (FND-03, FND-11, D-02). Other modules import from here and nowhere else.
+ */
+export { parseManifest } from './manifest.ts';
+export type { Manifest, ParseManifestResult } from './manifest.ts';
+export { parseGrammarLock } from './grammar-lock.ts';
+export type { GrammarLock, GrammarLockResult } from './grammar-lock.ts';
+export { MANIFEST_FILE, readModuleFile, readModuleInputs } from './module-files.ts';
+export type { ReadModuleFileResult, ReadModuleInputsResult } from './module-files.ts';
+export { GOLDEN_CONVENTION, compareGolden, goldenFileName, renderGolden, serializeGolden } from './golden.ts';
+export type { Golden, GoldenCapture, GoldenDifference } from './golden.ts';
+export { runLangTest } from './test-runner.ts';
+export type { LangTestFixtureResult, LangTestOptions, LangTestReport } from './test-runner.ts';

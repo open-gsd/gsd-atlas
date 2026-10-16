@@ -1,0 +1,26 @@
+{
+  "schema": 1,
+  "fixture": "bom.toy",
+  "convention": "0-based line, 0-based UTF-16 column, end exclusive",
+  "hadBom": true,
+  "captures": [
+    {
+      "query": "tags",
+      "name": "definition.function",
+      "startLine": 0,
+      "startColumn": 0,
+      "endLine": 1,
+      "endColumn": 1,
+      "text": "fn a {\n}"
+    },
+    {
+      "query": "tags",
+      "name": "name",
+      "startLine": 0,
+      "startColumn": 3,
+      "endLine": 0,
+      "endColumn": 4,
+      "text": "a"
+    }
+  ]
+}
