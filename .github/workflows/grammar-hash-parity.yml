@@ -1,9 +1,11 @@
 # THROWAWAY. Plan 01-16 deletes this workflow once cross-OS parity is recorded.
 #
-# Purpose: observe, on the first CI run, whether the toy grammar WASM built on ubuntu, macos
-# and windows hashes identically (unverified assumption A1 behind decision D-07). The job
-# never fails on a hash difference: it prints {platform, sha256} per OS so plan 01-15 can
-# compare the values with test/fixtures/modules/toy/grammar.lock.
+# Purpose: record, per OS, the hash of the toy grammar WASM rebuilt from source and compare it
+# with that OS's own entry in test/fixtures/modules/toy/grammar.lock (wasm.platforms). The first
+# CI run found win32 does not reproduce the Linux/macOS bytes (assumption A1 refuted for win32),
+# so the lock holds one hash per platform key and each job fails if its rebuild does not equal
+# its own entry. A platform with no entry fails too (matchesLock is false). The committed wasm
+# stays pinned to wasm.sha256 by the same check.
 name: grammar-hash-parity
 
 on:
@@ -57,5 +59,23 @@ jobs:
       # The single explicit fetch of the CLI binary (npm ci --ignore-scripts leaves none).
       - run: node scripts/ensure-tree-sitter.ts
 
-      # --report prints one JSON line and writes nothing into the module.
-      - run: node scripts/grammar-build.ts --report test/fixtures/modules/toy
+      # --report prints one JSON line and writes nothing into the module. The JSON carries this
+      # platform's lock entry and whether the rebuild equals it.
+      - name: Rebuild and record hash
+        run: node scripts/grammar-build.ts --report test/fixtures/modules/toy | tee parity-report.json
+
+      - name: Compare with this OS's own grammar.lock entry
+        run: |
+          node --input-type=module -e '
+            import fs from "node:fs";
+            const report = JSON.parse(fs.readFileSync("parity-report.json", "utf8").trim());
+            console.log(`${report.platformKey}: rebuild ${report.sha256} (${report.bytes} bytes), lock entry ${report.lockSha256}, committed wasm hash ${report.committedSha256}`);
+            if (report.platformKey === null || report.lockSha256 === null) {
+              console.error(`grammar.lock has no wasm.platforms entry for ${report.platform}-${report.arch}`);
+              process.exit(1);
+            }
+            if (!report.matchesLock) {
+              console.error(`rebuild hash ${report.sha256} differs from grammar.lock wasm.platforms.${report.platformKey} (${report.lockSha256})`);
+              process.exit(1);
+            }
+          '
