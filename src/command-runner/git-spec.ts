@@ -6,10 +6,18 @@
  * a `core.hooksPath` hook folder. This was verified, not assumed: on git 2.54.0 a `filter.<name>.clean`
  * ran during `hash-object --stdin-paths`, and `core.fsmonitor` ran during `ls-files -o`.
  *
- * So every spec built here prepends overrides that switch all of that off, command-line `-c` values
- * taking precedence over every config file:
- *   - `core.fsmonitor=false`, `core.hooksPath=<null device>`, `core.quotepath=off` (paths come back verbatim);
- *   - for EVERY configured filter driver, `clean`, `smudge` and `process` emptied and `required=false`.
+ * So every spec built here switches all of that off, command-line and environment config taking precedence
+ * over every config file:
+ *   - `-c core.fsmonitor=false`, `-c core.hooksPath=<null device>`, `-c core.quotepath=off` (paths come back verbatim);
+ *   - for EVERY configured filter driver, `clean`, `smudge` and `process` emptied and `required=false`,
+ *     carried on the `GIT_CONFIG_COUNT` / `GIT_CONFIG_KEY_n` / `GIT_CONFIG_VALUE_n` environment channel.
+ *
+ * Why the environment and not `-c`: git splits a `-c` argument at the first `=`, so a driver whose name
+ * contains `=` (`filter.a=b.clean`) can never be written as a `-c` key, and it would then run its clean
+ * command (verification gap CR-02, threat T-01-46). The environment channel (git 2.31 and newer) carries the
+ * key and the value in separate variables and so can express any name, including `=`, `.` and the empty name.
+ * Because a git that ignores the channel would silently skip neutralisation, `listFilterNames` proves the
+ * channel is live before any hash call.
  *
  * There is NO allowlist of drivers. A repo-controlled config can name any command `lfs`, so exempting a
  * driver by name would let a hostile repository pick the exempt name. A repository that really uses Git
@@ -39,37 +47,46 @@ import type { CommandRunner, CommandSpec, RunContext } from './spec.ts';
  */
 export const NULL_DEVICE: string = process.platform === 'win32' ? 'NUL' : os.devNull;
 
-/** The text of one `-c` key=value override pair. */
+/** The text of one `-c` key=value override pair (the static hardening overrides only; see the header). */
 const override = (kv: string): readonly string[] => ['-c', kv];
 
 /**
- * The `-c` pairs that neutralise the named filter drivers: `clean`, `smudge` and `process` emptied and
- * `required` false, for every name given. Dotted names (`my.driver`) are used as written.
+ * The environment overlay that neutralises the named filter drivers: for every name, in input order, the
+ * variables `clean`, `smudge` and `process` set to the empty string and `required` to `false`, written as
+ * `GIT_CONFIG_KEY_n` / `GIT_CONFIG_VALUE_n` pairs after a `GIT_CONFIG_COUNT`. Names are used as written
+ * (no trimming, no escaping): git takes the key from its own variable, so `a=b`, `my.driver` and the empty
+ * name are all expressible, which a `-c filter.<name>.clean=` argument is not (git splits `-c` at the first
+ * `=`). There is no allowlist: every driver is neutralised, whatever it is called.
  */
-export function neutraliseFilters(names: readonly string[]): string[] {
-  const out: string[] = [];
+export function neutraliseFilters(names: readonly string[]): Record<string, string> {
+  const out: Record<string, string> = {};
+  let n = 0;
+  const add = (key: string, value: string): void => {
+    out[`GIT_CONFIG_KEY_${String(n)}`] = key;
+    out[`GIT_CONFIG_VALUE_${String(n)}`] = value;
+    n += 1;
+  };
   for (const name of names) {
-    for (const key of ['clean', 'smudge', 'process']) out.push(...override(`filter.${name}.${key}=`));
-    out.push(...override(`filter.${name}.required=false`));
+    for (const variable of ['clean', 'smudge', 'process']) add(`filter.${name}.${variable}`, '');
+    add(`filter.${name}.required`, 'false');
   }
-  return out;
+  return { GIT_CONFIG_COUNT: String(n), ...out };
 }
 
 /**
- * Parses `git config --name-only --get-regexp '^filter\.'` output (or `key=value` lines) into the unique,
- * sorted driver names. The driver name is everything between `filter.` and the last dot, so
- * `filter.my.driver.smudge` names `my.driver`. Keys that are not `filter.<name>.<variable>` are ignored.
+ * Parses `git config --name-only --get-regexp '^filter\\.'` output into the unique driver names, sorted by
+ * code unit. Lines are split on `\n` only. The name is everything between the `filter.` prefix and the LAST
+ * dot, never cut at `=` and never trimmed, so `filter.a=b.clean` names `a=b`, `filter.my.driver.smudge`
+ * names `my.driver` and `filter..clean` names the empty driver. Lines without a variable part and keys
+ * outside `filter.` are ignored. (`--name-only` output has no values, so there is nothing to split on `=`.)
  */
 export function parseFilterNames(configOutput: string): string[] {
   const names = new Set<string>();
-  for (const raw of configOutput.split('\n')) {
-    const line = raw.endsWith('\r') ? raw.slice(0, -1) : raw;
+  for (const line of configOutput.split('\n')) {
     if (!line.startsWith('filter.')) continue;
-    const eq = line.indexOf('=');
-    const key = eq === -1 ? line : line.slice(0, eq);
-    const lastDot = key.lastIndexOf('.');
-    if (lastDot <= 'filter.'.length) continue;
-    names.add(key.slice('filter.'.length, lastDot));
+    const lastDot = line.lastIndexOf('.');
+    if (lastDot < 'filter.'.length) continue;
+    names.add(line.slice('filter.'.length, lastDot));
   }
   return [...names].sort();
 }
@@ -86,22 +103,50 @@ export interface GitSpecOptions {
   readonly env?: Readonly<Record<string, string>>;
 }
 
-/** Builds a git CommandSpec. The caller chose `sub`; whether it may run is `decide`'s call, not this function's. */
+/** The environment every spec pins, applied after the caller env and the neutralisation overlay. */
+const PINNED_ENV: Readonly<Record<string, string>> = {
+  GIT_OPTIONAL_LOCKS: '0',
+  GIT_TERMINAL_PROMPT: '0',
+  GIT_NO_LAZY_FETCH: '1',
+  GIT_ALLOW_PROTOCOL: 'none',
+};
+const PINNED_UPPER: ReadonlySet<string> = new Set(Object.keys(PINNED_ENV).map((k) => k.toUpperCase()));
+const RESERVED_CONFIG_ENV = /^GIT_CONFIG_(COUNT|PARAMETERS|KEY_|VALUE_)/i;
+
+/**
+ * The caller env, vetted. Any `GIT_CONFIG_COUNT`, `GIT_CONFIG_KEY_n`, `GIT_CONFIG_VALUE_n` or
+ * `GIT_CONFIG_PARAMETERS` (any case) throws: those belong to the neutralisation overlay, and a caller
+ * overlay must not add to or remove from it. A case variant of a pinned key is dropped, so a Windows
+ * case-insensitive duplicate cannot override a pin. `GIT_CONFIG_GLOBAL`/`SYSTEM`/`NOSYSTEM` pass through.
+ */
+function callerEnv(env: Readonly<Record<string, string>> | undefined): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [key, value] of Object.entries(env ?? {})) {
+    if (RESERVED_CONFIG_ENV.test(key)) throw new Error(`gitSpec: env ${key} is reserved for filter neutralisation (GIT_CONFIG_COUNT channel)`);
+    if (PINNED_UPPER.has(key.toUpperCase())) continue;
+    out[key] = value;
+  }
+  return out;
+}
+
+/**
+ * Builds a git CommandSpec. The caller chose `sub`; whether it may run is `decide`'s call, not this function's.
+ * Every filter driver in `filterNames` is neutralised through the environment config channel (git 2.31 and
+ * newer), because a `-c filter.<name>.clean=` pair cannot carry an `=` in the name. `git status` stays denied
+ * by `decide`: it runs clean filters to compare working files with the index.
+ */
 export function gitSpec(sub: readonly string[], opts: GitSpecOptions): CommandSpec {
   const args = [
     '-C', opts.worktree,
     ...override('core.fsmonitor=false'),
     ...override(`core.hooksPath=${NULL_DEVICE}`),
     ...override('core.quotepath=off'),
-    ...neutraliseFilters(opts.filterNames ?? []),
     ...sub,
   ];
   const env: Record<string, string> = {
-    ...opts.env,
-    GIT_OPTIONAL_LOCKS: '0',
-    GIT_TERMINAL_PROMPT: '0',
-    GIT_NO_LAZY_FETCH: '1',
-    GIT_ALLOW_PROTOCOL: 'none',
+    ...callerEnv(opts.env),
+    ...neutraliseFilters(opts.filterNames ?? []),
+    ...PINNED_ENV,
   };
   return {
     executable: 'git',
