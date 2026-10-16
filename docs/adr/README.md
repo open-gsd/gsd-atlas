@@ -52,6 +52,10 @@ Phase 1 ratification (FND-09): one issue per ADR in open-gsd/gsd-atlas, each dra
 Dated amendment sections appended to Accepted ADRs, one line per amendment. The original text is never edited.
 
 - Amendment 2026-10-15: language-modules - ProjectModel seam (FND-10, D-16)
+- Amendment 2026-10-15: fact-store-interface - Read-triggered cache write and SQLite-access wording (FND-10, D-16)
+- Amendment 2026-10-15: fact-store-interface - Open questions resolved (D-17)
+- Amendment 2026-10-15: sqlite-store - SQLite-access wording (FND-10, D-16)
+- Amendment 2026-10-15: tenant-composition - Open questions resolved (D-17)
 
 ## Ratification schedule
 The six ADRs that remain Proposed, and the phase whose first plan ratifies each (from the ROADMAP schedule). Ratifying means: open the issue, rename `draft-<slug>.md` to `<issue#>-<slug>.md`, move Proposed to Accepted, and apply the listed amendments as dated sections.

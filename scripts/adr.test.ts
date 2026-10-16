@@ -360,6 +360,66 @@ const AMENDED: readonly AmendedAdr[] = [
       { title: 'ProjectModel seam', keywords: ['ProjectModel', 'compiler-free', 'built-in', 'A44', 'project.model'] },
     ],
   },
+  {
+    slug: 'fact-store-interface',
+    preserved: [
+      'No other module reads or writes SQLite.',
+      'It is injectable for tests but is not part of the interface callers learn.',
+      'Reads never throw for missing data',
+      'Overlays with identical inputs share the cache (A5).',
+      '`store.writer()` throws `WriterBusy` if held.',
+      'Every task stays a CLI command (A21).',
+      'Each injected dependency has a production and a test adapter.',
+      'It would be a second adapter of the wrong seam and would drift from real semantics.',
+      'No predicate registry, generic `Match` or `Custom` queries.',
+      'Corruption never escapes',
+      'Does `warm(worktree)` exist to pre',
+      'Is the first-call latency bound by `timeoutMs`',
+    ],
+    amendments: [
+      {
+        title: 'Read-triggered cache write and SQLite-access wording',
+        keywords: ['cache_unavailable', 'lease', 'sqlite/'],
+      },
+      { title: 'Open questions resolved', keywords: ['resolver_timeout', 'timeoutMs', 'no warm'] },
+    ],
+  },
+  {
+    slug: 'sqlite-store',
+    preserved: [
+      'behind the Fact Store module',
+      'macOS, Linux and Windows.',
+      '`store.dir` overrides. Never committed.',
+      'source is the truth.',
+      "one transaction per file's facts.",
+      '`auto_vacuum=INCREMENTAL`',
+      'use FTS5 with the trigram tokenizer',
+      'Budgets are release gates',
+    ],
+    amendments: [
+      { title: 'SQLite-access wording', keywords: ['sqlite/', 'Metrics'] },
+    ],
+  },
+  {
+    slug: 'tenant-composition',
+    preserved: [
+      'so there is no port; tests use real temporary git repos',
+      'Interface: `submit(event)`',
+      'The Fact Store only reports `stalePaths` in its watermark and never blocks.',
+      'Tests use a fake clock.',
+      'only call `host.handle(request)`',
+      'stays reserved for A42',
+      'Does `Indexer.ensureFresh` take a `fresh` priority class slot from the Governor per call, or one per request?',
+      'Where does the file watcher live',
+      'A compiler program is per file set (A25)',
+    ],
+    amendments: [
+      {
+        title: 'Open questions resolved',
+        keywords: ['Indexer', 'EventSource', 'one', 'per request', 'file set'],
+      },
+    ],
+  },
 ];
 
 const AMENDMENT_HEADING = /^## Amendment (\d{4}-\d{2}-\d{2}): (.+)$/;
@@ -446,6 +506,28 @@ describe('ADR amendments (FND-10, D-16, D-17)', () => {
       for (const sentence of adr.preserved) {
         assert.ok(originalPart.includes(sentence), `${adr.slug}: original text is gone: '${sentence}'`);
       }
+    }
+  });
+
+  it('D-17 resolutions are recorded', () => {
+    const factStore = findAmendment(readAdr('fact-store-interface'), 'Open questions resolved');
+    assert.ok(factStore, 'fact-store-interface has no D-17 section');
+    assert.match(factStore.section.text, /no warm\(worktree\)/);
+    assert.match(factStore.section.text, /`refs` and `callers`/);
+    assert.match(factStore.section.text, /degraded: \['resolver_timeout'\]/);
+    assert.match(factStore.section.text, /Does `warm\(worktree\)` exist/);
+    assert.match(factStore.section.text, /Is the first-call latency bound/);
+
+    const tenant = findAmendment(readAdr('tenant-composition'), 'Open questions resolved');
+    assert.ok(tenant, 'tenant-composition has no D-17 section');
+    assert.match(tenant.section.text, /file watcher lives inside the Indexer/);
+    assert.match(tenant.section.text, /`EventSource` port/);
+    assert.match(tenant.section.text, /Source Tree supplies only git events/);
+    assert.match(tenant.section.text, /one `fresh` priority slot .* per request, not per call/s);
+    assert.match(tenant.section.text, /keys on the file set, not on \(tenant, overlay\)/);
+    assert.match(tenant.section.text, /tenant plus a file-set id/);
+    for (const q of ['Does `Indexer.ensureFresh`', 'Where does the file watcher live', 'A compiler program is per file set']) {
+      assert.ok(tenant.section.text.includes(q), `tenant-composition amendment does not restate: ${q}`);
     }
   });
 

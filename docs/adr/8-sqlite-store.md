@@ -36,3 +36,9 @@ The store must answer in milliseconds, update per file save, survive crashes, st
 - **Graph database (LadybugDB/Kuzu fork):** a second native engine; recursive CTEs cover the needed queries.
 - **better‑sqlite3 as primary:** native dependency; kept as tested fallback.
 - **Refuse synced folders (earlier draft):** strands common setups.
+
+## Amendment 2026-10-15: SQLite-access wording
+
+Sources: ARCHITECTURE.md Gap 5 (FND-10); D-16 of the Phase 1 context.
+
+Decision 1 says the SQL driver is internal to the Fact Store. It is internal to the `sqlite/` kit instead, which three store-owning modules share: the Fact Store, Metrics (its own `metrics.db`) and the SDK store (`sdk.db` and `pkg.db`). The kit holds both drivers, `node:sqlite` and `better-sqlite3`, behind one small interface and supplies the helpers `node:sqlite` lacks. One conformance suite runs against both drivers on every supported Node minor in CI. No other module imports `sqlite/`, and the boundary lint enforces that. The Fact Store's fact-level interface is unchanged, so the engine-swap escape hatch in the Consequences still holds.

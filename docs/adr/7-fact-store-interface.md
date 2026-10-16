@@ -54,3 +54,21 @@ Four interfaces were designed independently (minimal, flexible, optimised for th
 - **Two entry points, `read(q)` / `write(op)` over tagged unions:** maximal leverage per entry point, but becomes stringly typed; `maintain` bundles unrelated tasks and `status` blurs queries and health.
 - **Predicate registry with generic queries:** extensible, but about twice the interface, loosely typed rows, and the 0.7 ms / 5 ms budgets hold only for built-in predicates. Conflicts with 6-fact-model's rule that new predicates need an ADR.
 - **In-memory fake FactStore:** a second adapter of little value that drifts from real behaviour.
+
+## Amendment 2026-10-15: Read-triggered cache write and SQLite-access wording
+
+Sources: ARCHITECTURE.md Gaps 2 and 5 (FND-10); D-16 of the Phase 1 context.
+
+Two statements in the decision above are tightened. Neither changes the fact-level seam.
+
+1. **Read-triggered cache fills (decision 4 against decisions 3 and 5).** Decision 3 makes a Reader read-only, yet decision 4 has `refs` and `callers` fill the resolved-edge cache lazily, which is a write. The fill is performed by the writer-lease holder through a store-internal queue on its writer connection, so a Reader never writes. A Reader in a process that does not hold the lease computes the edges, returns them uncached and adds `degraded: ['cache_unavailable']` to the answer. The queue is internal: callers see neither it nor the lease. Phase 2's grammar-tier name resolution is a read-time join over local facts and needs no cache write.
+2. **SQLite access (decision 1).** The sentence "No other module reads or writes SQLite" is about fact tables. The `sqlite/` driver kit (both drivers behind one small interface, and the conformance suite) is internal infrastructure shared by exactly three store-owning modules: the Fact Store, Metrics with its own `metrics.db`, and the SDK store with `sdk.db` and `pkg.db`. No other module imports it, and the boundary lint enforces that (D-12).
+
+## Amendment 2026-10-15: Open questions resolved
+
+Sources: D-17 of the Phase 1 context; ARCHITECTURE.md Open Questions Q1 and Q2.
+
+The two open questions above are answered here. The original bullets stand unedited as the record of what was asked.
+
+- *Does `warm(worktree)` exist to pre-compute resolved edges?* No. The interface has no warm(worktree). Cache warming is an internal maintenance-class task of the writer-lease holder, run after the Indexer settles, and callers never request it.
+- *Is the first-call latency bound by `timeoutMs` with `degraded: ['resolver_timeout']`, or unbounded?* Bounded. `refs` and `callers` accept a `timeoutMs` option. On overrun they return the grammar-tier `INFERRED` edges with `degraded: ['resolver_timeout']`, while the computation continues and later fills the cache. The interface documents this cost: the first `refs` or `callers` per snapshot can pay resolver latency up to `timeoutMs`.
