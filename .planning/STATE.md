@@ -3,16 +3,16 @@ gsd_state_version: "1.0"
 current_phase: 02
 current_phase_name: Grammar Tier, Store and stdio Host
 status: executing
-stopped_at: Completed 02-07-PLAN.md
-last_updated: "2026-10-16T19:36:56.345Z"
+stopped_at: Completed 02-09-PLAN.md
+last_updated: "2026-10-16T19:43:39.160Z"
 last_activity: 2026-10-16
-last_activity_desc: Completed 02-07 Grammar Engine extraction
-state_head: 9e22c4ce2364ea4f902e6c712e7f19259a0e0a85
+last_activity_desc: Completed 02-09 real Governor
+state_head: fe1d12b29cd2772ad6f7b18ba36784c9af0cdda4
 progress:
   total_phases: 9
   completed_phases: 1
   total_plans: 48
-  completed_plans: 29
+  completed_plans: 30
   percent: 11
 ---
 
@@ -28,9 +28,9 @@ See: .planning/PROJECT.md (updated 2026-10-15)
 ## Current Position
 
 Phase: 02 (Grammar Tier, Store and stdio Host) — EXECUTING
-Plan: 9 of 28 complete (plans 02-01, 02-02, 02-03, 02-04, 02-05, 02-06, 02-07, 02-08 and 02-21 complete; they ran out of order, next is the lowest-numbered incomplete plan, 02-09)
+Plan: 10 of 28 complete (plans 02-01 to 02-09 and 02-21 complete; they ran out of order, next is the lowest-numbered incomplete plan, 02-10)
 Status: Ready to execute
-Last activity: 2026-10-16 — Completed 02-07 (Grammar Engine extraction: match grouping, extractFileFacts and capture vocabulary, match limit and parse deadline)
+Last activity: 2026-10-16 — Completed 02-09 (real Governor: priority classes, per-class bounded queues with busy and retry_after, cancellable job timers, file-set lease pool)
 
 Progress: [█░░░░░░░░░] 11%
 
@@ -66,6 +66,7 @@ Progress: [█░░░░░░░░░] 11%
 | Phase 02 P05 | 55min | 3 tasks | 10 files |
 | Phase 02 P06 | 22 min | 3 tasks | 11 files |
 | Phase 02 P07 | 20 min | 3 tasks | 21 files |
+| Phase 02 P09 | 25min | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -98,6 +99,8 @@ Recent decisions affecting current work:
 - [Phase 02]: Plan 02-07: the 0.27.1 parse progress callback cancels a parse when it returns true; withTree resets the parser afterwards because a cancelled parse otherwise resumes on the next call — Verified at run time (1.7 MB source cancelled in about 1 ms); without reset the next parse of a different source returned the old document's tree
 - [Phase 02]: Plan 02-07: extractFileFacts derives parent, qualifiedName and enclosing from spans only; equal spans are siblings; exports mark only top-level non-re-exported symbols; reference sites are scope-filtered at extraction — A hostile or sloppy module cannot produce inconsistent FileFacts (T-02-20); the member-call rule is the first thing dropped if the 02-26 store-size gate fails
 - [Phase 02]: Plan 02-07: matchLimit bounds new capture-list allocation only (web-tree-sitter reuses lists allocated earlier in the process), so every engine of one process must use the same limit — Observed: a limit lower than an earlier unlimited run had no effect; documented on GrammarEngineOptions
+- [Phase 02]: 02-09: Governor queue bounds are per class and must be finite non-negative integers; Infinity is rejected so no configuration can make a queue unbounded
+- [Phase 02]: 02-09: A lease that cannot be granted answers busy with the interactive class retry delay (leases serve reads; the interface has no lease class)
 
 ### Pending Todos
 
@@ -124,6 +127,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-10-16T19:36:56.291Z
-Stopped at: Completed 02-07-PLAN.md
+Last session: 2026-10-16T19:43:39.104Z
+Stopped at: Completed 02-09-PLAN.md
 Resume file: None
