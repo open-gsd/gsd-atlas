@@ -25,7 +25,14 @@ export { DEGRADED_CODES, isDegradedCode } from './degraded.ts';
 export type { DegradedCode } from './degraded.ts';
 export type { Answer, Watermark } from './answer.ts';
 export { PROTOCOL_VERSION, failEnvelope, okEnvelope } from './request.ts';
-export type { Envelope, Request } from './request.ts';
+export type {
+  Citation,
+  Envelope,
+  EnvelopeExtras,
+  Request,
+  UntrustedEntry,
+  UntrustedText,
+} from './request.ts';
 export { symbolKey } from './resolution.ts';
 export type {
   OverlaySnapshot,
