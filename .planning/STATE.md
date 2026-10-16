@@ -3,16 +3,16 @@ gsd_state_version: "1.0"
 current_phase: 02
 current_phase_name: Grammar Tier, Store and stdio Host
 status: executing
-stopped_at: Completed 02-08-PLAN.md (plans 02-01, 02-02, 02-03, 02-08 done; next 02-04)
-last_updated: "2026-10-16T18:12:05.441Z"
+stopped_at: Completed 02-21-PLAN.md
+last_updated: "2026-10-16T18:22:54.550Z"
 last_activity: 2026-10-16
-last_activity_desc: Completed 02-01 ADR ratification and Phase 2 amendments
-state_head: 47d0dd471f1dadad1f2387838cec63a4aba7c7b5
+last_activity_desc: Completed 02-21 gsd-atlas init user-scope MCP registration
+state_head: 7a11e2c6352a25577f5a51a7383b8382929effa4
 progress:
   total_phases: 9
   completed_phases: 1
   total_plans: 48
-  completed_plans: 24
+  completed_plans: 25
   percent: 11
 ---
 
@@ -28,16 +28,16 @@ See: .planning/PROJECT.md (updated 2026-10-15)
 ## Current Position
 
 Phase: 02 (Grammar Tier, Store and stdio Host) — EXECUTING
-Plan: 4 of 28 (plans 02-01, 02-02, 02-03 and 02-08 complete; they ran out of order, next is 02-04)
+Plan: 5 of 28 (plans 02-01, 02-02, 02-03, 02-08 and 02-21 complete; they ran out of order, next is 02-04)
 Status: Ready to execute
-Last activity: 2026-10-16 — Completed 02-01 (ADR ratification and Phase 2 amendments)
+Last activity: 2026-10-16 — Completed 02-21 (gsd-atlas init user-scope MCP registration)
 
 Progress: [█░░░░░░░░░] 11%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 23
+- Total plans completed: 25
 - Average duration: -
 - Total execution time: 0.0 hours
 
@@ -46,7 +46,7 @@ Progress: [█░░░░░░░░░] 11%
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 01 | 20 | - | - |
-| 02 | 3 of 28 | - | - |
+| 02 | 5 of 28 | - | - |
 
 **Recent Trend:**
 - Last 5 plans: -
@@ -61,6 +61,7 @@ Progress: [█░░░░░░░░░] 11%
 | Phase 02 P03 | 8 min | 3 tasks | 9 files |
 | Phase 02 P01 | 45 min | 3 tasks | 15 files |
 | Phase 02 P08 | 7 min | 3 tasks | 20 files |
+| Phase 02 P21 | 6 min | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -82,6 +83,7 @@ Recent decisions affecting current work:
 - [Phase 02]: Plan 02-01: four Phase 2 ADRs Accepted as issues 11 to 14; amendments dated 2026-10-16 record the in-process Host, six-tool profile, nonce-fenced untrusted_text, watermark_moved cursor and code_impact chain_confidence before code lands
 - [Phase 02]: Plan 02-01: writer contention is lease.db BEGIN EXCLUSIVE with a read-only degraded follower; build and maintain exit 3 when the lease is held; Reconcile idle interval about 10 minutes
 - [Phase 02]: Plan 02-08: upstream lock sources take optional generate:false to build from the archive's shipped parser.c; built-in typescript (ABI 14) and javascript (ABI 15) modules are pinned by npm tarball sha256; no module claims .tsx in Phase 2; linux-x64 hashes are recorded by the artifact-platform rule and await CI confirmation
+- [Phase 02]: 02-21: gsd-atlas init replaces an existing gsd-atlas entry wholesale and rejects non-absolute launch commands before touching any host — A merged stale key could combine with a new command; a PATH lookup must never be registered (T-02-74).
 
 ### Pending Todos
 
@@ -108,6 +110,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-10-16T18:12:05.380Z
-Stopped at: Completed 02-08-PLAN.md (plans 02-01, 02-02, 02-03, 02-08 done; next 02-04)
+Last session: 2026-10-16T18:22:54.500Z
+Stopped at: Completed 02-21-PLAN.md
 Resume file: None
