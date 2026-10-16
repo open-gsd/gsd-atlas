@@ -123,6 +123,7 @@ describe('gsd-atlas lang test, as a real process', () => {
       assert.ok(c, `golden has ${query} ${name} ${JSON.stringify(text)}`);
       return `${String(c.startLine)}:${String(c.startColumn)}-${String(c.endLine)}:${String(c.endColumn)}`;
     };
+    assert.equal(at('imports', 'import.es', 'use "lib/util";'), '1:0-1:15');
     assert.equal(at('imports', 'import.path', '"lib/util"'), '1:4-1:14');
     assert.equal(at('tags', 'name', 'main'), '2:3-2:7');
     assert.equal(at('refs', 'reference.call', 'helper'), '3:2-3:8');
@@ -151,6 +152,7 @@ function rowsOf(fixture: string): Row[] {
 }
 
 const BASIC_ROWS: readonly Row[] = [
+  ['imports', 'import.es', 1, 0, 1, 15, 'use "lib/util";'],
   ['imports', 'import.path', 1, 4, 1, 14, '"lib/util"'],
   ['tags', 'definition.function', 2, 0, 4, 1, 'fn main {\n  helper();\n}'],
   ['tags', 'name', 2, 3, 2, 7, 'main'],
@@ -165,13 +167,15 @@ describe('toy goldens: hand-verified UTF-16, CRLF and BOM numbers (D-02)', () =>
     // line 2 is `fn h<e-acute>llo {`: the name starts after `fn ` (3) and has 5 units.
     // line 3 is `  call();`: the call target starts after two spaces and has 4 units.
     const rows = rowsOf('emoji.toy');
+    // The whole statement `use "a<emoji>b";` is 4 + 6 + 1 = 11 units (13 UTF-8 bytes).
     assert.deepEqual(rows, [
+      ['imports', 'import.es', 1, 0, 1, 11, 'use "a\u{1F600}b";'],
       ['imports', 'import.path', 1, 4, 1, 10, '"a\u{1F600}b"'],
       ['tags', 'definition.function', 2, 0, 4, 1, 'fn héllo {\n  call();\n}'],
       ['tags', 'name', 2, 3, 2, 8, 'héllo'],
       ['refs', 'reference.call', 3, 2, 3, 6, 'call'],
     ]);
-    assert.equal(rows[0]![6].length, 6, 'the string token is six UTF-16 code units');
+    assert.equal(rows[1]![6].length, 6, 'the string token is six UTF-16 code units');
     assert.equal(readGolden('emoji.toy').hadBom, false);
   });
 
@@ -238,8 +242,8 @@ describe('gsd-atlas lang test: exit codes and diagnostics', () => {
     const dir = copyToy();
     const goldenPath = path.join(dir, 'fixtures', 'emoji.toy.golden.json');
     const golden = JSON.parse(fs.readFileSync(goldenPath, 'utf8')) as { captures: Array<Record<string, unknown>> };
-    assert.equal(golden.captures[0]!['endColumn'], 10);
-    golden.captures[0]!['endColumn'] = 9;
+    assert.equal(golden.captures[0]!['endColumn'], 11);
+    golden.captures[0]!['endColumn'] = 10;
     fs.writeFileSync(goldenPath, `${JSON.stringify(golden, null, 2)}\n`);
 
     const out = await atlas(['lang', 'test', dir]);
@@ -250,7 +254,7 @@ describe('gsd-atlas lang test: exit codes and diagnostics', () => {
     assert.equal(problem?.code, 'golden_mismatch');
     assert.ok(problem.message.includes('emoji.toy'));
     assert.ok(problem.message.includes('capture 0 field endColumn'));
-    assert.ok(problem.message.includes('expected 9, actual 10'));
+    assert.ok(problem.message.includes('expected 10, actual 11'));
     assert.match(out.stderr, /^gsd-atlas: error golden_mismatch: emoji\.toy: /);
   });
 

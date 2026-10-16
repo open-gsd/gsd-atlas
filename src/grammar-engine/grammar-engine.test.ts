@@ -99,6 +99,7 @@ describe('real engine: run', () => {
       const result = await grammar.run(fixture('basic.toy'));
       assert.equal(result.hadBom, false);
       assert.deepEqual(summarise(result.captures), [
+        ['imports', 'import.es', 'use "lib/util";'],
         ['imports', 'import.path', '"lib/util"'],
         ['tags', 'definition.function', 'fn main {\n  helper();\n}'],
         ['tags', 'name', 'main'],
@@ -108,7 +109,15 @@ describe('real engine: run', () => {
       ]);
       assert.deepEqual(
         result.captures.map((c) => c.span),
-        [span(1, 4, 1, 14), span(2, 0, 4, 1), span(2, 3, 2, 7), span(3, 2, 3, 8), span(5, 0, 6, 1), span(5, 5, 5, 11)],
+        [
+          span(1, 0, 1, 15),
+          span(1, 4, 1, 14),
+          span(2, 0, 4, 1),
+          span(2, 3, 2, 7),
+          span(3, 2, 3, 8),
+          span(5, 0, 6, 1),
+          span(5, 5, 5, 11),
+        ],
       );
     });
   });
@@ -236,7 +245,7 @@ describe('real engine: load failures that need a real WASM runtime', () => {
     const engine = createGrammarEngine();
     await assert.rejects(engine.load(toyInput({ expectedSha256: 'c'.repeat(64) })));
     const grammar = await engine.load(toyInput());
-    assert.equal((await grammar.run(fixture('basic.toy'))).captures.length, 6);
+    assert.equal((await grammar.run(fixture('basic.toy'))).captures.length, 7);
     await engine.dispose();
   });
 
@@ -283,6 +292,7 @@ describe('fake engine expectations are not echoed wrong data', () => {
     assert.deepEqual(
       emoji.captures.map((c) => [c.query, c.name, c.span]),
       [
+        ['imports', 'import.es', span(1, 0, 1, 11)],
         ['imports', 'import.path', span(1, 4, 1, 10)],
         ['tags', 'definition.function', span(2, 0, 4, 1)],
         ['tags', 'name', span(2, 3, 2, 8)],
