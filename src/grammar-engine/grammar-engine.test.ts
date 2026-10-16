@@ -355,6 +355,131 @@ describe('real engine: match grouping', () => {
   });
 });
 
+describe('real engine: run limits (T-02-19)', () => {
+  // Three sibling definitions in one pattern: every definition starts a match that waits for later siblings, so many
+  // matches are in flight at once. web-tree-sitter reuses capture lists it allocated earlier in the process, so a limit
+  // below an earlier high-water mark is not retroactive: the rejection case runs first, before anything big has run.
+  const wideQuery = '(source_file (definition) @first (definition) @second (definition) @third)';
+  const wideSource = 'fn a {\n}\n'.repeat(12);
+  const hugeSource = 'fn a {\n  helper();\n}\n'.repeat(80000);
+
+  async function withEngine<T>(
+    options: Parameters<typeof createGrammarEngine>[0],
+    fn: (grammar: Awaited<ReturnType<ReturnType<typeof createGrammarEngine>['load']>>) => Promise<T>,
+    input: GrammarInput = toyInput({ queries: { tags: wideQuery } }),
+  ): Promise<T> {
+    const engine = createGrammarEngine(options);
+    try {
+      const grammar = await engine.load(input);
+      return await fn(grammar);
+    } finally {
+      await engine.dispose();
+    }
+  }
+
+  it('rejects with match_limit_exceeded when more matches are in flight than matchLimit, instead of truncating silently', async () => {
+    await withEngine({ matchLimit: 1 }, async (grammar) => {
+      await assert.rejects(
+        grammar.run(wideSource),
+        (error: unknown) => error instanceof GrammarRunError && error.code === 'match_limit_exceeded',
+      );
+    });
+  });
+
+  it('keeps working on the same loaded grammar after a match_limit_exceeded failure', async () => {
+    await withEngine({ matchLimit: 4 }, async (grammar) => {
+      await assert.rejects(
+        grammar.run(wideSource),
+        (error: unknown) => error instanceof GrammarRunError && error.code === 'match_limit_exceeded',
+      );
+      // One definition cannot complete the three-sibling pattern: no captures, and no failure.
+      const result = await grammar.run('fn z {\n}\n');
+      assert.deepEqual(result.captures, []);
+      assert.equal(result.errorBytes, 0);
+    });
+  });
+
+  it('behaves as before without the option: every capture of the wide query comes back', async () => {
+    await withEngine(undefined, async (grammar) => {
+      const result = await grammar.run(wideSource);
+      assert.equal(result.captures.length, 220 * 3);
+    });
+  });
+
+  it('is not tripped by a limit the query fits inside', async () => {
+    await withEngine({ matchLimit: 65536 }, async (grammar) => {
+      assert.equal((await grammar.run(wideSource)).captures.length, 220 * 3);
+    });
+  });
+
+  it('rejects limits the library cannot honour when the engine is created', () => {
+    for (const matchLimit of [0, -1, 1.5, Number.NaN, 65537]) {
+      assert.throws(() => createGrammarEngine({ matchLimit }), RangeError, `matchLimit ${String(matchLimit)}`);
+    }
+    for (const parseTimeoutMs of [0, -5, Number.NaN, Number.POSITIVE_INFINITY]) {
+      assert.throws(() => createGrammarEngine({ parseTimeoutMs }), RangeError, `parseTimeoutMs ${String(parseTimeoutMs)}`);
+    }
+  });
+
+  it('cancels a parse that passes the deadline with parse_timeout, in bounded time (the 0.27.1 progress callback cancels by returning true)', async () => {
+    await withEngine({ parseTimeoutMs: 1 }, async (grammar) => {
+      const started = performance.now();
+      await assert.rejects(
+        grammar.run(hugeSource),
+        (error: unknown) => error instanceof GrammarRunError && error.code === 'parse_timeout',
+      );
+      assert.ok(performance.now() - started < 1000, 'a cancelled parse returns promptly');
+    }, toyInput());
+  });
+
+  it('parses the next source correctly after a cancelled parse (the parser is reset, not resumed)', async () => {
+    const reference = await withEngine(undefined, (grammar) => grammar.run(fixture('basic.toy')), toyInput());
+    await withEngine({ parseTimeoutMs: 1 }, async (grammar) => {
+      await assert.rejects(
+        grammar.run(hugeSource),
+        (error: unknown) => error instanceof GrammarRunError && error.code === 'parse_timeout',
+      );
+      const again = await grammar.run(fixture('basic.toy'));
+      assert.deepEqual(again, reference);
+    }, toyInput());
+  });
+
+  it('leaves results unchanged under a deadline the parse finishes inside', async () => {
+    const reference = await withEngine(undefined, (grammar) => grammar.run(fixture('basic.toy')), toyInput());
+    await withEngine({ parseTimeoutMs: 60000 }, async (grammar) => {
+      assert.deepEqual(await grammar.run(fixture('basic.toy')), reference);
+    }, toyInput());
+  });
+});
+
+describe('withTree: parse deadline', () => {
+  it('cancels through the progress callback, resets the parser and reports parse_timeout', () => {
+    let resets = 0;
+    let cancelled = false;
+    const parser = {
+      parse: (_source: string, _old?: null, options?: { progressCallback?: (state: { currentOffset: number; hasError: boolean }) => boolean }) => {
+        cancelled = options?.progressCallback?.({ currentOffset: 0, hasError: false }) === true;
+        return null;
+      },
+      reset: () => void (resets += 1),
+    };
+    // A deadline in the past: the first progress callback must ask for cancellation.
+    assert.throws(
+      () => withTree(parser, 'x', () => 1, { timeoutMs: -1 }),
+      (error: unknown) => error instanceof GrammarRunError && error.code === 'parse_timeout',
+    );
+    assert.equal(cancelled, true);
+    assert.equal(resets, 1);
+  });
+
+  it('keeps the old parse_failed code for a null tree when no deadline fired', () => {
+    assert.throws(
+      () => withTree({ parse: () => null }, 'x', () => 1, { timeoutMs: 60000 }),
+      (error: unknown) => error instanceof GrammarRunError && error.code === 'parse_failed',
+    );
+  });
+});
+
 describe('toCapture: bounded capture text', () => {
   function nodeOf(length: number) {
     return {
