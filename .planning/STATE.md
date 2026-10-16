@@ -3,16 +3,16 @@ gsd_state_version: "1.0"
 current_phase: 02
 current_phase_name: Grammar Tier, Store and stdio Host
 status: executing
-stopped_at: Completed 02-17-PLAN.md
-last_updated: "2026-10-16T22:57:41.952Z"
+stopped_at: Completed 02-18-PLAN.md
+last_updated: "2026-10-16T23:22:30.267Z"
 last_activity: 2026-10-16
-last_activity_desc: Completed 02-17 Reconcile, worktrees and the native watcher
-state_head: 92f2204ebbdc53f0a2254823d15ff023626f3a02
+last_activity_desc: Completed 02-18 Store upkeep and the size gate
+state_head: 462770020b5d85d3de1bbf641fc3f156318c31df
 progress:
   total_phases: 9
   completed_phases: 1
   total_plans: 48
-  completed_plans: 38
+  completed_plans: 39
   percent: 11
 ---
 
@@ -28,9 +28,9 @@ See: .planning/PROJECT.md (updated 2026-10-15)
 ## Current Position
 
 Phase: 02 (Grammar Tier, Store and stdio Host) — EXECUTING
-Plan: 18 of 28 complete (plans 02-01 to 02-17 and 02-21 complete; they ran out of order, next is the lowest-numbered incomplete plan, 02-18)
+Plan: 19 of 28 complete (plans 02-01 to 02-18 and 02-21 complete; they ran out of order, next is the lowest-numbered incomplete plan, 02-19)
 Status: Ready to execute
-Last activity: 2026-10-16 — Completed 02-17 (Reconcile on start, problems, HEAD changes and the idle timer; one leader over every worktree with confined git-directory watching; branch switches that parse only changed files; the @parcel/watcher event source, a save reaching find in about 150 ms; src/indexer)
+Last activity: 2026-10-16 — Completed 02-18 (store upkeep: collect with guarded chunked deletes and name GC, compact in measured slices, check with rebuild, maintain under one budget; the 20,000-edit size gate reads ratio 1.0000 after a full compaction, 1.39 from the idle loop alone; src/fact-store, scripts/size-gate.ts)
 
 Progress: [█░░░░░░░░░] 11%
 
@@ -46,7 +46,7 @@ Progress: [█░░░░░░░░░] 11%
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 01 | 20 | - | - |
-| 02 | 17 of 28 | - | - |
+| 02 | 18 of 28 | - | - |
 
 **Recent Trend:**
 - Last 5 plans: -
@@ -75,6 +75,7 @@ Progress: [█░░░░░░░░░] 11%
 | Phase 02 P15 | 22 min | 3 tasks | 13 files |
 | Phase 02 P16 | 15 min | 3 tasks | 19 files |
 | Phase 02 P17 | 21 min | 3 tasks | 19 files |
+| Phase 02 P18 | 24 min | 3 tasks | 10 files |
 
 ## Accumulated Context
 
@@ -137,6 +138,10 @@ Recent decisions affecting current work:
 - [Phase 02]: 02-17: a worktree whose .git does not lead to common/worktrees/NAME (or the common dir itself) is neither watched, mapped nor indexed; start with named worktrees covers only those and attach(worktree) adds one (D-11) — T-02-56: a repository file only names evidence; the watched git directory is always Source Tree identity().commonDir
 - [Phase 02]: 02-17: Reconcile does not re-extract a stale file because processBatch tries Writer.link first and the store still holds facts for that hash; a grammar upgrade needs a forced re-extract path (note for 02-18) — store.reconcile lists stale paths in reindex but link attaches the known hash; the stale marker is not cleared by a Reconcile
 - [Phase 02]: 02-17: @parcel/watcher 2.6.0 installed exact with scripts disabled (prebuilt darwin-arm64 package loads); a save reaches find in about 150 ms against the 3000 ms ceiling on macOS; Linux and Windows watcher behaviour rests on three-OS CI and the Reconcile backstop — assumption A2; internal RECONCILE_CHUNK 256 is not in 02-CONSTANTS.md
+- [Phase 02]: 02-18: collect deletes a retired file only through guards repeated in every statement of one transaction (state = retired, no overlay row), and keeps a resume position per store so waiting versions cannot starve those behind them — T-02-60: a version revived or mapped between selection and delete must survive; a budget-limited call must still make progress
+- [Phase 02]: 02-18: deleting from the contentless FTS5 table leaves the connection's last-insert rowid above 2^53 and the SQLite kit then throws on the next run(); trigram rows go through exec and an ordinary insert-then-delete resets the rowid — Found when the second collect call threw IntegerOutOfRangeError; the Writer's first UPDATE after a collection would have thrown too. A kit-level fix (read lastInsertRowid only for inserts) is open for the kit owner
+- [Phase 02]: 02-18: a full compaction request also vacuums a file over a third empty inside pages (dbstat), not only one over a quarter free pages; the idle loop never vacuums — Measured: scattered deletes leave pages 45 percent empty that incremental vacuum never returns, so the 20,000-edit gate read 1.34 until a full compaction; after it the edited store equals a fresh build (655360 bytes, ratio 1.0000); idle-loop-only is 1.39, so plan 02-28 should schedule an occasional full compaction
+- [Phase 02]: 02-18: store.maintain takes the in-process writer slot and throws WriterBusy while the Indexer's writer is out; collect, compact and check need write authority only; stale-file refresh already worked in Writer.commitFile but Reconcile still attaches stale hashes through link (open for 02-20) — Specified WriterBusy contract; the Host releases the Indexer's writer around maintain or calls the three tasks directly; processBatch must extract and commit a path the store reports stale
 
 ### Pending Todos
 
@@ -163,6 +168,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-10-16T22:57:41.887Z
-Stopped at: Completed 02-17-PLAN.md
+Last session: 2026-10-16T23:22:30.213Z
+Stopped at: Completed 02-18-PLAN.md
 Resume file: None
