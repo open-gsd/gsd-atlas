@@ -1,11 +1,20 @@
 import type { DegradedCode } from '../facts/index.ts';
+import type { Db } from '../sqlite/index.ts';
 import { WriterBusy } from './errors.ts';
 import type { Lease } from './lease.ts';
 import { assertOpen, readTransaction } from './parts.ts';
 import type { StoreParts } from './parts.ts';
 import { createReader } from './reader.ts';
+import type { DirtyGuard } from './recovery.ts';
 import { SCHEMA_VERSION } from './schema.ts';
-import type { FactStore, MaintenanceResult, ReconcileResult, ReconcileTruth, StoreStatus } from './types.ts';
+import type {
+  FactStore,
+  MaintenanceResult,
+  ReconcileResult,
+  ReconcileTruth,
+  StoreStatus,
+  Writer,
+} from './types.ts';
 import { createWriter } from './writer.ts';
 
 /**
@@ -45,14 +54,69 @@ export interface StoreLifecycle {
   stopTakeover?: () => void;
   /** Told when this process gives the lease up at `close()` (takeover is reported by the opener). */
   readonly leaseChanged?: (held: boolean) => void;
+  /** Keeps the dirty sentinel in step with the writer's activity (D-14). */
+  readonly dirty?: DirtyGuard;
+  /** True while the opener is replacing the database files (takeover found a damaged store): no writer is handed out. */
+  recovering?: boolean;
+}
+
+/** `meta` entry: set when the store was rebuilt, cleared by the first completed `setOverlay` afterwards (D-14). */
+export const REBUILD_PENDING_META = 'rebuild_pending';
+
+/** `meta` entries that record the corruption rebuild for `status()`. */
+export const REBUILT_MOVED_TO_META = 'rebuilt_moved_to';
+export const REBUILT_AT_META = 'rebuilt_at';
+
+function rebuildPending(db: Db): boolean {
+  return db.prepare('SELECT 1 AS present FROM meta WHERE name = ?').get(REBUILD_PENDING_META) !== undefined;
 }
 
 /**
  * The `degradedNow` of a store: the degraded codes that hold for the whole process right now. A process that
- * does not hold the writer lease is a follower, and every answer it gives says so.
+ * does not hold the writer lease is a follower, and every answer it gives says so. A store that was rebuilt
+ * answers `rebuilding` until a full overlay has been written again (D-14); the flag lives in the database, so a
+ * follower sees it end when the leader's `setOverlay` completes.
  */
-export function processDegraded(lifecycle: StoreLifecycle): () => readonly DegradedCode[] {
-  return () => (lifecycle.lease !== undefined && !lifecycle.lease.held ? ['follower'] : []);
+export function processDegraded(lifecycle: StoreLifecycle, readDb: () => Db): () => readonly DegradedCode[] {
+  return () => {
+    const codes: DegradedCode[] = [];
+    if (lifecycle.lease !== undefined && !lifecycle.lease.held) codes.push('follower');
+    if (rebuildPending(readDb())) codes.push('rebuilding');
+    return codes;
+  };
+}
+
+/**
+ * The writer the store hands out: every mutating call first makes sure the dirty sentinel exists and holds its
+ * removal timer, and re-arms the timer when the call is done; `release()` removes the sentinel at once. The
+ * first `setOverlay` that completes after a rebuild ends the `rebuilding` state.
+ */
+function guardWriter(parts: StoreParts, writer: Writer, dirty: DirtyGuard | undefined): Writer {
+  const guarded = async <T>(call: () => Promise<T>): Promise<T> => {
+    if (!parts.state.closed) dirty?.begin();
+    try {
+      return await call();
+    } finally {
+      if (!parts.state.closed) dirty?.end();
+    }
+  };
+  return {
+    commitFile: (input) => guarded(() => writer.commitFile(input)),
+    link: (worktree, path, hash) => guarded(() => writer.link(worktree, path, hash)),
+    setOverlay: (worktree, ref, pathToHash) =>
+      guarded(async () => {
+        await writer.setOverlay(worktree, ref, pathToHash);
+        if (rebuildPending(parts.writeDb)) {
+          parts.writeDb.prepare('DELETE FROM meta WHERE name = ?').run(REBUILD_PENDING_META);
+        }
+      }),
+    dropOverlay: (worktree) => guarded(() => writer.dropOverlay(worktree)),
+    markStale: (selector) => guarded(() => writer.markStale(selector)),
+    release() {
+      writer.release();
+      dirty?.flush();
+    },
+  };
 }
 
 function status(parts: StoreParts, lifecycle: StoreLifecycle): StoreStatus {
@@ -68,13 +132,22 @@ function status(parts: StoreParts, lifecycle: StoreLifecycle): StoreStatus {
       .map((row) => ({ worktree: String(row.worktree), seq: Number(row.seq), stalePaths: Number(row.stale_paths) }));
     const pages = Number(db.pragma('page_count'));
     const pageSize = Number(db.pragma('page_size'));
-    const version = db.prepare('SELECT value FROM meta WHERE name = ?').get('schema_version');
+    const metaValue = (name: string): string | undefined => {
+      const row = db.prepare('SELECT value FROM meta WHERE name = ?').get(name);
+      return row === undefined ? undefined : String(row.value);
+    };
+    const version = metaValue('schema_version');
+    const movedTo = metaValue(REBUILT_MOVED_TO_META);
+    const rebuiltAt = metaValue(REBUILT_AT_META);
     return {
-      schemaVersion: version === undefined ? SCHEMA_VERSION : Number(version.value),
+      schemaVersion: version === undefined ? SCHEMA_VERSION : Number(version),
       worktrees,
       sizeBytes: pages * pageSize,
       // With a cross-process lease the answer is whether this process holds it; without one, whether a writer is out.
       writerLeaseHeld: lifecycle.lease === undefined ? parts.state.writerTaken : lifecycle.lease.held,
+      ...(movedTo === undefined || rebuiltAt === undefined
+        ? {}
+        : { rebuiltAfterCorruption: { movedTo, at: Number(rebuiltAt) } }),
     };
   });
 }
@@ -96,9 +169,9 @@ export function createStore(parts: StoreParts, lifecycle: StoreLifecycle = {}): 
       assertOpen(parts);
       // A follower never writes: while another process holds the cross-process lease there is no writer to give.
       if (lifecycle.lease !== undefined && !lifecycle.lease.held) throw new WriterBusy();
-      if (parts.state.writerTaken) throw new WriterBusy();
+      if (lifecycle.recovering === true || parts.state.writerTaken) throw new WriterBusy();
       parts.state.writerTaken = true;
-      return createWriter(parts);
+      return guardWriter(parts, createWriter(parts), lifecycle.dirty);
     },
     async reconcile(truth) {
       assertOpen(parts);
@@ -120,6 +193,7 @@ export function createStore(parts: StoreParts, lifecycle: StoreLifecycle = {}): 
       parts.state.closed = true;
       parts.state.writerTaken = false;
       lifecycle.stopTakeover?.();
+      lifecycle.dirty?.flush();
       parts.readDb.close();
       parts.writeDb.close();
       // Last: the lease goes after the database handles, so a successor never meets a leader that is still closing.

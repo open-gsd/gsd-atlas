@@ -491,6 +491,50 @@ describe('sentinel and recovery with a writer lease', () => {
       assert.equal((await follower.at('main').find('sym0')).data.length, 3);
     });
   });
+
+  it('corrupt: a follower that takes over and finds the store damaged moves it aside and rebuilds it in place', async () => {
+    await withRig('node:sqlite', async (rig) => {
+      const leader = await rig.open({ lease: 'acquire' });
+      await seed(leader, 30);
+      const changes: boolean[] = [];
+      const follower = await rig.open({
+        lease: 'acquire',
+        takeover: { retryMinMs: DEFAULT_LEASE_RETRY_MIN_MS, retryMaxMs: DEFAULT_LEASE_RETRY_MAX_MS, random: () => 0 },
+        onLeaseChange: (held) => changes.push(held),
+      });
+      // With the follower's connections open the leader is not the last to close, so its facts would stay in the
+      // WAL. Fold them into the main file first, so the damage below lands where the check will look.
+      const folder = await openDatabase(rig.file, { driver: 'node:sqlite' });
+      try {
+        folder.pragma('wal_checkpoint', 'TRUNCATE');
+      } finally {
+        folder.close();
+      }
+      await leader.close();
+      assert.ok(fs.statSync(rig.file).size > 8192, 'the facts are in the main file');
+      // The follower may hold a few pages in its cache, so damage everything after page 1.
+      overwrite(rig.file, 4096, fs.statSync(rig.file).size - 4096);
+      markDirty(rig.dir);
+
+      await rig.clock.advance(DEFAULT_LEASE_RETRY_MIN_MS);
+      await pollUntil(10_000, 'the takeover and the rebuild', () => changes.length > 0);
+
+      const status = await follower.status();
+      assert.ok(status.rebuiltAfterCorruption !== undefined);
+      assert.equal(quarantined(rig.dir).length, 1);
+      assert.equal(isDirty(rig.dir), false);
+      assert.equal(status.writerLeaseHeld, true);
+      await assert.rejects(follower.at('main').find('sym0'), UnknownWorktree, 'the rebuilt store has no overlays yet');
+
+      const writer = follower.writer();
+      await writer.commitFile({ worktree: 'main', path: generatedPath(0), hash: generatedHash(0), facts: generatedFacts(0) });
+      const found = await follower.at('main').find('sym0');
+      assert.equal(found.data.length, 1);
+      assert.equal(found.degraded?.includes('follower') ?? false, false);
+      assert.equal(found.degraded?.includes('rebuilding'), true);
+      writer.release();
+    });
+  });
 });
 
 describe('killing a real writer process', () => {
@@ -528,13 +572,18 @@ describe('killing a real writer process', () => {
       let store: FactStore | undefined;
       try {
         const { acknowledged, lastSeq } = await killWriter(dir, acknowledge);
+        assert.equal(isDirty(dir), true, 'a writer killed mid-batch leaves the sentinel behind');
 
+        const checksBefore = recoveryCounters.quickChecks;
         store = await openFactStore(
           dir,
           { resolver: noResolver, clock: new FakeClock(1), gitHas: async () => true },
           { repo: 'repo', version: 'parent', lease: 'acquire' },
         );
         assert.equal((await store.status()).writerLeaseHeld, true, 'the operating system released the dead writer\'s lock');
+        assert.equal(recoveryCounters.quickChecks, checksBefore + 1, 'the sentinel made the open check the store');
+        assert.equal(isDirty(dir), false);
+        assert.deepStrictEqual(quarantined(dir), [], 'a killed writer alone does not damage the file');
 
         const peek = await openDatabase(path.join(dir, STORE_FILE_NAME), { readOnly: true });
         try {

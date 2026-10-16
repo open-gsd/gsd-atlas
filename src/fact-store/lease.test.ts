@@ -14,7 +14,7 @@ import { allowAll, createRealRunner } from '../command-runner/index.ts';
 import type { CommandStream } from '../command-runner/index.ts';
 import type { Clock, FileFacts, Span, SymbolIdentity } from '../facts/index.ts';
 import { createScriptedResolver } from '../precise-resolver/index.ts';
-import { DbError, loadDriver } from '../sqlite/index.ts';
+import { DbError, loadDriver, openDatabase } from '../sqlite/index.ts';
 import type { DriverModule, DriverName } from '../sqlite/index.ts';
 import { FakeClock, makeTempDir } from '../test-kit/index.ts';
 import { WriterBusy } from './errors.ts';
@@ -190,7 +190,7 @@ describe('writer lease', () => {
         dir,
         clock: recordingClock(),
         version: 'v',
-        driver,
+        openDb: (file) => openDatabase(file, { timeoutMs: 0, driver }),
         random: () => {
           jitter.push(0.5);
           return 0.5;
@@ -209,7 +209,13 @@ describe('writer lease', () => {
   it('gives up after one try and four retries when every open is busy', async () => {
     await withTmp(async (dir) => {
       const { driver, opens } = await flakyDriver(Number.POSITIVE_INFINITY);
-      const lease = createLease({ dir, clock: recordingClock(), version: 'v', driver, random: () => 0 });
+      const lease = createLease({
+        dir,
+        clock: recordingClock(),
+        version: 'v',
+        openDb: (file) => openDatabase(file, { timeoutMs: 0, driver }),
+        random: () => 0,
+      });
       assert.equal(await lease.tryAcquire(), false);
       assert.equal(opens(), 5);
       assert.equal(lease.held, false);

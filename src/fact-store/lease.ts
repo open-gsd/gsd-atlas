@@ -14,7 +14,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import type { Clock } from '../facts/index.ts';
 import { DbError, openDatabase } from '../sqlite/index.ts';
-import type { Db, DriverModule, DriverName } from '../sqlite/index.ts';
+import type { Db } from '../sqlite/index.ts';
 
 const LEASE_DB = 'lease.db';
 const LEASE_JSON = 'lease.json';
@@ -59,8 +59,11 @@ export interface CreateLeaseOptions {
   readonly pid?: number;
   /** Jitter source in [0, 1) for the open retries. Default `Math.random`. */
   readonly random?: () => number;
-  /** SQLite driver for `lease.db`. Default `node:sqlite`. */
-  readonly driver?: DriverName | DriverModule;
+  /**
+   * Opens `lease.db` with a zero busy timeout. `openFactStore` supplies one bound to the store's SQL engine, so
+   * this file names no engine; the default is the kit's default engine.
+   */
+  readonly openDb?: (file: string) => Promise<Db>;
 }
 
 function isBusy(error: unknown): boolean {
@@ -86,7 +89,8 @@ function parseInfo(text: string): LeaseInfo | null {
 }
 
 export function createLease(options: CreateLeaseOptions): Lease {
-  const { dir, clock, version, driver } = options;
+  const { dir, clock, version } = options;
+  const openDb = options.openDb ?? ((file: string) => openDatabase(file, { timeoutMs: 0 }));
   const pid = options.pid ?? process.pid;
   const random = options.random ?? Math.random;
   const dbFile = path.join(dir, LEASE_DB);
@@ -119,7 +123,7 @@ export function createLease(options: CreateLeaseOptions): Lease {
   async function open(): Promise<Db | undefined> {
     for (let retry = 0; ; retry += 1) {
       try {
-        return await openDatabase(dbFile, driver === undefined ? { timeoutMs: 0 } : { timeoutMs: 0, driver });
+        return await openDb(dbFile);
       } catch (error) {
         if (!isBusy(error)) throw error;
         if (retry >= OPEN_RETRIES) return undefined;

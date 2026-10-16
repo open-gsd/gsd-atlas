@@ -1,14 +1,24 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { loadDriver, openDatabase, selfTest } from '../sqlite/index.ts';
-import type { Db, DriverName } from '../sqlite/index.ts';
+import type { Db, DriverModule, DriverName } from '../sqlite/index.ts';
 import { SchemaTooNew } from './errors.ts';
 import { createLease, startTakeover } from './lease.ts';
 import type { Lease } from './lease.ts';
 import type { StoreParts } from './parts.ts';
+import {
+  KEEP_QUARANTINED,
+  clearDirty,
+  createDirtyGuard,
+  isCorruptionError,
+  isDirty,
+  pruneQuarantine,
+  quarantine,
+  runQuickCheck,
+} from './recovery.ts';
 import { FUZZY_PATH_META, SCHEMA_VERSION, STORE_FILE_NAME, createSchema } from './schema.ts';
 import type { FuzzyIndex } from './schema.ts';
-import { createStore, processDegraded } from './store.ts';
+import { REBUILD_PENDING_META, REBUILT_AT_META, REBUILT_MOVED_TO_META, createStore, processDegraded } from './store.ts';
 import type { StoreLifecycle } from './store.ts';
 import type { FactStore, StoreDeps, StoreOptions } from './types.ts';
 
@@ -58,17 +68,161 @@ function readMeta(db: Db, name: string): string | undefined {
   return row === undefined ? undefined : String(row.value);
 }
 
-/** Refuse a store that is not this build's schema: newer is `SchemaTooNew`; anything else needs a rebuild (plan 02-12). */
-function checkSchemaVersion(db: Db): void {
+/** How a store file that has tables relates to this build's schema (D-15). */
+type SchemaVerdict = 'current' | 'newer' | 'older' | 'foreign';
+
+function schemaVerdict(db: Db): SchemaVerdict {
   const metaTable = db.prepare("SELECT count(*) AS n FROM sqlite_master WHERE type = 'table' AND name = 'meta'").get();
-  const version = Number(metaTable?.n) > 0 ? Number(readMeta(db, 'schema_version')) : Number.NaN;
-  if (Number.isNaN(version)) {
-    throw new Error('the store file is not a gsd-atlas fact store (no schema version); remove it to rebuild');
+  if (Number(metaTable?.n) === 0) return 'foreign';
+  const raw = readMeta(db, 'schema_version');
+  const version = raw === undefined ? Number.NaN : Number(raw);
+  if (Number.isNaN(version)) return 'foreign';
+  if (version > SCHEMA_VERSION) return 'newer';
+  return version < SCHEMA_VERSION ? 'older' : 'current';
+}
+
+/** What `attemptOpen` needs, fixed for the life of one `openFactStore` call. */
+interface OpenEnv {
+  readonly dir: string;
+  readonly file: string;
+  readonly driver: DriverModule;
+  readonly timeoutMs: number;
+  readonly fuzzy: FuzzyIndex;
+  readonly version: string;
+  readonly schemaVersion: number;
+}
+
+interface Connections {
+  writeDb: Db;
+  readDb: Db;
+}
+
+type Attempt =
+  | { readonly kind: 'ready'; readonly conns: Connections; readonly fuzzyTrigram: boolean }
+  /** The file is damaged or not ours: the caller moves it aside. Nothing is left open. */
+  | { readonly kind: 'corrupt' }
+  /** The file is a fact store of an older schema: the caller deletes it. Nothing is left open. */
+  | { readonly kind: 'older' };
+
+function fileHasContent(file: string): boolean {
+  try {
+    return fs.statSync(file).size > 0;
+  } catch {
+    return false;
   }
-  if (version > SCHEMA_VERSION) throw new SchemaTooNew(readMeta(db, 'created_by') ?? 'unknown');
-  if (version < SCHEMA_VERSION) {
-    throw new Error(`the store has schema version ${version}, this build writes ${SCHEMA_VERSION}; it must be rebuilt`);
+}
+
+/**
+ * One try at opening the store files in `env.dir`.
+ *
+ * `authority` is true for a process that may change the files: the leader, or any process without a lease. Only
+ * such a process runs the sentinel check, treats a damaged or foreign file as one to move aside, and creates or
+ * changes the schema. A follower reads: it leaves an existing schema untouched and reports trouble as an error.
+ */
+async function attemptOpen(env: OpenEnv, authority: boolean): Promise<Attempt> {
+  const existed = fileHasContent(env.file);
+  const { driver, timeoutMs } = env;
+
+  let writeDb: Db;
+  try {
+    writeDb = await openDatabase(env.file, { driver, timeoutMs });
+  } catch (error) {
+    // "file is not a database" surfaces on the first statement of the open policy.
+    if (authority && existed && isCorruptionError(error)) return { kind: 'corrupt' };
+    throw error;
   }
+
+  let readDb: Db | undefined;
+  const giveUp = (kind: 'corrupt' | 'older'): Attempt => {
+    readDb?.close();
+    writeDb.close();
+    return { kind };
+  };
+  try {
+    // D-14: a sentinel means the last writer may have died mid-batch, so check before trusting the file.
+    if (authority && isDirty(env.dir) && !runQuickCheck(writeDb)) return giveUp('corrupt');
+
+    const existing = hasTables(writeDb);
+    if (existing) {
+      const verdict = schemaVerdict(writeDb);
+      if (verdict === 'newer') throw new SchemaTooNew(readMeta(writeDb, 'created_by') ?? 'unknown');
+      if (verdict === 'foreign') {
+        if (authority) return giveUp('corrupt');
+        throw new Error('the store file is not a gsd-atlas fact store; the process that holds the writer lease will move it aside');
+      }
+      if (verdict === 'older') {
+        if (authority) return giveUp('older');
+        throw new Error('the store was written by an older schema; the process that holds the writer lease will rebuild it');
+      }
+    }
+
+    let fuzzyTrigram = env.fuzzy.trigram;
+    if (authority || !existing) {
+      if (!existing) {
+        writeDb.pragma('auto_vacuum', 'INCREMENTAL');
+        writeDb.exec('VACUUM');
+      }
+      const db = writeDb;
+      db.transaction(() => {
+        createSchema(db, env.fuzzy);
+        const seed = db.prepare('INSERT OR IGNORE INTO meta (name, value) VALUES (?, ?)');
+        seed.run('schema_version', String(env.schemaVersion));
+        seed.run('created_by', env.version);
+      });
+    } else {
+      // A follower leaves an existing store untouched; it reads the fuzzy-name path the leader recorded.
+      fuzzyTrigram = env.fuzzy.trigram && readMeta(writeDb, FUZZY_PATH_META) === 'trigram';
+    }
+    readDb = await openDatabase(env.file, { driver, readOnly: true, timeoutMs });
+    if (authority) clearDirty(env.dir); // the check passed (or there was nothing to check)
+    return { kind: 'ready', conns: { writeDb, readDb }, fuzzyTrigram };
+  } catch (error) {
+    readDb?.close();
+    writeDb.close();
+    if (authority && existed && isCorruptionError(error)) return { kind: 'corrupt' };
+    throw error;
+  }
+}
+
+/** Delete the store database and its WAL companions (an older-schema store is derived data, D-15). */
+function removeStoreFiles(file: string): void {
+  for (const suffix of ['', '-wal', '-shm']) fs.rmSync(`${file}${suffix}`, { force: true });
+}
+
+/** Write the rebuild notes into a fresh store's `meta` (see `REBUILD_PENDING_META`). */
+function noteRebuild(db: Db, moved: { readonly movedTo: string; readonly at: number } | undefined): void {
+  db.transaction(() => {
+    const put = db.prepare('INSERT OR REPLACE INTO meta (name, value) VALUES (?, ?)');
+    put.run(REBUILD_PENDING_META, '1');
+    if (moved !== undefined) {
+      put.run(REBUILT_MOVED_TO_META, moved.movedTo);
+      put.run(REBUILT_AT_META, String(moved.at));
+    }
+  });
+}
+
+/**
+ * Open the files for a process with write authority; when they are damaged or of an older schema, put them
+ * right first: a damaged store is moved aside (the newest two moved-aside files are kept) and an older one is
+ * deleted, then a fresh store is created and marked as rebuilding.
+ */
+async function openWithRecovery(env: OpenEnv, deps: StoreDeps): Promise<{ conns: Connections; fuzzyTrigram: boolean }> {
+  let attempt = await attemptOpen(env, true);
+  if (attempt.kind === 'ready') return attempt;
+
+  let moved: { readonly movedTo: string; readonly at: number } | undefined;
+  if (attempt.kind === 'corrupt') {
+    const { movedTo } = quarantine(env.dir, deps.clock);
+    pruneQuarantine(env.dir, KEEP_QUARANTINED);
+    moved = { movedTo, at: deps.clock.now() };
+  } else {
+    removeStoreFiles(env.file);
+    clearDirty(env.dir);
+  }
+  attempt = await attemptOpen(env, true);
+  if (attempt.kind !== 'ready') throw new Error('the fact store could not be recreated after it was moved aside');
+  noteRebuild(attempt.conns.writeDb, moved);
+  return attempt;
 }
 
 /**
@@ -77,13 +231,19 @@ function checkSchemaVersion(db: Db): void {
  * driver type.
  *
  * A new store has `auto_vacuum` set to INCREMENTAL before its first table exists; the setting only takes
- * effect after a one-time VACUUM once the file is in WAL mode. Opening an existing store changes nothing. A
- * store written by a newer build throws `SchemaTooNew` carrying the build that created it.
+ * effect after a one-time VACUUM once the file is in WAL mode. Opening an existing store changes nothing.
+ *
+ * Recovery (STO-06, D-14, D-15), for the process that may write: a `dirty` sentinel beside the file triggers
+ * `PRAGMA quick_check`; a file that fails it, is not a database, or is not a fact store is moved aside to
+ * `facts.db.corrupt-<time>` and a fresh store is created. A store written by a newer build throws
+ * `SchemaTooNew` carrying the build that created it; one written by an older schema is deleted and recreated
+ * (it is derived data). A rebuilt store answers `rebuilding` until a full overlay has been written again.
  *
  * With `lease: 'acquire'` the store first tries to take the cross-process writer lease. The process that gets
  * it is the leader and does everything above. A process that does not is a follower: it never writes the
- * database (an existing schema is not touched), `writer()` throws `WriterBusy`, every answer says `follower`,
- * and it retries the lease on a jittered timer.
+ * database (an existing schema is not touched, the sentinel is not checked), `writer()` throws `WriterBusy`,
+ * every answer says `follower`, and it retries the lease on a jittered timer. When it takes over it checks a
+ * sentinel the dead leader left behind.
  *
  * Assignable to `OpenStore`: the third parameter is optional.
  */
@@ -93,62 +253,63 @@ export async function openFactStore(
   options: StoreOpenOptions = {},
 ): Promise<FactStore> {
   fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
-  const file = path.join(dir, STORE_FILE_NAME);
-  const timeoutMs = options.busyTimeoutMs ?? DEFAULT_BUSY_TIMEOUT_MS;
 
   // The open-time capability probe (research A11): the fuzzy-name path is chosen from what the engine can do.
   // `trigram: false` can switch the table off for a test, never on where the probe found it missing.
   const driver = await loadDriver(options.driver ?? 'node:sqlite');
   const capabilities = selfTest(driver);
-  const fuzzy: FuzzyIndex = {
-    trigram: capabilities.fts5Trigram && options.trigram !== false,
-    contentlessDelete: capabilities.contentlessDelete,
+  const env: OpenEnv = {
+    dir,
+    file: path.join(dir, STORE_FILE_NAME),
+    driver,
+    timeoutMs: options.busyTimeoutMs ?? DEFAULT_BUSY_TIMEOUT_MS,
+    fuzzy: {
+      trigram: capabilities.fts5Trigram && options.trigram !== false,
+      contentlessDelete: capabilities.contentlessDelete,
+    },
+    version: options.version ?? 'unknown',
+    schemaVersion: options.schemaVersion ?? SCHEMA_VERSION,
   };
 
   const lease: Lease | undefined =
     options.lease === 'acquire'
-      ? createLease({ dir, clock: deps.clock, version: options.version ?? 'unknown', driver })
+      ? createLease({
+          dir,
+          clock: deps.clock,
+          version: env.version,
+          openDb: (file) => openDatabase(file, { driver, timeoutMs: 0 }),
+        })
       : undefined;
   const leader = lease === undefined ? true : await lease.tryAcquire();
 
-  let writeDb: Db | undefined;
-  let readDb: Db | undefined;
-  let fuzzyTrigram = fuzzy.trigram;
+  let opened: { conns: Connections; fuzzyTrigram: boolean };
   try {
-    writeDb = await openDatabase(file, { driver, timeoutMs });
-    const existing = hasTables(writeDb);
-    if (existing) checkSchemaVersion(writeDb);
-    if (leader || !existing) {
-      if (!existing) {
-        writeDb.pragma('auto_vacuum', 'INCREMENTAL');
-        writeDb.exec('VACUUM');
-      }
-      const db = writeDb;
-      db.transaction(() => {
-        createSchema(db, fuzzy);
-        const seed = db.prepare('INSERT OR IGNORE INTO meta (name, value) VALUES (?, ?)');
-        seed.run('schema_version', String(options.schemaVersion ?? SCHEMA_VERSION));
-        seed.run('created_by', options.version ?? 'unknown');
-      });
+    if (leader) {
+      opened = await openWithRecovery(env, deps);
     } else {
-      // A follower leaves an existing store untouched; it reads the fuzzy-name path the leader recorded.
-      fuzzyTrigram = fuzzy.trigram && readMeta(writeDb, FUZZY_PATH_META) === 'trigram';
+      const attempt = await attemptOpen(env, false);
+      if (attempt.kind !== 'ready') throw new Error('a follower cannot open the store');
+      opened = attempt;
     }
-    readDb = await openDatabase(file, { driver, readOnly: true, timeoutMs });
   } catch (error) {
-    readDb?.close();
-    writeDb?.close();
     await lease?.release();
     throw error;
   }
+  const { conns } = opened;
 
   const lifecycle: StoreLifecycle = {
     ...(lease === undefined ? {} : { lease }),
     ...(options.onLeaseChange === undefined ? {} : { leaseChanged: options.onLeaseChange }),
+    dirty: createDirtyGuard({ dir, clock: deps.clock, idleMs: options.dirtyIdleMs ?? DEFAULT_DIRTY_IDLE_MS }),
   };
+  // The connections live in `conns` so that a takeover that finds a damaged store can replace them in place.
   const parts: StoreParts = {
-    writeDb,
-    readDb,
+    get writeDb() {
+      return conns.writeDb;
+    },
+    get readDb() {
+      return conns.readDb;
+    },
     deps,
     repo: options.repo ?? path.basename(path.resolve(dir)),
     canCache:
@@ -156,10 +317,33 @@ export async function openFactStore(
         ? (options.canCache ?? (() => true))
         : () => lease.held && (options.canCache?.() ?? true),
     resolutionContext: options.resolutionContext ?? (() => ({ id: 'grammar', configHashes: [] })),
-    fuzzyTrigram,
+    fuzzyTrigram: opened.fuzzyTrigram,
     snapshotIds: new Map(),
     state: { closed: false, writerTaken: false },
-    degradedNow: processDegraded(lifecycle),
+    degradedNow: processDegraded(lifecycle, () => conns.readDb),
+  };
+
+  /**
+   * This follower just became the leader. If the leader before it died mid-batch it left the sentinel: check the
+   * store now, and when the check fails move it aside and rebuild it in place.
+   */
+  const recoverAfterTakeover = async (): Promise<void> => {
+    if (!isDirty(dir)) return;
+    if (runQuickCheck(conns.writeDb)) {
+      clearDirty(dir);
+      return;
+    }
+    lifecycle.recovering = true;
+    try {
+      conns.readDb.close();
+      conns.writeDb.close();
+      const replaced = await openWithRecovery(env, deps);
+      conns.writeDb = replaced.conns.writeDb;
+      conns.readDb = replaced.conns.readDb;
+      parts.snapshotIds.clear(); // a rebuilt store counts its sequence numbers from zero again
+    } finally {
+      lifecycle.recovering = false;
+    }
   };
 
   if (lease !== undefined && !lease.held) {
@@ -167,7 +351,17 @@ export async function openFactStore(
       retryMinMs: DEFAULT_LEASE_RETRY_MIN_MS,
       retryMaxMs: DEFAULT_LEASE_RETRY_MAX_MS,
     };
-    lifecycle.stopTakeover = startTakeover(lease, deps.clock, range, () => options.onLeaseChange?.(true));
+    lifecycle.stopTakeover = startTakeover(lease, deps.clock, range, () => {
+      void (async () => {
+        if (parts.state.closed) return;
+        try {
+          await recoverAfterTakeover();
+        } catch {
+          // The store could not be put right. It keeps serving what it can, and the next open will say what is wrong.
+        }
+        if (!parts.state.closed) options.onLeaseChange?.(true);
+      })();
+    });
   }
   return createStore(parts, lifecycle);
 }

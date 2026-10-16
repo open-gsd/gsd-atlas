@@ -78,14 +78,17 @@ describe('fact-store interface', () => {
     assert.equal(open, undefined);
   });
 
-  it('exports the four error classes and openFactStore as values, and nothing else (no fake store)', async () => {
+  it('exports the four error classes, openFactStore and the store-location functions as values, and nothing else (no fake store)', async () => {
     const mod = await import('./index.ts');
     assert.deepStrictEqual(Object.keys(mod).sort(), [
       'SchemaTooNew',
       'StoreClosed',
       'UnknownWorktree',
       'WriterBusy',
+      'defaultCacheRoot',
+      'isSyncedFolderPath',
       'openFactStore',
+      'resolveStoreLocation',
     ]);
     assert.equal(typeof mod.openFactStore, 'function');
   });
