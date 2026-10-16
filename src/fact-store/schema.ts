@@ -133,6 +133,33 @@ CREATE TABLE IF NOT EXISTS overlay_files (
 ) WITHOUT ROWID;
 CREATE INDEX IF NOT EXISTS overlay_files_by_file ON overlay_files (file_id);
 CREATE INDEX IF NOT EXISTS overlay_files_by_hash ON overlay_files (hash);
+
+-- The resolved-edge cache (STO-04). A precise edge binds one reference site to one definition; it is valid for
+-- exactly the overlay contents (snapshot: a hash of the sorted path and content-hash pairs) and the
+-- configuration (context) it was computed under, so a content change or another context simply misses.
+-- Derived data: nothing here is needed to rebuild the facts.
+CREATE TABLE IF NOT EXISTS resolution_contexts (
+  id INTEGER PRIMARY KEY,
+  ctx TEXT NOT NULL UNIQUE
+);
+
+CREATE TABLE IF NOT EXISTS resolved_edges (
+  snapshot TEXT NOT NULL,
+  context_id INTEGER NOT NULL,
+  site_path TEXT NOT NULL,
+  start_line INTEGER NOT NULL,
+  start_column INTEGER NOT NULL,
+  end_line INTEGER NOT NULL,
+  end_column INTEGER NOT NULL,
+  name TEXT NOT NULL,
+  target_path TEXT NOT NULL,
+  target_qualified_name TEXT NOT NULL,
+  target_kind TEXT NOT NULL,
+  target_discriminator TEXT NOT NULL DEFAULT '',
+  resolver TEXT NOT NULL,
+  PRIMARY KEY (snapshot, context_id, site_path, start_line, start_column, end_line, end_column, name,
+               target_path, target_qualified_name, target_kind, target_discriminator)
+) WITHOUT ROWID;
 `);
   createFuzzyIndex(db, fuzzy);
 }

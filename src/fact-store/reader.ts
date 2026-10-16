@@ -1,12 +1,18 @@
 import type { ExportSite, FileFacts, ImportSite, LocalSymbol, RefKind, RefSite } from '../facts/index.ts';
 import {
-  callerRecord,
   clampDepth,
   collectCallEdges,
   importerRecord,
+  mergeCaller,
+  mergeRefs,
+  prepareResolution,
   refRecord,
+  resolveSites,
   scopedRefs,
   selectCallers,
+  siteKeyOf,
+  siteProvenance,
+  standingEdge,
   walkImporters,
 } from './resolve.ts';
 import {
@@ -17,9 +23,11 @@ import {
   findRecords,
   findSymbol,
   num,
+  readSnapshot,
   spanOf,
   str,
   symbolRecord,
+  toAnswer,
 } from './snapshot.ts';
 import type { Snapshot } from './snapshot.ts';
 import type { StoreParts } from './parts.ts';
@@ -117,16 +125,32 @@ export function createReader(parts: StoreParts, worktree: WorktreeId): Reader {
     async find(name, options) {
       return answer(parts, worktree, (snap) => findRecords(snap, name, options));
     },
-    async refs(id) {
-      return answer(parts, worktree, (snap) => scopedRefs(snap, id).map((hit) => refRecord(snap, id, hit)));
+    async refs(id, options) {
+      // Phase 1 (sync, one read transaction): the grammar result and what the cache holds.
+      const first = readSnapshot(parts, worktree, (snap) => {
+        const records = scopedRefs(snap, id).map((hit) => refRecord(snap, id, hit));
+        return { records, input: prepareResolution(snap, records.map((record) => record.site)) };
+      });
+      // Phase 2 (async): the resolver, bounded by the timeout. Phase 3: merge precise edges over the grammar ones.
+      const resolved = await resolveSites(parts, worktree, first.value.input, options);
+      return toAnswer(first, mergeRefs(first.value.records, id, resolved.edges), resolved.degraded);
     },
     async callers(id, options) {
-      return answer(parts, worktree, (snap) => {
-        const hops = clampDepth(options?.hops);
-        return selectCallers(id, collectCallEdges(snap, id, hops), hops, () => true).map(({ edge, hops: at }) =>
-          callerRecord(snap, edge.callee, edge.hit, edge.caller, at),
-        );
+      const hops = clampDepth(options?.hops);
+      const first = readSnapshot(parts, worktree, (snap) => {
+        const edges = collectCallEdges(snap, id, hops);
+        const provenance = new Map(edges.map((edge) => [edge, siteProvenance(snap, edge.hit)] as const));
+        return { edges, provenance, input: prepareResolution(snap, edges.map((edge) => siteKeyOf(edge.hit))) };
       });
+      const { edges, provenance, input } = first.value;
+      const resolved = await resolveSites(parts, worktree, input, options);
+      const walked = selectCallers(id, edges, hops, (edge) => standingEdge(resolved.edges, edge));
+      const data = walked.map(({ edge, hops: at }) => {
+        const known = provenance.get(edge);
+        if (known === undefined) throw new Error('a walked call edge has no provenance');
+        return mergeCaller(resolved.edges, edge, known, at);
+      });
+      return toAnswer(first, data, resolved.degraded);
     },
     async symbol(id) {
       return answer(parts, worktree, (snap) => {

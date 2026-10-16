@@ -6,25 +6,52 @@
  */
 import { posix } from 'node:path';
 import { symbolKey } from '../facts/index.ts';
-import type { RefKind, Span, SymbolIdentity } from '../facts/index.ts';
+import type {
+  Clock,
+  DegradedCode,
+  RefKind,
+  RefSiteKey,
+  ResolutionContext,
+  ResolvedEdge,
+  Span,
+  SymbolIdentity,
+  SymbolLookup,
+} from '../facts/index.ts';
+import { DbError } from '../sqlite/index.ts';
+import {
+  contextKey,
+  ensureContextId,
+  findContextId,
+  liveSnapshotIds,
+  overlaySnapshotId,
+  pruneEdges,
+  readEdges,
+  siteId,
+  writeEdges,
+} from './cache.ts';
+import type { CachedEdge } from './cache.ts';
+import { StoreClosed, UnknownWorktree } from './errors.ts';
 import { extractorOf } from './parts.ts';
+import type { StoreParts } from './parts.ts';
 import { stem } from './specifier.ts';
 import {
   exportsOf,
   fileRow,
   fileSymbols,
+  findRecords,
   findSymbol,
   identityOf,
   importRows,
   importsOf,
   num,
   overlayView,
+  readSnapshot,
   resolveImport,
   spanOf,
   str,
 } from './snapshot.ts';
 import type { FileSymbol, ImportRow, Snapshot } from './snapshot.ts';
-import type { CallerRecord, ImporterRecord, Provenance, RefRecord } from './types.ts';
+import type { CallerRecord, ImporterRecord, Provenance, RefRecord, ResolveOptions, WorktreeId } from './types.ts';
 
 /** One reference site of the overlay, with the identity of the symbol that contains it. */
 export interface SiteHit {
@@ -375,11 +402,297 @@ export function refRecord(snap: Snapshot, target: SymbolIdentity, hit: SiteHit):
 }
 
 export function callerRecord(
-  snap: Snapshot,
+  provenance: Provenance,
   callee: SymbolIdentity,
-  hit: SiteHit,
   caller: SymbolIdentity,
   hops: number,
 ): CallerRecord {
-  return { ...siteProvenance(snap, hit), caller, callee, hops, tier: 'grammar' };
+  return { ...provenance, caller, callee, hops, tier: 'grammar' };
+}
+
+// ---------------------------------------------------------------------------------------------------------
+// The injected Resolver and the resolved-edge cache (STO-04, D-16, D-17).
+//
+// A read runs in three phases. Phase 1 is synchronous inside one read transaction: it computes the grammar
+// result, the sites a resolver should be asked about, the overlay snapshot id and what the cache already holds.
+// Phase 2 is asynchronous and outside any transaction: it asks the resolver for the sites the cache could not
+// answer, bounded by the caller's timeout, and validates and stores what comes back. Phase 3 merges the precise
+// edges over the grammar result. A resolver never makes a read throw: it can only add `resolver_timeout`,
+// `resolver_failed` or `cache_unavailable` to the answer.
+// ---------------------------------------------------------------------------------------------------------
+
+/** What phase 1 learned about the cache for the sites a read needs resolved. */
+export interface ResolveInput {
+  /** Hash of the overlay's sorted (path, content hash) pairs: the cache key of its contents. */
+  readonly snapshotId: string;
+  readonly context: ResolutionContext;
+  /** The stored form of `context`. */
+  readonly contextKey: string;
+  /** The distinct sites to resolve, in request order. */
+  readonly sites: readonly RefSiteKey[];
+  /** Valid cached edges by `siteId`; a site is answered when it has at least one. */
+  readonly cached: ReadonlyMap<string, readonly CachedEdge[]>;
+}
+
+export function siteKeyOf(hit: SiteHit): RefSiteKey {
+  return { path: hit.path, span: hit.span, name: hit.name };
+}
+
+/** The id of the overlay's contents, memoised per worktree for the watermark seq it was computed at. */
+function snapshotIdOf(snap: Snapshot): string {
+  const known = snap.parts.snapshotIds.get(snap.worktree);
+  if (known !== undefined && known.seq === snap.seq) return known.id;
+  const id = overlaySnapshotId(overlayView(snap).hashes);
+  snap.parts.snapshotIds.set(snap.worktree, { seq: snap.seq, id });
+  return id;
+}
+
+/**
+ * Phase 1: the snapshot id, the resolution context and the cached answers for `sites`. A cached edge whose
+ * target the overlay does not hold is dropped (T-02-35), so a damaged row can never remove a real site.
+ */
+export function prepareResolution(snap: Snapshot, sites: readonly RefSiteKey[]): ResolveInput {
+  const distinct = new Map<string, RefSiteKey>();
+  for (const site of sites) distinct.set(siteId(site), site);
+  const context = snap.parts.resolutionContext();
+  const key = contextKey(context);
+  const snapshotId = snapshotIdOf(snap);
+  const cached = new Map<string, readonly CachedEdge[]>();
+  const contextId = distinct.size === 0 ? undefined : findContextId(snap.db, key);
+  if (contextId !== undefined) {
+    for (const [id, edges] of readEdges(snap.db, snapshotId, contextId, [...distinct.values()], snap.parts.repo)) {
+      const valid = edges.filter((edge) => findSymbol(snap, edge.target) !== null);
+      if (valid.length > 0) cached.set(id, valid);
+    }
+  }
+  return { snapshotId, context, contextKey: key, sites: [...distinct.values()], cached };
+}
+
+/** The outcome of phase 2. */
+export interface ResolvedSites {
+  /** Edges by `siteId`: the cached ones plus the ones the resolver just answered. */
+  readonly edges: ReadonlyMap<string, readonly CachedEdge[]>;
+  readonly degraded: readonly DegradedCode[];
+}
+
+type Settled =
+  | { readonly kind: 'done'; readonly edges: readonly ResolvedEdge[] }
+  | { readonly kind: 'timeout' }
+  | { readonly kind: 'failed' };
+
+/** Drain the resolver for `sites`. Rejects when it throws, on the call or while iterating. */
+async function collectEdges(
+  parts: StoreParts,
+  worktree: WorktreeId,
+  sites: readonly RefSiteKey[],
+  context: ResolutionContext,
+): Promise<ResolvedEdge[]> {
+  const lookup: SymbolLookup = {
+    // Read back through the read-only connection, one short transaction per call (never held across an await).
+    find: async (name) =>
+      readSnapshot(parts, worktree, (snap) => findRecords(snap, name, { mode: 'exact' }).map((record) => record.identity)).value,
+  };
+  const out: ResolvedEdge[] = [];
+  for await (const edge of parts.deps.resolver(sites, context, lookup)) out.push(edge);
+  return out;
+}
+
+/** Race the resolver against the caller's timeout on the injected clock. The resolver keeps running after a timeout. */
+function settle(run: Promise<ResolvedEdge[]>, clock: Clock, timeoutMs: number | undefined): Promise<Settled> {
+  return new Promise<Settled>((resolve) => {
+    let done = false;
+    let cancel = (): void => {};
+    const finish = (outcome: Settled): void => {
+      if (done) return;
+      done = true;
+      cancel();
+      resolve(outcome);
+    };
+    if (timeoutMs !== undefined && !Number.isNaN(timeoutMs)) {
+      cancel = clock.after(Math.max(0, timeoutMs), () => {
+        finish({ kind: 'timeout' });
+      });
+    }
+    run.then(
+      (edges) => {
+        finish({ kind: 'done', edges });
+      },
+      () => {
+        finish({ kind: 'failed' });
+      },
+    );
+  });
+}
+
+function isEdgeShaped(value: unknown): value is ResolvedEdge {
+  const edge = value as Partial<ResolvedEdge> | null | undefined;
+  return (
+    typeof edge === 'object' &&
+    edge !== null &&
+    typeof edge.site?.path === 'string' &&
+    typeof edge.site.name === 'string' &&
+    typeof edge.site.span === 'object' &&
+    typeof edge.target?.path === 'string' &&
+    typeof edge.target.qualifiedName === 'string' &&
+    typeof edge.target.kind === 'string' &&
+    typeof edge.resolver === 'string'
+  );
+}
+
+/**
+ * Keep the edges that answer a site we asked about and bind it to a definition the overlay holds (T-02-35),
+ * and report the overlay's snapshot id as it is now. Null when the overlay or the store is gone.
+ */
+function validate(
+  parts: StoreParts,
+  worktree: WorktreeId,
+  asked: ReadonlySet<string>,
+  fresh: readonly ResolvedEdge[],
+): { readonly edges: readonly ResolvedEdge[]; readonly snapshotId: string } | null {
+  try {
+    return readSnapshot(parts, worktree, (snap) => ({
+      edges: fresh.filter(
+        (edge) => isEdgeShaped(edge) && asked.has(siteId(edge.site)) && findSymbol(snap, edge.target) !== null,
+      ),
+      snapshotId: snapshotIdOf(snap),
+    })).value;
+  } catch (error) {
+    if (error instanceof UnknownWorktree || error instanceof StoreClosed) return null;
+    throw error;
+  }
+}
+
+/**
+ * Write validated edges to the cache when this process may (`canCache`, the writer-lease holder, D-16) and the
+ * overlay still has the contents they were computed for. True when nothing needed writing or the edges were
+ * stored or are stale on purpose; false when this process could not write them.
+ */
+function store(parts: StoreParts, input: ResolveInput, edges: readonly ResolvedEdge[], currentSnapshotId: string): boolean {
+  if (edges.length === 0) return true;
+  if (!parts.canCache()) return false;
+  if (currentSnapshotId !== input.snapshotId) return true; // the overlay moved on: these edges describe a state that is gone
+  try {
+    parts.writeDb.transaction(() => {
+      const live = liveSnapshotIds(parts.writeDb);
+      if (!live.has(input.snapshotId)) return;
+      writeEdges(parts.writeDb, input.snapshotId, ensureContextId(parts.writeDb, input.contextKey), edges);
+      pruneEdges(parts.writeDb, live);
+    });
+    return true;
+  } catch (error) {
+    if (error instanceof DbError) return false; // busy, read-only or closed: the cache is not ours to write
+    throw error;
+  }
+}
+
+function groupBySite(edges: readonly ResolvedEdge[], into: Map<string, CachedEdge[]>): void {
+  for (const edge of edges) {
+    const id = siteId(edge.site);
+    const list = into.get(id) ?? [];
+    if (!list.some((known) => symbolKey(known.target) === symbolKey(edge.target))) {
+      list.push({ site: edge.site, target: edge.target, resolver: edge.resolver });
+    }
+    into.set(id, list);
+  }
+}
+
+/**
+ * Phase 2: ask the resolver about the sites the cache could not answer. Within `timeoutMs` the answer carries
+ * the precise edges; past it the answer carries nothing from the resolver and `resolver_timeout`, while the run
+ * continues in the background and fills the cache for the next call. A resolver that throws gives
+ * `resolver_failed`. A process that may not write the cache still returns the precise edges and says
+ * `cache_unavailable`.
+ */
+export async function resolveSites(
+  parts: StoreParts,
+  worktree: WorktreeId,
+  input: ResolveInput,
+  options: ResolveOptions | undefined,
+): Promise<ResolvedSites> {
+  const edges = new Map<string, CachedEdge[]>();
+  for (const [id, list] of input.cached) edges.set(id, [...list]);
+  const pending = input.sites.filter((site) => !input.cached.has(siteId(site)));
+  if (pending.length === 0) return { edges, degraded: [] };
+  const asked = new Set(pending.map(siteId));
+
+  const run = collectEdges(parts, worktree, pending, input.context);
+  const outcome = await settle(run, parts.deps.clock, options?.timeoutMs);
+
+  if (outcome.kind === 'failed') return { edges, degraded: ['resolver_failed'] };
+  if (outcome.kind === 'timeout') {
+    run.then(
+      (fresh) => {
+        try {
+          const accepted = validate(parts, worktree, asked, fresh);
+          if (accepted !== null) store(parts, input, accepted.edges, accepted.snapshotId);
+        } catch {
+          // Background work has no caller to tell; the next call computes again.
+        }
+      },
+      () => undefined,
+    );
+    return { edges, degraded: ['resolver_timeout'] };
+  }
+
+  const accepted = validate(parts, worktree, asked, outcome.edges);
+  if (accepted === null) return { edges, degraded: [] };
+  groupBySite(accepted.edges, edges);
+  const stored = store(parts, input, accepted.edges, accepted.snapshotId);
+  return { edges, degraded: stored ? [] : ['cache_unavailable'] };
+}
+
+/** What the precise edges say about one grammar edge of `target` at `site`. */
+type Verdict = { readonly kind: 'grammar' } | { readonly kind: 'removed' } | { readonly kind: 'precise'; readonly resolver: string };
+
+/**
+ * A precise edge at the site supersedes the grammar candidate (tier precise, confidence EXTRACTED); one that
+ * binds the site to a different symbol removes it from this target's edges; a site the resolver did not answer
+ * keeps its grammar result.
+ */
+function verdictFor(edges: ReadonlyMap<string, readonly CachedEdge[]>, site: RefSiteKey, target: SymbolIdentity): Verdict {
+  const found = edges.get(siteId(site));
+  if (found === undefined || found.length === 0) return { kind: 'grammar' };
+  const key = symbolKey(target);
+  const match = found.find((edge) => symbolKey(edge.target) === key);
+  return match === undefined ? { kind: 'removed' } : { kind: 'precise', resolver: match.resolver };
+}
+
+/** Phase 3 for `refs`: merge the precise edges over the grammar records of `target`. */
+export function mergeRefs(
+  records: readonly RefRecord[],
+  target: SymbolIdentity,
+  edges: ReadonlyMap<string, readonly CachedEdge[]>,
+): RefRecord[] {
+  const out: RefRecord[] = [];
+  for (const record of records) {
+    const verdict = verdictFor(edges, record.site, target);
+    if (verdict.kind === 'removed') continue;
+    if (verdict.kind === 'grammar') {
+      out.push(record);
+      continue;
+    }
+    const { candidates, ...rest } = record;
+    void candidates; // a precise edge is not ambiguous
+    out.push({ ...rest, extractor: `precise:${verdict.resolver}`, confidence: 'EXTRACTED', tier: 'precise' });
+  }
+  return out;
+}
+
+/** The edges of a caller walk that precise edges leave standing. */
+export function standingEdge(edges: ReadonlyMap<string, readonly CachedEdge[]>, edge: CallEdge): boolean {
+  return verdictFor(edges, siteKeyOf(edge.hit), edge.callee).kind !== 'removed';
+}
+
+/** Phase 3 for `callers`: a caller record for one walked edge, precise when a precise edge binds its site. */
+export function mergeCaller(
+  edges: ReadonlyMap<string, readonly CachedEdge[]>,
+  edge: CallEdge,
+  provenance: Provenance,
+  hops: number,
+): CallerRecord {
+  const verdict = verdictFor(edges, siteKeyOf(edge.hit), edge.callee);
+  const grammar = callerRecord(provenance, edge.callee, edge.caller, hops);
+  return verdict.kind === 'precise'
+    ? { ...grammar, extractor: `precise:${verdict.resolver}`, confidence: 'EXTRACTED', tier: 'precise' }
+    : grammar;
 }

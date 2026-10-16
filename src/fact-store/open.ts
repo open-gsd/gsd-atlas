@@ -100,6 +100,7 @@ export async function openFactStore(
     canCache: options.canCache ?? (() => true),
     resolutionContext: options.resolutionContext ?? (() => ({ id: 'grammar', configHashes: [] })),
     fuzzyTrigram: fuzzy.trigram,
+    snapshotIds: new Map(),
     state: { closed: false, writerTaken: false },
     degradedNow: () => [],
   };

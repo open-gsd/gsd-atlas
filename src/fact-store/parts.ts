@@ -26,6 +26,8 @@ export interface StoreParts {
   readonly resolutionContext: () => ResolutionContext;
   /** True when this session keeps `names_fts` in step with `names` and fuzzy find reads it (else the LIKE scan). */
   readonly fuzzyTrigram: boolean;
+  /** The overlay snapshot id last computed for each worktree, valid for the seq it was computed at. */
+  readonly snapshotIds: Map<string, { readonly seq: number; readonly id: string }>;
   readonly state: StoreState;
   /** Degraded codes that hold for the whole process right now; plan 02-12 reports `follower` and `rebuilding` here. */
   readonly degradedNow: () => readonly DegradedCode[];
