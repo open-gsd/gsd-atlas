@@ -1,0 +1,20 @@
+{
+  "$schema": "https://example.invalid/atlas-lang.schema.json",
+  "schemaVersion": 1,
+  "name": "fixture-lang",
+  "version": "1.2.3-beta.1",
+  "extensions": [".fx", ".fxi"],
+  "replace": true,
+  "grammar": { "wasm": "grammar/fixture.wasm", "lock": "grammar/grammar.lock" },
+  "queries": {
+    "tags": "queries/tags.scm",
+    "refs": "queries/refs.scm",
+    "imports": "queries/imports.scm"
+  },
+  "tiers": ["grammar", "precise", "platform"],
+  "parseBudget": 0.01,
+  "testGlobs": ["test/**/*.fx", "fixtures/*.fxi"],
+  "features": "features.json",
+  "project": { "markers": ["fixture.toml", "Fixture.lock"], "model": "fixture-project" },
+  "precise": { "command": ["fixture-indexer", "--json"] }
+}

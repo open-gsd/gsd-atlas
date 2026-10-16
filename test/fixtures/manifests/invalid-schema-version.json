@@ -1,0 +1,7 @@
+{
+  "schemaVersion": 2,
+  "name": "fixture-lang",
+  "extensions": [".fx"],
+  "grammar": { "wasm": "grammar/fixture.wasm", "lock": "grammar/grammar.lock" },
+  "queries": { "tags": "queries/tags.scm" }
+}
