@@ -5,7 +5,18 @@
  */
 export { DEFAULT_INDEXER_CONFIG } from './defaults.ts';
 export { createManualEventSource } from './event-source.ts';
-export type { EventSource, FsChange, ManualEventSource, SourceEvent, SourceHandler, WatchProblem } from './event-source.ts';
+export type {
+  EventSource,
+  FsChange,
+  GitHandler,
+  GitSourceEvent,
+  ManualEventSource,
+  SourceEvent,
+  SourceHandler,
+  WatchMode,
+  WatchProblem,
+} from './event-source.ts';
+export { gitDirNameOf, isInside } from './git-dir.ts';
 export { createIndexer } from './indexer.ts';
 export { createCoalescingQueue } from './queue.ts';
 export type { CoalescingQueue, CoalescingQueueOptions } from './queue.ts';
@@ -20,5 +31,8 @@ export type {
   IndexerErrorCode,
   IndexerNotice,
   IndexerStatus,
+  LastReconcile,
+  ReconcileOutcome,
+  StartOptions,
   WatchProblemRecord,
 } from './types.ts';

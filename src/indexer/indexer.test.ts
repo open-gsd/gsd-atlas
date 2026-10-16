@@ -722,7 +722,16 @@ describe('Indexer ensureFresh, the hash and parse race, failures and status', ()
         if (gated && source.includes('GATED')) await gate;
       }),
     });
-    assert.deepEqual(world.indexer.status(), { queued: 0, running: 0, failed: [], lastIndexedAt: null, watchProblems: [] });
+    assert.deepEqual(world.indexer.status(), {
+      queued: 0,
+      running: 0,
+      failed: [],
+      lastIndexedAt: null,
+      watchProblems: [],
+      watchMode: 'reconcile-only',
+      reconciling: false,
+      lastReconcile: null,
+    });
     await world.indexer.build(world.dir);
     assert.equal(world.indexer.status().lastIndexedAt, 1000, 'the injected clock, not the wall clock');
 
@@ -734,7 +743,16 @@ describe('Indexer ensureFresh, the hash and parse race, failures and status', ()
     assert.equal(world.indexer.status().queued, 0);
     release();
     assert.equal((await pending).complete, true);
-    assert.deepEqual(world.indexer.status(), { queued: 0, running: 0, failed: [], lastIndexedAt: 1025, watchProblems: [] });
+    assert.deepEqual(world.indexer.status(), {
+      queued: 0,
+      running: 0,
+      failed: [],
+      lastIndexedAt: 1025,
+      watchProblems: [],
+      watchMode: 'reconcile-only',
+      reconciling: false,
+      lastReconcile: null,
+    });
 
     const manual = createManualEventSource();
     await world.indexer.attach(manual.source, [world.dir]);

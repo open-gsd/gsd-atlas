@@ -13,7 +13,7 @@ import type { Governor } from '../governor/index.ts';
 import type { GrammarEngine } from '../grammar-engine/index.ts';
 import type { Roots } from '../lang/index.ts';
 import type { SourceTree } from '../source-tree/index.ts';
-import type { EventSource } from './event-source.ts';
+import type { EventSource, WatchMode } from './event-source.ts';
 
 /** Tunables of the Indexer. Defaults: `DEFAULT_INDEXER_CONFIG`. Every key is overridable in config. */
 export interface IndexerConfig {
@@ -27,6 +27,11 @@ export interface IndexerConfig {
   readonly maxFileBytes: number;
   /** How many times a file that changes while it is read is read again before the path is given up as unstable. */
   readonly maxRaceRetries: number;
+  /**
+   * How often an idle Indexer re-runs Reconcile for every worktree it covers (D-13, maintenance priority). 0
+   * switches the periodic Reconcile off; start-up, watcher problems and HEAD changes still reconcile.
+   */
+  readonly idleReconcileIntervalMs: number;
 }
 
 /** One path the Indexer could not index, with a stable code (`parse_timeout`, `source_too_large`, `unstable`, ...). */
@@ -51,6 +56,11 @@ export interface IndexerDeps {
   readonly roots: Roots;
   readonly governor: Governor;
   readonly clock: Clock;
+  /**
+   * Where file and git-directory events come from (the native watcher in production). Without one the Indexer
+   * runs reconcile-only: answers stay fresh through Reconcile and `ensureFresh`, never through events.
+   */
+  readonly source?: EventSource;
   readonly config?: Partial<IndexerConfig>;
   readonly onNotice?: (notice: IndexerNotice) => void;
 }
@@ -94,11 +104,35 @@ export interface FreshResult {
   readonly invalid: readonly string[];
 }
 
-/** How often an event source reported trouble for a worktree. Handling it (Reconcile) arrives in plan 02-17. */
+/**
+ * How often an event source reported trouble for a worktree (the repository's common git directory for a problem of
+ * the git watch). Each problem also starts a Reconcile of the worktrees the Indexer covers.
+ */
 export interface WatchProblemRecord {
   readonly worktree: string;
   readonly kind: 'error' | 'overflow';
   readonly count: number;
+}
+
+/**
+ * What one Reconcile found and did. `changed` is how many paths the store said differ from the working tree
+ * (changed, new, gone, pending or stale); `parsed`, `linked` and `removed` say what became of them (`linked` also
+ * counts every unchanged file, exactly as a build does).
+ */
+export interface ReconcileOutcome {
+  readonly changed: number;
+  readonly parsed: number;
+  readonly linked: number;
+  readonly removed: number;
+  readonly durationMs: number;
+}
+
+/** The last completed Reconcile of any worktree. */
+export interface LastReconcile {
+  /** `Clock.now()` when it finished. */
+  readonly at: number;
+  readonly changed: number;
+  readonly durationMs: number;
 }
 
 export interface IndexerStatus {
@@ -112,6 +146,21 @@ export interface IndexerStatus {
   readonly lastIndexedAt: number | null;
   /** Problems reported by attached event sources, sorted by worktree then kind. */
   readonly watchProblems: readonly WatchProblemRecord[];
+  /** How file events arrive: `native`, `poll`, or `reconcile-only` (no source, or one that could not start). */
+  readonly watchMode: WatchMode;
+  /** True while a Reconcile is running for any worktree. */
+  readonly reconciling: boolean;
+  /** The last completed Reconcile, or null before any. */
+  readonly lastReconcile: LastReconcile | null;
+}
+
+/** Options of {@link Indexer.start}. */
+export interface StartOptions {
+  /**
+   * The worktree roots to cover. Absent: every worktree of the repository, and a worktree added later is covered
+   * too. Named: only these (a worktree removed later is still dropped); nothing else is indexed without a build.
+   */
+  readonly worktrees?: readonly string[];
 }
 
 export interface Indexer {
@@ -123,9 +172,25 @@ export interface Indexer {
   ensureFresh(worktree: string, paths: readonly string[], waitMs?: number): Promise<FreshResult>;
   /**
    * Subscribe `source` for each worktree root: every change is submitted, every problem is counted in
-   * `status().watchProblems`. Unsubscribed by `stop()`.
+   * `status().watchProblems`. Unsubscribed by `stop()`. This form only listens; it does not Reconcile.
    */
   attach(source: EventSource, worktrees: readonly string[]): Promise<void>;
+  /**
+   * Cover one more worktree: subscribe its root (and the git directory, once), then Reconcile it. The Tenant calls
+   * this after a successful build. Throws `IndexerError` (`unknown_worktree`, `lease_held`, `stopped`).
+   */
+  attach(worktree: string): Promise<void>;
+  /**
+   * Start covering the repository: subscribe the worktrees (see {@link StartOptions}) and the common git
+   * directory, Reconcile each worktree at the `indexing` priority, and arm the idle timer. Resolves when the
+   * start-up Reconcile has completed. Rejects with `IndexerError` when the writer slot is held (`lease_held`).
+   */
+  start(options?: StartOptions): Promise<void>;
+  /**
+   * Compare a worktree with the store and index exactly what differs (IDX-03). Without an argument, every covered
+   * worktree. Requests for one worktree that arrive while a run is in progress share it.
+   */
+  reconcile(worktree?: string): Promise<ReconcileOutcome>;
   status(): IndexerStatus;
   /** Cancel timers, finish the work in progress, release the writer slot. Safe to call twice. */
   stop(): Promise<void>;

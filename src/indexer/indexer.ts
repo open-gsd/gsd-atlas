@@ -20,6 +20,7 @@ import type {
   IndexerDeps,
   IndexerNotice,
   IndexerStatus,
+  ReconcileOutcome,
   WatchProblemRecord,
 } from './types.ts';
 
@@ -254,6 +255,9 @@ export function createIndexer(deps: IndexerDeps): Indexer {
       watchProblems: [...problems.values()].sort(
         (a, b) => compareCodeUnits(a.worktree, b.worktree) || compareCodeUnits(a.kind, b.kind),
       ),
+      watchMode: 'reconcile-only',
+      reconciling: false,
+      lastReconcile: null,
     };
   }
 
@@ -277,8 +281,18 @@ export function createIndexer(deps: IndexerDeps): Indexer {
 
     ensureFresh,
 
-    async attach(source: EventSource, roots: readonly string[]): Promise<void> {
+    start(): Promise<void> {
+      return Promise.reject(new Error('start is not implemented yet'));
+    },
+
+    reconcile(): Promise<ReconcileOutcome> {
+      return Promise.reject(new Error('reconcile is not implemented yet'));
+    },
+
+    async attach(first: EventSource | string, roots?: readonly string[]): Promise<void> {
       assertRunning();
+      if (typeof first === 'string' || roots === undefined) throw new Error('attach(worktree) is not implemented yet');
+      const source = first;
       for (const worktree of roots) {
         const unsubscribe = await source.subscribe(worktree, (event) => {
           if (event.kind === 'change') {
