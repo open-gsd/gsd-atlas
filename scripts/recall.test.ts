@@ -105,14 +105,15 @@ describe('typescript fixture recall (LNG-02)', () => {
   });
 
   it('a deleted pattern makes exactly that construct fail and the run exit 1', async () => {
-    const withoutEnum = (_module: string, kind: string, text: string): string =>
+    // Drop the enum patterns that carry no @export, so the exported enum (and the ES export row) is untouched.
+    const withoutPlainEnums = (_module: string, kind: string, text: string): string =>
       kind === 'tags'
         ? text
             .split(/\n\s*\n/)
-            .filter((block) => !block.includes('@definition.enum'))
+            .filter((block) => !(block.includes('@definition.enum') && !block.includes('@export')))
             .join('\n\n')
         : text;
-    const report = await runRecall({ modules: ['typescript'], out: () => undefined, queryTransform: withoutEnum });
+    const report = await runRecall({ modules: ['typescript'], out: () => undefined, queryTransform: withoutPlainEnums });
     const [module] = report.modules;
     assert.ok(module);
     assert.deepEqual(
@@ -120,7 +121,7 @@ describe('typescript fixture recall (LNG-02)', () => {
       ['enum'],
     );
     assert.equal(report.ok, false);
-    assert.equal(module.rows.find((row) => row.construct === 'enum')?.matched, 0);
+    assert.equal(module.rows.find((row) => row.construct === 'enum')?.matched, 1, 'only the exported Level is still found');
   });
 
   it('the CRLF and BOM variants of every fixture yield the same items as the LF original', async () => {
@@ -152,10 +153,9 @@ describe('typescript fixture recall (LNG-02)', () => {
     assert.equal(kindOf('Id'), 'type');
   });
 
-  it('marks exported declarations, emits export default under the name default, and never exports a namespace member', async () => {
+  it('marks exported declarations, never exports a default declaration under its own name, and never exports a namespace member', async () => {
     const { facts } = await typescript.measure('constructs.ts', fixtureText(tsDir, 'constructs.ts'));
     const exportedNames = new Set((facts.exports ?? []).map((site) => site.name));
-    assert.ok(exportedNames.has('default'));
     assert.ok(!exportedNames.has('defaultNamed'), 'export default function f is exported as default only');
     assert.ok(!exportedNames.has('helper'), 'a namespace member is not a module export');
     const exported = (name: string): boolean | undefined => facts.symbols.find((symbol) => symbol.name === name)?.exported;

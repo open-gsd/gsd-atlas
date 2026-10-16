@@ -31,6 +31,7 @@
     "grammar:build": "node scripts/grammar-build.ts",
     "grammar:verify": "node scripts/grammar-verify.ts",
     "grammar:budget": "node scripts/grammar-budget.ts",
+    "recall": "node scripts/recall.ts",
     "prepack": "npm run build"
   },
   "dependencies": {

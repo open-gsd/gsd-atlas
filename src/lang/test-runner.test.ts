@@ -136,6 +136,15 @@ describe('runLangTest', () => {
     );
   });
 
+  it('does not treat a curated recall truth file (<fixture>.truth.json) as a fixture', async () => {
+    const dir = copyToy(['basic.toy']);
+    fs.writeFileSync(path.join(dir, 'fixtures', 'basic.truth.json'), JSON.stringify({ schema: 1, fixture: 'basic.toy', items: [] }));
+    const report = await runLangTest({ target: dir, engine });
+    assert.deepEqual(report.diagnostics, []);
+    assert.equal(report.ok, true);
+    assert.deepEqual(report.fixtures, [{ file: 'basic.toy', ok: true }]);
+  });
+
   it('fails a module whose fixtures folder is missing or empty', async () => {
     const missing = copyToy();
     fs.rmSync(path.join(missing, 'fixtures'), { recursive: true });

@@ -7,6 +7,7 @@ import type { FileFacts } from '../src/facts/index.ts';
 import { createGrammarEngine, extractFileFacts } from '../src/grammar-engine/index.ts';
 import type { GrammarEngine, GrammarInput, LoadedGrammar, QueryKind } from '../src/grammar-engine/index.ts';
 import { readModuleInputs } from '../src/lang/index.ts';
+import { TRUTH_SUFFIX } from '../src/lang/test-runner.ts';
 
 /**
  * node scripts/recall.ts [--module typescript|javascript] [--min 0.9]
@@ -26,7 +27,6 @@ const repoRoot = path.resolve(import.meta.dirname, '..');
 const defaultModuleRoot = path.join(repoRoot, 'modules');
 const defaultModules: readonly string[] = ['typescript', 'javascript'];
 export const DEFAULT_MIN_RECALL = 0.9;
-export const TRUTH_SUFFIX = '.truth.json';
 
 /** The constructs LNG-02 / D-05 names. The order is the order of the printed table. */
 export const CONSTRUCTS = [

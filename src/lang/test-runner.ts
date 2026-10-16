@@ -23,6 +23,12 @@ import type { Roots } from './registry.ts';
 
 export const FIXTURES_DIR = 'fixtures';
 
+/**
+ * A curated recall truth file (`<fixture>.truth.json`, plan 02-13) sits next to the fixtures it describes.
+ * It is data for `scripts/recall.ts`, not source to parse, so the fixture listing skips it.
+ */
+export const TRUTH_SUFFIX = '.truth.json';
+
 export interface LangTestFixtureResult {
   /** The fixture file name, relative to the module's fixtures folder. */
   readonly file: string;
@@ -101,7 +107,7 @@ function listFixtures(moduleDir: string): { readonly files: readonly string[] } 
   try {
     names = fs
       .readdirSync(path.join(moduleDir, FIXTURES_DIR), { withFileTypes: true })
-      .filter((entry) => !entry.isDirectory() && !entry.name.endsWith(GOLDEN_SUFFIX))
+      .filter((entry) => !entry.isDirectory() && !entry.name.endsWith(GOLDEN_SUFFIX) && !entry.name.endsWith(TRUTH_SUFFIX))
       .map((entry) => entry.name);
   } catch (error) {
     return { diagnostic: diagnostic('fixture_unreadable', 'error', `${FIXTURES_DIR}: cannot list the fixtures folder (${reasonOf(error)})`, FIXTURES_DIR) };
