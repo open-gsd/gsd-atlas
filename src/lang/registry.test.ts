@@ -216,6 +216,199 @@ describe('resolveModules: an invalid module is skipped, never a crash', () => {
   });
 });
 
+describe('resolveModules: module health checks', () => {
+  it('skips a folder whose manifest name differs from the folder (name_mismatch) and uses the valid user copy', () => {
+    const w = makeWorld();
+    const wrong = w.place('repo', 'toy', (m) => {
+      m['name'] = 'other';
+    });
+    const good = w.place('user', 'toy');
+    const result = resolveModules(w.roots);
+    assert.deepEqual(result.diagnostics.map((d) => d.code), ['name_mismatch']);
+    assert.equal(result.diagnostics[0]!.severity, 'warning');
+    assert.ok(result.diagnostics[0]!.message.includes(realPath(wrong)));
+    assert.deepEqual(result.modules.map((m) => [m.name, m.source]), [['toy', 'user']]);
+    sameDir(result.modules[0]!.dir, good);
+    assert.deepEqual(result.modules[0]!.shadowed, []);
+  });
+
+  it('applies name_mismatch to npm packages by their package-name suffix', () => {
+    const w = makeWorld();
+    w.place('npm', 'toy', (m) => {
+      m['name'] = 'other';
+    });
+    const result = resolveModules(w.roots);
+    assert.deepEqual(result.modules, []);
+    assert.deepEqual(result.diagnostics.map((d) => d.code), ['name_mismatch']);
+  });
+
+  it('skips a module whose tiers lack grammar (grammar_tier_missing) and falls through to the next tier', () => {
+    const w = makeWorld();
+    w.place('repo', 'toy', (m) => {
+      m['tiers'] = ['platform'];
+    });
+    w.place('builtin', 'toy');
+    const result = resolveModules(w.roots);
+    assert.deepEqual(result.diagnostics.map((d) => d.code), ['grammar_tier_missing']);
+    assert.deepEqual(result.modules.map((m) => [m.name, m.source]), [['toy', 'builtin']]);
+  });
+
+  it('skips a folder whose manifest is a directory (manifest_unreadable) and falls through', () => {
+    const w = makeWorld();
+    const broken = w.place('repo', 'toy');
+    fs.rmSync(path.join(broken, 'atlas-lang.json'));
+    fs.mkdirSync(path.join(broken, 'atlas-lang.json'));
+    w.place('user', 'toy');
+    const result = resolveModules(w.roots);
+    assert.deepEqual(result.diagnostics.map((d) => d.code), ['manifest_unreadable']);
+    assert.deepEqual(result.modules.map((m) => m.source), ['user']);
+  });
+
+  it('skips a languages folder without any manifest (manifest_unreadable) instead of crashing', () => {
+    const w = makeWorld();
+    fs.mkdirSync(w.folder('repo', 'empty'), { recursive: true });
+    const result = resolveModules(w.roots);
+    assert.deepEqual(result.modules, []);
+    assert.deepEqual(result.diagnostics.map((d) => d.code), ['manifest_unreadable']);
+  });
+});
+
+describe('resolveModules: extension collisions', () => {
+  const toy2 = (m: Record<string, unknown>): void => {
+    m['name'] = 'toy2';
+  };
+
+  it('reports extension_collision as an error naming both modules and marks the lower one inactive for the extension', () => {
+    const w = makeWorld();
+    w.place('repo', 'toy');
+    w.place('user', 'toy2', toy2);
+    const result = resolveModules(w.roots);
+    const collisions = result.diagnostics.filter((d) => d.code === 'extension_collision');
+    assert.equal(collisions.length, 1);
+    assert.equal(collisions[0]!.severity, 'error');
+    assert.ok(collisions[0]!.message.includes('toy (repo') && collisions[0]!.message.includes('toy2 (user'));
+    assert.ok(collisions[0]!.message.includes('.toy'));
+    const [first, second] = result.modules;
+    assert.equal(first!.name, 'toy');
+    assert.deepEqual(first!.inactiveExtensions, []);
+    assert.equal(second!.name, 'toy2');
+    assert.deepEqual(second!.extensions, ['.toy']);
+    assert.deepEqual(second!.inactiveExtensions, ['.toy']);
+  });
+
+  it('lets the higher-precedence module win silently when it declares replace, with an info note', () => {
+    const w = makeWorld();
+    w.place('repo', 'toy2', (m) => {
+      toy2(m);
+      m['replace'] = true;
+    });
+    w.place('user', 'toy');
+    const result = resolveModules(w.roots);
+    assert.ok(!result.diagnostics.some((d) => d.code === 'extension_collision'));
+    const note = result.diagnostics.find((d) => d.code === 'extension_replaced');
+    assert.equal(note?.severity, 'info');
+    const byName = Object.fromEntries(result.modules.map((m) => [m.name, m]));
+    assert.deepEqual(byName['toy2']!.inactiveExtensions, []);
+    assert.deepEqual(byName['toy']!.inactiveExtensions, ['.toy']);
+  });
+
+  it('does not let a lower-precedence module take an extension by declaring replace', () => {
+    const w = makeWorld();
+    w.place('repo', 'toy');
+    w.place('user', 'toy2', (m) => {
+      toy2(m);
+      m['replace'] = true;
+    });
+    const result = resolveModules(w.roots);
+    assert.ok(result.diagnostics.some((d) => d.code === 'extension_collision'));
+    assert.deepEqual(result.modules.find((m) => m.name === 'toy2')!.inactiveExtensions, ['.toy']);
+  });
+
+  it('breaks a tie inside one source by module name, and compares extensions without case', () => {
+    const w = makeWorld();
+    w.place('repo', 'toy');
+    w.place('repo', 'toy2', (m) => {
+      toy2(m);
+      m['extensions'] = ['.TOY', '.t2'];
+    });
+    const result = resolveModules(w.roots);
+    const second = result.modules.find((m) => m.name === 'toy2')!;
+    assert.deepEqual(second.inactiveExtensions, ['.TOY']);
+    assert.deepEqual(second.extensions, ['.TOY', '.t2']);
+    assert.deepEqual(result.modules.find((m) => m.name === 'toy')!.inactiveExtensions, []);
+  });
+
+  it('does not report a collision between a module and its own shadowed copy', () => {
+    const w = makeWorld();
+    w.place('repo', 'toy');
+    w.place('user', 'toy');
+    const result = resolveModules(w.roots);
+    assert.deepEqual(result.diagnostics, []);
+  });
+});
+
+describe('resolveModules: a precise command or adapter is data, never run (T-01-36)', () => {
+  const ALL_TIERS = ['grammar', 'precise', 'platform'];
+
+  it('reports a precise.command as command_not_approved and never executes it (marker file stays absent)', () => {
+    const w = makeWorld();
+    const marker = path.join(temp.path, `marker-${String(counter)}.txt`);
+    w.place('repo', 'toy', (m) => {
+      m['tiers'] = ALL_TIERS;
+      m['precise'] = { command: [process.execPath, '-e', `require('node:fs').writeFileSync(${JSON.stringify(marker)}, 'ran')`] };
+    });
+    const result = resolveModules(w.roots);
+    const found = resolveModule(w.roots, 'toy');
+    assert.equal(fs.existsSync(marker), false, 'the manifest command must never run');
+    for (const toy of [result.modules[0]!, found.entry!]) {
+      assert.deepEqual(toy.tiers, [
+        { tier: 'grammar', active: true },
+        { tier: 'precise', active: false, reason: 'command_not_approved' },
+        { tier: 'platform', active: false, reason: 'no_sdk_provider' },
+      ]);
+    }
+    for (const diagnostics of [result.diagnostics, found.diagnostics]) {
+      assert.deepEqual(diagnostics.map((d) => [d.code, d.severity]), [['precise_command_inactive', 'info']]);
+    }
+  });
+
+  it('reports a precise.adapter as adapter_not_available', () => {
+    const w = makeWorld();
+    w.place('repo', 'toy', (m) => {
+      m['tiers'] = ['grammar', 'precise'];
+      m['precise'] = { adapter: 'toy-adapter' };
+    });
+    const toy = resolveModules(w.roots).modules[0]!;
+    assert.deepEqual(toy.tiers, [
+      { tier: 'grammar', active: true },
+      { tier: 'precise', active: false, reason: 'adapter_not_available' },
+    ]);
+  });
+
+  it('reports a precise tier with nothing declared as precise_not_declared, without a note', () => {
+    const w = makeWorld();
+    w.place('repo', 'toy', (m) => {
+      m['tiers'] = ['grammar', 'precise'];
+    });
+    const result = resolveModules(w.roots);
+    assert.deepEqual(result.modules[0]!.tiers[1], { tier: 'precise', active: false, reason: 'precise_not_declared' });
+    assert.deepEqual(result.diagnostics, []);
+  });
+
+  it('keeps a module with a precise command usable: it is still listed and its grammar tier is active', () => {
+    const w = makeWorld();
+    w.place('user', 'toy', (m) => {
+      m['precise'] = { command: ['definitely-not-a-real-program'] };
+    });
+    const toy = resolveModules(w.roots).modules[0]!;
+    assert.equal(toy.source, 'user');
+    assert.deepEqual(toy.tiers, [
+      { tier: 'grammar', active: true },
+      { tier: 'precise', active: false, reason: 'command_not_approved' },
+    ]);
+  });
+});
+
 describe('resolveModule', () => {
   it('returns the same entry resolveModules lists, found by name', () => {
     const w = makeWorld();

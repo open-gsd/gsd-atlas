@@ -476,4 +476,63 @@ describe('gsd-atlas lang list and lang test <id>, as real processes (D-03, LNG-0
     assert.equal(tested.exitCode, 0, tested.stderr);
     assert.equal(tested.envelope.ok, true);
   });
+
+  it('skips a name_mismatch folder with a warning, never a crash, and lists the valid copy below it', async () => {
+    const l = layout();
+    const wrong = l.folder('repo', 'toy');
+    fs.cpSync(TOY, wrong, { recursive: true });
+    const manifestPath = path.join(wrong, 'atlas-lang.json');
+    fs.writeFileSync(manifestPath, fs.readFileSync(manifestPath, 'utf8').replace('"name": "toy"', '"name": "other"'));
+    fs.cpSync(TOY, l.folder('builtin', 'toy'), { recursive: true });
+
+    const out = await atlas(['lang', 'list', ...l.flags]);
+    assert.equal(out.exitCode, 0, out.stderr);
+    assert.deepEqual(out.envelope.diagnostics.map((x) => x.code), ['name_mismatch']);
+    assert.deepEqual(modulesOf(out).map((m) => [m.name, m.source]), [['toy', 'builtin']]);
+    assert.match(out.stderr, /^gsd-atlas: warning name_mismatch: /);
+  });
+
+  it('reports extension_collision as an error diagnostic and lists the contested extension as inactive', async () => {
+    const l = layout();
+    fs.cpSync(TOY, l.folder('repo', 'toy'), { recursive: true });
+    const second = l.folder('user', 'toy2');
+    fs.cpSync(TOY, second, { recursive: true });
+    const manifestPath = path.join(second, 'atlas-lang.json');
+    fs.writeFileSync(manifestPath, fs.readFileSync(manifestPath, 'utf8').replace('"name": "toy"', '"name": "toy2"'));
+
+    const out = await atlas(['lang', 'list', ...l.flags]);
+    assert.equal(out.exitCode, 0, out.stderr);
+    const collision = out.envelope.diagnostics.find((x) => x.code === 'extension_collision');
+    assert.equal(collision?.severity, 'error');
+    assert.match(out.stderr, /^gsd-atlas: error extension_collision: /);
+    const toy2 = modulesOf(out).find((m) => m.name === 'toy2');
+    assert.deepEqual(toy2?.inactiveExtensions, ['.toy']);
+  });
+
+  it('never runs a precise command from a manifest: list and test pass and the marker file is never written', async () => {
+    const l = layout();
+    const marker = path.join(temp.path, `precise marker ${String(layoutCounter)}.txt`);
+    const dir = l.folder('repo', 'toy');
+    fs.cpSync(TOY, dir, { recursive: true });
+    const manifestPath = path.join(dir, 'atlas-lang.json');
+    const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8')) as Record<string, unknown>;
+    manifest['tiers'] = ['grammar', 'precise', 'platform'];
+    manifest['precise'] = { command: [process.execPath, '-e', `require('node:fs').writeFileSync(${JSON.stringify(marker)}, 'ran')`] };
+    fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
+
+    const listed = await atlas(['lang', 'list', ...l.flags]);
+    assert.equal(listed.exitCode, 0, listed.stderr);
+    assert.deepEqual(modulesOf(listed)[0]?.tiers, [
+      { tier: 'grammar', active: true },
+      { tier: 'precise', active: false, reason: 'command_not_approved' },
+      { tier: 'platform', active: false, reason: 'no_sdk_provider' },
+    ]);
+    assert.deepEqual(listed.envelope.diagnostics.map((x) => x.code), ['precise_command_inactive']);
+
+    const tested = await atlas(['lang', 'test', 'toy', ...l.flags]);
+    assert.equal(tested.exitCode, 0, tested.stderr);
+    assert.equal(tested.envelope.ok, true);
+
+    assert.equal(fs.existsSync(marker), false, 'the precise command in the manifest must never have started');
+  });
 });

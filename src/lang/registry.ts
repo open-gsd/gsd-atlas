@@ -193,28 +193,110 @@ function scan(roots: Roots, only?: string): Scan {
       diagnostics.push(...read.diagnostics.map((d) => skipped(dir, d)));
       continue;
     }
+    const problem = healthProblem(dir, location, read.manifest);
+    if (problem !== undefined) {
+      diagnostics.push(problem);
+      continue;
+    }
     candidates.push({ ...location, dir, manifest: read.manifest });
   }
   return { candidates, diagnostics };
 }
 
-function entryOf(group: readonly Candidate[]): ModuleEntry {
+/**
+ * A readable manifest can still make a folder unusable: its name must be the name the folder claims
+ * by where it sits, and it must offer the grammar tier (the one tier every module has).
+ */
+function healthProblem(dir: string, location: Location, manifest: Manifest): Diagnostic | undefined {
+  if (manifest.name !== location.expectedName) {
+    return diagnostic(
+      'name_mismatch',
+      'warning',
+      `${dir}: the folder is named ${JSON.stringify(location.expectedName)} but its manifest says ${JSON.stringify(manifest.name)}; the folder was skipped`,
+      dir,
+    );
+  }
+  if (!manifest.tiers.includes('grammar')) {
+    return diagnostic(
+      'grammar_tier_missing',
+      'warning',
+      `${dir}: the manifest does not list the grammar tier, which every module needs; the folder was skipped`,
+      dir,
+    );
+  }
+  return undefined;
+}
+
+/**
+ * What each declared tier does right now, from manifest data alone. Nothing a manifest names is
+ * started, resolved or imported: `precise.command` and `precise.adapter` are only ever read as text,
+ * so a precise tier is inactive until user-level config approves it through the CommandRunner (T-01-36).
+ */
+function tiersOf(manifest: Manifest): TierStatus[] {
+  const tiers: TierStatus[] = [];
+  // Declaring a precise command or adapter asks for the precise tier even if `tiers` forgot to list it.
+  for (const tier of ['grammar', 'precise', 'platform'] as const) {
+    if (!manifest.tiers.includes(tier) && !(tier === 'precise' && manifest.precise !== undefined)) {
+      continue;
+    }
+    if (tier === 'grammar') {
+      tiers.push({ tier, active: true });
+    } else if (tier === 'precise') {
+      const reason =
+        manifest.precise === undefined
+          ? 'precise_not_declared'
+          : 'command' in manifest.precise
+            ? 'command_not_approved'
+            : 'adapter_not_available';
+      tiers.push({ tier, active: false, reason });
+    } else {
+      tiers.push({ tier, active: false, reason: 'no_sdk_provider' });
+    }
+  }
+  return tiers;
+}
+
+/** One info diagnostic when the manifest declares a precise command or adapter that is therefore not run. */
+function preciseNotes(entry: Pick<ModuleEntry, 'name' | 'dir'>, manifest: Manifest): Diagnostic[] {
+  if (manifest.precise === undefined) {
+    return [];
+  }
+  const what = 'command' in manifest.precise ? 'precise.command' : 'precise.adapter';
+  return [
+    diagnostic(
+      'precise_command_inactive',
+      'info',
+      `${entry.name}: ${what} is declared but not run; the precise tier stays inactive until user-level config approves it`,
+      entry.dir,
+    ),
+  ];
+}
+
+interface Built {
+  readonly entry: ModuleEntry;
+  readonly manifest: Manifest;
+}
+
+function builtOf(group: readonly Candidate[]): Built {
   const [active, ...rest] = group as [Candidate, ...Candidate[]];
   const { manifest } = active;
   return {
-    name: active.expectedName,
-    source: active.source,
-    dir: active.dir,
-    ...(manifest.version === undefined ? {} : { version: manifest.version }),
-    extensions: [...manifest.extensions],
-    inactiveExtensions: [],
-    tiers: [{ tier: 'grammar', active: true }],
-    shadowed: rest.map((c) => ({ source: c.source, dir: c.dir })),
+    manifest,
+    entry: {
+      name: active.expectedName,
+      source: active.source,
+      dir: active.dir,
+      ...(manifest.version === undefined ? {} : { version: manifest.version }),
+      extensions: [...manifest.extensions],
+      inactiveExtensions: [],
+      tiers: tiersOf(manifest),
+      shadowed: rest.map((c) => ({ source: c.source, dir: c.dir })),
+    },
   };
 }
 
 /** Group candidates by module name; `candidates` is already in precedence order, so each group's first is active. */
-function group(candidates: readonly Candidate[]): ModuleEntry[] {
+function group(candidates: readonly Candidate[]): Built[] {
   const byName = new Map<string, Candidate[]>();
   for (const candidate of candidates) {
     const list = byName.get(candidate.expectedName);
@@ -224,20 +306,62 @@ function group(candidates: readonly Candidate[]): ModuleEntry[] {
       list.push(candidate);
     }
   }
-  return [...byName.values()].map(entryOf).sort((a, b) => codeUnitOrder(a.name, b.name));
+  return [...byName.values()].map(builtOf).sort((a, b) => codeUnitOrder(a.entry.name, b.entry.name));
+}
+
+/**
+ * Two different modules claiming one extension: the higher-precedence module (source rank, then name)
+ * keeps it; the other module's claim is inactive and reported as an error, unless the higher one
+ * declares `replace`, in which case the lower claim is dropped with an info note.
+ */
+function settleExtensions(built: readonly Built[]): { readonly modules: ModuleEntry[]; readonly diagnostics: Diagnostic[] } {
+  const rank = (b: Built): number => MODULE_SOURCES.indexOf(b.entry.source);
+  const byPrecedence = [...built].sort((a, b) => rank(a) - rank(b) || codeUnitOrder(a.entry.name, b.entry.name));
+  const owner = new Map<string, Built>();
+  const inactive = new Map<string, string[]>();
+  const diagnostics: Diagnostic[] = [];
+  for (const mine of byPrecedence) {
+    for (const extension of mine.entry.extensions) {
+      const key = extension.toLowerCase();
+      const theirs = owner.get(key);
+      if (theirs === undefined) {
+        owner.set(key, mine);
+        continue;
+      }
+      const list = inactive.get(mine.entry.name) ?? [];
+      list.push(extension);
+      inactive.set(mine.entry.name, list);
+      const names = `${theirs.entry.name} (${theirs.entry.source}, ${theirs.entry.dir}) and ${mine.entry.name} (${mine.entry.source}, ${mine.entry.dir})`;
+      diagnostics.push(
+        theirs.manifest.replace === true
+          ? diagnostic('extension_replaced', 'info', `${extension} is claimed by ${names}; ${theirs.entry.name} declares replace, so ${mine.entry.name} does not serve it`, mine.entry.dir)
+          : diagnostic('extension_collision', 'error', `${extension} is claimed by both ${names}; ${mine.entry.name} does not serve it`, mine.entry.dir),
+      );
+    }
+  }
+  const modules = built.map((b) => ({ ...b.entry, inactiveExtensions: inactive.get(b.entry.name) ?? [] }));
+  return { modules, diagnostics };
 }
 
 /** Every module visible from `roots`, one entry per name, sorted by name. */
 export function resolveModules(roots: Roots): ResolveModulesResult {
-  const { candidates, diagnostics } = scan(roots);
-  return { modules: group(candidates), diagnostics };
+  const scanned = scan(roots);
+  const built = group(scanned.candidates);
+  const settled = settleExtensions(built);
+  const notes = built.flatMap((b) => preciseNotes(b.entry, b.manifest));
+  return { modules: settled.modules, diagnostics: [...scanned.diagnostics, ...settled.diagnostics, ...notes] };
 }
 
-/** The one module called `name`, or no entry. A name that is not a module id never matches. */
+/**
+ * The one module called `name`, or no entry. A name that is not a module id never matches. Other
+ * modules are not scanned, so their extension claims are not weighed against this one.
+ */
 export function resolveModule(roots: Roots, name: string): ResolveModuleResult {
   if (!MODULE_ID.test(name)) {
     return { entry: undefined, diagnostics: [] };
   }
-  const { candidates, diagnostics } = scan(roots, name);
-  return { entry: group(candidates)[0], diagnostics };
+  const scanned = scan(roots, name);
+  const [only] = group(scanned.candidates);
+  const notes = only === undefined ? [] : preciseNotes(only.entry, only.manifest);
+  return { entry: only?.entry, diagnostics: [...scanned.diagnostics, ...notes] };
 }
