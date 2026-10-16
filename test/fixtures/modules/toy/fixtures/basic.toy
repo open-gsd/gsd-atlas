@@ -1,0 +1,7 @@
+# a toy file
+use "lib/util";
+fn main {
+  helper();
+}
+type Widget {
+}

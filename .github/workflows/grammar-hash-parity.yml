@@ -1,0 +1,60 @@
+# THROWAWAY. Plan 01-16 deletes this workflow once cross-OS parity is recorded.
+#
+# Purpose: observe, on the first CI run, whether the toy grammar WASM built on ubuntu, macos
+# and windows hashes identically (unverified assumption A1 behind decision D-07). The job
+# never fails on a hash difference: it prints {platform, sha256} per OS so plan 01-15 can
+# compare the values with test/fixtures/modules/toy/grammar.lock.
+name: grammar-hash-parity
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ['ci/**']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: grammar-hash-parity-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  parity:
+    name: parity (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24.16.0
+
+      - run: npm ci --ignore-scripts
+
+      # wasi-sdk and binaryen are downloaded by the tree-sitter CLI into its cache directory.
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cache/tree-sitter
+            ~/Library/Caches/tree-sitter
+            ~/AppData/Local/tree-sitter
+          key: ${{ runner.os }}-wasi34-binaryen132
+
+      # The single explicit fetch of the CLI binary (npm ci --ignore-scripts leaves none).
+      - run: node scripts/ensure-tree-sitter.ts
+
+      # --report prints one JSON line and writes nothing into the module.
+      - run: node scripts/grammar-build.ts --report test/fixtures/modules/toy
