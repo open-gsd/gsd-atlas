@@ -12,6 +12,7 @@ import { makeTempDir } from '../src/test-kit/index.ts';
 import type { GrammarLock } from '../src/lang/grammar-lock.ts';
 import {
   GrammarBuildError,
+  buildCommands,
   checkAgainstLock,
   prepareSource,
   serializeLock,
@@ -167,6 +168,57 @@ describe('updatedLock / updateLockRefusal / serializeLock', () => {
   it('writes the committed toy grammar.lock byte-for-byte in canonical form', () => {
     const text = fs.readFileSync(path.join(toyDir, 'grammar.lock'), 'utf8');
     assert.equal(serializeLock(readToyLock()), text);
+  });
+});
+
+describe('buildCommands (pure: the CLI invocations a build runs)', () => {
+  const build = { code: 'build_failed', args: ['build', '--wasm', '-o', 'out.wasm'] };
+  const generate = { code: 'generate_failed', args: ['generate', '--abi', '15'] };
+
+  it('is exactly one build --wasm invocation, with no generate, when generate is false', () => {
+    assert.deepEqual(buildCommands({ generate: false, outFile: 'out.wasm' }), [build]);
+  });
+
+  it('is the generate with an explicit ABI and then the build when generate is true or absent', () => {
+    assert.deepEqual(buildCommands({ generate: true, outFile: 'out.wasm' }), [generate, build]);
+    assert.deepEqual(buildCommands({ outFile: 'out.wasm' }), [generate, build]);
+  });
+});
+
+describe('serializeLock with the upstream generate flag', () => {
+  function skipGenerateLock(): GrammarLock {
+    return {
+      ...readToyLock(),
+      source: {
+        type: 'upstream',
+        url: 'https://example.com/grammar.tar.gz',
+        ref: '1.0.0',
+        archiveSha256: 'b'.repeat(64),
+        subdir: 'sub',
+        generate: false,
+      },
+    };
+  }
+
+  it('writes generate after subdir and round-trips through the parser', () => {
+    const text = serializeLock(skipGenerateLock());
+    assert.ok(text.indexOf('"subdir"') > 0);
+    assert.ok(text.indexOf('"subdir"') < text.indexOf('"generate"'));
+    assert.ok(text.indexOf('"generate"') < text.indexOf('"patches"'));
+    const reparsed = parseGrammarLock(text);
+    assert.equal(reparsed.ok, true);
+    if (reparsed.ok) {
+      assert.deepEqual(reparsed.lock, skipGenerateLock());
+    }
+  });
+
+  it('keeps the canonical source key order even when the lock object was built in another order', () => {
+    const lock = skipGenerateLock();
+    const scrambled: GrammarLock = {
+      ...lock,
+      source: { generate: false, subdir: 'sub', archiveSha256: 'b'.repeat(64), ref: '1.0.0', url: 'https://example.com/grammar.tar.gz', type: 'upstream' },
+    };
+    assert.equal(serializeLock(scrambled), serializeLock(lock));
   });
 });
 

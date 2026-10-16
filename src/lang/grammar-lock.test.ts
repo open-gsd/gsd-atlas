@@ -129,6 +129,52 @@ describe('parseGrammarLock', () => {
   });
 });
 
+describe('upstream source generate flag', () => {
+  function withGenerate(generate: unknown): Record<string, unknown> {
+    const lock = upstreamLock();
+    (lock['source'] as Record<string, unknown>)['generate'] = generate;
+    return lock;
+  }
+
+  it('accepts generate false and generate true on an upstream source', () => {
+    for (const generate of [false, true]) {
+      const result = parseGrammarLock(withGenerate(generate));
+      assert.equal(result.ok, true);
+      if (result.ok && result.lock.source.type === 'upstream') {
+        assert.equal(result.lock.source.generate, generate);
+      }
+    }
+  });
+
+  it('leaves generate undefined when the lock does not carry it', () => {
+    const result = parseGrammarLock(upstreamLock());
+    assert.equal(result.ok, true);
+    if (result.ok && result.lock.source.type === 'upstream') {
+      assert.equal(result.lock.source.generate, undefined);
+    }
+  });
+
+  for (const bad of ['false', 0, null]) {
+    it(`rejects a non-boolean generate (${JSON.stringify(bad)}) with a lock_invalid diagnostic`, () => {
+      const result = parseGrammarLock(withGenerate(bad), 'm/grammar.lock');
+      assert.equal(result.ok, false);
+      if (!result.ok) {
+        assert.equal(result.diagnostics[0]?.code, 'lock_invalid');
+      }
+    });
+  }
+
+  it('rejects generate on a local source', () => {
+    const lock = localLock();
+    (lock['source'] as Record<string, unknown>)['generate'] = false;
+    const result = parseGrammarLock(lock);
+    assert.equal(result.ok, false);
+    if (!result.ok) {
+      assert.equal(result.diagnostics[0]?.code, 'lock_invalid');
+    }
+  });
+});
+
 describe('platformKey', () => {
   it('maps the three CI platforms and the rest of the closed set to their keys', () => {
     assert.equal(platformKey('linux', 'x64'), 'linux-x64');
