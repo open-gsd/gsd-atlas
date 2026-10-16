@@ -246,6 +246,92 @@ define('loadExtension is unavailable: the Db has none and the load_extension SQL
   );
 });
 
+/** Fill a table with enough rows (about 2 MB of TEXT) that deleting them frees many pages. */
+function fillAndEmpty(db: Db): void {
+  db.exec('DROP TABLE IF EXISTS bulk');
+  db.exec('CREATE TABLE bulk (id INTEGER PRIMARY KEY, pad TEXT NOT NULL)');
+  const pad = 'x'.repeat(1000);
+  db.transaction(() => {
+    const insert = db.prepare('INSERT INTO bulk (pad) VALUES (?)');
+    for (let i = 0; i < 2000; i += 1) insert.run(pad);
+  });
+  db.exec('DELETE FROM bulk');
+}
+
+const toInt = (value: unknown): number => {
+  assert.equal(typeof value, 'number', `expected an integer, got ${String(value)}`);
+  return value as number;
+};
+
+define('incremental_vacuum returns freed pages to the file on an auto_vacuum INCREMENTAL database, run twice with the same result (STO-01 idempotency)', async (ctx) => {
+  const db = await ctx.open();
+  db.pragma('auto_vacuum', 'INCREMENTAL'); // must be set before the first table exists
+  assert.equal(db.pragma('auto_vacuum'), 2);
+  const results: number[] = [];
+  for (let round = 0; round < 2; round += 1) {
+    fillAndEmpty(db);
+    const freeBefore = toInt(db.pragma('freelist_count'));
+    assert.ok(freeBefore > 20, `round ${round}: expected many free pages, got ${freeBefore}`);
+    const pagesBefore = toInt(db.pragma('page_count'));
+    db.pragma('incremental_vacuum', 10);
+    const freeAfter = toInt(db.pragma('freelist_count'));
+    assert.equal(freeAfter, freeBefore - 10, `round ${round}: incremental_vacuum(10) frees exactly ten pages`);
+    assert.equal(toInt(db.pragma('page_count')), pagesBefore - 10);
+    db.pragma('incremental_vacuum', 100000); // more than the freelist holds: frees all of it, no error
+    assert.equal(db.pragma('freelist_count'), 0);
+    results.push(freeBefore - freeAfter);
+  }
+  assert.deepStrictEqual(results[0], results[1]);
+});
+
+define('wal_checkpoint TRUNCATE reports success in its first column and empties the -wal file, run twice (STO-01 idempotency)', async (ctx) => {
+  const db = await ctx.open();
+  db.exec('CREATE TABLE t (id INTEGER PRIMARY KEY, pad TEXT NOT NULL)');
+  const wal = `${db.path}-wal`;
+  for (let round = 0; round < 2; round += 1) {
+    db.transaction(() => {
+      const insert = db.prepare('INSERT INTO t (pad) VALUES (?)');
+      for (let i = 0; i < 50; i += 1) insert.run('y'.repeat(200));
+    });
+    assert.ok(fs.statSync(wal).size > 0, `round ${round}: the write left frames in the -wal file`);
+    assert.equal(db.pragma('wal_checkpoint', 'TRUNCATE'), 0, `round ${round}: busy flag`);
+    assert.equal(fs.statSync(wal).size, 0, `round ${round}: the -wal file is empty after TRUNCATE`);
+  }
+  assert.equal(db.prepare('SELECT count(*) AS c FROM t').get()?.c, 100);
+});
+
+define('journal_size_limit can be set to an integer and read back, run twice (STO-01 idempotency)', async (ctx) => {
+  const db = await ctx.open();
+  for (let round = 0; round < 2; round += 1) {
+    assert.equal(db.pragma('journal_size_limit', 1048576), 1048576);
+    assert.equal(db.pragma('journal_size_limit'), 1048576);
+  }
+  assert.equal(db.pragma('journal_size_limit', -1), -1);
+});
+
+define('page_count is positive once a table exists and freelist_count is 0 on a fresh database, then positive after rows are deleted, run twice (STO-01 idempotency)', async (ctx) => {
+  const db = await ctx.open();
+  db.pragma('auto_vacuum', 'INCREMENTAL');
+  db.exec('CREATE TABLE fresh (id INTEGER PRIMARY KEY)');
+  assert.ok(toInt(db.pragma('page_count')) > 0);
+  assert.equal(db.pragma('freelist_count'), 0);
+  for (let round = 0; round < 2; round += 1) {
+    fillAndEmpty(db);
+    assert.ok(toInt(db.pragma('freelist_count')) > 0, `round ${round}`);
+    assert.ok(toInt(db.pragma('page_count')) > 0, `round ${round}`);
+    db.pragma('incremental_vacuum'); // no argument: free every page, so the next round starts clean
+    assert.equal(db.pragma('freelist_count'), 0, `round ${round}`);
+  }
+});
+
+define('a pragma outside the allowlist and a value that is not a word or an integer are still refused after the allowlist grew', async (ctx) => {
+  const db = await ctx.open();
+  assert.throws(() => db.pragma('locking_mode' as never), TypeError);
+  assert.throws(() => db.pragma('wal_checkpoint', 'TRUNCATE; DROP TABLE x'), TypeError);
+  assert.throws(() => db.pragma('incremental_vacuum', 1.5), TypeError);
+  assert.throws(() => db.pragma('journal_size_limit', '1; DROP TABLE x'), TypeError);
+});
+
 /** Register the whole suite for one driver. Call it from the driver's own `*.test.ts` file. */
 export function defineDriverContract(label: string, driver: DriverUnderTest): void {
   describe(`driver contract: ${label}`, () => {
@@ -267,6 +353,18 @@ export function defineDriverContract(label: string, driver: DriverUnderTest): vo
       const capabilities = selfTest(module);
       assert.equal(typeof capabilities.fts5Trigram, 'boolean');
       assert.equal(typeof capabilities.json, 'boolean');
+      assert.equal(typeof capabilities.contentlessDelete, 'boolean');
+      assert.equal(selfTest(module), capabilities, 'the capabilities are cached per driver');
+    });
+
+    it('contentlessDelete is reported true on a SQLite that has contentless_delete (3.43 and newer)', async (t) => {
+      const tmp = makeTempDir();
+      t.after(() => tmp.cleanup());
+      const db = tmp.adopt(await openDatabase(path.join(tmp.path, 'cap.db'), { driver }));
+      const module = typeof driver === 'string' ? await loadDriver(driver) : driver;
+      const [major = 0, minor = 0] = db.sqliteVersion.split('.').map(Number);
+      const hasFeature = major > 3 || (major === 3 && minor >= 43);
+      assert.equal(selfTest(module).contentlessDelete, hasFeature);
     });
   });
 }
