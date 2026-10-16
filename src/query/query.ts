@@ -12,8 +12,10 @@ import { errorEnvelope } from './envelope.ts';
 import { newNonce, normalizeText } from './fence.ts';
 import { runFind } from './find.ts';
 import type { FindContext, FreshOutcome } from './find.ts';
+import { runContext } from './context.ts';
+import { runImpact } from './impact.ts';
 import { runRefs } from './refs.ts';
-import { codeFindSchema, codeRefsSchema } from './tools.ts';
+import { codeContextSchema, codeFindSchema, codeImpactSchema, codeRefsSchema } from './tools.ts';
 import type { ToolName } from './tools.ts';
 import type { Query, QueryConfig, QueryDeps } from './types.ts';
 
@@ -163,6 +165,27 @@ export function createQuery(deps: QueryDeps): Query {
             cwd: input.cwd,
           }));
           return 'error' in ready ? ready.error : runRefs(ready.ctx, ready.input);
+        }
+        case 'code_context': {
+          const ready = await prepare(deps, config, request, 'code_context', codeContextSchema, (input, worktree) => ({
+            worktree,
+            name: input.name,
+            mode: 'context',
+            path: input.path,
+            cwd: input.cwd,
+          }));
+          return 'error' in ready ? ready.error : runContext(ready.ctx, ready.input);
+        }
+        case 'code_impact': {
+          const ready = await prepare(deps, config, request, 'code_impact', codeImpactSchema, (input, worktree) => ({
+            worktree,
+            name: input.name,
+            // The depth changes which items exist, so a cursor belongs to the depth it was issued at.
+            mode: `impact-${String(Math.min(input.depth ?? config.impactDefaultDepth, config.impactMaxDepth))}`,
+            path: input.path,
+            cwd: input.cwd,
+          }));
+          return 'error' in ready ? ready.error : runImpact(ready.ctx, ready.input);
         }
         default:
           return errorEnvelope('unknown_kind', `request kind ${say(JSON.stringify(request.kind))} is not known to this host`);

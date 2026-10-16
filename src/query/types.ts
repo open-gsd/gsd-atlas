@@ -27,6 +27,12 @@ export interface QueryConfig {
   readonly ensureFreshWaitMs: number;
   /** The bound Query passes to `Reader.refs`: a resolver slower than this degrades the answer to grammar edges. */
   readonly resolveTimeoutMs: number;
+  /** Hops `code_impact` follows when the request names no `depth` (user decision 3). */
+  readonly impactDefaultDepth: number;
+  /** The most hops `code_impact` follows whatever depth was asked for. */
+  readonly impactMaxDepth: number;
+  /** The most items one hop of `code_impact` keeps, for each seed; a hop that has more is cut and reported. */
+  readonly impactRowCapPerHop: number;
 }
 
 /** What the Indexer answers to `ensureFresh` (structural, so Query does not import the Indexer). */

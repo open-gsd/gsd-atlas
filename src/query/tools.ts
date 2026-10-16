@@ -57,7 +57,7 @@ export const codeImpactSchema = z.strictObject({
   name,
   path,
   limit,
-  depth: z.int().positive().optional().describe('How many hops to follow outward from the symbol.'),
+  depth: z.int().nonnegative().optional().describe('How many hops to follow outward from the symbol; 0 follows none.'),
   ...common,
 });
 export const repoOnlySchema = z.strictObject({ repo: common.repo });
