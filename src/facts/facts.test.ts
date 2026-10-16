@@ -2,13 +2,29 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import {
+  DEGRADED_CODES,
   FACT_PREDICATES,
+  PROTOCOL_VERSION,
   diagnostic,
+  failEnvelope,
+  isDegradedCode,
   isValidSpan,
+  okEnvelope,
+  symbolKey,
   systemClock,
   validateFileFacts,
 } from './index.ts';
-import type { FileFacts, Span } from './index.ts';
+import type {
+  Answer,
+  FileFacts,
+  OverlaySnapshot,
+  Request,
+  ResolutionContext,
+  ResolvedEdge,
+  Span,
+  SymbolIdentity,
+  SymbolLookup,
+} from './index.ts';
 
 const span = (
   startLine: number,
@@ -165,5 +181,151 @@ describe('validateFileFacts', () => {
     const bad = { ...goodFacts(), symbols: undefined };
     const out = validateFileFacts(bad);
     assert.ok(out.some((d) => d.code === 'facts_invalid' && d.subject === 'src/a.ts'));
+  });
+});
+
+describe('DEGRADED_CODES', () => {
+  it('is exactly the eight codes of the contract', () => {
+    assert.deepEqual(
+      [...DEGRADED_CODES],
+      [
+        'resolver_failed',
+        'resolver_timeout',
+        'fresh_timeout',
+        'precise_base_commit',
+        'precise_unavailable',
+        'stale',
+        'follower',
+        'cache_unavailable',
+      ],
+    );
+  });
+
+  it('isDegradedCode narrows strings', () => {
+    assert.equal(isDegradedCode('stale'), true);
+    assert.equal(isDegradedCode('resolver_failed'), true);
+    assert.equal(isDegradedCode('nope'), false);
+    assert.equal(isDegradedCode(''), false);
+  });
+});
+
+describe('Envelope helpers', () => {
+  it('okEnvelope defaults diagnostics to an empty array', () => {
+    assert.deepEqual(okEnvelope('x.v1', { a: 1 }), {
+      schema: 'x.v1',
+      ok: true,
+      data: { a: 1 },
+      diagnostics: [],
+    });
+  });
+
+  it('okEnvelope keeps given diagnostics', () => {
+    const d = diagnostic('c', 'info', 'm');
+    assert.deepEqual(okEnvelope('x.v1', 1, [d]).diagnostics, [d]);
+  });
+
+  it('failEnvelope returns ok false with null data', () => {
+    const d = diagnostic('boom', 'error', 'failed');
+    assert.deepEqual(failEnvelope('x.v1', [d]), {
+      schema: 'x.v1',
+      ok: false,
+      data: null,
+      diagnostics: [d],
+    });
+  });
+});
+
+describe('Request, PROTOCOL_VERSION and Answer', () => {
+  it('PROTOCOL_VERSION is 1 and builds a Request', () => {
+    assert.equal(PROTOCOL_VERSION, 1);
+    const request: Request = {
+      protocol: PROTOCOL_VERSION,
+      kind: 'lang_test',
+      args: { id: 'toy' },
+      worktree: '/repo',
+      tenantHint: 'repo-a',
+      budget_tokens: 2000,
+      fresh: ['src/a.ts'],
+    };
+    assert.equal(request.protocol, 1);
+    const minimal: Request = { protocol: PROTOCOL_VERSION, kind: 'anything' };
+    assert.equal(minimal.kind, 'anything');
+  });
+
+  it('Answer carries data, a watermark and optional degraded codes', () => {
+    const answer: Answer<string[]> = {
+      data: [],
+      watermark: { seq: 3, stalePaths: ['src/a.ts'] },
+      degraded: ['resolver_timeout'],
+    };
+    assert.equal(answer.watermark.seq, 3);
+    const clean: Answer<number> = { data: 1, watermark: { seq: 0, stalePaths: [] } };
+    assert.equal(clean.degraded, undefined);
+  });
+});
+
+describe('resolution contracts', () => {
+  const identity: SymbolIdentity = {
+    repo: 'r',
+    path: 'src/a.ts',
+    qualifiedName: 'A.m',
+    kind: 'method',
+  };
+
+  it('symbolKey is equal for equal identities', () => {
+    assert.equal(symbolKey({ ...identity }), symbolKey(identity));
+    assert.equal(
+      symbolKey({ ...identity, discriminator: '1' }),
+      symbolKey({ ...identity, discriminator: '1' }),
+    );
+  });
+
+  it('symbolKey differs when only kind, discriminator or qualifiedName differ', () => {
+    const base = symbolKey(identity);
+    assert.notEqual(symbolKey({ ...identity, kind: 'function' }), base);
+    assert.notEqual(symbolKey({ ...identity, discriminator: '2' }), base);
+    assert.notEqual(symbolKey({ ...identity, qualifiedName: 'A.n' }), base);
+    assert.notEqual(symbolKey({ ...identity, path: 'src/b.ts' }), base);
+    assert.notEqual(symbolKey({ ...identity, repo: 'q' }), base);
+  });
+
+  it('symbolKey cannot be forged by moving text between fields', () => {
+    const a = symbolKey({ repo: 'r', path: 'a', qualifiedName: 'b', kind: 'k' });
+    const b = symbolKey({ repo: 'r', path: 'a\u0000b', qualifiedName: '', kind: 'k' });
+    assert.notEqual(a, b);
+  });
+
+  it('symbolKey ignores the content hash (identity excludes the version)', () => {
+    const withHash = { ...identity, contentHash: 'abc' } as SymbolIdentity;
+    assert.equal(symbolKey(withHash), symbolKey(identity));
+  });
+
+  it('shapes ResolvedEdge, OverlaySnapshot, ResolutionContext and SymbolLookup', async () => {
+    const edge: ResolvedEdge = {
+      site: {
+        path: 'src/b.ts',
+        span: { startLine: 1, startColumn: 0, endLine: 1, endColumn: 1 },
+        name: 'A',
+      },
+      target: identity,
+      confidence: 'EXTRACTED',
+      resolver: 'typescript-6',
+    };
+    assert.equal(edge.confidence, 'EXTRACTED');
+
+    const overlay: OverlaySnapshot = {
+      id: 'ov1',
+      pathToHash: new Map([['src/a.ts', 'h1']]),
+    };
+    assert.equal(overlay.pathToHash.get('src/a.ts'), 'h1');
+
+    const context: ResolutionContext = { id: 'ctx1', configHashes: ['h-tsconfig', 'h-lock'] };
+    assert.equal(context.configHashes.length, 2);
+
+    const lookup: SymbolLookup = {
+      find: async (name) => (name === 'A' ? [identity] : []),
+    };
+    assert.deepEqual(await lookup.find('A'), [identity]);
+    assert.deepEqual(await lookup.find('Z'), []);
   });
 });
