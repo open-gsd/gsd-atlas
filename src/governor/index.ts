@@ -18,3 +18,5 @@ export { createFakeGovernor } from './fake.ts';
 export type { FakeGovernor, FakeGovernorOptions } from './fake.ts';
 export { createGovernor } from './real.ts';
 export type { GovernorOptions, RealGovernor } from './real.ts';
+export { DEFAULT_GOVERNOR_OPTIONS } from './defaults.ts';
+export type { GovernorDefaults } from './defaults.ts';
