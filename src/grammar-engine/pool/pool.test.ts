@@ -1,8 +1,11 @@
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
 import { describe, it } from 'node:test';
 
-import { defineGrammarEngineContract, loadToyScenarios } from '../contract.ts';
-import { GrammarRunError, GRAMMAR_LIMITS } from '../index.ts';
+import { readModuleInputs } from '../../lang/index.ts';
+import { defineGrammarEngineContract, loadToyScenarios, runInProcess } from '../contract.ts';
+import { extractFileFacts, GrammarRunError, GRAMMAR_LIMITS } from '../index.ts';
 import type { GrammarInput, GrammarRunResult } from '../index.ts';
 import { createPooledGrammarEngine } from './pool.ts';
 import { resolveWorkerUrl } from './worker-url.ts';
@@ -313,5 +316,135 @@ describe('pool supervision', () => {
       assert.equal(pool.poolStatus().queued, 0);
       await assert.rejects(grammar.run('fine'), isRunError('parse_failed'));
     });
+  });
+});
+
+const MODULES_DIR = path.resolve(import.meta.dirname, '..', '..', '..', 'modules');
+
+/** A built-in module, read through the confined module reader, with the text of its `constructs` fixture. */
+function readBuiltIn(name: string, fixture: string): { input: GrammarInput; version: string; text: string } {
+  const dir = path.join(MODULES_DIR, name);
+  const inputs = readModuleInputs(dir);
+  if (!inputs.ok) {
+    throw new Error(`cannot read module ${name}: ${inputs.diagnostics.map((d) => d.message).join('; ')}`);
+  }
+  return {
+    input: inputs.input,
+    version: inputs.manifest.version ?? 'unversioned',
+    text: fs.readFileSync(path.join(dir, 'fixtures', fixture), 'utf8'),
+  };
+}
+
+function factsOf(name: string, version: string, fixture: string, run: GrammarRunResult) {
+  return extractFileFacts({ path: fixture, contentHash: '0'.repeat(40), module: name, grammarVersion: version, run });
+}
+
+/**
+ * About 8 KB of TypeScript, deterministic in `index` (no random source): distinct identifiers, literals
+ * and shapes per file, so no two files are the same text.
+ */
+function syntheticSource(index: number): string {
+  const parts: string[] = [`import { shared${String(index % 7)} } from './shared${String(index % 7)}';\n\n`];
+  let size = parts[0]?.length ?? 0;
+  for (let n = 0; size < 8000; n += 1) {
+    const id = `${String(index)}_${String(n)}`;
+    const block =
+      `export function compute${id}(a: number, b: string): string {\n` +
+      `  const local${id} = shared${String(index % 7)}(a) + b.length * ${String(index * 31 + n)};\n` +
+      `  return helper${String((index + n) % 11)}(local${id}, '${id}');\n}\n\n` +
+      `export class Holder${id} {\n  value${id}: number = ${String(index + n)};\n` +
+      `  read${id}(x: number): number {\n    return x + this.value${id} - ${String(n)};\n  }\n}\n\n`;
+    parts.push(block);
+    size += block.length;
+  }
+  return parts.join('');
+}
+
+describe('pool against the built-in modules and the toy language', () => {
+  it('gives the typescript and javascript modules the captures and facts of the in-process engine', async () => {
+    const pooled = createPooledGrammarEngine({ size: 2 });
+    try {
+      for (const [name, fixture] of [
+        ['typescript', 'constructs.ts'],
+        ['javascript', 'constructs.cjs'],
+      ] as const) {
+        const module = readBuiltIn(name, fixture);
+        const grammar = await pooled.load(module.input);
+        const pooledRun = await grammar.run(module.text);
+        const [localRun] = await runInProcess(module.input, [module.text]);
+        assert.ok(localRun, `${name}: the in-process run produced no result`);
+        assert.deepStrictEqual(pooledRun, localRun, `${name}: captures`);
+        const pooledFacts = factsOf(name, module.version, fixture, pooledRun);
+        const localFacts = factsOf(name, module.version, fixture, localRun);
+        assert.deepStrictEqual(pooledFacts, localFacts, `${name}: facts`);
+        assert.ok(pooledFacts.facts.symbols.length > 0, `${name}: the fixture defines symbols`);
+        assert.equal(pooledFacts.facts.parse.errorBytes, 0, `${name}: the fixture parses cleanly`);
+      }
+    } finally {
+      await pooled.dispose();
+    }
+  });
+
+  it('keeps toy runs and typescript runs apart when they interleave on one pool', async () => {
+    const scenarios = await loadToyScenarios();
+    const ts = readBuiltIn('typescript', 'constructs.ts');
+    const [tsExpected] = await runInProcess(ts.input, [ts.text]);
+    const toyExpected = scenarios.expected.get(scenarios.sources.basic);
+    assert.ok(tsExpected && toyExpected);
+    assert.notDeepEqual(tsExpected.captures, toyExpected.captures);
+    const pooled = createPooledGrammarEngine({ size: 2 });
+    try {
+      const toy = await pooled.load(scenarios.input);
+      const typescript = await pooled.load(ts.input);
+      const jobs: Array<Promise<void>> = [];
+      for (let index = 0; index < 200; index += 1) {
+        jobs.push(
+          toy.run(scenarios.sources.basic).then((result) => {
+            assert.deepStrictEqual(result, toyExpected, `toy run ${String(index)}`);
+          }),
+          typescript.run(ts.text).then((result) => {
+            assert.deepStrictEqual(result, tsExpected, `typescript run ${String(index)}`);
+          }),
+        );
+      }
+      await Promise.all(jobs);
+    } finally {
+      await pooled.dispose();
+    }
+  });
+});
+
+describe('pool memory plateau (LNG-07)', () => {
+  const FILES = 1200;
+  const SAMPLE_EVERY = 400;
+  const MIB = 1024 * 1024;
+
+  it('keeps the resident set size flat over 1,200 synthetic typescript files on two recycling workers', async () => {
+    const ts = readBuiltIn('typescript', 'constructs.ts');
+    const pooled = createPooledGrammarEngine({ size: 2, recycleAfterRuns: SAMPLE_EVERY });
+    const samples: number[] = [process.memoryUsage().rss];
+    try {
+      const grammar = await pooled.load(ts.input);
+      for (let first = 0; first < FILES; first += SAMPLE_EVERY) {
+        const round = Array.from({ length: SAMPLE_EVERY }, (_, offset) => grammar.run(syntheticSource(first + offset)));
+        const results = await Promise.all(round);
+        assert.equal(results.length, SAMPLE_EVERY);
+        assert.ok(
+          results.every((result) => result.totalBytes >= 8000 && result.captures.length > 0),
+          'every synthetic file parses and yields captures',
+        );
+        samples.push(process.memoryUsage().rss);
+      }
+      assert.ok(pooled.poolStatus().recycled >= 2, `workers were recycled during the run (${String(pooled.poolStatus().recycled)})`);
+    } finally {
+      await pooled.dispose();
+    }
+    const inMib = samples.map((bytes) => Math.round(bytes / MIB));
+    process.stdout.write(`# rss samples in MiB (baseline, then after every ${String(SAMPLE_EVERY)} runs): ${inMib.join(', ')}\n`);
+    // samples[0] is the baseline before warm-up; the bound compares the last sample with the two after it.
+    const warm = Math.max(samples[1] ?? 0, samples[2] ?? 0);
+    const last = samples[samples.length - 1] ?? 0;
+    const allowed = warm * 1.25 + 64 * MIB;
+    assert.ok(last <= allowed, `rss kept growing: samples ${inMib.join(', ')} MiB; last ${String(Math.round(last / MIB))} > allowed ${String(Math.round(allowed / MIB))}`);
   });
 });

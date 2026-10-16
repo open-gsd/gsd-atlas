@@ -42,6 +42,25 @@ export function loadToyScenarios(): Promise<ContractScenarios> {
   return cachedScenarios;
 }
 
+/**
+ * Run `sources` through the real in-process engine with the grammar of `input`: the reference a pooled
+ * engine's results are compared with. Lives here, beside the other real-engine helper, so the pool
+ * directory's only `createGrammarEngine` call stays the worker's.
+ */
+export async function runInProcess(input: GrammarInput, sources: readonly string[]): Promise<GrammarRunResult[]> {
+  const engine = createGrammarEngine();
+  try {
+    const grammar = await engine.load(input);
+    const results: GrammarRunResult[] = [];
+    for (const source of sources) {
+      results.push(await grammar.run(source));
+    }
+    return results;
+  } finally {
+    await engine.dispose();
+  }
+}
+
 async function buildToyScenarios(): Promise<ContractScenarios> {
   const lock = JSON.parse(readFixture('grammar.lock')) as { name: string; abi: number; wasm: { sha256: string } };
   const input: GrammarInput = {
