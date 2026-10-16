@@ -22,7 +22,7 @@ interface OverlayIndex {
 const indexes = new WeakMap<ReadonlySet<string>, OverlayIndex>();
 
 /** A path with its last extension removed: `src/a.ts` and `src/a.js` both become `src/a`. */
-function stem(filePath: string): string {
+export function stem(filePath: string): string {
   const ext = posix.extname(filePath);
   return ext === '' ? filePath : filePath.slice(0, filePath.length - ext.length);
 }

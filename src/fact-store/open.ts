@@ -1,10 +1,11 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { openDatabase } from '../sqlite/index.ts';
+import { loadDriver, openDatabase, selfTest } from '../sqlite/index.ts';
 import type { Db, DriverName } from '../sqlite/index.ts';
 import { SchemaTooNew } from './errors.ts';
 import type { StoreParts } from './parts.ts';
 import { SCHEMA_VERSION, STORE_FILE_NAME, createSchema } from './schema.ts';
+import type { FuzzyIndex } from './schema.ts';
 import { createStore } from './store.ts';
 import type { FactStore, StoreDeps, StoreOptions } from './types.ts';
 
@@ -60,7 +61,16 @@ export async function openFactStore(
   const file = path.join(dir, STORE_FILE_NAME);
   const timeoutMs = options.busyTimeoutMs ?? DEFAULT_BUSY_TIMEOUT_MS;
 
-  const writeDb = await openDatabase(file, { driver: options.driver, timeoutMs });
+  // The open-time capability probe (research A11): the fuzzy-name path is chosen from what the engine can do.
+  // `trigram: false` can switch the table off for a test, never on where the probe found it missing.
+  const driver = await loadDriver(options.driver ?? 'node:sqlite');
+  const capabilities = selfTest(driver);
+  const fuzzy: FuzzyIndex = {
+    trigram: capabilities.fts5Trigram && options.trigram !== false,
+    contentlessDelete: capabilities.contentlessDelete,
+  };
+
+  const writeDb = await openDatabase(file, { driver, timeoutMs });
   let readDb: Db | undefined;
   try {
     if (hasTables(writeDb)) {
@@ -70,12 +80,12 @@ export async function openFactStore(
       writeDb.exec('VACUUM');
     }
     writeDb.transaction(() => {
-      createSchema(writeDb);
+      createSchema(writeDb, fuzzy);
       const seed = writeDb.prepare('INSERT OR IGNORE INTO meta (name, value) VALUES (?, ?)');
       seed.run('schema_version', String(SCHEMA_VERSION));
       seed.run('created_by', options.version ?? 'unknown');
     });
-    readDb = await openDatabase(file, { driver: options.driver, readOnly: true, timeoutMs });
+    readDb = await openDatabase(file, { driver, readOnly: true, timeoutMs });
   } catch (error) {
     readDb?.close();
     writeDb.close();
@@ -89,6 +99,7 @@ export async function openFactStore(
     repo: options.repo ?? path.basename(path.resolve(dir)),
     canCache: options.canCache ?? (() => true),
     resolutionContext: options.resolutionContext ?? (() => ({ id: 'grammar', configHashes: [] })),
+    fuzzyTrigram: fuzzy.trigram,
     state: { closed: false, writerTaken: false },
     degradedNow: () => [],
   };

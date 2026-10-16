@@ -41,26 +41,32 @@ function bumpSeq(db: Db, worktree: WorktreeId): number {
   return seqOf(db, worktree);
 }
 
-/** Intern names once per file write; the names table is shared by every file. */
-function interner(db: Db): (name: string) => number {
+/**
+ * Intern names once per file write; the names table is shared by every file. A name that is new to the table
+ * also goes into the trigram index (`names_fts`, rowid = the name's id) in the same transaction, so a name is
+ * indexed exactly once however many files use it.
+ */
+function interner(db: Db, trigram: boolean): (name: string) => number {
   const insert = db.prepare('INSERT OR IGNORE INTO names (name) VALUES (?)');
   const select = db.prepare('SELECT id FROM names WHERE name = ?');
+  const index = trigram ? db.prepare('INSERT INTO names_fts (rowid, name) VALUES (?, ?)') : undefined;
   const cache = new Map<string, number>();
   return (name) => {
     const known = cache.get(name);
     if (known !== undefined) return known;
-    insert.run(name);
+    const inserted = Number(insert.run(name).changes) > 0;
     const row = select.get(name);
     if (row === undefined) throw new Error('a name that was just interned is missing');
     const id = Number(row.id);
+    if (inserted) index?.run(id, name);
     cache.set(name, id);
     return id;
   };
 }
 
 /** Write every fact row of one file under `fileId`. */
-function writeFactRows(db: Db, fileId: number, facts: FileFacts): void {
-  const intern = interner(db);
+function writeFactRows(db: Db, fileId: number, facts: FileFacts, trigram: boolean): void {
+  const intern = interner(db, trigram);
 
   const insertSymbol = db.prepare(
     'INSERT INTO symbols (file_id, ord, name_id, qname_id, kind, start_line, start_col, end_line, end_col, parent, exported) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
@@ -140,7 +146,7 @@ function writeFactRows(db: Db, fileId: number, facts: FileFacts): void {
 }
 
 /** Insert a new `files` row (state live) and all of its fact rows; returns the new file id. */
-function insertFile(db: Db, hash: string, facts: FileFacts, now: number): number {
+function insertFile(db: Db, hash: string, facts: FileFacts, now: number, trigram: boolean): number {
   const result = db
     .prepare(
       "INSERT INTO files (hash, module, grammar_version, nsym, nref, error_bytes, total_bytes, state, stale, first_seen, last_seen) VALUES (?, ?, ?, ?, ?, ?, ?, 'live', 0, ?, ?)",
@@ -157,7 +163,7 @@ function insertFile(db: Db, hash: string, facts: FileFacts, now: number): number
       now,
     );
   const fileId = Number(result.lastInsertRowid);
-  writeFactRows(db, fileId, facts);
+  writeFactRows(db, fileId, facts, trigram);
   return fileId;
 }
 
@@ -165,7 +171,7 @@ function insertFile(db: Db, hash: string, facts: FileFacts, now: number): number
  * Replace the facts of an existing `files` row: a stale file re-extracted by a newer grammar, or a collected
  * file whose rows are gone. Keeps the row id and `first_seen`, so overlays that point at it stay valid.
  */
-function rewriteFile(db: Db, fileId: number, facts: FileFacts, now: number): void {
+function rewriteFile(db: Db, fileId: number, facts: FileFacts, now: number, trigram: boolean): void {
   db.prepare('DELETE FROM symbols WHERE file_id = ?').run(fileId);
   db.prepare('DELETE FROM refs WHERE file_id = ?').run(fileId);
   db.prepare('DELETE FROM imports WHERE file_id = ?').run(fileId);
@@ -183,7 +189,7 @@ function rewriteFile(db: Db, fileId: number, facts: FileFacts, now: number): voi
     now,
     fileId,
   );
-  writeFactRows(db, fileId, facts);
+  writeFactRows(db, fileId, facts, trigram);
 }
 
 interface OverlayEntry {
@@ -300,9 +306,9 @@ function commitFile(parts: StoreParts, input: CommitFileInput): CommitResult {
     ensureOverlay(db, worktree);
     let fileId: number;
     if (existing === undefined) {
-      fileId = insertFile(db, hash, facts, now);
+      fileId = insertFile(db, hash, facts, now, parts.fuzzyTrigram);
     } else if (existing.state === 'collected' || existing.stale) {
-      rewriteFile(db, existing.id, facts, now);
+      rewriteFile(db, existing.id, facts, now, parts.fuzzyTrigram);
       fileId = existing.id;
     } else {
       touch(db, existing.id, now);

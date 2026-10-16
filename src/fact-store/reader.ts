@@ -1,14 +1,14 @@
-import { posix } from 'node:path';
-import type {
-  ExportSite,
-  FileFacts,
-  ImportSite,
-  ImportStyle,
-  LocalSymbol,
-  RefKind,
-  RefSite,
-} from '../facts/index.ts';
-import { callerRecord, refRecord, scopedRefs } from './resolve.ts';
+import type { ExportSite, FileFacts, ImportSite, LocalSymbol, RefKind, RefSite } from '../facts/index.ts';
+import {
+  callerRecord,
+  clampDepth,
+  collectCallEdges,
+  importerRecord,
+  refRecord,
+  scopedRefs,
+  selectCallers,
+  walkImporters,
+} from './resolve.ts';
 import {
   answer,
   fileIdAt,
@@ -22,9 +22,8 @@ import {
   symbolRecord,
 } from './snapshot.ts';
 import type { Snapshot } from './snapshot.ts';
-import { extractorOf } from './parts.ts';
 import type { StoreParts } from './parts.ts';
-import type { ImporterRecord, ImportersOptions, Reader, WorktreeId } from './types.ts';
+import type { Reader, WorktreeId } from './types.ts';
 
 function rebuildFacts(snap: Snapshot, path: string, fileId: number): FileFacts {
   const file = fileRow(snap, fileId);
@@ -103,63 +102,15 @@ function rebuildFacts(snap: Snapshot, path: string, fileId: number): FileFacts {
   };
 }
 
-/** A specifier is relative when it names a file next to or above the importing file. */
-function isRelative(specifier: string): boolean {
-  return specifier === '.' || specifier === '..' || specifier.startsWith('./') || specifier.startsWith('../');
-}
-
-/** A path with its last extension removed: `src/a.ts` and `src/a.js` both become `src/a`. */
-function withoutExtension(filePath: string): string {
-  const ext = posix.extname(filePath);
-  return ext === '' ? filePath : filePath.slice(0, filePath.length - ext.length);
-}
-
-const IMPORTS_SQL = `SELECT o.path AS importer, i.file_id AS file_id, i.ord AS ord, i.path AS specifier, i.style AS style,
-       i.start_line AS start_line, i.start_col AS start_col, i.end_line AS end_line, i.end_col AS end_col
-       FROM overlay_files o
-       JOIN imports i ON i.file_id = o.file_id
-       WHERE o.worktree = ?
-       ORDER BY o.path, i.start_line, i.start_col, i.ord`;
-
-/**
- * Direct importers of `target`: every import in the overlay whose relative specifier, resolved against the
- * importing file's directory, equals the target path once the extension is removed on both sides. The match
- * runs in JavaScript over the overlay's imports (the overlay fits in memory), so no SQL string function is
- * involved. `INFERRED`: the statement is a cited fact, the link to a file is a path match.
- */
-function importers(snap: Snapshot, target: string, options: ImportersOptions | undefined): readonly ImporterRecord[] {
-  const wanted = withoutExtension(posix.normalize(target));
-  const limit = options?.limit === undefined ? Number.POSITIVE_INFINITY : Math.max(0, Math.floor(options.limit));
-  const out: ImporterRecord[] = [];
-  for (const row of snap.db.prepare(IMPORTS_SQL).all(snap.worktree)) {
-    if (out.length >= limit) break;
-    const specifier = str(row.specifier);
-    if (!isRelative(specifier)) continue;
-    const importer = str(row.importer);
-    if (withoutExtension(posix.normalize(posix.join(posix.dirname(importer), specifier))) !== wanted) continue;
-    const fileId = num(row.file_id);
-    const file = fileRow(snap, fileId);
-    const record: ImporterRecord = {
-      source_path: importer,
-      span: spanOf(row),
-      extractor: extractorOf(file.module, file.grammarVersion),
-      content_hash: file.hash,
-      first_seen: file.firstSeen,
-      last_seen: file.lastSeen,
-      confidence: 'INFERRED',
-      debug: `imp/${encodeURIComponent(importer)}/${file.hash}/${num(row.ord)}`,
-      importer,
-      specifier,
-      hops: 1,
-    };
-    out.push(row.style === null ? record : { ...record, style: str(row.style) as ImportStyle });
-  }
-  return out;
+/** `limit` as a whole number of rows, or all of them when absent. */
+function limitOf(limit: number | undefined): number {
+  return limit === undefined || Number.isNaN(limit) ? Number.POSITIVE_INFINITY : Math.max(0, Math.floor(limit));
 }
 
 /**
  * A read-only view of one worktree overlay on the store's read connection. Readers hold no snapshot across
- * calls: every call sees the state committed when it starts.
+ * calls: every call sees the state committed when it starts. `refs`, `callers` and `importers` live in
+ * resolve.ts; this is the glue.
  */
 export function createReader(parts: StoreParts, worktree: WorktreeId): Reader {
   return {
@@ -169,13 +120,13 @@ export function createReader(parts: StoreParts, worktree: WorktreeId): Reader {
     async refs(id) {
       return answer(parts, worktree, (snap) => scopedRefs(snap, id).map((hit) => refRecord(snap, id, hit)));
     },
-    async callers(id) {
-      // One hop only until the multi-hop walk lands: `options.hops` above 1 returns the same set.
-      return answer(parts, worktree, (snap) =>
-        scopedRefs(snap, id).flatMap((hit) =>
-          hit.kind === 'call' && hit.enclosing !== null ? [callerRecord(snap, id, hit, hit.enclosing, 1)] : [],
-        ),
-      );
+    async callers(id, options) {
+      return answer(parts, worktree, (snap) => {
+        const hops = clampDepth(options?.hops);
+        return selectCallers(id, collectCallEdges(snap, id, hops), hops, () => true).map(({ edge, hops: at }) =>
+          callerRecord(snap, edge.callee, edge.hit, edge.caller, at),
+        );
+      });
     },
     async symbol(id) {
       return answer(parts, worktree, (snap) => {
@@ -184,7 +135,11 @@ export function createReader(parts: StoreParts, worktree: WorktreeId): Reader {
       });
     },
     async importers(target, options) {
-      return answer(parts, worktree, (snap) => importers(snap, target, options));
+      return answer(parts, worktree, (snap) =>
+        walkImporters(snap, target, clampDepth(options?.depth))
+          .slice(0, limitOf(options?.limit))
+          .map((edge) => importerRecord(snap, edge)),
+      );
     },
     async fileFacts(path) {
       return answer(parts, worktree, (snap) => {

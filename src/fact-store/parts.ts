@@ -24,6 +24,8 @@ export interface StoreParts {
   readonly repo: string;
   readonly canCache: () => boolean;
   readonly resolutionContext: () => ResolutionContext;
+  /** True when this session keeps `names_fts` in step with `names` and fuzzy find reads it (else the LIKE scan). */
+  readonly fuzzyTrigram: boolean;
   readonly state: StoreState;
   /** Degraded codes that hold for the whole process right now; plan 02-12 reports `follower` and `rebuilding` here. */
   readonly degradedNow: () => readonly DegradedCode[];

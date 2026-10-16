@@ -408,6 +408,17 @@ const FIND_TAIL = `ORDER BY o.path, s.start_line, s.start_col, s.ord
 const FIND_EXACT_SQL = `${FIND_HEAD} WHERE n.name = ? ${FIND_TAIL}`;
 const FIND_PREFIX_SQL = `${FIND_HEAD} WHERE n.name >= ? AND n.name < ? ${FIND_TAIL}`;
 const FIND_FUZZY_SQL = `${FIND_HEAD} WHERE instr(lower(n.name), lower(?)) > 0 ${FIND_TAIL}`;
+/** The trigram path: the interned names that contain the quoted phrase, found through `names_fts`. */
+const FIND_TRIGRAM_SQL = `${FIND_HEAD} WHERE n.id IN (SELECT rowid FROM names_fts WHERE names_fts MATCH ?) ${FIND_TAIL}`;
+
+/**
+ * The query as one FTS5 phrase: wrapped in double quotes with embedded double quotes doubled, so no operator
+ * (AND, OR, NEAR, a column filter, a prefix star) can be injected through it (T-02-32). It is bound as a
+ * parameter, never concatenated into SQL.
+ */
+function ftsPhrase(query: string): string {
+  return `"${query.replaceAll('"', '""')}"`;
+}
 
 /** Definitions by name in one of three modes; see `FindOptions`. */
 export function findRecords(snap: Snapshot, name: string, options: FindOptions | undefined): readonly SymbolRecord[] {
@@ -425,7 +436,9 @@ export function findRecords(snap: Snapshot, name: string, options: FindOptions |
     mode === 'prefix'
       ? db.prepare(FIND_PREFIX_SQL).all(snap.worktree, name, name + RANGE_END, limit)
       : mode === 'fuzzy'
-        ? db.prepare(FIND_FUZZY_SQL).all(snap.worktree, name, limit)
+        ? snap.parts.fuzzyTrigram
+          ? db.prepare(FIND_TRIGRAM_SQL).all(snap.worktree, ftsPhrase(name), limit)
+          : db.prepare(FIND_FUZZY_SQL).all(snap.worktree, name, limit)
         : db.prepare(FIND_EXACT_SQL).all(snap.worktree, name, limit);
   return hits.map((hit) => {
     const fileId = num(hit.file_id);

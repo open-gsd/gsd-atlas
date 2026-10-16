@@ -21,10 +21,10 @@ export type FileState = (typeof FILE_STATES)[number];
  * 0-based lines). Only names, kinds, spans, hashes and import specifiers are stored; no column holds the
  * bytes of a file.
  *
- * Plan 02-11 adds `resolution_contexts`, `resolved_edges` and `names_fts` to this same unreleased version.
- * Safe to run on an existing store: every statement is `IF NOT EXISTS`.
+ * Plan 02-11 adds `names_fts` (the fuzzy-name index), `resolution_contexts` and `resolved_edges` to this same
+ * unreleased version. Safe to run on an existing store: every statement is `IF NOT EXISTS`.
  */
-export function createSchema(db: Db): void {
+export function createSchema(db: Db, fuzzy: FuzzyIndex): void {
   db.exec(`
 CREATE TABLE IF NOT EXISTS meta (
   name TEXT NOT NULL PRIMARY KEY,
@@ -134,4 +134,46 @@ CREATE TABLE IF NOT EXISTS overlay_files (
 CREATE INDEX IF NOT EXISTS overlay_files_by_file ON overlay_files (file_id);
 CREATE INDEX IF NOT EXISTS overlay_files_by_hash ON overlay_files (hash);
 `);
+  createFuzzyIndex(db, fuzzy);
+}
+
+/** The `meta` entry that records which fuzzy-name path kept `names_fts` in step with `names`. */
+export const FUZZY_PATH_META = 'fuzzy_path';
+
+/**
+ * What the open step found out about the SQL engine's full-text support, and whether to use it. `trigram` is
+ * the effective choice (capability and no test override); `contentlessDelete` says whether the table can have
+ * rows deleted, which plan 02-18 needs to drop garbage-collected names.
+ */
+export interface FuzzyIndex {
+  readonly trigram: boolean;
+  readonly contentlessDelete: boolean;
+}
+
+/**
+ * Fuzzy name search (research Pattern 1): a contentless FTS5 table over the interned names, rowid = names.id,
+ * tokenized into trigrams with `detail=full` so a quoted phrase of three or more characters finds any
+ * substring. It holds no text a reader can get back, only the index. Writers add a row when they intern a new
+ * name; `meta.fuzzy_path` says whether the last session that wrote kept the table in step. When this session
+ * uses the table but the last one did not (a fresh store, or a capability that came and went), the table is
+ * emptied and refilled from `names` so it can never miss a name. When this session does not use it, the entry
+ * says `like` and the reader falls back to the bounded LIKE scan.
+ */
+function createFuzzyIndex(db: Db, fuzzy: FuzzyIndex): void {
+  const recorded = db.prepare('SELECT value FROM meta WHERE name = ?').get(FUZZY_PATH_META);
+  const setPath = db.prepare('INSERT OR REPLACE INTO meta (name, value) VALUES (?, ?)');
+  if (!fuzzy.trigram) {
+    setPath.run(FUZZY_PATH_META, 'like');
+    return;
+  }
+  db.exec(
+    `CREATE VIRTUAL TABLE IF NOT EXISTS names_fts USING fts5(name, content='', ${
+      fuzzy.contentlessDelete ? 'contentless_delete=1, ' : ''
+    }detail=full, tokenize='trigram')`,
+  );
+  if (recorded === undefined || String(recorded.value) !== 'trigram') {
+    db.exec("INSERT INTO names_fts (names_fts) VALUES ('delete-all')");
+    db.exec('INSERT INTO names_fts (rowid, name) SELECT id, name FROM names');
+    setPath.run(FUZZY_PATH_META, 'trigram');
+  }
 }

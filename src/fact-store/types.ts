@@ -91,9 +91,12 @@ export interface ImporterRecord extends Provenance {
 }
 
 export interface ImportersOptions {
-  /** How many import hops to walk. Default 1; this release returns direct importers whatever the depth. */
+  /**
+   * How many import hops to walk. Default 1, clamped to 1 to 5. Each importing file is reported once, at the
+   * hop where it is first found; a cycle terminates.
+   */
   readonly depth?: number;
-  /** Truncate after ordering by importer path. */
+  /** Truncate after ordering by hop, then importer path, then position. */
   readonly limit?: number;
 }
 
@@ -126,7 +129,10 @@ export interface ResolveOptions {
 }
 
 export interface CallersOptions extends ResolveOptions {
-  /** How many call hops to walk. Default 1; atlas queries are one or two hops. */
+  /**
+   * How many call hops to walk. Default 1, clamped to 1 to 5; atlas queries are one or two hops. Each caller
+   * is reported once, at the hop where it is first found; a cycle terminates.
+   */
   readonly hops?: number;
 }
 
@@ -172,9 +178,12 @@ export interface Reader {
   fileFacts(path: string): Promise<Answer<FileFacts | null>>;
 
   /**
-   * The files of this overlay that import `path`: a relative import specifier, resolved against the importing
-   * file's directory with POSIX normalisation and compared with `path` with its extension removed on both
-   * sides, names it. Non-relative specifiers never match. Ordered by importer path; no match is empty data.
+   * The files of this overlay that import `path`, `options.depth` import steps deep. A relative import
+   * specifier, resolved against the importing file's directory with POSIX normalisation, names the files the
+   * specifier rule matches (exact path, extension-stripped path, extension-stripped specifier, directory index
+   * file); a specifier that names exactly one file is `EXTRACTED`, one that names several is `INFERRED` and
+   * the importer appears for each of them. Non-relative specifiers never match. Ordered by hop, then importer
+   * path, then position; no match is empty data.
    */
   importers(path: string, options?: ImportersOptions): Promise<Answer<readonly ImporterRecord[]>>;
 }
