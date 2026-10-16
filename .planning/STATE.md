@@ -3,16 +3,16 @@ gsd_state_version: "1.0"
 current_phase: 02
 current_phase_name: Grammar Tier, Store and stdio Host
 status: executing
-stopped_at: Completed 02-01-PLAN.md (plans 02-01, 02-02, 02-03 done; next 02-04)
-last_updated: "2026-10-16T18:00:39.434Z"
+stopped_at: Completed 02-08-PLAN.md (plans 02-01, 02-02, 02-03, 02-08 done; next 02-04)
+last_updated: "2026-10-16T18:12:05.441Z"
 last_activity: 2026-10-16
 last_activity_desc: Completed 02-01 ADR ratification and Phase 2 amendments
-state_head: 49d09c0806be6e9eb78eae510b2f4836d0a7645c
+state_head: 47d0dd471f1dadad1f2387838cec63a4aba7c7b5
 progress:
   total_phases: 9
   completed_phases: 1
   total_plans: 48
-  completed_plans: 23
+  completed_plans: 24
   percent: 11
 ---
 
@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-10-15)
 ## Current Position
 
 Phase: 02 (Grammar Tier, Store and stdio Host) — EXECUTING
-Plan: 4 of 28 (plans 02-01, 02-02 and 02-03 complete; they ran out of order, next is 02-04)
+Plan: 4 of 28 (plans 02-01, 02-02, 02-03 and 02-08 complete; they ran out of order, next is 02-04)
 Status: Ready to execute
 Last activity: 2026-10-16 — Completed 02-01 (ADR ratification and Phase 2 amendments)
 
@@ -60,6 +60,7 @@ Progress: [█░░░░░░░░░] 11%
 | Phase 02 P02 | 9 min | 3 tasks | 8 files |
 | Phase 02 P03 | 8 min | 3 tasks | 9 files |
 | Phase 02 P01 | 45 min | 3 tasks | 15 files |
+| Phase 02 P08 | 7 min | 3 tasks | 20 files |
 
 ## Accumulated Context
 
@@ -80,6 +81,7 @@ Recent decisions affecting current work:
 - [Phase 02]: SQLite kit drives incremental_vacuum(N) itself; a fresh store needs auto_vacuum=INCREMENTAL plus VACUUM after the WAL open — Plan 02-03: better-sqlite3 steps a no-column statement once; the WAL open writes the header so the pragma alone is ignored
 - [Phase 02]: Plan 02-01: four Phase 2 ADRs Accepted as issues 11 to 14; amendments dated 2026-10-16 record the in-process Host, six-tool profile, nonce-fenced untrusted_text, watermark_moved cursor and code_impact chain_confidence before code lands
 - [Phase 02]: Plan 02-01: writer contention is lease.db BEGIN EXCLUSIVE with a read-only degraded follower; build and maintain exit 3 when the lease is held; Reconcile idle interval about 10 minutes
+- [Phase 02]: Plan 02-08: upstream lock sources take optional generate:false to build from the archive's shipped parser.c; built-in typescript (ABI 14) and javascript (ABI 15) modules are pinned by npm tarball sha256; no module claims .tsx in Phase 2; linux-x64 hashes are recorded by the artifact-platform rule and await CI confirmation
 
 ### Pending Todos
 
@@ -106,6 +108,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-10-16T18:00:39.385Z
-Stopped at: Completed 02-01-PLAN.md (plans 02-01, 02-02, 02-03 done; next 02-04)
+Last session: 2026-10-16T18:12:05.380Z
+Stopped at: Completed 02-08-PLAN.md (plans 02-01, 02-02, 02-03, 02-08 done; next 02-04)
 Resume file: None
