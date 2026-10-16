@@ -25,6 +25,11 @@ export const MODULES = [
   'metrics',
   'sdk',
   'bin',
+  // Phase 2: each gets its production and test boundary blocks from its first file. None is a SQLite owner or an adapter.
+  'indexer',
+  'query',
+  'tenant',
+  'host',
 ];
 
 /** The only modules that may touch src/sqlite (and so a SQLite driver). */
@@ -159,5 +164,12 @@ export default defineConfig([
   {
     files: ['src/grammar-engine/with-tree.ts'],
     rules: { 'no-restricted-syntax': ['error', ...syntaxFor('grammar-engine', { allowParse: true })] },
+  },
+  // No console output anywhere in src (HST-01, research Pitfall 8): the stdio MCP server's stdout carries
+  // protocol frames, so a stray console.log corrupts them, and the CLI writes only through its injected io.
+  // A separate block on purpose: it sets a rule no boundary block sets, so it cannot replace their options.
+  {
+    files: ['src/**/*.ts'],
+    rules: { 'no-console': 'error' },
   },
 ]);
