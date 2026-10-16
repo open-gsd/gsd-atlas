@@ -235,6 +235,26 @@ describe('decide: the GIT_CONFIG_COUNT/KEY_n/VALUE_n env channel (CR-02, T-01-48
     }
   });
 
+  it('allows names the shared rule carries: 1024 code units, a non-ASCII letter, an emoji, a tab, a leading and a trailing space', () => {
+    for (const name of ['x'.repeat(1024), 'café', '\u{1F600}', 'a\tb', ' lead', 'trail ']) {
+      for (const sub of [['hash-object', '--stdin-paths'], ['ls-files'], ['config', '--name-only', '--get-regexp', '^filter\\.']]) {
+        const d = decide(withChannel(channelOf(driverEntries(name)), ...sub));
+        assert.equal(d.allowed, true, `${JSON.stringify(name).slice(0, 30)} ${sub[0] as string}`);
+      }
+    }
+  });
+
+  it('denies names the shared rule refuses (U+FFFD, an unpaired surrogate, 1025 code units) for hash-object, ls-files and the config read (WR-01)', () => {
+    for (const name of ['a�b', 'a\uD800b', 'a\uDC00b', 'x'.repeat(1025)]) {
+      for (const sub of [['hash-object', '--stdin-paths'], ['ls-files'], ['config', '--name-only', '--get-regexp', '^filter\\.']]) {
+        const d = decide(withChannel(channelOf(driverEntries(name)), ...sub));
+        assertDenied(d);
+        assert.equal(d.diagnostic.code, 'command_denied');
+        assert.ok(d.diagnostic.message.includes('permissions.commands'), d.diagnostic.message);
+      }
+    }
+  });
+
   it('allows required=false and required empty, and several drivers at once', () => {
     assert.equal(decide(withChannel(channelOf([['filter.x.required', '']]), 'ls-files')).allowed, true);
     assert.equal(decide(withChannel(channelOf([...driverEntries('a'), ...driverEntries('b=c')]), 'ls-files')).allowed, true);

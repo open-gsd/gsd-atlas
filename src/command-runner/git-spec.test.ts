@@ -456,3 +456,41 @@ describe('neutraliseFilters and gitSpec refuse the names the shared rule refuses
     }
   });
 });
+
+describe('builder and gate agree on which driver names are valid (WR-01, T-01-51)', () => {
+  const SUBS: ReadonlyArray<readonly string[]> = [['hash-object', '--stdin-paths'], ['ls-files', '-z'], ['config', '--name-only', '--get-regexp', '^filter\\.']];
+  /** A spec whose channel for `name` is written out by hand, so the gate sees it even when the builder would refuse it. */
+  const handBuilt = (sub: readonly string[], name: string): CommandSpec => {
+    const base = gitSpec(sub, { worktree: W });
+    const env: Record<string, string> = { ...base.env, GIT_CONFIG_COUNT: '4' };
+    ['clean', 'smudge', 'process', 'required'].forEach((variable, i) => {
+      env[`GIT_CONFIG_KEY_${String(i)}`] = `filter.${name}.${variable}`;
+      env[`GIT_CONFIG_VALUE_${String(i)}`] = variable === 'required' ? 'false' : '';
+    });
+    return { ...base, env };
+  };
+  const corpus = [...ACCEPTED_NAMES, 'a=b=c', ...REFUSED_NAMES.map((r) => r.name)];
+
+  it('for every name in one corpus, the shared predicate, the builder and the gate give the same answer', () => {
+    for (const name of corpus) {
+      const label = JSON.stringify(name).slice(0, 30);
+      const expected = isNeutralisableFilterName(name);
+      for (const sub of SUBS) {
+        let built: CommandSpec | undefined;
+        try {
+          built = gitSpec(sub, { worktree: W, filterNames: [name, 'other'], env: { GIT_CONFIG_GLOBAL: '/x/empty' } });
+        } catch (error) {
+          assert.ok(error instanceof GitConfigError, `${label}: ${String(error)}`);
+        }
+        assert.equal(built !== undefined, expected, `builder: ${label} ${sub[0] as string}`);
+        if (built !== undefined) assert.equal(decide(built, {}).allowed, true, `gate on builder output: ${label} ${sub[0] as string}`);
+        assert.equal(decide(handBuilt(sub, name), {}).allowed, expected, `gate on a hand-built channel: ${label} ${sub[0] as string}`);
+      }
+    }
+  });
+
+  it('refuses CR in both the builder (typed error) and the gate, so no builder output is ever denied by the gate', () => {
+    assert.throws(() => gitSpec(['hash-object', '--stdin-paths'], { worktree: W, filterNames: ['a\rb'] }), { code: 'filter_enumeration_failed' });
+    assert.equal(decide(handBuilt(['hash-object', '--stdin-paths'], 'a\rb'), {}).allowed, false);
+  });
+});
