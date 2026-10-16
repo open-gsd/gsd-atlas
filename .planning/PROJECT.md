@@ -13,7 +13,7 @@ Agents get correct, cited, current answers about the code and the platform they 
 - **Customer**: Developers and coding agents in the open-gsd ecosystem; anyone replacing paid code-memory/code-graph tools (Memtrace and others) with a free, local one.
 - **Revenue model**: None. Open source (MIT).
 - **Success metric**: Agents using atlas answer the 50-question-per-corpus eval correctly with a verifiable file:line citation at least 80% of the time and "beat" a grep-only baseline. **"Beat" means consume fewer tokens (not faster wall-clock)**, at accuracy no worse than grep outside run-to-run interval (user clarification, 2026-10-15).
-- **Strategy notes**: `docs/PRD.md` §1.1 (why build it), `docs/adr/draft-product-boundary.md`.
+- **Strategy notes**: `docs/PRD.md` §1.1 (why build it), `docs/adr/2-product-boundary.md`.
 
 ## Requirements
 
@@ -52,7 +52,7 @@ Scope is the full PRD 1.0 (milestones M0–M6, 21 acceptance criteria). Source o
 
 ## Context
 
-- **Design is decided in depth.** `docs/PRD.md` (v0.1.0), `docs/DESIGN.md` (decision table A1–A63), 14 `docs/adr/draft-*.md` (all Proposed), `docs/DESIGN-REVIEW.md` (adversarial review), `docs/DIAGNOSTICS.md`, `docs/SDK-PROVIDERS.md`, `docs/AGENT-INTEGRATION.md`, `docs/DASHBOARD-METRICS.md`, `GLOSSARY.md`. No source code exists yet; the repo is docs-only.
+- **Design is decided in depth.** `docs/PRD.md` (v0.1.0), `docs/DESIGN.md` (decision table A1–A63), 14 ADRs in `docs/adr/` (8 Accepted, 6 Proposed `draft-*.md`), `docs/DESIGN-REVIEW.md` (adversarial review), `docs/DIAGNOSTICS.md`, `docs/SDK-PROVIDERS.md`, `docs/AGENT-INTEGRATION.md`, `docs/DASHBOARD-METRICS.md`, `GLOSSARY.md`. No source code exists yet; the repo is docs-only.
 - **Interop:** sibling of gsd-graph; borrows its provenance shape, CLI contract (JSON stdout, reasons stderr, exits 0/1/2/3) and safety code by copy with attribution.
 - **Validation corpora:** gsd-core (284 `.cts` in `src/`, 274 in tsconfig; compiled to gitignored `.cjs`; TS 6.0.3; Node >= 24), gsd-pi (pnpm monorepo, 12 packages, 14 tsconfigs, ~3,900 `.ts`), gsd-path (553 Python files, 230 distinct contents), gsd-graph, plus one open-source Swift app (to be picked during M3). Only gsd-core is cloned locally (on branch `next`, 14 commits behind origin); the others will be cloned into `~/projects`.
 - **Machine:** macOS, Node v26.11.1, Xcode 27.0 (27A266a), iOS SDK 27.0, Swift 6.4, `gh` authenticated; origin is `open-gsd/gsd-atlas`.
