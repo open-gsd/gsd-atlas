@@ -35,6 +35,7 @@ interface RunOptions {
   readonly command?: string;
   readonly entry?: string;
   readonly cwd?: string;
+  readonly platform?: NodeJS.Platform;
   /** False simulates a build whose bin supplies no io.init. */
   readonly withInit?: boolean;
 }
@@ -85,7 +86,7 @@ function makeRig(): Rig {
               init: {
                 home,
                 cwd: options.cwd ?? cwd,
-                platform: process.platform,
+                platform: options.platform ?? process.platform,
                 env: {},
                 mcp: { command: options.command ?? NODE, args: [options.entry ?? ENTRY] },
               },
@@ -357,5 +358,261 @@ describe('gsd-atlas init command line', () => {
     assert.equal(out.code, 2);
     assert.match(out.stderr.join(''), /absolute/);
     assert.deepEqual(fs.readFileSync(file), original);
+  });
+});
+
+function seed(rig: Rig, relative: string, content: string | Buffer): string {
+  const file = path.join(rig.home, ...relative.split('/'));
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, content);
+  return file;
+}
+
+const CURSOR_ENTRY = { command: NODE, args: [ENTRY] };
+
+describe('gsd-atlas init for Cursor', () => {
+  it('merges mcpServers["gsd-atlas"] into ~/.cursor/mcp.json, keeps the rest and one backup, and is idempotent', async () => {
+    const rig = makeRig();
+    const original = `${JSON.stringify({ mcpServers: { other: { command: 'x' } }, extra: [1, 2] }, null, 2)}\n`;
+    const file = seed(rig, '.cursor/mcp.json', original);
+
+    const out = await rig.run(['init', '--agent', 'cursor']);
+
+    assert.equal(out.code, 0);
+    assert.deepEqual(out.envelope().data.hosts, [{ agent: 'cursor', file, action: 'updated' }]);
+    assert.deepEqual(JSON.parse(fs.readFileSync(file, 'utf8')), {
+      mcpServers: { other: { command: 'x' }, 'gsd-atlas': CURSOR_ENTRY },
+      extra: [1, 2],
+    });
+    assert.equal(fs.readFileSync(`${file}${BACKUP}`, 'utf8'), original);
+    const afterFirst = fs.readFileSync(file);
+
+    const second = await rig.run(['init', '--agent', 'cursor']);
+    assert.equal(second.envelope().data.hosts[0]!.action, 'unchanged');
+    assert.deepEqual(fs.readFileSync(file), afterFirst);
+    assert.deepEqual(fs.readdirSync(path.dirname(file)).sort(), ['mcp.json', `mcp.json${BACKUP}`]);
+  });
+
+  it('creates the file containing only the gsd-atlas entry when the .cursor folder has no file', async () => {
+    const rig = makeRig();
+    fs.mkdirSync(path.join(rig.home, '.cursor'));
+
+    const out = await rig.run(['init', '--agent', 'cursor']);
+
+    const file = path.join(rig.home, '.cursor', 'mcp.json');
+    assert.equal(out.code, 0);
+    assert.deepEqual(out.envelope().data.hosts, [{ agent: 'cursor', file, action: 'created' }]);
+    assert.deepEqual(JSON.parse(fs.readFileSync(file, 'utf8')), { mcpServers: { 'gsd-atlas': CURSOR_ENTRY } });
+    assert.deepEqual(fs.readdirSync(path.dirname(file)), ['mcp.json'], 'a new file has nothing to back up');
+  });
+
+  it('refused: a ~/.cursor/mcp.json that does not parse is refused untouched', async () => {
+    const rig = makeRig();
+    const file = seed(rig, '.cursor/mcp.json', '{ "mcpServers": ');
+    const out = await rig.run(['init', '--agent', 'cursor']);
+    assert.equal(out.code, 2);
+    assert.equal(out.envelope().data.hosts[0]!.action, 'refused');
+    assert.equal(fs.readFileSync(file, 'utf8'), '{ "mcpServers": ');
+    assert.deepEqual(fs.readdirSync(path.dirname(file)), ['mcp.json']);
+  });
+});
+
+describe('gsd-atlas init for Codex', () => {
+  const table = (command = NODE, entry = ENTRY): string[] => ['[mcp_servers.gsd-atlas]', `command = "${command}"`, `args = ["${entry}"]`];
+
+  it('appends the [mcp_servers.gsd-atlas] table after a blank line and keeps every existing byte', async () => {
+    const rig = makeRig();
+    const before = 'model = "o3"\n\n[other]\nkey = 1 # keep this comment\n';
+    const file = seed(rig, '.codex/config.toml', before);
+
+    const out = await rig.run(['init', '--agent', 'codex']);
+
+    assert.equal(out.code, 0);
+    assert.deepEqual(out.envelope().data.hosts, [{ agent: 'codex', file, action: 'updated' }]);
+    const after = fs.readFileSync(file, 'utf8');
+    assert.equal(after, `${before}\n${table().join('\n')}\n`);
+    assert.equal(fs.readFileSync(`${file}${BACKUP}`, 'utf8'), before);
+  });
+
+  it('adds the missing final newline before the blank line', async () => {
+    const rig = makeRig();
+    const file = seed(rig, '.codex/config.toml', 'model = "o3"');
+    await rig.run(['init', '--agent', 'codex']);
+    assert.equal(fs.readFileSync(file, 'utf8'), `model = "o3"\n\n${table().join('\n')}\n`);
+  });
+
+  it('replaces only the existing gsd-atlas block, from its header to the next table, and nothing else changes (Codex replace-block)', async () => {
+    const rig = makeRig();
+    const head = ['model = "o3"', '', '# my servers', '[mcp_servers.first]', 'command = "first"', ''];
+    const old = ['[mcp_servers.gsd-atlas]', 'command = "/old/node"', 'args = ["/old/entry.js"]', ''];
+    const tail = ['[mcp_servers.other]', 'command = "other"', 'args = ["--flag"]', ''];
+    const file = seed(rig, '.codex/config.toml', [...head, ...old, ...tail].join('\n'));
+
+    const out = await rig.run(['init', '--agent', 'codex']);
+
+    assert.equal(out.code, 0);
+    assert.equal(out.envelope().data.hosts[0]!.action, 'updated');
+    assert.equal(fs.readFileSync(file, 'utf8'), [...head, ...table(), '', ...tail].join('\n'));
+  });
+
+  it('reports unchanged for an identical block and leaves the bytes alone', async () => {
+    const rig = makeRig();
+    const text = ['model = "o3"', '', ...table(), '', '[mcp_servers.other]', 'command = "o"', ''].join('\n');
+    const file = seed(rig, '.codex/config.toml', text);
+    const out = await rig.run(['init', '--agent', 'codex']);
+    assert.equal(out.code, 0);
+    assert.equal(out.envelope().data.hosts[0]!.action, 'unchanged');
+    assert.equal(fs.readFileSync(file, 'utf8'), text);
+    assert.deepEqual(fs.readdirSync(path.dirname(file)), ['config.toml']);
+  });
+
+  it('creates the file with just the table when the .codex folder has no file', async () => {
+    const rig = makeRig();
+    fs.mkdirSync(path.join(rig.home, '.codex'));
+    const out = await rig.run(['init', '--agent', 'codex']);
+    const file = path.join(rig.home, '.codex', 'config.toml');
+    assert.deepEqual(out.envelope().data.hosts, [{ agent: 'codex', file, action: 'created' }]);
+    assert.equal(fs.readFileSync(file, 'utf8'), `${table().join('\n')}\n`);
+  });
+
+  it('escapes backslashes and quotes in Windows paths as TOML basic strings', async () => {
+    const rig = makeRig();
+    fs.mkdirSync(path.join(rig.home, '.codex'));
+    const command = 'C:\\Program Files\\nodejs\\node.exe';
+    const entry = 'C:\\gsd "atlas"\\bin\\gsd-atlas-mcp.js';
+    await rig.run(['init', '--agent', 'codex'], { command, entry, platform: 'win32' });
+    assert.equal(
+      fs.readFileSync(path.join(rig.home, '.codex', 'config.toml'), 'utf8'),
+      [
+        '[mcp_servers.gsd-atlas]',
+        'command = "C:\\\\Program Files\\\\nodejs\\\\node.exe"',
+        'args = ["C:\\\\gsd \\"atlas\\"\\\\bin\\\\gsd-atlas-mcp.js"]',
+        '',
+      ].join('\n'),
+    );
+  });
+
+  it('keeps CRLF line endings for the new block', async () => {
+    const rig = makeRig();
+    const file = seed(rig, '.codex/config.toml', 'model = "o3"\r\n[other]\r\nkey = 1\r\n');
+    await rig.run(['init', '--agent', 'codex']);
+    const text = fs.readFileSync(file, 'utf8');
+    assert.equal(text, `model = "o3"\r\n[other]\r\nkey = 1\r\n\r\n${table().join('\r\n')}\r\n`);
+  });
+
+  const refusals: ReadonlyArray<{ title: string; bytes: Buffer }> = [
+    { title: 'a NUL byte', bytes: Buffer.from('model = "o3"\0\n') },
+    { title: 'a table header without a closing bracket', bytes: Buffer.from('model = "o3"\n[mcp_servers.other\ncommand = "x"\n') },
+    { title: 'the table written with a quoted key', bytes: Buffer.from('[mcp_servers."gsd-atlas"]\ncommand = "x"\n') },
+  ];
+  for (const { title, bytes } of refusals) {
+    it(`refused: ${title} is refused untouched with exit 2`, async () => {
+      const rig = makeRig();
+      const file = seed(rig, '.codex/config.toml', bytes);
+      const out = await rig.run(['init', '--agent', 'codex']);
+      assert.equal(out.code, 2);
+      assert.equal(out.envelope().data.hosts[0]!.action, 'refused');
+      assert.deepEqual(fs.readFileSync(file), bytes);
+      assert.deepEqual(fs.readdirSync(path.dirname(file)), ['config.toml']);
+    });
+  }
+});
+
+describe('gsd-atlas init host detection and the agent filter', () => {
+  it('skips every host as not_detected, with exit 0 and a stderr line, when the home has no agent config', async () => {
+    const rig = makeRig();
+    const out = await rig.run(['init']);
+    assert.equal(out.code, 0);
+    const envelope = out.envelope();
+    assert.equal(envelope.ok, true);
+    assert.deepEqual(
+      envelope.data.hosts.map((host) => [host.agent, host.action, host.reason]),
+      [
+        ['claude', 'skipped', 'not_detected'],
+        ['cursor', 'skipped', 'not_detected'],
+        ['codex', 'skipped', 'not_detected'],
+      ],
+    );
+    assert.match(out.stderr.join(''), /no agent host was found/);
+    assert.deepEqual(fs.readdirSync(rig.home), []);
+  });
+
+  it('skips Claude Code as config_not_found and prints the exact claude mcp add line when only the folder exists (config_not_found)', async () => {
+    const rig = makeRig();
+    fs.mkdirSync(path.join(rig.home, '.claude'));
+    const out = await rig.run(['init', '--agent', 'claude']);
+    assert.equal(out.code, 0);
+    const host = out.envelope().data.hosts[0]!;
+    assert.equal(host.action, 'skipped');
+    assert.equal(host.reason, 'config_not_found');
+    const lines = out.stderr.join('').split('\n');
+    assert.ok(lines.includes(`claude mcp add --scope user gsd-atlas -- ${NODE} ${ENTRY}`), lines.join('\n'));
+    assert.ok(!fs.existsSync(path.join(rig.home, '.claude.json')), 'init does not create the file the host owns');
+  });
+
+  it('quotes a manual-command word that contains a space', async () => {
+    const rig = makeRig();
+    fs.mkdirSync(path.join(rig.home, '.claude'));
+    const out = await rig.run(['init', '--agent', 'claude'], { command: '/opt/my node/bin/node', platform: 'linux' });
+    assert.ok(out.stderr.join('').split('\n').includes(`claude mcp add --scope user gsd-atlas -- "/opt/my node/bin/node" ${ENTRY}`));
+  });
+
+  it('with --agent codex touches only Codex', async () => {
+    const rig = makeRig();
+    const claude = seedClaude(rig);
+    const cursor = seed(rig, '.cursor/mcp.json', '{"mcpServers":{}}\n');
+    const codex = seed(rig, '.codex/config.toml', 'model = "o3"\n');
+    const claudeBytes = fs.readFileSync(claude);
+    const cursorBytes = fs.readFileSync(cursor);
+
+    const out = await rig.run(['init', '--agent', 'codex']);
+
+    assert.equal(out.code, 0);
+    assert.deepEqual(out.envelope().data.hosts.map((host) => host.agent), ['codex']);
+    assert.deepEqual(fs.readFileSync(claude), claudeBytes);
+    assert.deepEqual(fs.readFileSync(cursor), cursorBytes);
+    assert.ok(fs.readFileSync(codex, 'utf8').includes('[mcp_servers.gsd-atlas]'));
+  });
+
+  it('registers all three hosts in a default run, in the order claude, cursor, codex', async () => {
+    const rig = makeRig();
+    seedClaude(rig);
+    seed(rig, '.cursor/mcp.json', '{}\n');
+    seed(rig, '.codex/config.toml', '');
+    const out = await rig.run(['init']);
+    assert.equal(out.code, 0);
+    assert.deepEqual(
+      out.envelope().data.hosts.map((host) => [host.agent, host.action]),
+      [['claude', 'updated'], ['cursor', 'updated'], ['codex', 'updated']],
+    );
+  });
+
+  it('exits 1 for an unknown agent without touching any file', async () => {
+    const rig = makeRig();
+    const file = seedClaude(rig);
+    const original = fs.readFileSync(file);
+    const out = await rig.run(['init', '--agent', 'unknown']);
+    assert.equal(out.code, 1);
+    assert.deepEqual(out.stdout, []);
+    assert.match(out.stderr.join(''), /unknown agent "unknown"/);
+    assert.deepEqual(fs.readFileSync(file), original);
+  });
+
+  it('refuses Claude, updates Cursor and exits 2 in a mixed run', async () => {
+    const rig = makeRig();
+    const claude = seedClaude(rig, '{ not json');
+    const cursor = seed(rig, '.cursor/mcp.json', '{"mcpServers":{}}\n');
+
+    const out = await rig.run(['init']);
+
+    assert.equal(out.code, 2);
+    const envelope = out.envelope();
+    assert.equal(envelope.ok, false);
+    assert.deepEqual(
+      envelope.data.hosts.map((host) => [host.agent, host.action]),
+      [['claude', 'refused'], ['cursor', 'updated'], ['codex', 'skipped']],
+    );
+    assert.equal(fs.readFileSync(claude, 'utf8'), '{ not json');
+    assert.deepEqual(JSON.parse(fs.readFileSync(cursor, 'utf8')).mcpServers['gsd-atlas'], CURSOR_ENTRY);
   });
 });
