@@ -5,3 +5,12 @@
 export { FakeClock } from './fake-clock.ts';
 export { makeTempDir, realPath } from './tmpdir.ts';
 export type { TempDir } from './tmpdir.ts';
+export { createTempGitRepo } from './git-repo.ts';
+export type {
+  GitRepoWorld,
+  SetupResult,
+  SetupRunner,
+  SetupSpec,
+  TempGitRepo,
+  TempGitRepoOptions,
+} from './git-repo.ts';
