@@ -14,6 +14,7 @@ import {
   systemClock,
   validateFileFacts,
 } from './index.ts';
+import * as kernel from './index.ts';
 import type {
   Answer,
   FileFacts,
@@ -181,6 +182,181 @@ describe('validateFileFacts', () => {
     const bad = { ...goodFacts(), symbols: undefined };
     const out = validateFileFacts(bad);
     assert.ok(out.some((d) => d.code === 'facts_invalid' && d.subject === 'src/a.ts'));
+  });
+});
+
+describe('validateFileFacts with the Phase 2 optional fields', () => {
+  function richFacts(): FileFacts {
+    return {
+      ...goodFacts(),
+      symbols: [
+        { name: 'A', kind: 'class', qualifiedName: 'A', span: span(0, 0, 4, 1), exported: true },
+        { name: 'm', kind: 'method', qualifiedName: 'A.m', span: span(1, 2, 3, 3), parent: 0 },
+      ],
+      refSites: [{ name: 'B', span: span(5, 0, 5, 1), kind: 'call', enclosing: 0 }],
+      imports: [
+        {
+          path: './b',
+          span: span(6, 0, 6, 12),
+          style: 'es',
+          bindings: [{ imported: 'a', local: 'b' }],
+        },
+      ],
+      exports: [{ name: 'A', local: 'A', span: span(7, 0, 7, 10) }],
+    };
+  }
+
+  it('accepts exports, reference kinds, enclosing symbols and import bindings', () => {
+    assert.deepEqual(validateFileFacts(richFacts()), []);
+  });
+
+  it('accepts every declared reference kind and import style', () => {
+    for (const kind of kernel.REF_KINDS) {
+      const facts: FileFacts = {
+        ...goodFacts(),
+        refSites: [{ name: 'B', span: span(5, 0, 5, 1), kind }],
+      };
+      assert.deepEqual(validateFileFacts(facts), [], kind);
+    }
+    for (const style of kernel.IMPORT_STYLES) {
+      const facts: FileFacts = {
+        ...goodFacts(),
+        imports: [{ path: './b', span: span(6, 0, 6, 12), style }],
+      };
+      assert.deepEqual(validateFileFacts(facts), [], style);
+    }
+  });
+
+  it('declares the closed reference-kind and import-style sets', () => {
+    assert.deepEqual([...kernel.REF_KINDS], ['call', 'new', 'read', 'type', 'heritage', 'member']);
+    assert.deepEqual([...kernel.IMPORT_STYLES], ['es', 'cjs', 'side-effect', 'reexport']);
+  });
+
+  it('still accepts a Phase 1 shaped value with none of the new fields', () => {
+    assert.deepEqual(validateFileFacts(goodFacts()), []);
+  });
+
+  it('rejects a ref site enclosing index outside the symbols array', () => {
+    const bad: FileFacts = {
+      ...goodFacts(),
+      symbols: [{ name: 'A', kind: 'class', span: span(0, 0, 4, 1) }],
+      refSites: [{ name: 'B', span: span(5, 0, 5, 1), enclosing: 5 }],
+    };
+    const out = validateFileFacts(bad);
+    assert.equal(out.length, 1);
+    assert.equal(out[0]!.code, 'facts_invalid');
+    assert.equal(out[0]!.subject, 'src/a.ts');
+  });
+
+  it('rejects a negative or fractional enclosing index', () => {
+    for (const enclosing of [-1, 0.5]) {
+      const bad: FileFacts = {
+        ...goodFacts(),
+        refSites: [{ name: 'B', span: span(5, 0, 5, 1), enclosing }],
+      };
+      const out = validateFileFacts(bad);
+      assert.equal(out.length, 1);
+      assert.equal(out[0]!.code, 'facts_invalid');
+    }
+  });
+
+  it('rejects a symbol parent index outside the symbols array', () => {
+    const bad: FileFacts = {
+      ...goodFacts(),
+      symbols: [
+        { name: 'A', kind: 'class', span: span(0, 0, 4, 1) },
+        { name: 'm', kind: 'method', span: span(1, 2, 3, 3), parent: 3 },
+      ],
+    };
+    const out = validateFileFacts(bad);
+    assert.equal(out.length, 1);
+    assert.equal(out[0]!.code, 'facts_invalid');
+    assert.equal(out[0]!.subject, 'src/a.ts');
+  });
+
+  it('rejects a reference kind outside the closed set', () => {
+    const bad = {
+      ...goodFacts(),
+      refSites: [{ name: 'B', span: span(5, 0, 5, 1), kind: 'bogus' }],
+    };
+    const out = validateFileFacts(bad);
+    assert.equal(out.length, 1);
+    assert.equal(out[0]!.code, 'facts_invalid');
+    assert.equal(out[0]!.subject, 'src/a.ts');
+  });
+
+  it('rejects an import style outside the closed set', () => {
+    const bad = {
+      ...goodFacts(),
+      imports: [{ path: './b', span: span(6, 0, 6, 12), style: 'amd' }],
+    };
+    const out = validateFileFacts(bad);
+    assert.equal(out.length, 1);
+    assert.equal(out[0]!.code, 'facts_invalid');
+  });
+
+  it('flags an export without a span as span_missing', () => {
+    const bad = { ...goodFacts(), exports: [{ name: 'A' }] };
+    const out = validateFileFacts(bad);
+    assert.equal(out.length, 1);
+    assert.equal(out[0]!.code, 'span_missing');
+    assert.equal(out[0]!.subject, 'src/a.ts');
+  });
+
+  it('flags an export whose end precedes its start as span_invalid', () => {
+    const bad: FileFacts = {
+      ...goodFacts(),
+      exports: [{ name: 'A', span: span(7, 4, 7, 1) }],
+    };
+    const out = validateFileFacts(bad);
+    assert.equal(out.length, 1);
+    assert.equal(out[0]!.code, 'span_invalid');
+  });
+
+  it('flags an export with an empty name as facts_invalid', () => {
+    const bad: FileFacts = {
+      ...goodFacts(),
+      exports: [{ name: '', span: span(7, 0, 7, 1) }],
+    };
+    const out = validateFileFacts(bad);
+    assert.equal(out.length, 1);
+    assert.equal(out[0]!.code, 'facts_invalid');
+  });
+
+  it('flags a non-array exports field as facts_invalid', () => {
+    const bad = { ...goodFacts(), exports: 'A' };
+    const out = validateFileFacts(bad);
+    assert.equal(out.length, 1);
+    assert.equal(out[0]!.code, 'facts_invalid');
+    assert.equal(out[0]!.subject, 'src/a.ts');
+  });
+
+  it('flags an import binding with an empty imported or local name as facts_invalid', () => {
+    for (const binding of [
+      { imported: '', local: 'b' },
+      { imported: 'a', local: '' },
+    ]) {
+      const bad: FileFacts = {
+        ...goodFacts(),
+        imports: [{ path: './b', span: span(6, 0, 6, 12), style: 'es', bindings: [binding] }],
+      };
+      const out = validateFileFacts(bad);
+      assert.equal(out.length, 1);
+      assert.equal(out[0]!.code, 'facts_invalid');
+      assert.equal(out[0]!.subject, 'src/a.ts');
+    }
+  });
+
+  it('[edge LNG-04/empty] validates empty arrays and zero parse bytes with no diagnostics', () => {
+    const empty: FileFacts = {
+      ...goodFacts(),
+      symbols: [],
+      refSites: [],
+      imports: [],
+      exports: [],
+      parse: { errorBytes: 0, totalBytes: 0 },
+    };
+    assert.deepEqual(validateFileFacts(empty), []);
   });
 });
 
