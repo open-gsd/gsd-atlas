@@ -239,6 +239,48 @@ for (const driver of ['node:sqlite', 'better-sqlite3'] as const satisfies readon
       });
     });
 
+    it('full vacuum: a file whose pages are mostly empty inside, with no free page, is vacuumed on request and never without it', async () => {
+      await withRig(driver, async (rig) => {
+        const store = await rig.open();
+        const writer = store.writer();
+        await seed(writer, 600);
+        // Retire two files of every three: the survivors stay scattered through every table, so collecting the
+        // rest empties few pages and leaves most of them two thirds empty.
+        for (let index = 0; index < 600; index += 1) {
+          if (index % 3 === 0) continue;
+          const hash = generatedHash(1000 + index);
+          await writer.commitFile({ worktree: 'main', path: generatedPath(index), hash, facts: { ...generatedFacts(index), contentHash: hash } });
+        }
+        writer.release();
+        const collected = await store.collect({ budgetMs: 60_000 });
+        assert.equal(collected.processed, 400);
+        await store.compact({ budgetMs: 60_000 });
+        assert.equal(Number(await rig.pragma('freelist_count')), 0, 'the setup leaves no free page');
+        const pagesBefore = Number(await rig.pragma('page_count'));
+
+        let vacuums = 0;
+        lifecycleTestHooks.onVacuum = () => {
+          vacuums += 1;
+        };
+        const plain = await store.compact({ budgetMs: 60_000 });
+        assert.equal(vacuums, 0, 'never without the request');
+        assert.equal(plain.processed, 0);
+        assert.equal(Number(await rig.pragma('page_count')), pagesBefore);
+
+        const full = await store.compact({ budgetMs: 60_000, full: true });
+        assert.equal(vacuums, 1, 'a file over a third empty inside is vacuumed when asked');
+        assert.equal(full.complete, true);
+        assert.ok(full.processed > 0, 'processed counts the pages the vacuum gave back');
+        const pagesAfter = Number(await rig.pragma('page_count'));
+        assert.ok(pagesAfter < pagesBefore * 0.8, `the file shrank from ${pagesBefore} to ${pagesAfter} pages`);
+        assert.equal((await store.at('main').find('sym0')).data.length, 600, 'every live file is still there');
+
+        const again = await store.compact({ budgetMs: 60_000, full: true });
+        assert.equal(vacuums, 1, 'idempotent: a packed file is not vacuumed again');
+        assert.equal(again.processed, 0);
+      });
+    });
+
     it('compact on a store with nothing to free processes nothing, and a follower may not compact', async () => {
       await withRig(driver, async (rig) => {
         const leader = await rig.open({ lease: 'acquire' });
