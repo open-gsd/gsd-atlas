@@ -1,0 +1,130 @@
+import assert from 'node:assert/strict';
+import { describe, it } from 'node:test';
+
+import type { OverlaySnapshot, RefSiteKey, ResolutionContext, ResolvedEdge, SymbolIdentity } from '../facts/index.ts';
+import { definePreciseResolverContract } from './contract.ts';
+import type { PreciseResolverSubject } from './contract.ts';
+import { createScriptedResolver } from './index.ts';
+import type { ScriptedEdge } from './index.ts';
+
+const overlay: OverlaySnapshot = { id: 'overlay-1', pathToHash: new Map([['src/a.ts', 'h1']]) };
+const context: ResolutionContext = { id: 'ctx-1', configHashes: ['c1'] };
+
+const site = (path: string, line: number, name: string): RefSiteKey => ({
+  path,
+  span: { startLine: line, startColumn: 2, endLine: line, endColumn: 2 + name.length },
+  name,
+});
+
+const target = (qualifiedName: string): SymbolIdentity => ({
+  repo: 'r',
+  path: 'src/defs.ts',
+  qualifiedName,
+  kind: 'function',
+});
+
+const SITE_A = site('src/a.ts', 3, 'alpha');
+const SITE_B = site('src/b.ts', 7, 'beta');
+const SITE_NONE = site('src/c.ts', 1, 'gamma');
+
+const SCRIPT: readonly ScriptedEdge[] = [
+  { site: SITE_A, target: target('alpha') },
+  { site: SITE_B, target: target('beta') },
+  { site: SITE_A, target: target('alpha2') },
+];
+
+function scriptedSubject(): PreciseResolverSubject {
+  let closes = 0;
+  return {
+    resolver: createScriptedResolver({ id: 'scripted', edges: SCRIPT, onClose: () => void (closes += 1) }),
+    overlay,
+    context,
+    resolvable: [SITE_A, SITE_B],
+    unresolvable: SITE_NONE,
+    closeCount: () => closes,
+  };
+}
+
+async function collect(iterable: AsyncIterable<ResolvedEdge>): Promise<ResolvedEdge[]> {
+  const edges: ResolvedEdge[] = [];
+  for await (const edge of iterable) {
+    edges.push(edge);
+  }
+  return edges;
+}
+
+definePreciseResolverContract('scripted', scriptedSubject);
+
+describe('scripted PreciseResolver', () => {
+  it('yields each requested site its scripted edges, in scripted order within a site', async () => {
+    const resolver = createScriptedResolver({ id: 'scripted', edges: SCRIPT });
+    const edges = await collect(resolver.resolve(overlay, context, [SITE_A]));
+    assert.deepEqual(
+      edges.map((e) => e.target.qualifiedName),
+      ['alpha', 'alpha2'],
+    );
+  });
+
+  it('answers a site requested twice once', async () => {
+    const resolver = createScriptedResolver({ id: 'scripted', edges: SCRIPT });
+    const edges = await collect(resolver.resolve(overlay, context, [SITE_B, SITE_B]));
+    assert.equal(edges.length, 1);
+  });
+
+  it('matches a site by path, span and name together', async () => {
+    const resolver = createScriptedResolver({ id: 'scripted', edges: SCRIPT });
+    const sameNameOtherPlace = site('src/a.ts', 4, 'alpha');
+    const sameSpanOtherName = { ...SITE_A, name: 'alpha-renamed' };
+    const sameSpanOtherPath = { ...SITE_A, path: 'src/z.ts' };
+    for (const probe of [sameNameOtherPlace, sameSpanOtherName, sameSpanOtherPath]) {
+      assert.deepEqual(await collect(resolver.resolve(overlay, context, [probe])), []);
+    }
+  });
+
+  it('stamps EXTRACTED and its own id even when the script carries other values', async () => {
+    const sloppy = { site: SITE_A, target: target('alpha'), confidence: 'INFERRED', resolver: 'someone-else' };
+    const resolver = createScriptedResolver({ id: 'mine', edges: [sloppy as unknown as ScriptedEdge] });
+    const [edge] = await collect(resolver.resolve(overlay, context, [SITE_A]));
+    assert.equal(edge?.confidence, 'EXTRACTED');
+    assert.equal(edge?.resolver, 'mine');
+  });
+
+  it('computes edges from the overlay and context when given a function', async () => {
+    const seen: string[] = [];
+    const resolver = createScriptedResolver({
+      id: 'dynamic',
+      edges: (o, c) => {
+        seen.push(o.id, c.id);
+        return [{ site: SITE_A, target: target(`from-${o.id}`) }];
+      },
+    });
+    const edges = await collect(resolver.resolve(overlay, context, [SITE_A]));
+    assert.deepEqual(seen, ['overlay-1', 'ctx-1']);
+    assert.equal(edges[0]?.target.qualifiedName, 'from-overlay-1');
+  });
+
+  it('runs cleanup when the script function throws, and surfaces the error', async () => {
+    let closes = 0;
+    const boom = new Error('script failed');
+    const resolver = createScriptedResolver({
+      id: 'throws',
+      edges: () => {
+        throw boom;
+      },
+      onClose: () => void (closes += 1),
+    });
+    await assert.rejects(collect(resolver.resolve(overlay, context, [SITE_A])), (error: unknown) => error === boom);
+    assert.equal(closes, 1);
+  });
+
+  it('runs cleanup once per iteration, not once per resolver', async () => {
+    const subject = scriptedSubject();
+    await collect(subject.resolver.resolve(overlay, context, [SITE_A]));
+    await collect(subject.resolver.resolve(overlay, context, [SITE_B]));
+    assert.equal(subject.closeCount(), 2);
+  });
+
+  it('refuses an empty id', () => {
+    assert.throws(() => createScriptedResolver({ id: '', edges: [] }), RangeError);
+  });
+});
