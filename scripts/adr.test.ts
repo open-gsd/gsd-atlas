@@ -1,9 +1,11 @@
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { describe, it } from 'node:test';
 
+import * as adrModule from './adr.ts';
 import {
   PHASE1_SLUGS,
   checkRelativeLinks,
@@ -17,7 +19,8 @@ const ROOT = path.resolve(import.meta.dirname, '..');
 const ADR_DIR = path.join(ROOT, 'docs', 'adr');
 const REPO_URL = 'https://github.com/open-gsd/gsd-atlas';
 
-// The eight Phase 1 ADRs, all ratified by plan 01-02.
+// The ratified set: the eight Phase 1 ADRs (plan 01-02) plus those of the four Phase 2 ADRs
+// that plan 02-01 has ratified so far (FND-12, D-18).
 const RATIFIED: readonly string[] = [
   'product-boundary',
   'trust-boundaries',
@@ -27,11 +30,11 @@ const RATIFIED: readonly string[] = [
   'fact-store-interface',
   'sqlite-store',
   'tenant-composition',
+  'worktree-lifecycle',
 ];
 
-// The six ADRs that stay Proposed, and the phase that must ratify each.
+// The ADRs that stay Proposed, and the phase that must ratify each.
 const REMAINING: Readonly<Record<string, string>> = {
-  'worktree-lifecycle': 'Phase 2',
   'query-and-policy': 'Phase 2',
   'mcp-contract': 'Phase 2',
   'value-dashboard': 'Phase 2',
@@ -199,6 +202,50 @@ describe('checkRelativeLinks', () => {
   });
 });
 
+describe('adr-ratify slug sets (FND-12, D-18)', () => {
+  it('PHASE2_SLUGS is exactly the four Phase 2 ADRs and RATIFIED_SLUGS is Phase 1 then Phase 2', () => {
+    assert.deepEqual(adrModule.PHASE2_SLUGS, [
+      'worktree-lifecycle',
+      'query-and-policy',
+      'mcp-contract',
+      'value-dashboard',
+    ]);
+    assert.deepEqual(adrModule.RATIFIED_SLUGS, [...PHASE1_SLUGS, ...(adrModule.PHASE2_SLUGS ?? [])]);
+    assert.equal(new Set(adrModule.RATIFIED_SLUGS).size, 12);
+    assert.equal(PHASE1_SLUGS.length, 8);
+  });
+
+  it('a second ratify run for an already-numbered slug exits 1, refuses, and changes no file', () => {
+    // Drive a temp copy of the scripts and of docs/adr so the real tree is never touched.
+    const dir = tmpTree({});
+    try {
+      fs.mkdirSync(path.join(dir, 'scripts'), { recursive: true });
+      for (const name of ['adr.ts', 'adr-ratify.ts']) {
+        fs.copyFileSync(path.join(ROOT, 'scripts', name), path.join(dir, 'scripts', name));
+      }
+      fs.cpSync(ADR_DIR, path.join(dir, 'docs', 'adr'), { recursive: true });
+      const snapshot = (): Record<string, string> => {
+        const out: Record<string, string> = {};
+        for (const name of fs.readdirSync(path.join(dir, 'docs', 'adr')).sort()) {
+          out[name] = fs.readFileSync(path.join(dir, 'docs', 'adr', name), 'utf8');
+        }
+        return out;
+      };
+      const before = snapshot();
+      const run = spawnSync(
+        process.execPath,
+        [path.join(dir, 'scripts', 'adr-ratify.ts'), '--slug', 'fact-model', '--issue', '99'],
+        { encoding: 'utf8' },
+      );
+      assert.equal(run.status, 1);
+      assert.match(run.stderr, /refusing to ratify twice/);
+      assert.deepEqual(snapshot(), before);
+    } finally {
+      rmTree(dir);
+    }
+  });
+});
+
 describe('Phase 1 ADR set (integration over the real docs/adr)', () => {
   it('PHASE1_SLUGS is exactly the eight Phase 1 ADRs', () => {
     assert.deepEqual(
@@ -259,19 +306,19 @@ describe('Phase 1 ADR set (integration over the real docs/adr)', () => {
     });
   }
 
-  it('git tracks eight numbered Phase 1 ADRs and six drafts', () => {
+  it('docs/adr holds one numbered file per ratified ADR and one draft per remaining ADR', () => {
     const names = fs.readdirSync(ADR_DIR).filter((n) => n !== 'README.md');
-    assert.equal(names.filter((n) => /^\d+-/.test(n)).length, 8);
-    assert.equal(names.filter((n) => n.startsWith('draft-')).length, 6);
+    assert.equal(names.filter((n) => /^\d+-/.test(n)).length, RATIFIED.length);
+    assert.equal(names.filter((n) => n.startsWith('draft-')).length, Object.keys(REMAINING).length);
   });
 
-  it('README has a Ratification log with eight rows and a schedule with six', () => {
+  it('README has a Ratification log row per ratified ADR and a schedule row per remaining ADR', () => {
     assert.match(readme, /^## Ratification log$/m);
     assert.match(readme, /^## Ratification schedule$/m);
     const afterLog = readme.split(/^## Ratification log$/m)[1] ?? '';
     const logBlock = afterLog.split(/^## /m)[0] ?? '';
     const logRows = logBlock.split('\n').filter((l) => /^\| \[?[a-z]/.test(l) && !l.startsWith('| Slug'));
-    assert.equal(logRows.length, 8);
+    assert.equal(logRows.length, RATIFIED.length);
     for (const slug of RATIFIED) {
       const row = logRows.find((l) => l.includes(`| ${slug} |`));
       assert.ok(row, `log has no row for ${slug}`);
@@ -283,7 +330,7 @@ describe('Phase 1 ADR set (integration over the real docs/adr)', () => {
     const afterSchedule = readme.split(/^## Ratification schedule$/m)[1] ?? '';
     const scheduleBlock = afterSchedule.split(/^## /m)[0] ?? '';
     const scheduleRows = scheduleBlock.split('\n').filter((l) => /^\| [a-z]/.test(l) && !l.startsWith('| ADR'));
-    assert.equal(scheduleRows.length, 6);
+    assert.equal(scheduleRows.length, Object.keys(REMAINING).length);
   });
 
   it('no ratified ADR or docs/PRD.md contains a backslash followed by a digit', () => {
@@ -587,14 +634,5 @@ describe('ADR amendments (FND-10, D-16, D-17)', () => {
       }
     }
     assert.ok(checked > 0, 'no amendment was found to check against the README log');
-  });
-
-  it('the Phase 2 amendments are not applied here (writer contention, metrics migrations)', () => {
-    for (const slug of ['worktree-lifecycle', 'value-dashboard']) {
-      const file = findAdrFile(ADR_DIR, slug);
-      assert.equal(file, `draft-${slug}.md`);
-      const body = fs.readFileSync(path.join(ADR_DIR, file), 'utf8');
-      assert.doesNotMatch(body, /^## Amendment /m, `${slug} must wait for Phase 2's ratification (FND-12)`);
-    }
   });
 });
