@@ -58,6 +58,28 @@ export interface HashPathsResult {
   readonly diagnostics: Diagnostic[];
 }
 
+/** One worktree of a repository, as `git worktree list --porcelain -z` reports it. */
+export interface WorktreeInfo {
+  /** Canonical real path; a directory that no longer exists keeps the path git reports and is `prunable`. */
+  readonly path: string;
+  /** The checked-out commit, or null for a bare repository or a branch with no commits yet. */
+  readonly head: string | null;
+  /** The short branch name (`main`, not `refs/heads/main`), or null when detached or bare. */
+  readonly branch: string | null;
+  readonly detached: boolean;
+  readonly bare: boolean;
+  readonly locked: boolean;
+  readonly prunable: boolean;
+}
+
+/** What {@link SourceTree.readText} found. A bad path is an answer, never a throw. */
+export type ReadTextResult =
+  | { readonly kind: 'ok'; readonly text: string }
+  | { readonly kind: 'missing' }
+  | { readonly kind: 'escape' }
+  | { readonly kind: 'not_file' }
+  | { readonly kind: 'too_large' };
+
 /** What {@link SourceTree.sourceSet} keeps and why it drops the rest. */
 export interface SourceSetOptions {
   /** Extensions a loaded module claims: lower-case, with the dot (`.ts`). Matched case-insensitively on the last path segment. */

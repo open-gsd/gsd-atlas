@@ -82,6 +82,18 @@ export const SOURCE_SET_WORLD: SourceTreeWorld = {
   },
 };
 
+/** A world for the readText cases: a BOM with CRLF endings, a file of exactly 100 bytes, a directory and non-ASCII names. */
+export const READ_TEXT_WORLD: SourceTreeWorld = {
+  committed: {
+    'bom.txt': '﻿hello\r\nworld\r\n',
+    'hundred.txt': 'z'.repeat(100),
+    'dir/inner.txt': 'inner\n',
+    'café dir/ü file.txt': 'unicode\n',
+  },
+  working: { 'untracked.txt': 'not committed\n' },
+  ignored: [],
+};
+
 /** What a snapshot of {@link CONTRACT_WORLD} must be, derived from the world alone. */
 function expectedFiles(world: SourceTreeWorld): Array<[string, string]> {
   const isIgnored = (rel: string): boolean => world.ignored.some((e) => (e.endsWith('/') ? rel.startsWith(e) : rel === e));
@@ -332,6 +344,85 @@ export function defineSourceTreeContract(label: string, make: MakeSourceTree): v
           const noFiles = await tree.sourceSet(worktree, new Map(), SOURCE_SET_OPTIONS);
           assert.equal(noFiles.files.size, 0);
           assert.deepEqual(noFiles.skipped, []);
+        }),
+      );
+    });
+
+    describe('readText', () => {
+      it(
+        'returns the working-tree text of a regular file, including names with spaces and non-ASCII letters',
+        withTree(READ_TEXT_WORLD, async ({ tree, worktree }) => {
+          assert.deepEqual(await tree.readText(worktree, 'dir/inner.txt'), { kind: 'ok', text: 'inner\n' });
+          assert.deepEqual(await tree.readText(worktree, 'untracked.txt'), { kind: 'ok', text: 'not committed\n' });
+          assert.deepEqual(await tree.readText(worktree, 'café dir/ü file.txt'), { kind: 'ok', text: 'unicode\n' });
+        }),
+      );
+
+      it(
+        'preserves a leading BOM and CRLF line endings for the caller to deal with',
+        withTree(READ_TEXT_WORLD, async ({ tree, worktree }) => {
+          assert.deepEqual(await tree.readText(worktree, 'bom.txt'), { kind: 'ok', text: '\uFEFFhello\r\nworld\r\n' });
+        }),
+      );
+
+      it(
+        'answers missing for an absent path and not_file for a directory, without throwing',
+        withTree(READ_TEXT_WORLD, async ({ tree, worktree }) => {
+          assert.deepEqual(await tree.readText(worktree, 'no/such.txt'), { kind: 'missing' });
+          assert.deepEqual(await tree.readText(worktree, 'dir'), { kind: 'not_file' });
+          assert.deepEqual(await tree.readText(worktree, 'café dir'), { kind: 'not_file' });
+        }),
+      );
+
+      it(
+        'answers escape for an empty, parent-relative, absolute or NUL path (no throw)',
+        withTree(READ_TEXT_WORLD, async ({ tree, worktree }) => {
+          for (const bad of ['', '..', '../x', 'dir/../../x', '/etc/passwd', 'C:\\Windows\\win.ini', '\\\\server\\share\\x', 'a\0b']) {
+            assert.deepEqual(await tree.readText(worktree, bad), { kind: 'escape' }, JSON.stringify(bad));
+          }
+        }),
+      );
+
+      it(
+        'answers too_large over the byte cap and ok at exactly the cap',
+        withTree(READ_TEXT_WORLD, async ({ tree, worktree }) => {
+          assert.deepEqual(await tree.readText(worktree, 'hundred.txt', { maxBytes: 99 }), { kind: 'too_large' });
+          assert.deepEqual(await tree.readText(worktree, 'hundred.txt', { maxBytes: 100 }), { kind: 'ok', text: 'z'.repeat(100) });
+          assert.equal((await tree.readText(worktree, 'hundred.txt')).kind, 'ok');
+        }),
+      );
+    });
+
+    describe('worktrees', () => {
+      it(
+        'lists the main worktree of a one-worktree repository on its short branch name, attached, with its HEAD',
+        withTree(CONTRACT_WORLD, async ({ tree }) => {
+          const { rootCommit } = await tree.identity();
+          const list = await tree.worktrees();
+          assert.equal(list.length, 1);
+          assert.deepEqual(
+            { ...list[0], path: '' },
+            { path: '', head: rootCommit, branch: 'main', detached: false, bare: false, locked: false, prunable: false },
+          );
+        }),
+      );
+
+      it(
+        'lists a repository with no commits with no head',
+        withTree({ committed: {}, working: {}, ignored: [] }, async ({ tree }) => {
+          const list = await tree.worktrees();
+          assert.equal(list.length, 1);
+          assert.equal(list[0]?.head, null);
+          assert.equal(list[0]?.branch, 'main');
+        }),
+      );
+
+      it(
+        'identity reports a stable commonDir',
+        withTree(CONTRACT_WORLD, async ({ tree }) => {
+          const first = await tree.identity();
+          assert.ok(first.commonDir.length > 0);
+          assert.equal((await tree.identity()).commonDir, first.commonDir);
         }),
       );
     });

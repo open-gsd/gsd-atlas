@@ -10,6 +10,7 @@ import type { TempGitRepoOptions } from '../test-kit/index.ts';
 import { defineSourceTreeContract } from './contract.ts';
 import { createFakeSourceTree, createSourceTree } from './index.ts';
 import type { SourceTreeWorld } from './index.ts';
+import { parseWorktreeList } from './worktrees.ts';
 
 /** Independent oracle: the git blob id of `content` in a SHA-1 repository. */
 const blobId = (content: string | Uint8Array): string => {
@@ -354,6 +355,129 @@ describe('real Source Tree sourceSet', () => {
       const tree = createSourceTree({ runner: recording, repoDir: repo.dir });
       await assert.rejects(() => tree.sourceSet(repo.dir, new Map([['a.ts', '1'.repeat(40)]]), OPTIONS), { code: 'git_failed' });
     }
+  });
+});
+
+describe('parseWorktreeList', () => {
+  const z = (...fields: string[]): string => fields.map((f) => `${f}\0`).join('');
+
+  it('groups NUL-separated fields into records and handles bare, locked (with and without a reason) and prunable', () => {
+    const output =
+      z('worktree /repo with space/é', 'HEAD ' + 'a'.repeat(40), 'branch refs/heads/main', '') +
+      z('worktree /bare.git', 'bare', '') +
+      z('worktree /detached', 'HEAD ' + 'b'.repeat(40), 'detached', 'locked', '') +
+      z('worktree /why', 'HEAD ' + 'c'.repeat(40), 'branch refs/heads/feature/x', 'locked on a usb stick', 'prunable gitdir file points to non-existent location', '') +
+      z('worktree /unborn', 'HEAD ' + '0'.repeat(40), 'branch refs/heads/main', '');
+    assert.deepEqual(parseWorktreeList(output), [
+      { path: '/repo with space/é', head: 'a'.repeat(40), branch: 'main', detached: false, bare: false, locked: false, prunable: false },
+      { path: '/bare.git', head: null, branch: null, detached: false, bare: true, locked: false, prunable: false },
+      { path: '/detached', head: 'b'.repeat(40), branch: null, detached: true, bare: false, locked: true, prunable: false },
+      { path: '/why', head: 'c'.repeat(40), branch: 'feature/x', detached: false, bare: false, locked: true, prunable: true },
+      { path: '/unborn', head: null, branch: 'main', detached: false, bare: false, locked: false, prunable: false },
+    ]);
+  });
+
+  it('does not depend on field order after the record start and ignores unknown fields and an empty output', () => {
+    assert.deepEqual(parseWorktreeList(''), []);
+    const output = z('worktree /w', 'future-field value', 'detached', 'HEAD ' + 'd'.repeat(40), '');
+    assert.deepEqual(parseWorktreeList(output), [
+      { path: '/w', head: 'd'.repeat(40), branch: null, detached: true, bare: false, locked: false, prunable: false },
+    ]);
+  });
+});
+
+describe('real Source Tree worktrees and identity', () => {
+  it('lists the main worktree and each linked one (detached, on a branch, locked, prunable) with canonical real paths', async (t) => {
+    const { repo, tree } = await realTree(t, { files: { 'a.txt': 'a\n' } });
+    const base = path.dirname(repo.dir);
+    const detachedDir = path.join(base, 'wt detached é');
+    const branchDir = path.join(base, 'wt-branch');
+    const goneDir = path.join(base, 'wt-gone');
+    await repo.git(['worktree', 'add', '--quiet', '--detach', detachedDir]);
+    await repo.git(['worktree', 'add', '--quiet', '-b', 'feature/x', branchDir]);
+    await repo.git(['worktree', 'lock', branchDir, '--reason', 'on a usb stick']);
+    await repo.git(['worktree', 'add', '--quiet', '--detach', goneDir]);
+    fs.rmSync(goneDir, { recursive: true, force: true });
+
+    const list = await tree.worktrees();
+    const head = (await repo.git(['rev-parse', 'HEAD'])).trim();
+    const real = (p: string): string => fs.realpathSync.native(p);
+    // git lists the main worktree first; the order of the linked ones is git's, so look them up by path.
+    const byPath = new Map(list.map((w) => [w.path, w]));
+    assert.equal(list.length, 4);
+    assert.deepEqual(list[0], { path: real(repo.dir), head, branch: 'main', detached: false, bare: false, locked: false, prunable: false });
+    assert.deepEqual(byPath.get(real(detachedDir)), { path: real(detachedDir), head, branch: null, detached: true, bare: false, locked: false, prunable: false });
+    assert.deepEqual(byPath.get(real(branchDir)), { path: real(branchDir), head, branch: 'feature/x', detached: false, bare: false, locked: true, prunable: false });
+    assert.equal(byPath.get(goneDir)?.prunable, true, 'a directory that no longer exists is kept as given and marked prunable');
+  });
+
+  it('names git 2.36 when the -z form is not understood', async (t) => {
+    const repo = await createTempGitRepo({ runner: setupRunner, files: { 'a.txt': 'a\n' } });
+    t.after(() => repo.cleanup());
+    const recording = createRecordingRunner({ respond: () => ({ exitCode: 129, stderr: 'usage: git worktree list [-v | --porcelain]' }) });
+    const tree = createSourceTree({ runner: recording, repoDir: repo.dir });
+    await assert.rejects(() => tree.worktrees(), (error: Error & { code?: string }) => {
+      assert.equal(error.code, 'git_failed');
+      assert.match(error.message, /git 2\.36/);
+      return true;
+    });
+  });
+
+  it('starts one git run for worktrees() with the approved timeout (git.timeoutMs 60000)', async (t) => {
+    const { recording, tree } = await realTree(t, { files: { 'a.txt': 'a\n' } });
+    await tree.worktrees();
+    assert.deepEqual(recording.starts.map(subcommand), ['worktree']);
+    assert.equal(recording.starts[0]?.timeoutMs, 60000);
+    assert.deepEqual(recording.starts[0]?.args.slice(-3), ['list', '--porcelain', '-z']);
+  });
+
+  it('identity.commonDir is the canonical real path of the common git directory', async (t) => {
+    const { repo, tree } = await realTree(t, { files: { 'a.txt': 'a\n' } });
+    assert.equal((await tree.identity()).commonDir, fs.realpathSync.native(path.join(repo.dir, '.git')));
+  });
+});
+
+describe('real Source Tree readText', () => {
+  it('reads inside a linked worktree and decodes invalid UTF-8 without throwing', async (t) => {
+    const { repo, tree } = await realTree(t, { files: { 'a.txt': 'a\n' } });
+    repo.write('bad.txt', new Uint8Array([0xff, 0x41]));
+    assert.deepEqual(await tree.readText(repo.dir, 'bad.txt'), { kind: 'ok', text: '�A' });
+    const linked = path.join(path.dirname(repo.dir), 'wt-read');
+    await repo.git(['worktree', 'add', '--quiet', '--detach', linked]);
+    assert.deepEqual(await tree.readText(linked, 'a.txt'), { kind: 'ok', text: 'a\n' });
+  });
+
+  it(
+    'refuses a final-component link (not_file) and a path through a symlinked directory that leaves the worktree (escape)',
+    { skip: notOnWindows('creating a symlink needs privileges on Windows') },
+    async (t) => {
+      const { repo, tree } = await realTree(t, { files: { 'a.txt': 'a\n' } });
+      const outside = path.join(path.dirname(repo.dir), 'outside');
+      fs.mkdirSync(outside);
+      fs.writeFileSync(path.join(outside, 'secret.txt'), 'top secret\n');
+      fs.symlinkSync(outside, path.join(repo.dir, 'linkdir'));
+      fs.symlinkSync(path.join(outside, 'secret.txt'), path.join(repo.dir, 'link-out.txt'));
+      fs.symlinkSync('a.txt', path.join(repo.dir, 'link-in.txt'));
+      assert.deepEqual(await tree.readText(repo.dir, 'linkdir/secret.txt'), { kind: 'escape' });
+      assert.deepEqual(await tree.readText(repo.dir, 'link-out.txt'), { kind: 'not_file' });
+      assert.deepEqual(await tree.readText(repo.dir, 'link-in.txt'), { kind: 'not_file' });
+      assert.deepEqual(await tree.readText(repo.dir, 'a.txt'), { kind: 'ok', text: 'a\n' });
+    },
+  );
+
+  it('starts no git', async (t) => {
+    const { repo, recording, tree } = await realTree(t, { files: { 'a.txt': 'a\n' } });
+    await tree.readText(repo.dir, 'a.txt');
+    await tree.readText(repo.dir, '../x');
+    assert.equal(recording.starts.length, 0);
+  });
+});
+
+describe('fake Source Tree worktrees', () => {
+  it('returns the worktrees the world describes, and a single main entry when it describes none', async () => {
+    const linked = { path: '/w/linked', head: 'e'.repeat(40), branch: null, detached: true, bare: false, locked: false, prunable: false };
+    assert.deepEqual(await createFakeSourceTree({ worktrees: [linked] }).worktrees(), [linked]);
+    assert.equal((await createFakeSourceTree({}).worktrees()).length, 1);
   });
 });
 
