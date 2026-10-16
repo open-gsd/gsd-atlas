@@ -224,6 +224,10 @@ export function createWriter(parts: StoreParts): Writer {
       live();
       return commitFile(parts, input);
     },
+    async link() {
+      live();
+      return notYet();
+    },
     async setOverlay() {
       live();
       notYet();

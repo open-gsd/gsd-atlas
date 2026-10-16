@@ -175,7 +175,21 @@ export interface Writer {
    */
   commitFile(input: CommitFileInput): Promise<CommitResult>;
 
-  /** Replace a worktree overlay: the ref it tracks and its path to content-hash map. */
+  /**
+   * Attach an existing content hash to a path without new facts: branch switches and renames re-use facts
+   * the store already holds. `committed` when the path now maps to `hash`; `unchanged` when it already did
+   * (idempotent); `rejected` with the diagnostic code `hash_unknown` when the store holds no facts for
+   * `hash` (a collected or never-committed hash), in which case nothing is written. Advances the watermark
+   * only on `committed`.
+   */
+  link(worktree: WorktreeId, path: string, hash: string): Promise<CommitResult>;
+
+  /**
+   * Replace a worktree overlay: the ref it tracks and its path to content-hash map. Paths missing from the
+   * map are removed. A path whose hash has no facts yet is recorded as pending: it has no facts, it is
+   * listed in `watermark.stalePaths` of later reads, and a later `commitFile` of that hash clears it in
+   * every worktree that was waiting on it. An overlay identical to the stored one changes nothing.
+   */
   setOverlay(worktree: WorktreeId, ref: string, pathToHash: ReadonlyMap<string, string>): Promise<void>;
 
   /** Drop a worktree overlay (the worktree was removed). Its facts are collected later. */

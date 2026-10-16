@@ -42,6 +42,7 @@ async function typeCheckedUsage(store: FactStore, w: WorktreeId, id: SymbolIdent
   const writer = store.writer();
   const result = await writer.commitFile({ worktree: w, path: 'src/a.ts', hash: 'abc', facts });
   await writer.commitFile({ worktree: w, path: 'src/gone.ts', hash: 'def', facts: null });
+  await writer.link(w, 'src/copy.ts', 'abc');
   await writer.setOverlay(w, 'refs/heads/main', new Map([['src/a.ts', 'abc']]));
   await writer.dropOverlay(w);
   await writer.markStale({ module: 'typescript', grammarVersion: '0.23.2' });
