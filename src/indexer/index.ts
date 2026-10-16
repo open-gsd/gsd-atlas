@@ -1,0 +1,19 @@
+/**
+ * The Indexer seam (tenant-composition ADR decision 2): module hosting, per-batch hashing and filtering, parse and
+ * extraction, writer commits and links, full builds and (from the queue plan task) the coalescing queue and
+ * `ensureFresh`, all driven by an injected clock. Test code is not exported from here.
+ */
+export { DEFAULT_INDEXER_CONFIG } from './defaults.ts';
+export { createIndexer } from './indexer.ts';
+export { IndexerError } from './types.ts';
+export type {
+  BuildResult,
+  FailedPath,
+  FreshResult,
+  Indexer,
+  IndexerConfig,
+  IndexerDeps,
+  IndexerErrorCode,
+  IndexerNotice,
+  IndexerStatus,
+} from './types.ts';
