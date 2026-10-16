@@ -1,8 +1,8 @@
 ---
 phase: 01-foundations-and-walking-skeleton
-verified: 2026-10-15T18:00:00Z
+verified: 2026-10-16T12:00:00Z
 status: gaps_found
-score: 4/5 roadmap success criteria verified (SC4 partial: 2 blockers); 13/13 requirement IDs accounted for, 11 satisfied, FND-05 and FND-06 blocked
+score: "4/5 roadmap success criteria verified (SC4 failed, 1 blocker); 13/13 requirement IDs accounted for, 11 satisfied, FND-05 and FND-06 blocked"
 covered_files:
   - ".github/workflows/ci.yml"
   - ".planning/phases/01-foundations-and-walking-skeleton/01-01-PLAN.md"
@@ -39,53 +39,47 @@ covered_files:
   - ".planning/phases/01-foundations-and-walking-skeleton/01-16-SUMMARY.md"
   - ".planning/phases/01-foundations-and-walking-skeleton/01-17-PLAN.md"
   - ".planning/phases/01-foundations-and-walking-skeleton/01-17-SUMMARY.md"
-  - "corpora/corpora.json"
-  - "docs/adr/README.md"
-  - "eslint.config.js"
+  - ".planning/phases/01-foundations-and-walking-skeleton/01-18-PLAN.md"
+  - ".planning/phases/01-foundations-and-walking-skeleton/01-18-SUMMARY.md"
+  - ".planning/phases/01-foundations-and-walking-skeleton/01-19-PLAN.md"
+  - ".planning/phases/01-foundations-and-walking-skeleton/01-19-SUMMARY.md"
   - "package.json"
-  - "scripts/grammar-budget.ts"
-  - "scripts/grammar-build.ts"
-  - "scripts/grammar-verify.ts"
-  - "src/cli/index.ts"
+  - "src/command-runner/decide.test.ts"
   - "src/command-runner/decide.ts"
+  - "src/command-runner/git-spec.test.ts"
   - "src/command-runner/git-spec.ts"
   - "src/command-runner/hostile-repo.test.ts"
-  - "src/command-runner/real.ts"
-  - "src/lang/registry.ts"
-  - "src/lang/test-runner.ts"
   - "src/source-tree/real.ts"
-  - "test/fixtures/modules/toy/grammar.lock"
-covered_digest: "v3:sha256:80b949c4267781d97a69e916c0fd5e330a90f4af1398797acd3729c214ba8aeb"
+  - "src/source-tree/source-tree.test.ts"
+covered_digest: "v3:sha256:3c0cb59e9779c1022ae41d2cf5b3779bcc1efaffc02b06e470288a6251228416"
 behavior_unverified: 0
 overrides_applied: 0
+re_verification:
+  previous_status: gaps_found
+  previous_score: "4/5 roadmap success criteria (2 blockers, old CR-01 promisor lazy fetch and old CR-02 filter driver name with equals sign)"
+  gaps_closed:
+    - "CR-01 (old): promisor remote plus core.sshCommand started by hasObject/read (plan 01-18)"
+    - "CR-02 (old): filter driver named a=b, a=b=c, my.driver or empty ran its clean command (plan 01-19)"
+  gaps_remaining:
+    - "New CR-01 (01-REVIEW.md): filter driver name that is not valid UTF-8 escapes neutralisation"
+  regressions: []
 gaps:
-  - truth: "SC4 / FND-06 / plan 01-13: a hostile repository runs nothing; gitSpec neutralises EVERY configured filter driver (no allowlist)"
+  - truth: "SC4 / FND-06 / plan 01-13 and 01-19: a hostile repository runs nothing; gitSpec neutralises EVERY configured filter driver, whatever it is called (no allowlist)"
     status: failed
-    reason: "CR-02 reproduced. A filter driver whose name contains '=' (for example filter.a=b.clean) is dropped by parseFilterNames and cannot be expressed through -c, so SourceTree.snapshot() executes the repo-controlled clean command during hash-object --stdin-paths. Marker file was created."
+    reason: "Reproduced by the verifier against createRealRunner() plus createSourceTree() on git 2.54.0. A .gitattributes line 'a.txt filter=a<0xFF>b' and a [filter \"a<0xFF>b\"] clean command in .git/config: snapshot() resolves normally and the repo-controlled clean command RAN (marker file created). Controls: a plain name ('evil') and 'a=b' left no marker. Cause: listFilterNames decodes git config stdout with a non-fatal TextDecoder (git-spec.ts:208), the invalid byte becomes U+FFFD, neutraliseFilters puts that into GIT_CONFIG_KEY_n and Node encodes it as EF BF BD, so the neutralising key names a different driver than the configured one. Node cannot place arbitrary bytes in a child environment, so the env channel cannot express such a name even with exact decoding. The header claims at git-spec.ts:22 and :60 ('every driver is neutralised, whatever it is called') are therefore false. Same failure class as the old CR-02: a name the builder cannot represent is a bypass."
     artifacts:
       - path: "src/command-runner/git-spec.ts"
-        issue: "parseFilterNames cuts at first '=' and discards the key; neutraliseFilters uses '-c filter.<name>.<var>=' which cannot carry an '=' in the name"
-      - path: "src/command-runner/decide.ts"
-        issue: "GIT_FILTER_KEY regex [^=\\s]+ also refuses such keys, so the fix needs the GIT_CONFIG_COUNT/KEY_n/VALUE_n channel"
+        issue: "listFilterNames line 208 uses new TextDecoder().decode (non-fatal); no check that a name round-trips; no U+FFFD rejection"
       - path: "src/command-runner/hostile-repo.test.ts"
-        issue: "Only covers a driver named 'evil'; no case for a name containing '='"
+        issue: "ODD_DRIVERS is ASCII only; no invalid-UTF-8 name case, so the suite stays green while the guarantee is false"
     missing:
-      - "Fail-closed neutralisation of every driver name (GIT_CONFIG_COUNT/KEY/VALUE env overlay, decide updated to permit it) and parse names with slice(7, lastIndexOf('.'))"
-      - "Hostile-repo test for a driver named a=b with a marker assertion"
-  - truth: "SC4 / FND-06 / command-runner ADR decision 4: a hostile repository runs nothing through the Source Tree"
-    status: failed
-    reason: "CR-01 reproduced. A repo-controlled promisor remote (extensions.partialClone, remote.origin.promisor=true) plus core.sshCommand makes SourceTree.hasObject()/read() trigger a lazy fetch that spawns the attacker command. Marker file was created."
-    artifacts:
-      - path: "src/command-runner/git-spec.ts"
-        issue: "env pins only GIT_OPTIONAL_LOCKS and GIT_TERMINAL_PROMPT; no GIT_NO_LAZY_FETCH, no GIT_ALLOW_PROTOCOL=none"
-      - path: "src/source-tree/real.ts"
-        issue: "hasObject/read run cat-file against caller-supplied ids that may be absent"
-    missing:
-      - "GIT_NO_LAZY_FETCH=1 and GIT_ALLOW_PROTOCOL=none in every gitSpec env (verified fix per the review)"
-      - "Hostile-repo test with a promisor config plus core.sshCommand asserting the marker is absent"
+      - "Fail closed in listFilterNames: TextDecoder('utf-8', {fatal: true}), reject any name containing U+FFFD, throw GitConfigError('filter_enumeration_failed') naming the problem"
+      - "Single shared name predicate used by both listFilterNames and decide's FILTER_ENV_KEY (also closes review WR-01: CR in a name makes decide refuse the builder's own output)"
+      - "Hostile-repo test with a \\xff driver name written as Buffers (marker absent, filter_enumeration_failed rejection) plus CR, tab and long-name cases"
+      - "Correct the git-spec.ts header claims once the fail-closed rule exists"
 human_verification:
   - test: "Review the editorial repairs made at ADR ratification"
-    expected: "Restored passages in 3-trust-boundaries.md decision 2, 5-language-modules.md decision 5, 6-fact-model.md decision 2 and PRD.md section 4.7 match the author's intent (repaired from PRD 4.6 and DESIGN A9)"
+    expected: "Restored passages in 3-trust-boundaries.md decision 2, 5-language-modules.md decision 5, 6-fact-model.md decision 2 and PRD.md section 4.7 match the author's intent"
     why_human: "Text was reconstructed from secondary sources; only the author can confirm intent (plan 01-02 human check)"
   - test: "Supply the truncated clause in docs/SDK-PROVIDERS.md (normalized result paragraph)"
     expected: "The sentence ending mid-clause is completed"
@@ -93,122 +87,101 @@ human_verification:
   - test: "Type the confirmation phrase for the unset defaults: CommandRunner 60 s timeout and SQLite 5000 ms busy timeout"
     expected: "Defaults are set, or explicitly kept unset"
     why_human: "Held by decision pending a human-typed confirmation phrase"
-  - test: "Open a throwaway pull request (or confirm one is not needed) to see the CI workflow run under the pull_request trigger"
-    expected: "Static, Test (3 OS x Node 24.16.0 and 26) and Grammar rebuild jobs all run and pass on the PR event"
-    why_human: "SC1 says every PR; the only real run is a push on ci/phase-1 (PRs were not authorised). ci.yml declares pull_request and a test asserts it, but no PR-event run exists"
+  - test: "Run the three-OS CI matrix on the post-gap-closure source and open (or waive) a pull-request-event run"
+    expected: "Static, Test (ubuntu, macos, windows x Node 24.16.0 and 26) and Grammar rebuild all pass; in particular the new promisor and odd-driver hostile groups, and Windows handling of an empty GIT_CONFIG_VALUE_n"
+    why_human: "The only real CI run (38841954238 at 2e59fc7) predates plans 01-18 and 01-19, which changed command-runner source. Plan 01-19 SUMMARY itself lists the three-OS run as pending. No pull_request-event run exists either."
   - test: "Accept or reject the Fact Store seam evidence (decision D-09)"
-    expected: "A frozen interface with a compile-time signature check, plus the SQLite driver conformance suite on both drivers, is accepted as meeting SC4 for the Fact Store (no fake store, per the Accepted fact-store-interface ADR); a Fact Store level conformance suite arrives with its implementation in Phase 2"
-    why_human: "Judgment call on whether a driver-level conformance suite counts as the Fact Store seam's 'double or conformance suite'"
+    expected: "A frozen interface with a compile-time signature check plus the SQLite driver conformance suite on both drivers is accepted as the Fact Store's 'conformance suite' for SC4 (no fake store per the Accepted fact-store-interface ADR); a Fact Store level suite arrives with its implementation in Phase 2"
+    why_human: "Judgment call on whether a driver-level suite counts as the Fact Store seam's double or conformance suite"
 ---
 
 # Phase 1: Foundations and Walking Skeleton Verification Report
 
 **Phase Goal:** A developer can build and test the repo on macOS, Linux and Windows and run `gsd-atlas lang test` on a fixture language module end to end, with every module seam frozen behind an interface and a test double.
-**Verified:** 2026-10-15
+**Verified:** 2026-10-16
 **Status:** gaps_found
-**Re-verification:** No, initial verification
-**Mode:** mvp (goal is not in "As a ... I want ... so that ..." form; verified against the roadmap goal and success criteria, no User Flow Coverage table produced)
+**Re-verification:** Yes, after gap-closure plans 01-18 and 01-19 (HEAD 8f5da3b)
 
 ## Verdict
 
-Most of the phase is real and works. Every gate passes when run by the verifier. Success criteria 1, 2, 3 and 5 are verified. Success criterion 4 is not met in substance: the hostile-repo guarantee ("a hostile repo runs nothing") is falsified by two reproduced bypasses (CR-01, CR-02 from 01-REVIEW.md). Both were independently reproduced against the real runner and Source Tree on git 2.54.0, not taken from the review.
+Both gaps from the previous report are closed and I re-confirmed each against the real runner, not the summaries. But the closing code still falls to the same class of attack. The new 01-REVIEW.md Critical CR-01 (filter driver name that is not valid UTF-8) is a real bypass: I reproduced it end to end with the production `createSourceTree` over `createRealRunner()` and the default `decide`, and the repo-controlled clean command ran. ROADMAP SC4 and plan 01-13/01-19 truths state that a hostile repository runs nothing and that EVERY driver is neutralised; that is falsified. 01-REVIEW-DISPOSITION.md lists this finding as "open", so it has not been dispositioned away. Status stays gaps_found.
 
-## Gates run by the verifier (worktree at d38cdfb, Node 26.11.1, macOS arm64)
+## Prior gaps: closure check
+
+| Prior gap | Status | Evidence |
+| --------- | ------ | -------- |
+| Old CR-02: driver name containing `=` ran its clean command | CLOSED | `neutraliseFilters` now returns the GIT_CONFIG_COUNT/KEY_n/VALUE_n overlay (git-spec.ts:62-75), `parseFilterNames` slices to the last dot (:84-93). Verifier repro with name `a=b`: marker false. `hostile-repo.test.ts` group for `a=b`, `a=b=c`, `my.driver`, empty name has positive controls that fire and a protected run that passes (not skipped). |
+| Old CR-01: promisor remote plus core.sshCommand ran via hasObject/read | CLOSED | `PINNED_ENV` pins `GIT_NO_LAZY_FETCH=1` and `GIT_ALLOW_PROTOCOL=none` after the caller env (git-spec.ts:108-113, 147-151); `decide` refuses specs lacking them. Hostile-repo promisor group: two positive controls fire, protected test passes. |
+
+## Gates run by the verifier (HEAD 8f5da3b, Node 26.x, macOS arm64, git 2.54.0)
 
 | Gate | Result |
 | ---- | ------ |
-| `npm ci --ignore-scripts` | 0 vulnerabilities |
-| `npm test` | 806 tests, 806 pass, 0 fail, 0 skipped, 0 todo |
-| `npm run lint` | exit 0 |
-| `npm run typecheck` | exit 0 |
-| `npm run build` | exit 0; `dist/bin/gsd-atlas.js` and `gsd-atlas-mcp.js` emitted |
-| `npm run schema:check` | "schemas/atlas-lang.schema.json is current" |
-| `npm run grammar:budget` | toy: errorBytes 0 of 202, ratio 0, budget 0.005, OK |
-| `npm run grammar:verify` (toolchain cached locally) | darwin-arm64 rebuild sha256 equals committed grammar.wasm and grammar.lock (ffe6c2ed...0f9a, abi 15, cli 0.27.1) |
-| `node scripts/corpus-check.ts` | 4/4 pinned corpora confirmed upstream by SHA |
-| `npm pack --dry-run` | 134 files, 84.1 kB, both bins and schema present |
-| Debt markers (TODO/FIXME/XXX/TBD) in `src` and `scripts` | none |
+| `npm test` | 885 tests, 885 pass, 0 fail, 0 skipped |
+| `node --test src/command-runner/hostile-repo.test.ts` | 11 pass, 0 skipped; all positive controls fired |
+| `npm run lint` / `npm run typecheck` / `npm run build` | exit 0 each |
+| Hostile repro, driver `a=b` | marker absent (protected) |
+| Hostile repro, driver `evil` (control) | marker absent (protected) |
+| Hostile repro, driver `a\xffb` | MARKER PRESENT, snapshot resolved normally, no diagnostic (BLOCKER) |
 
-CI evidence: run 38841954238 on `ci/phase-1` at 2e59fc7 concluded success with ten jobs (Static; Test on ubuntu, macos, windows each at Node 24.16.0 and 26; Grammar rebuild on all three OSes). `git diff 2e59fc7 HEAD` touches only three planning files, so that run covers the current source.
+The remaining gates from the previous report (schema:check, grammar:budget, grammar:verify, corpus-check, npm pack) cover files untouched by plans 01-18 and 01-19 (only `src/command-runner/*` and `src/source-tree/source-tree.test.ts` changed); I did not re-run them and carry the earlier results forward.
 
 ## Success Criteria
 
 | # | Criterion | Status | Evidence |
 | - | --------- | ------ | -------- |
-| 1 | Every PR builds and tests on 3 OSes, produces the package with both bins; deliberate boundary violations fail lint | VERIFIED (PR-event run is a human item) | `ci.yml` triggers on `pull_request`, `push` and `workflow_dispatch`; matrix is ubuntu/macos/windows x Node 24.16.0 and 26, SHA-pinned actions, `contents: read`. Real run succeeded on all ten jobs. Package builds and `installed tarball runs the bins` test passes. I planted violations myself: `node:child_process` in `src/lang`, a deep `../facts/span.ts` import, `node:fs` and `fact-store` imports in a `policy` file, and a `cli` file importing `grammar-engine`; ESLint reported all five as errors with the intended messages. `src/lint/boundaries.test.ts` has fixture tests for every rule, each with a passing control, plus dynamic `import()` and `require` forms. |
-| 2 | `lang test` end to end; `lang list` shows source and tiers; invalid manifest skipped with a diagnostic | VERIFIED | `node dist/bin/gsd-atlas.js lang test test/fixtures/modules/toy` returns `ok: true` with four fixtures (basic, bom, crlf, emoji) and goldens with 0-based UTF-16 spans. With the toy as a repo module and a second module with an unknown manifest key, `lang list` returned the toy (`source: repo`, tiers `grammar` active) plus a `manifest_invalid` warning for the bad one and exit 0. I mutated a golden endColumn and `lang test` failed with `golden_mismatch`. 3-OS execution evidenced by the CI run (`lang-test.e2e.test.ts` runs in the matrix). |
-| 3 | Grammar WASM built from pinned upstream with pinned CLI on 3 OSes; rebuild reproduces pinned hash; ERROR-byte parse quality with failing CI budget | VERIFIED | `grammar.lock` pins CLI 0.27.1, abi 15 and sha256; the `upstream` source type requires `archiveSha256` (test `archive_hash_mismatch`). Local rebuild reproduced the hash (above); CI grammar jobs passed on all three OSes. Windows carries its own pinned hash (user decision, plan 01-15), the committed artifact is still hash-pinned on Windows. `measureErrors` reports bytes inside ERROR nodes; `grammar-budget` exits 1 for the negative fixture and uses strictly-greater comparison. Caveat: the only module is a local toy grammar, so the upstream-archive path is exercised by tests (file:// archive), not by a real upstream grammar yet (Phase 2/3 scope). |
-| 4 | Each seam has a fixed interface plus a double or conformance suite passing in CI, and a hostile-repo test shows no child process starts except through the CommandRunner, including one batched `hash-object --stdin-paths` | FAILED (2 blockers) | Seams: CommandRunner (fake, recording, contract run on fake and real), Source Tree (fake, contract), Grammar Engine (fake, contract run on real and fake), PreciseResolver (stub, contract), Governor (noop and fake, contract run on both), Fact Store (frozen interface plus compile-time signature check plus SQLite driver contract on node:sqlite and better-sqlite3; no fake by D-09, see human item). The hostile-repo test exists, has a positive control, asserts zero denials, only built-in git starts, and exactly one `hash-object` start for 150 files. But the guarantee it exists to prove does not hold: see Gaps. |
-| 5 | Corpus manifest pins each corpus to a SHA; every ADR this phase depends on Accepted with amendments, plus a schedule | VERIFIED | `corpora/corpora.json`: four 40-hex SHAs confirmed upstream by `corpus-check`; Swift reference app explicitly unselected until Phase 5 (SWF-05). `docs/adr/` has ADRs 2 to 9 renamed `<issue#>-<slug>.md`, `Status: Accepted`, and GitHub issues #2 to #9 exist in open-gsd/gsd-atlas. README has a ratification log, an amendment log (nine dated amendments, originals untouched) and a schedule naming Phase 2, 3 and 4 for the six remaining drafts. Tests assert all of this. |
+| 1 | CI on 3 OSes per PR, package with both bins, boundary violations fail lint | VERIFIED (with caveat) | Unchanged from the previous report. Caveat: the successful ten-job CI run predates 01-18/01-19; see human item 4. |
+| 2 | `lang test` end to end; `lang list`; invalid manifest skipped | VERIFIED | Unchanged; full `npm test` still green including `lang-test.e2e.test.ts`. |
+| 3 | Reproducible pinned grammar build, ERROR-byte budget in CI | VERIFIED | Unchanged; grammar files untouched by the gap plans. |
+| 4 | Each seam has interface plus double or conformance suite; hostile-repo test shows nothing starts except through the CommandRunner | FAILED (1 blocker) | Seams and the single batched `hash-object` hold, and the promisor and `=`-name classes are closed. The guarantee the hostile-repo test exists to prove (a hostile repository runs nothing) is still false for a non-UTF-8 driver name. |
+| 5 | Corpus manifest SHAs, ADRs Accepted with amendments and schedule | VERIFIED | Unchanged. |
 
 ## Gaps (blockers)
 
-Both criticals are gaps against a stated success criterion and a stated plan truth. Plan 01-13 must-haves say gitSpec "neutralises EVERY configured filter driver by name ... with no allowlist"; `hostile-repo.test.ts` and `git-spec.ts` headers state that a hostile repository runs nothing. ROADMAP SC4 read literally ("no child process starts except through the CommandRunner") is satisfied by the test as written, because the recording runner only sees what Atlas starts. I weigh the criterion by its stated purpose and by the test's own docstring ("a hostile repository runs nothing"), which the reproductions falsify. Treat both as BLOCKERs for FND-06 and FND-05's Source Tree seam.
+1. **New CR-01 (01-REVIEW.md), non-UTF-8 filter driver name runs its clean command.** `listFilterNames` (git-spec.ts:208) decodes with a lossy decoder, so the neutralising `GIT_CONFIG_KEY_n` names `filter.a�b.clean` while git has `filter.a\xffb.clean`. Reproduced end to end (see gaps in frontmatter). Because `.gitattributes` and `.git/config` are repo-controlled bytes, this is exactly the "hostile repository runs nothing" guarantee (FND-06, SC4). The fix is small and local (fatal decode, reject U+FFFD and any name `decide` would refuse, typed `filter_enumeration_failed`, one shared predicate, a Buffer-based hostile test). Failing closed is the correct design here because the env channel cannot carry arbitrary bytes, so the only safe response is to refuse the snapshot.
 
-1. **CR-02, filter driver name containing `=` runs its clean command.** Reproduced by `scratchpad/repro.mts` against `createRealRunner()` plus `createSourceTree()`: `.gitattributes` with `*.txt filter=a=b`, config `filter."a=b".clean = "touch MARKER; cat"`, then `tree.snapshot(dir)`. Result: `marker exists: true`, snapshot otherwise normal with no diagnostics. Root cause in `git-spec.ts` `parseFilterNames` (cuts at first `=`, silently drops the key) and `-c` cannot express the name. Fix direction from the review (GIT_CONFIG_COUNT/KEY_n/VALUE_n overlay, fail closed on unparsable names, update `decide`) is sound.
-2. **CR-01, promisor remote plus `core.sshCommand` runs an attacker command via `hasObject`/`read`.** Reproduced: `extensions.partialClone=origin`, `remote.origin.promisor=true`, `remote.origin.url=ssh://example.invalid/x.git`, `core.sshCommand=sh -c 'touch MARKER; exit 1' --`; `tree.hasObject('1234...')` returned `false` and `marker exists: true`. Fix direction: `GIT_NO_LAZY_FETCH=1` and `GIT_ALLOW_PROTOCOL=none` in the gitSpec env, plus a hostile-repo test.
+Review dispositions weighed (01-REVIEW-DISPOSITION.md, all "open"):
 
-The hostile-repo test needs both new cases; today it would stay green while the guarantee is false (its fixture is limited to a filter named `evil`, fsmonitor and hooksPath).
+- WR-01 (CR in a driver name: `decide` refuses what `neutraliseFilters` emits): fail-closed, so not a bypass, but it is the same code path as the blocker and should be fixed with it (one shared name predicate).
+- WR-02 (option denylist bypassable: `cat-file --textc`, `hash-object -wt`, `rev-list --output`/`--alternate-refs`): latent, no current call site puts untrusted text in option position. Not elevated; schedule before Phase 2 builds on `decide`.
+- WR-03 (pinned env checked by presence only), IN-01 to IN-03: warnings and info, no Phase 1 must-have falsified. IN-01 matters to the blocker: the hostile fixtures are ASCII only, which is why it slipped through.
 
-## Observable Truths from PLAN must-haves (spot-checked against code, not SUMMARY)
+## Observable Truths from PLAN must-haves
 
 | Truth | Status | Evidence |
 | ----- | ------ | -------- |
-| Boundary lint with fixture test per rule (01-03) | VERIFIED | See SC1; verifier-planted violations all failed lint |
-| gitSpec prepends fsmonitor/hooksPath/quotepath overrides, pins env, neutralises every filter driver (01-13) | PARTIAL | First clauses hold; "every filter driver" fails for names containing `=` (CR-02) |
-| One batched `hash-object --stdin-paths` per snapshot (01-13) | VERIFIED | Recording runner asserts exactly one hash-object start for 4 and for 154 files |
-| Strict manifest schema, committed JSON Schema, Ajv parity (01-06) | VERIFIED | `schema:check` current; `schema-parity.test.ts` and 10 invalid manifest fixtures pass |
-| Toy module and reproducible grammar pipeline (01-07) | VERIFIED | Local rebuild hash match |
-| CommandRunner spec/decide/real/recording, streaming and batch stdin (01-09) | VERIFIED | `StdinSource` accepts async iterables, `stream()` exists, timeout-kill and output-cap tests pass. Default 60 s timeout intentionally unset (human item) |
-| Driver layer with conformance on both drivers; frozen Fact Store interface (01-10) | VERIFIED | `driver contract: node:sqlite` and `driver contract: better-sqlite3` both ran in `npm test`; `fact-store/index.ts` exports only four error classes as values |
-| Governor and PreciseResolver seams with doubles and contracts (01-11) | VERIFIED | Contracts run on noop and fake Governor; PreciseResolver stub contract passes; `precise` commands are data, never run |
-| Grammar Engine seam, ERROR-byte measurement, budget script (01-12) | VERIFIED | Contract on real and fake engine; budget tests pass |
-| lang test through CLI and HostClient with UTF-16, CRLF, BOM goldens (01-14) | VERIFIED | Run above; adapter lint forbids cli importing anything but host-client |
-| Four-location precedence registry, invalid-module skipping, inert precise commands (01-17) | VERIFIED | Run above; `registry.test.ts` passes. Known defect WR-06 (self-collision for duplicate extensions) is a warning |
-| Tarball smoke, quickstart, final CI evidence (01-16) | VERIFIED | `installed tarball runs the bins` passes; CI run exists |
-| ADR amendments D-16, D-17 and Node floor record (01-08) | VERIFIED | `ADR amendments (FND-10, D-16, D-17)` suite passes; Phase 2 amendments correctly not applied |
+| gitSpec prepends fsmonitor/hooksPath/quotepath overrides and pins env (01-13, 01-18) | VERIFIED | git-spec.ts:139-161; tests pass |
+| gitSpec neutralises EVERY filter driver by name, no allowlist (01-13, 01-19) | FAILED | Holds for ASCII, `=`, `.`, empty names; fails for invalid-UTF-8 names (blocker above) |
+| decide refuses any git spec missing the overrides or pinned env; validates the GIT_CONFIG channel (01-18, 01-19) | VERIFIED | decide tests pass (885 green); refusal behaviour holds for the cases it covers (WR-01 and WR-03 are edge shapes) |
+| Listing fails closed when git ignores the env channel (01-19) | VERIFIED | Random probe, `git_env_config_unsupported` and `filter_enumeration_failed`, git-spec.ts:190-216 (does not cover undecodable names) |
+| One batched `hash-object --stdin-paths` per snapshot (01-13) | VERIFIED | `still yields exactly one hash-object start for a repository with 150 files` passes |
+| Remaining plan truths (01-01 to 01-12, 01-14 to 01-17) | VERIFIED | Carried forward from the previous report; `npm test` 885/885 |
 
 ## Requirements Coverage
 
-All 13 requirement IDs declared across the 17 plans appear in REQUIREMENTS.md and in the ROADMAP Phase 1 list; none are orphaned, and REQUIREMENTS.md maps no other ID to Phase 1 (FND-12 is Phase 2). The REQUIREMENTS.md checkboxes and traceability still read Pending and must be updated by the orchestrator after the gaps close.
+All 13 requirement IDs declared for Phase 1 appear in REQUIREMENTS.md and the ROADMAP Phase 1 list; none are orphaned. (FND-12 appears in plan text but is Phase 2 in REQUIREMENTS.md.) The REQUIREMENTS.md checkboxes still read Pending and are for the orchestrator to update once the gap closes.
 
-| Requirement | Source plan(s) | Status | Evidence |
-| ----------- | -------------- | ------ | -------- |
-| FND-01 CI on 3 OSes per PR | 01-03, 01-15, 01-16 | SATISFIED (PR-event run human item) | ci.yml; run 38841954238 |
-| FND-02 one package, Node >= 24.16, tsc emit, two bins | 01-01, 01-16 | SATISFIED | package.json engines `>=24.16.0`; pack and tarball test |
-| FND-03 manifest validated, Zod-generated JSON Schema, invalid skipped | 01-06, 01-14, 01-17 | SATISFIED | schema:check, parity test, lang list run |
-| FND-04 reproducible grammar WASM, pinned CLI, 3 OSes | 01-07, 01-15, 01-16 | SATISFIED | grammar:verify local and CI |
-| FND-05 each seam has interface plus double or conformance | 01-04, 01-09 to 01-13 | BLOCKED (Source Tree seam is not hostile-safe; Fact Store double is a human decision) | see SC4 |
-| FND-06 every child starts through CommandRunner, enforced by lint, streaming and batch | 01-09, 01-13 | BLOCKED | Lint and batch/streaming hold; hostile-repo guarantee fails (CR-01, CR-02) |
-| FND-07 boundary lint rules | 01-03 | SATISFIED | Verifier-planted violations |
-| FND-08 corpus manifest pinned to SHAs | 01-05 | SATISFIED | corpus-check 4/4 |
-| FND-09 ADRs ratified | 01-02 | SATISFIED (repairs need human review) | ADR files and issues #2 to #9 |
-| FND-10 three ADR gap amendments | 01-08 | SATISFIED | amendment tests and README log |
-| FND-11 `lang test` on fixture module on 3 OSes | 01-14, 01-16 | SATISFIED | CLI run; CI matrix |
-| LNG-01 module folder resolved repo > user > npm > built-in, `lang list` | 01-17 | SATISFIED | registry and CLI run |
-| LNG-06 bytes inside ERROR nodes with CI budget | 01-12 | SATISFIED | budget script and tests |
+| Requirement | Status | Evidence |
+| ----------- | ------ | -------- |
+| FND-01 | SATISFIED (CI re-run needed, human item 4) | ci.yml; run 38841954238 predates 01-18/19 |
+| FND-02, FND-03, FND-04, FND-07, FND-08, FND-09, FND-10, FND-11 | SATISFIED | See previous report; tests green |
+| LNG-01, LNG-06 | SATISFIED | Registry and budget tests green |
+| FND-05 (each seam has interface plus double or conformance) | BLOCKED | Source Tree seam is not hostile-safe (non-UTF-8 driver name); Fact Store double is a human decision (D-09) |
+| FND-06 (every child via CommandRunner, lint, streaming, batch; hostile repo runs nothing) | BLOCKED | Lint, streaming and batch hold; hostile-repo guarantee fails for non-UTF-8 driver names |
 
-## Other review findings weighed (non-blocking for this phase's must-haves)
+## Anti-Patterns
 
-These are real defects in 01-REVIEW.md that I did not elevate to gaps because they do not falsify a Phase 1 must-have, but they should be scheduled before Phase 2 builds on these seams:
+No TODO/FIXME/XXX/TBD in the files changed by plans 01-18 and 01-19. The only finding is the false documentation claim at git-spec.ts:22 and :60 (blocker above).
 
-- WR-01: `decide` option denylist is bypassable (`hash-object -wt`, abbreviated `--textc`, `rev-list --output`/`--alternate-refs`) and does not require the safety overrides. Latent; no current call site passes untrusted text in option position. Closing CR-01/CR-02 should fold this in.
-- WR-02 (symlinked parent directory followed), WR-03 (one vanished file aborts the whole snapshot), WR-04 (every non-zero `cat-file` exit read as "missing"), WR-05 (`rootCommit` changes on shallow deepen): Source Tree correctness issues Phase 2 indexing will hit.
-- WR-06: a module declaring `[".ts", ".TS"]` collides with itself (LNG-01 edge case).
-- WR-09: untrusted repo text written raw to stderr (terminal escape injection); belongs with the Phase 2 MCP untrusted-text fencing work but is a cheap fix now.
-- WR-10, WR-13, WR-14 and the Info items: grammar-engine time bounds, unverified tree-sitter binary download in CI, budget reader inconsistency. Not Phase 1 criteria.
+## Process note
 
-## Human Verification Required
-
-See `human_verification` in the frontmatter: (1) review the ADR editorial repairs, (2) the truncated clause in `docs/SDK-PROVIDERS.md`, (3) the human-typed confirmation for the unset CommandRunner 60 s and SQLite 5000 ms default timeouts, (4) a PR-event CI run for SC1's "every PR", and (5) accept the Fact Store seam evidence under D-09.
-
-Judgment on the Fact Store (known-context question): the frozen interface plus the driver conformance suite on both drivers is a reasonable reading of SC4 given the Accepted fact-store-interface ADR says "no fake store", and a Fact Store level suite cannot exist before an implementation does (Phase 2). I did not count it as a gap, but it is a literal stretch of "conformance suite" for the Fact Store, so it is recorded for human acceptance.
+Both gap plans report editing files with a Bash Python script after a worktree guard fired (01-18: three edits in the main checkout; 01-19: git-spec.ts inside the worktree). I did not treat this as a phase gap; the resulting files are consistent and tested, but the orchestrator should be aware.
 
 ## Gaps Summary
 
-Close CR-02 and CR-01 (both small, localized to `git-spec.ts`, `decide.ts` and the hostile-repo test), re-run the full gate set, and the phase should pass. Suggested closure plan: one gap-closure plan covering CR-01, CR-02 and WR-01 together, because they share `git-spec.ts` and `decide.ts` and WR-01 asks `decide` to require the very overrides that CR-01/CR-02 add. Do not weaken the hostile-repo test; extend its fixture with the `a=b` driver and the promisor/sshCommand case.
+Re-run `/gsd-plan-phase --gaps` for one small plan covering the new CR-01 together with WR-01 (shared name predicate) and the Buffer-based hostile fixture, and run the three-OS CI on the result so human item 4 is satisfied in the same pass. Do not weaken the existing hostile-repo test, and do not accept a disposition that leaves CR-01 "open" as passing: the guarantee is stated as unconditional.
 
 ---
 
-_Verified: 2026-10-15_
+_Verified: 2026-10-16_
 _Verifier: Claude (gsd-verifier)_
