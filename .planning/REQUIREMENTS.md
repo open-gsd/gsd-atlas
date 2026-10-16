@@ -32,7 +32,7 @@ Scope is the full PRD 1.0 (M0-M6), with M4 split into SDK facts, agent integrati
 - [ ] **STO-04**: Resolved edges are keyed by overlay snapshot plus resolution context, so one file resolving to different targets on two branches gives each branch its correct target
 - [x] **STO-05**: Retired file versions are collected when in git or past the grace period; after 20,000 edits the store is <= 1.25x a fresh build
 - [ ] **STO-06**: A store corrupted or interrupted by SIGKILL during writes is detected and rebuilt automatically
-- [ ] **STO-07**: The store lives in the git common dir, falling back to the cache dir for non-git, read-only or synced paths, with `store.dir` override
+- [x] **STO-07**: The store lives in the git common dir, falling back to the cache dir for non-git, read-only or synced paths, with `store.dir` override
 - [x] **STO-08**: Two sessions on one repo do not collide on the writer lease; followers read and report `degraded: ['follower']`
 - [ ] **STO-09**: `history --at <commit>` answers from git without writing to the store
 - [ ] **STO-10**: Maintenance tasks (reconcile, resolve, refresh, collect, compact, check) run in idle time and as `maintain` CLI commands
@@ -212,7 +212,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | STO-04 | Phase 2 | Pending |
 | STO-05 | Phase 2 | Complete |
 | STO-06 | Phase 2 | Pending |
-| STO-07 | Phase 2 | Pending |
+| STO-07 | Phase 2 | Complete |
 | STO-08 | Phase 2 | Complete |
 | STO-09 | Phase 2 | Pending |
 | STO-10 | Phase 2 | Pending |

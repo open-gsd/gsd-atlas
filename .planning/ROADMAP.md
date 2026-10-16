@@ -90,7 +90,7 @@ Plans:
   5. Agents and developers get one answer surface: `code_find`, `code_refs`, `code_context` and `code_impact` return ranked, cited results (inline matched line text, `budget_tokens`, `more` cursor, server-side output ceiling) in the full envelope; the CLI and MCP return identical JSON for the same request; injection text in a doc comment returns fenced in `untrusted_text`; `atlas_status` and `lang_list` report freshness, health, policy mode and tiers; the default MCP profile is about 6 tools; the stateless stdio server survives a restart between two tool calls; a two-tenant smoke test passes; `busy` with `retry_after` appears under saturation; `gsd-atlas init` registers MCP at user scope only; and `gsd-atlas status` shows metrics panels with no source text, paths, symbols or prompts, a metrics write failure never blocking an answer.
   6. The four ADRs scheduled for this phase (worktree-lifecycle, query-and-policy, mcp-contract, value-dashboard) are ratified, and the two Phase 1 research-gap amendments D-16 assigned here are applied as dated sections: writer contention and leader/follower in worktree-lifecycle, and metrics migrations in value-dashboard (FND-12).
 
-**Plans:** 12/28 plans executed
+**Plans:** 13/28 plans executed
 
 Plans:
 **Wave 1**
@@ -110,7 +110,7 @@ Plans:
 
 **Wave 3** *(blocked on Wave 2 completion)*
 - [x] 02-11-PLAN.md — Fact Store resolution: scoped references, callers and importers, fuzzy search, resolved-edge cache (STO-03, STO-04, LNG-03)
-- [ ] 02-12-PLAN.md — Store lifecycle: location, writer lease and followers, crash recovery, schema-version refusal (STO-06, STO-07, STO-08)
+- [x] 02-12-PLAN.md — Store lifecycle: location, writer lease and followers, crash recovery, schema-version refusal (STO-06, STO-07, STO-08)
 - [ ] 02-13-PLAN.md — Real TypeScript and JavaScript queries with the 90 percent per-construct recall harness (LNG-02)
 - [ ] 02-14-PLAN.md — Bounded, recycled parser worker pool behind the GrammarEngine interface (LNG-07)
 - [ ] 02-15-PLAN.md — Indexer core: batching, extraction, commits, builds, coalescing queue, ensureFresh (IDX-02, IDX-04, STO-02, LNG-05)
@@ -271,7 +271,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Foundations and Walking Skeleton | 20/20 | Complete    | 2026-10-16 |
-| 2. Grammar Tier, Store and stdio Host | 12/28 | In Progress | - |
+| 2. Grammar Tier, Store and stdio Host | 13/28 | In Progress | - |
 | 3. TypeScript Module and MVP Eval | 0/TBD | Not started | - |
 | 4. Host Hardening | 0/TBD | Not started | - |
 | 5. Swift Module | 0/TBD | Not started | - |

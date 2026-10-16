@@ -3,16 +3,16 @@ gsd_state_version: "1.0"
 current_phase: 02
 current_phase_name: Grammar Tier, Store and stdio Host
 status: executing
-stopped_at: Completed 02-11-PLAN.md
-last_updated: "2026-10-16T20:26:26.782Z"
+stopped_at: Completed 02-12-PLAN.md
+last_updated: "2026-10-16T20:52:39.462Z"
 last_activity: 2026-10-16
-last_activity_desc: Completed 02-11 Resolution depth
-state_head: 88b49425e49122a9f8011779a77f4710cd57b345
+last_activity_desc: Completed 02-12 Store lifecycle
+state_head: 3a0908b22ec5193be9cc8f68da6a5247f87df094
 progress:
   total_phases: 9
   completed_phases: 1
   total_plans: 48
-  completed_plans: 32
+  completed_plans: 33
   percent: 11
 ---
 
@@ -28,9 +28,9 @@ See: .planning/PROJECT.md (updated 2026-10-15)
 ## Current Position
 
 Phase: 02 (Grammar Tier, Store and stdio Host) — EXECUTING
-Plan: 12 of 28 complete (plans 02-01 to 02-11 and 02-21 complete; they ran out of order, next is the lowest-numbered incomplete plan, 02-12)
+Plan: 13 of 28 complete (plans 02-01 to 02-12 and 02-21 complete; they ran out of order, next is the lowest-numbered incomplete plan, 02-13)
 Status: Ready to execute
-Last activity: 2026-10-16 — Completed 02-11 (resolution depth: scoped refs with candidates, transitive callers and importers, trigram fuzzy find, resolved-edge cache with timeout, failure and cache-unavailable degradations)
+Last activity: 2026-10-16 — Completed 02-12 (store lifecycle: cross-process writer lease with read-only followers and takeover, store location with cache fallback, dirty sentinel, quick_check, quarantine and rebuild, schema-version policy, SIGKILL and corruption proofs)
 
 Progress: [█░░░░░░░░░] 11%
 
@@ -46,7 +46,7 @@ Progress: [█░░░░░░░░░] 11%
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 01 | 20 | - | - |
-| 02 | 12 of 28 | - | - |
+| 02 | 13 of 28 | - | - |
 
 **Recent Trend:**
 - Last 5 plans: -
@@ -69,6 +69,7 @@ Progress: [█░░░░░░░░░] 11%
 | Phase 02 P09 | 25min | 2 tasks | 5 files |
 | Phase 02 P10 | 9 min | 3 tasks | 9 files |
 | Phase 02 P11 | 18 min | 3 tasks | 12 files |
+| Phase 02 P12 | 17 min | 3 tasks | 14 files |
 
 ## Accumulated Context
 
@@ -109,6 +110,10 @@ Recent decisions affecting current work:
 - [Phase 02]: [02-11] refs scopes sites by file, import binding and export alias; a site that can reach several definitions is given to each with RefRecord.candidates (set only above one); named bindings skip member sites, namespace bindings match member sites; re-exports are not followed before Phase 3
 - [Phase 02]: [02-11] Resolver reads run in three phases (sync grammar read, bounded resolver call, merge); a precise edge supersedes or removes a grammar edge, a timed-out resolver keeps running and fills the cache, and callers prune through removed edges. A site with no cached edge is re-asked (no negative marker): Phase 3 should add one before a real compiler resolver ships
 - [Phase 02]: [02-11] names_fts is a contentless trigram table filled once per interned name; meta.fuzzy_path records the last session that kept it in step and a switch rebuilds it. Fuzzy find under three characters stays empty. resolved_edges are keyed by overlay snapshot id plus context and superseded snapshots are pruned on write
+- [Phase 02]: [02-12] Only the process with write authority (the lease leader, or any process without a lease) runs the sentinel check, moves files aside, rebuilds or touches an existing schema; a follower skips the open-time bootstrap transaction, reads meta.fuzzy_path, and leaves the dirty sentinel to its owner — STO-08: a follower never writes, and a live leader's sentinel must not be mistaken for a crash
+- [Phase 02]: [02-12] The rebuild is recorded in the database (meta rebuild_pending, rebuilt_moved_to, rebuilt_at): rebuilding ends at the first completed setOverlay for every process, and status().rebuiltAfterCorruption survives a reopen; a valid SQLite file without fact-store meta is moved aside, not an error. Plan 02-18 check should reuse noteRebuild and quarantine — D-14: derived data is rebuilt, evidence is kept (newest two moved-aside files)
+- [Phase 02]: [02-12] lease.db uses the kit's WAL default with BEGIN EXCLUSIVE held for the leader's life; busy opens retry four times with 20 to 80 ms jitter on real timers; a killed leader's lock is free at once (SIGKILL test). Linux and Windows are unverified until three-OS CI runs the lease, SIGKILL and concurrent-start tests — research assumption A1; ADR 11 amendment
+- [Phase 02]: [02-12] The store.dir override comes only from the resolveStoreLocation parameter or GSD_ATLAS_STORE_DIR (absolute path, storeId appended); location.ts reads no file in the repository, treats a symlinked gsd-atlas folder as unsafe, and the cache fallback is {XDG_CACHE_HOME or ~/.cache}/gsd-atlas/{storeId} — T-02-36
 
 ### Pending Todos
 
@@ -135,6 +140,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-10-16T20:26:26.714Z
-Stopped at: Completed 02-11-PLAN.md
+Last session: 2026-10-16T20:52:39.393Z
+Stopped at: Completed 02-12-PLAN.md
 Resume file: None
