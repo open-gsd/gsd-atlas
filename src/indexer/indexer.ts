@@ -119,8 +119,12 @@ export function createIndexer(deps: IndexerDeps): Indexer {
       return Promise.reject(new Error('the indexer ensureFresh is not implemented yet'));
     },
 
+    attach() {
+      return Promise.reject(new Error('the indexer attach is not implemented yet'));
+    },
+
     status() {
-      return { queued: 0, running: 0, failed: [], lastIndexedAt: null };
+      return { queued: 0, running: 0, failed: [], lastIndexedAt: null, watchProblems: [] };
     },
 
     stop(): Promise<void> {

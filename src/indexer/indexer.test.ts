@@ -15,8 +15,76 @@ import { createSourceTree } from '../source-tree/index.ts';
 import type { SourceTree } from '../source-tree/index.ts';
 import { FakeClock, createTempGitRepo, makeTempDir } from '../test-kit/index.ts';
 import type { TempGitRepo } from '../test-kit/index.ts';
-import { IndexerError, createIndexer } from './index.ts';
+import { DEFAULT_INDEXER_CONFIG, IndexerError, createIndexer, createManualEventSource } from './index.ts';
 import type { Indexer, IndexerConfig, IndexerNotice } from './index.ts';
+
+const { debounceMs } = DEFAULT_INDEXER_CONFIG;
+
+/** A FakeClock that counts the timers armed through `after` that have neither fired nor been cancelled. */
+class SpyClock extends FakeClock {
+  live = 0;
+
+  override after(ms: number, fn: () => void): () => void {
+    this.live += 1;
+    let open = true;
+    const settle = (): void => {
+      if (open) {
+        open = false;
+        this.live -= 1;
+      }
+    };
+    const cancel = super.after(ms, () => {
+      settle();
+      fn();
+    });
+    return () => {
+      settle();
+      cancel();
+    };
+  }
+}
+
+/** What the Indexer asked Source Tree, in order. */
+interface TreeLog {
+  readonly hashPaths: string[][];
+  snapshots: number;
+  readonly readTexts: string[];
+}
+
+const newLog = (): TreeLog => ({ hashPaths: [], snapshots: 0, readTexts: [] });
+
+/** Wraps a Source Tree so a test can see which paths were hashed and read. */
+function recordingTree(log: TreeLog): (tree: SourceTree) => SourceTree {
+  return (tree) => ({
+    snapshot: (worktree) => {
+      log.snapshots += 1;
+      return tree.snapshot(worktree);
+    },
+    hashPaths: (worktree, paths) => {
+      log.hashPaths.push([...paths]);
+      return tree.hashPaths(worktree, paths);
+    },
+    sourceSet: (worktree, files, options) => tree.sourceSet(worktree, files, options),
+    worktrees: () => tree.worktrees(),
+    readText: (worktree, path, options) => {
+      log.readTexts.push(path);
+      return tree.readText(worktree, path, options);
+    },
+    hasObject: (hash) => tree.hasObject(hash),
+    read: (commit, path) => tree.read(commit, path),
+    identity: () => tree.identity(),
+  });
+}
+
+/** Poll until `check` holds; the work behind it runs on real I/O, so there is no clock to advance. */
+async function eventually(check: () => Promise<boolean>, what: string, timeoutMs = 10000): Promise<void> {
+  const until = Date.now() + timeoutMs;
+  for (;;) {
+    if (await check()) return;
+    if (Date.now() > until) assert.fail(`timed out waiting for ${what}`);
+    await new Promise((resolve) => setTimeout(resolve, 15));
+  }
+}
 
 /** The toy language module lives here; a `builtinDir` pointing at it makes `.toy` a claimed extension. */
 const toyModules = path.resolve(import.meta.dirname, '..', '..', 'test', 'fixtures', 'modules');
@@ -228,5 +296,126 @@ describe('Indexer tracer: build a three-file toy repository and find a definitio
       world.indexer.build(path.join(world.dir, 'nowhere')),
       (error: unknown) => error instanceof IndexerError && error.code === 'unknown_worktree',
     );
+  });
+});
+
+describe('Indexer events: the coalescing queue and the event source', () => {
+  it('a saved change reaches the store after the debounce, and no work starts before it', async (t) => {
+    const log = newLog();
+    const world = await makeWorld(t, { files: THREE_FILES, wrapTree: recordingTree(log), clock: new SpyClock(1000) });
+    await world.indexer.build(world.dir);
+    const manual = createManualEventSource();
+    await world.indexer.attach(manual.source, [world.dir]);
+    log.hashPaths.length = 0;
+
+    world.repo.write('b.toy', 'fn helper {\n}\nfn extra {\n}\n');
+    manual.emit(world.dir, 'b.toy');
+    await world.clock.advance(debounceMs - 1);
+    assert.equal(log.hashPaths.length, 0, 'nothing is hashed inside the debounce window');
+    await world.clock.advance(1);
+    await eventually(async () => (await world.reader.find('extra')).data.length === 1, 'the edit to reach the store');
+    assert.deepEqual(log.hashPaths, [['b.toy']], 'one batched hash for the one path');
+    assert.equal((await world.reader.find('helper')).data.length, 1);
+  });
+
+  it('a new file appears and a deleted file disappears', async (t) => {
+    const world = await makeWorld(t, { files: THREE_FILES, clock: new SpyClock(1000) });
+    await world.indexer.build(world.dir);
+    const manual = createManualEventSource();
+    await world.indexer.attach(manual.source, [world.dir]);
+
+    world.repo.write('e.toy', 'fn fresh {\n}\n');
+    world.repo.remove('b.toy');
+    manual.emit(world.dir, 'e.toy');
+    manual.emit(world.dir, 'b.toy');
+    await world.clock.advance(debounceMs);
+    await eventually(
+      async () => (await world.reader.find('fresh')).data.length === 1 && (await world.reader.find('helper')).data.length === 0,
+      'the new file to appear and the deleted one to go',
+    );
+    assert.equal((await world.reader.fileFacts('b.toy')).data, null);
+  });
+
+  it('an event for an ignored file never reaches hashPaths or the parser, even with a claimed extension', async (t) => {
+    const log = newLog();
+    const world = await makeWorld(t, {
+      files: THREE_FILES,
+      ignored: ['skip.toy'],
+      working: { 'skip.toy': 'fn Secret {\n}\n' },
+      wrapTree: recordingTree(log),
+      clock: new SpyClock(1000),
+    });
+    await world.indexer.build(world.dir);
+    const manual = createManualEventSource();
+    await world.indexer.attach(manual.source, [world.dir]);
+    log.hashPaths.length = 0;
+    log.readTexts.length = 0;
+    const snapshotsAfterBuild = log.snapshots;
+
+    world.repo.write('skip.toy', 'fn Secret {\n}\nfn Another {\n}\n');
+    world.repo.write('b.toy', 'fn helper {\n}\nfn marker {\n}\n');
+    manual.emit(world.dir, 'skip.toy');
+    manual.emit(world.dir, 'b.toy');
+    await world.clock.advance(debounceMs);
+    await eventually(async () => (await world.reader.find('marker')).data.length === 1, 'the same batch to finish');
+
+    assert.deepEqual(log.hashPaths, [['b.toy']], 'hashPaths hashes what it is asked, so the ignored path is dropped before it');
+    assert.ok(!log.readTexts.includes('skip.toy'));
+    assert.equal(log.snapshots, snapshotsAfterBuild + 1, 'one snapshot decided that the unknown path is ignored');
+    assert.equal((await world.reader.find('Secret')).data.length, 0);
+
+    // The verdict is remembered: the same ignored path costs no second snapshot.
+    manual.emit(world.dir, 'skip.toy');
+    manual.emit(world.dir, 'c.toy');
+    await world.clock.advance(debounceMs);
+    await eventually(async () => log.hashPaths.length === 2, 'the second batch to be hashed');
+    assert.deepEqual(log.hashPaths[1], ['c.toy']);
+    assert.equal(log.snapshots, snapshotsAfterBuild + 1);
+  });
+
+  it('events arriving in reverse path order are hashed in code-unit path order', async (t) => {
+    const log = newLog();
+    const world = await makeWorld(t, { files: THREE_FILES, wrapTree: recordingTree(log), clock: new SpyClock(1000) });
+    await world.indexer.build(world.dir);
+    const manual = createManualEventSource();
+    await world.indexer.attach(manual.source, [world.dir]);
+    log.hashPaths.length = 0;
+
+    for (const path of ['c.toy', 'b.toy', 'a.toy']) manual.emit(world.dir, path);
+    await world.clock.advance(debounceMs);
+    await eventually(async () => log.hashPaths.length === 1, 'the batch to be hashed');
+    assert.deepEqual(log.hashPaths[0], ['a.toy', 'b.toy', 'c.toy']);
+  });
+
+  it('submit drops a path that is absolute, climbs out with .. or holds NUL', async (t) => {
+    const log = newLog();
+    const world = await makeWorld(t, { files: THREE_FILES, wrapTree: recordingTree(log), clock: new SpyClock(1000) });
+    await world.indexer.build(world.dir);
+    log.hashPaths.length = 0;
+    for (const bad of ['/etc/passwd.toy', '../outside.toy', 'a/../../outside.toy', 'nul\0.toy', '']) world.indexer.submit(world.dir, bad);
+    world.indexer.submit(world.dir, 'b.toy');
+    await world.clock.advance(debounceMs * 3);
+    await eventually(async () => log.hashPaths.length >= 1, 'the valid path to be hashed');
+    assert.deepEqual(log.hashPaths, [['b.toy']], 'only the repo-relative path is ever hashed');
+  });
+
+  it('watcher problems are recorded per worktree and kind, and stop unsubscribes the source and leaves no timer', async (t) => {
+    const clock = new SpyClock(1000);
+    const world = await makeWorld(t, { files: THREE_FILES, clock });
+    const manual = createManualEventSource();
+    await world.indexer.attach(manual.source, [world.dir]);
+    assert.equal(manual.subscriptions(), 1);
+    manual.emitProblem(world.dir, 'overflow');
+    manual.emitProblem(world.dir, 'overflow');
+    manual.emitProblem(world.dir, 'error');
+    assert.deepEqual(world.indexer.status().watchProblems, [
+      { worktree: world.dir, kind: 'error', count: 1 },
+      { worktree: world.dir, kind: 'overflow', count: 2 },
+    ]);
+    manual.emit(world.dir, 'a.toy');
+    assert.equal(clock.live, 1, 'an event arms the queue timer');
+    await world.indexer.stop();
+    assert.equal(manual.subscriptions(), 0);
+    assert.equal(clock.live, 0);
   });
 });

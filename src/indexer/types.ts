@@ -13,6 +13,7 @@ import type { Governor } from '../governor/index.ts';
 import type { GrammarEngine } from '../grammar-engine/index.ts';
 import type { Roots } from '../lang/index.ts';
 import type { SourceTree } from '../source-tree/index.ts';
+import type { EventSource } from './event-source.ts';
 
 /** Tunables of the Indexer. Defaults: `DEFAULT_INDEXER_CONFIG`. Every key is overridable in config. */
 export interface IndexerConfig {
@@ -93,6 +94,13 @@ export interface FreshResult {
   readonly invalid: readonly string[];
 }
 
+/** How often an event source reported trouble for a worktree. Handling it (Reconcile) arrives in plan 02-17. */
+export interface WatchProblemRecord {
+  readonly worktree: string;
+  readonly kind: 'error' | 'overflow';
+  readonly count: number;
+}
+
 export interface IndexerStatus {
   /** Paths waiting in the coalescing queue or for a Governor slot. */
   readonly queued: number;
@@ -102,6 +110,8 @@ export interface IndexerStatus {
   readonly failed: readonly FailedPath[];
   /** `Clock.now()` after the last commit, or null before any. */
   readonly lastIndexedAt: number | null;
+  /** Problems reported by attached event sources, sorted by worktree then kind. */
+  readonly watchProblems: readonly WatchProblemRecord[];
 }
 
 export interface Indexer {
@@ -111,6 +121,11 @@ export interface Indexer {
   submit(worktree: string, path: string): void;
   /** Index the named paths now, ahead of the debounce (IDX-04). */
   ensureFresh(worktree: string, paths: readonly string[], waitMs?: number): Promise<FreshResult>;
+  /**
+   * Subscribe `source` for each worktree root: every change is submitted, every problem is counted in
+   * `status().watchProblems`. Unsubscribed by `stop()`.
+   */
+  attach(source: EventSource, worktrees: readonly string[]): Promise<void>;
   status(): IndexerStatus;
   /** Cancel timers, finish the work in progress, release the writer slot. Safe to call twice. */
   stop(): Promise<void>;
