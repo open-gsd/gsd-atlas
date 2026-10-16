@@ -42,6 +42,27 @@ export function bucketLabels(edges: readonly number[]): readonly string[] {
   return [...edges.map((edge) => `le${edge}`), OVERFLOW_LABEL];
 }
 
+export const HOUR_MS = 3_600_000;
+export const DAY_MS = 86_400_000;
+
+/** The last instant a four-digit-year ISO string can name; times are clamped into [0, this] before formatting. */
+const MAX_MS = Date.UTC(9999, 11, 31, 23, 59, 59, 999);
+
+function clampMs(ms: number): number {
+  if (!Number.isFinite(ms)) return ms > 0 ? MAX_MS : 0;
+  return Math.max(0, Math.min(MAX_MS, ms));
+}
+
+/** The UTC hour bucket of an instant, `YYYY-MM-DDTHH`. Fixed width, so string order is time order. */
+export function hourBucket(ms: number): string {
+  return new Date(clampMs(ms)).toISOString().slice(0, 13);
+}
+
+/** The UTC day bucket of an instant, `YYYY-MM-DD`. */
+export function dayBucket(ms: number): string {
+  return new Date(clampMs(ms)).toISOString().slice(0, 10);
+}
+
 /** Row grains of the counters table: hourly buckets are rolled into daily buckets. */
 export const GRAINS = ['hour', 'day'] as const;
 export type Grain = (typeof GRAINS)[number];
