@@ -8,14 +8,17 @@ import assert from 'node:assert/strict';
 import path from 'node:path';
 import { describe, it } from 'node:test';
 import type { FileFacts, ImportSite, Span, SymbolIdentity } from '../facts/index.ts';
+import { createScriptedResolver } from '../precise-resolver/index.ts';
+import type { ScriptedEdge } from '../precise-resolver/index.ts';
 import { loadDriver, openDatabase, selfTest } from '../sqlite/index.ts';
 import type { Db, DriverName } from '../sqlite/index.ts';
 import { FakeClock, makeTempDir } from '../test-kit/index.ts';
+import { overlaySnapshotId } from './cache.ts';
 import { SchemaTooNew, StoreClosed, UnknownWorktree, WriterBusy } from './errors.ts';
 import { openFactStore } from './open.ts';
 import type { OpenFactStoreOptions } from './open.ts';
 import { SCHEMA_VERSION, STORE_FILE_NAME } from './schema.ts';
-import type { CommitFileInput, CommitResult, FactStore, FindOptions, StoreDeps, Writer } from './types.ts';
+import type { CommitFileInput, CommitResult, FactStore, FindOptions, Resolver, StoreDeps, Writer } from './types.ts';
 
 interface Fixture {
   readonly store: FactStore;
@@ -31,17 +34,21 @@ interface Fixture {
   open(extra?: Partial<OpenFactStoreOptions>): Promise<FactStore>;
 }
 
+/** The resolver of a store that has no precise resolver: it resolves nothing. */
+const noResolver: Resolver = async function* () {
+  // a resolver that resolves nothing
+};
+
 async function withStore(
   driver: DriverName,
   run: (fx: Fixture) => Promise<void>,
   options: Partial<OpenFactStoreOptions> = {},
+  resolver: Resolver = noResolver,
 ): Promise<void> {
   const tmp = makeTempDir();
   const clock = new FakeClock(1000);
   const deps: StoreDeps = {
-    resolver: async function* () {
-      // a resolver that resolves nothing
-    },
+    resolver,
     clock,
     gitHas: async () => true,
   };
@@ -155,6 +162,88 @@ function importOf(specifier: string, line: number, ...bindings: Array<[string, s
 /** One function definition called `name` over the three lines from `line`. */
 function definition(name: string, line = 1, extra: { exported?: boolean } = {}): FileFacts['symbols'][number] {
   return { name, kind: 'function', span: span(line, 0, line + 2, 1), ...extra };
+}
+
+/** How many times a scripted resolver was invoked. */
+interface Calls {
+  count: number;
+}
+
+/** A store Resolver backed by the scripted PreciseResolver stub; `calls` counts invocations. */
+function scripted(edges: readonly ScriptedEdge[], calls: Calls): Resolver {
+  const inner = createScriptedResolver({ id: 'scripted', edges });
+  return (sites, context) => {
+    calls.count += 1;
+    return inner.resolve({ id: 'overlay', pathToHash: new Map() }, context, sites);
+  };
+}
+
+/** A scripted resolver that waits for `door` before it yields anything (a slow resolver). */
+function gated(edges: readonly ScriptedEdge[], calls: Calls, door: Promise<void>): Resolver {
+  const inner = createScriptedResolver({ id: 'scripted', edges });
+  return async function* (sites, context) {
+    calls.count += 1;
+    await door;
+    yield* inner.resolve({ id: 'overlay', pathToHash: new Map() }, context, sites);
+  };
+}
+
+function deferred(): { readonly promise: Promise<void>; readonly open: () => void } {
+  let open: () => void = () => {};
+  const promise = new Promise<void>((resolve) => {
+    open = resolve;
+  });
+  return { promise, open };
+}
+
+/** Poll a condition on real timers until it holds; background work has no other signal to wait on. */
+async function until(check: () => boolean, label: string): Promise<void> {
+  for (let attempt = 0; attempt < 400; attempt += 1) {
+    if (check()) return;
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, 5);
+    });
+  }
+  assert.fail(`timed out waiting for ${label}`);
+}
+
+const SITE_1 = { path: 'src/c.cjs', span: span(3, 2, 3, 5), name: 'run' };
+const SITE_2 = { path: 'src/c.cjs', span: span(6, 2, 6, 5), name: 'run' };
+const RUN_CTS = identity('src/foo.cts', 'run', 'function');
+const RUN_CJS = identity('src/foo.cjs', 'run', 'function');
+/** A resolver script that binds both call sites to foo.cjs, so every candidate site has a cached answer. */
+const BOTH_SITES: readonly ScriptedEdge[] = [
+  { site: SITE_1, target: RUN_CJS },
+  { site: SITE_2, target: RUN_CJS },
+];
+
+/**
+ * Two definitions of `run` (foo.cts and foo.cjs) and c.cjs, which imports `run` from './foo.cjs' (a specifier
+ * that names both files, so the grammar tier reports two candidates), calls it at two sites inside `main`, and
+ * calls `main` from `top`.
+ */
+async function seedAmbiguous(writer: Writer, worktree = 'main'): Promise<void> {
+  const runFile = (filePath: string, n: number): FileFacts =>
+    fileOf(filePath, n, { symbols: [definition('run', 1, { exported: true })], exports: [{ name: 'run', span: span(1, 0, 3, 1) }] });
+  await writer.commitFile({ worktree, path: 'src/foo.cts', hash: H(1), facts: runFile('src/foo.cts', 1) });
+  await writer.commitFile({ worktree, path: 'src/foo.cjs', hash: H(2), facts: runFile('src/foo.cjs', 2) });
+  await writer.commitFile({
+    worktree,
+    path: 'src/c.cjs',
+    hash: H(3),
+    facts: fileOf('src/c.cjs', 3, {
+      symbols: [
+        { name: 'main', kind: 'function', span: span(1, 0, 9, 1) },
+        { name: 'top', kind: 'function', span: span(11, 0, 13, 1) },
+      ],
+      imports: [importOf('./foo.cjs', 0, ['run', 'run'])],
+      refSites: [
+        { name: 'run', span: SITE_1.span, kind: 'call', enclosing: 0, importPath: './foo.cjs' },
+        { name: 'run', span: SITE_2.span, kind: 'call', enclosing: 0, importPath: './foo.cjs' },
+        { name: 'main', span: span(12, 2, 12, 6), kind: 'call', enclosing: 1 },
+      ],
+    }),
+  });
 }
 
 const COUNTED_TABLES = ['files', 'names', 'symbols', 'refs', 'imports', 'import_bindings', 'exports', 'overlays', 'overlay_files'];
@@ -1599,6 +1688,365 @@ export function defineFactStoreContract(label: string, driver: DriverName): void
         }
         assert.deepStrictEqual(counts(peek), before);
         assert.equal((await reader.find('item7')).data.length, 1);
+        writer.release();
+      });
+    });
+
+    it('refs resolver: a precise edge supersedes the grammar candidate at its site, removes the site from other targets, and leaves unmentioned sites INFERRED', async () => {
+      const calls: Calls = { count: 0 };
+      await withStore(
+        driver,
+        async (fx) => {
+          const writer = fx.store.writer();
+          await seedAmbiguous(writer);
+          const reader = fx.store.at('main');
+
+          const cjs = await reader.refs(RUN_CJS);
+          assert.equal(cjs.degraded, undefined);
+          assert.deepStrictEqual(
+            cjs.data.map((record) => [record.span.startLine, record.tier, record.confidence, record.candidates]),
+            [[3, 'precise', 'EXTRACTED', undefined], [6, 'grammar', 'INFERRED', 2]],
+          );
+          assert.equal(cjs.data[0]?.extractor, 'precise:scripted');
+          assert.deepStrictEqual(cjs.data[0]?.target, RUN_CJS);
+          assert.deepStrictEqual(cjs.data[0]?.site, SITE_1);
+          assert.match(cjs.data[0]?.debug ?? '', /^ref\/src%2Fc\.cjs\//, 'a precise record keeps the site debug handle');
+
+          const cts = await reader.refs(RUN_CTS);
+          assert.deepStrictEqual(
+            cts.data.map((record) => [record.span.startLine, record.tier, record.confidence, record.candidates]),
+            [[6, 'grammar', 'INFERRED', 2]],
+            'the site the resolver bound to foo.cjs is gone from foo.cts',
+          );
+          writer.release();
+        },
+        {},
+        scripted([{ site: SITE_1, target: RUN_CJS }], calls),
+      );
+    });
+
+    it('refs snapshot: the first call writes edges keyed by the overlay snapshot id and context, the second reads them without the resolver, a content change misses', async () => {
+      const calls: Calls = { count: 0 };
+      await withStore(
+        driver,
+        async (fx) => {
+          const writer = fx.store.writer();
+          await seedAmbiguous(writer);
+          const peek = await fx.peek();
+          const reader = fx.store.at('main');
+          const rows = (): number => Number(peek.prepare('SELECT count(*) AS n FROM resolved_edges').get()?.n);
+
+          const first = await reader.refs(RUN_CJS);
+          assert.equal(calls.count, 1);
+          assert.equal(rows(), 2);
+          const expected = overlaySnapshotId(
+            new Map([['src/c.cjs', H(3)], ['src/foo.cjs', H(2)], ['src/foo.cts', H(1)]]),
+          );
+          const stored = peek
+            .prepare(
+              'SELECT snapshot, context_id, site_path, start_line, name, target_path, target_kind, resolver FROM resolved_edges ORDER BY start_line',
+            )
+            .get();
+          assert.equal(stored?.snapshot, expected, 'the key is the hash of the sorted (path, hash) pairs');
+          assert.equal(stored?.site_path, 'src/c.cjs');
+          assert.equal(stored?.start_line, 3);
+          assert.equal(stored?.target_path, 'src/foo.cjs');
+          assert.equal(stored?.resolver, 'scripted');
+          assert.equal(Number(peek.prepare('SELECT count(*) AS n FROM resolution_contexts').get()?.n), 1);
+
+          const second = await reader.refs(RUN_CJS);
+          assert.equal(calls.count, 1, 'the second call on an unchanged overlay does not invoke the resolver');
+          assert.deepStrictEqual(second.data, first.data);
+
+          await writer.commitFile({ worktree: 'main', path: 'src/extra.ts', hash: H(9), facts: named('src/extra.ts', 9, 'extra') });
+          const third = await reader.refs(RUN_CJS);
+          assert.equal(calls.count, 2, 'a content change changes the snapshot id, so the cache misses');
+          assert.deepStrictEqual(third.data, first.data);
+          const snapshots = peek.prepare('SELECT DISTINCT snapshot FROM resolved_edges').all();
+          assert.equal(snapshots.length, 1, 'edges of the superseded snapshot are dropped');
+          assert.notEqual(snapshots[0]?.snapshot, expected);
+          writer.release();
+        },
+        {},
+        scripted(BOTH_SITES, calls),
+      );
+    });
+
+    it('[edge STO-04/adjacency] refs context: two overlays with identical contents and the same context share one cache slot, and another context gets its own', async () => {
+      const calls: Calls = { count: 0 };
+      let contextId = 'ctx-a';
+      await withStore(
+        driver,
+        async (fx) => {
+          const writer = fx.store.writer();
+          await seedAmbiguous(writer, 'wt-a');
+          await seedAmbiguous(writer, 'wt-b');
+          const peek = await fx.peek();
+          const rows = (): number => Number(peek.prepare('SELECT count(*) AS n FROM resolved_edges').get()?.n);
+
+          const inA = await fx.store.at('wt-a').refs(RUN_CJS);
+          const inB = await fx.store.at('wt-b').refs(RUN_CJS);
+          assert.equal(calls.count, 1, 'identical contents and context: the second overlay reads the first overlay\'s rows');
+          assert.equal(rows(), 2);
+          assert.deepStrictEqual(inA.data, inB.data);
+
+          contextId = 'ctx-b';
+          const other = await fx.store.at('wt-a').refs(RUN_CJS);
+          assert.equal(calls.count, 2, 'the same overlay under another resolution context misses');
+          assert.equal(rows(), 4);
+          assert.equal(Number(peek.prepare('SELECT count(*) AS n FROM resolution_contexts').get()?.n), 2);
+          assert.deepStrictEqual(other.data, inA.data);
+          writer.release();
+        },
+        { resolutionContext: () => ({ id: contextId, configHashes: ['h2', 'h1'] }) },
+        scripted(BOTH_SITES, calls),
+      );
+    });
+
+    it('[edge STO-04/empty] refs resolver: a resolver that yields nothing leaves refs equal to the grammar result, with no degraded code and no cache rows', async () => {
+      await withStore(driver, async (fx) => {
+        const writer = fx.store.writer();
+        await seedAmbiguous(writer);
+        const peek = await fx.peek();
+        const refs = await fx.store.at('main').refs(RUN_CJS);
+        assert.equal(refs.degraded, undefined);
+        assert.deepStrictEqual(
+          refs.data.map((record) => [record.span.startLine, record.tier, record.confidence, record.candidates]),
+          [[3, 'grammar', 'INFERRED', 2], [6, 'grammar', 'INFERRED', 2]],
+        );
+        assert.equal(Number(peek.prepare('SELECT count(*) AS n FROM resolved_edges').get()?.n), 0);
+        writer.release();
+      });
+    });
+
+    it('[edge STO-04/ordering] refs resolver: results are ordered by path then start line and column, the same on a cache miss and a cache hit', async () => {
+      const calls: Calls = { count: 0 };
+      await withStore(
+        driver,
+        async (fx) => {
+          const writer = fx.store.writer();
+          await seedAmbiguous(writer);
+          // a second importer in a file that sorts before c.cjs, whose site the resolver binds too
+          await writer.commitFile({
+            worktree: 'main',
+            path: 'src/a.cjs',
+            hash: H(4),
+            facts: fileOf('src/a.cjs', 4, {
+              symbols: [definition('start', 1)],
+              imports: [importOf('./foo.cjs', 0, ['run', 'run'])],
+              refSites: [{ name: 'run', span: span(2, 4, 2, 7), kind: 'call', enclosing: 0, importPath: './foo.cjs' }],
+            }),
+          });
+          const reader = fx.store.at('main');
+          const miss = await reader.refs(RUN_CJS);
+          const hit = await reader.refs(RUN_CJS);
+          assert.ok(calls.count >= 1);
+          assert.deepStrictEqual(
+            miss.data.map((record) => [record.source_path, record.span.startLine, record.span.startColumn, record.tier]),
+            [['src/a.cjs', 2, 4, 'precise'], ['src/c.cjs', 3, 2, 'precise'], ['src/c.cjs', 6, 2, 'grammar']],
+          );
+          assert.deepStrictEqual(hit.data, miss.data);
+          writer.release();
+        },
+        {},
+        scripted(
+          [
+            { site: SITE_1, target: RUN_CJS },
+            { site: { path: 'src/a.cjs', span: span(2, 4, 2, 7), name: 'run' }, target: RUN_CJS },
+          ],
+          calls,
+        ),
+      );
+    });
+
+    it('refs resolver_timeout: a slow resolver gives grammar edges and the degraded code while it finishes in the background and fills the cache', async () => {
+      const calls: Calls = { count: 0 };
+      const door = deferred();
+      await withStore(
+        driver,
+        async (fx) => {
+          const writer = fx.store.writer();
+          await seedAmbiguous(writer);
+          const peek = await fx.peek();
+          const reader = fx.store.at('main');
+          const pending = reader.refs(RUN_CJS, { timeoutMs: 50 });
+          await fx.clock.advance(50);
+          const slow = await pending;
+          assert.deepStrictEqual(slow.degraded, ['resolver_timeout']);
+          assert.deepStrictEqual(
+            slow.data.map((record) => [record.span.startLine, record.tier, record.confidence]),
+            [[3, 'grammar', 'INFERRED'], [6, 'grammar', 'INFERRED']],
+          );
+          assert.equal(Number(peek.prepare('SELECT count(*) AS n FROM resolved_edges').get()?.n), 0);
+
+          door.open();
+          await until(() => Number(peek.prepare('SELECT count(*) AS n FROM resolved_edges').get()?.n) === 2, 'the background fill');
+          const warm = await reader.refs(RUN_CJS, { timeoutMs: 50 });
+          assert.equal(warm.degraded, undefined);
+          assert.deepStrictEqual(warm.data.map((record) => record.tier), ['precise', 'precise']);
+          assert.equal(calls.count, 1, 'the later call is served from the cache the background run filled');
+          writer.release();
+        },
+        {},
+        gated(BOTH_SITES, calls, door.promise),
+      );
+    });
+
+    it('refs resolver_failed: a resolver that throws, while iterating or on the call, gives the grammar edges and the degraded code, never an error', async () => {
+      const calls: Calls = { count: 0 };
+      const failures: Array<[string, Resolver]> = [
+        [
+          'iterating',
+          async function* () {
+            calls.count += 1;
+            throw new Error('resolver exploded while iterating');
+          },
+        ],
+        [
+          'on the call',
+          () => {
+            calls.count += 1;
+            throw new Error('resolver exploded on the call');
+          },
+        ],
+      ];
+      for (const [label, resolver] of failures) {
+        await withStore(
+          driver,
+          async (fx) => {
+            const writer = fx.store.writer();
+            await seedAmbiguous(writer);
+            const peek = await fx.peek();
+            const refs = await fx.store.at('main').refs(RUN_CJS);
+            assert.deepStrictEqual(refs.degraded, ['resolver_failed'], label);
+            assert.deepStrictEqual(
+              refs.data.map((record) => [record.span.startLine, record.tier, record.confidence]),
+              [[3, 'grammar', 'INFERRED'], [6, 'grammar', 'INFERRED']],
+              label,
+            );
+            assert.equal(Number(peek.prepare('SELECT count(*) AS n FROM resolved_edges').get()?.n), 0, label);
+            writer.release();
+          },
+          {},
+          resolver,
+        );
+      }
+      assert.equal(calls.count, 2);
+    });
+
+    it('refs cache_unavailable: a process that may not write the cache computes and returns precise edges, writes nothing and says so', async () => {
+      const calls: Calls = { count: 0 };
+      await withStore(
+        driver,
+        async (fx) => {
+          const writer = fx.store.writer();
+          await seedAmbiguous(writer);
+          const peek = await fx.peek();
+          const refs = await fx.store.at('main').refs(RUN_CJS);
+          assert.deepStrictEqual(refs.degraded, ['cache_unavailable']);
+          assert.deepStrictEqual(refs.data.map((record) => record.tier), ['precise', 'grammar']);
+          assert.equal(Number(peek.prepare('SELECT count(*) AS n FROM resolved_edges').get()?.n), 0);
+          assert.equal(Number(peek.prepare('SELECT count(*) AS n FROM resolution_contexts').get()?.n), 0);
+          await fx.store.at('main').refs(RUN_CJS);
+          assert.equal(calls.count, 2, 'nothing was cached, so the next call computes again');
+          writer.release();
+        },
+        { canCache: () => false },
+        scripted([{ site: SITE_1, target: RUN_CJS }], calls),
+      );
+    });
+
+    it('[edge STO-04/concurrency] refs resolver: two simultaneous calls that both miss the cache return the same edges and the cache holds each edge once', async () => {
+      const calls: Calls = { count: 0 };
+      await withStore(
+        driver,
+        async (fx) => {
+          const writer = fx.store.writer();
+          await seedAmbiguous(writer);
+          const peek = await fx.peek();
+          const reader = fx.store.at('main');
+          const [one, two] = await Promise.all([reader.refs(RUN_CJS), reader.refs(RUN_CJS)]);
+          assert.deepStrictEqual(one.data, two.data);
+          assert.deepStrictEqual(one.data.map((record) => record.tier), ['precise', 'grammar']);
+          assert.equal(Number(peek.prepare('SELECT count(*) AS n FROM resolved_edges').get()?.n), 1);
+          writer.release();
+        },
+        {},
+        scripted([{ site: SITE_1, target: RUN_CJS }], calls),
+      );
+    });
+
+    it('refs resolver: edges for sites that were not asked about or for targets the overlay does not hold are dropped and never cached', async () => {
+      const calls: Calls = { count: 0 };
+      await withStore(
+        driver,
+        async (fx) => {
+          const writer = fx.store.writer();
+          await seedAmbiguous(writer);
+          const peek = await fx.peek();
+          const reader = fx.store.at('main');
+          const refs = await reader.refs(RUN_CJS);
+          assert.deepStrictEqual(
+            refs.data.map((record) => [record.span.startLine, record.tier]),
+            [[3, 'grammar'], [6, 'precise']],
+            'only the valid edge for site 2 applies',
+          );
+          assert.equal(Number(peek.prepare('SELECT count(*) AS n FROM resolved_edges').get()?.n), 1);
+          const cts = await reader.refs(RUN_CTS);
+          assert.deepStrictEqual(cts.data.map((record) => record.span.startLine), [3], 'site 2 now belongs to foo.cjs');
+          writer.release();
+        },
+        {},
+        scripted(
+          [
+            { site: SITE_1, target: identity('src/ghost.ts', 'run', 'function') },
+            { site: { path: 'src/c.cjs', span: span(90, 0, 90, 3), name: 'run' }, target: RUN_CJS },
+            { site: SITE_2, target: RUN_CJS },
+          ],
+          calls,
+        ),
+      );
+    });
+
+    it('callers resolver: precise edges mark the callers they bind and a caller reached only through a removed edge disappears with its own callers', async () => {
+      const calls: Calls = { count: 0 };
+      await withStore(
+        driver,
+        async (fx) => {
+          const writer = fx.store.writer();
+          await seedAmbiguous(writer);
+          const reader = fx.store.at('main');
+          const cjs = await reader.callers(RUN_CJS, { hops: 2 });
+          assert.deepStrictEqual(
+            cjs.data.map((record) => [record.hops, record.caller.qualifiedName, record.callee.qualifiedName, record.tier, record.confidence]),
+            [[1, 'main', 'run', 'precise', 'EXTRACTED'], [1, 'main', 'run', 'precise', 'EXTRACTED'], [2, 'top', 'main', 'grammar', 'INFERRED']],
+          );
+          const cts = await reader.callers(RUN_CTS, { hops: 2 });
+          assert.deepStrictEqual(cts.data, [], 'both sites bind to foo.cjs, so foo.cts has no callers and top is not reached');
+          writer.release();
+        },
+        {},
+        scripted(
+          [
+            { site: SITE_1, target: RUN_CJS },
+            { site: SITE_2, target: RUN_CJS },
+          ],
+          calls,
+        ),
+      );
+    });
+
+    it('[edge STO-03/empty] an overlay with no files returns empty data for refs, callers and importers with the watermark and no error', async () => {
+      await withStore(driver, async (fx) => {
+        const writer = fx.store.writer();
+        await writer.setOverlay('empty', 'refs/heads/e', new Map());
+        const reader = fx.store.at('empty');
+        const id = identity('src/a.ts', 'x', 'function');
+        for (const answer of [await reader.refs(id), await reader.callers(id, { hops: 3 }), await reader.importers('src/a.ts', { depth: 3 })]) {
+          assert.deepStrictEqual(answer.data, []);
+          assert.deepStrictEqual(answer.watermark, { seq: 1, stalePaths: [] });
+          assert.equal(answer.degraded, undefined);
+        }
         writer.release();
       });
     });

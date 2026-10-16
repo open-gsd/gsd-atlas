@@ -1,6 +1,45 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { describe, it } from 'node:test';
+import { contextKey, overlaySnapshotId } from './cache.ts';
 import { resolveSpecifier } from './specifier.ts';
+
+describe('overlaySnapshotId', () => {
+  it('is the sha256 of the sorted path and hash pairs, in hex, whatever the map order', () => {
+    const expected = createHash('sha256')
+      .update('src/a.ts\u0000aaa\u0000src/b.ts\u0000bbb\u0000')
+      .digest('hex');
+    assert.equal(overlaySnapshotId(new Map([['src/a.ts', 'aaa'], ['src/b.ts', 'bbb']])), expected);
+    assert.equal(overlaySnapshotId(new Map([['src/b.ts', 'bbb'], ['src/a.ts', 'aaa']])), expected);
+    assert.match(expected, /^[0-9a-f]{64}$/);
+  });
+
+  it('differs when a hash or a path changes, and two overlays with identical contents share an id', () => {
+    const base = new Map([['src/a.ts', 'aaa'], ['src/b.ts', 'bbb']]);
+    const id = overlaySnapshotId(base);
+    assert.equal(overlaySnapshotId(new Map(base)), id);
+    assert.notEqual(overlaySnapshotId(new Map([['src/a.ts', 'aaa'], ['src/b.ts', 'ccc']])), id);
+    assert.notEqual(overlaySnapshotId(new Map([['src/a.ts', 'aaa'], ['src/c.ts', 'bbb']])), id);
+    assert.notEqual(overlaySnapshotId(new Map([['src/a.ts', 'aaa']])), id);
+    assert.notEqual(overlaySnapshotId(new Map([['src/a.tsaaa', '']])), overlaySnapshotId(new Map([['src/a.ts', 'aaa']])));
+  });
+
+  it('gives an overlay with no files an id of its own', () => {
+    assert.equal(overlaySnapshotId(new Map()), createHash('sha256').digest('hex'));
+  });
+});
+
+describe('contextKey', () => {
+  it('is the JSON of the id and the sorted config hashes, so the order of hashes does not matter', () => {
+    const key = contextKey({ id: 'ctx', configHashes: ['b', 'a'] });
+    assert.equal(key, '{"id":"ctx","configHashes":["a","b"]}');
+    assert.equal(contextKey({ id: 'ctx', configHashes: ['a', 'b'] }), key);
+  });
+
+  it('accepts an empty context: an id and no config hashes', () => {
+    assert.equal(contextKey({ id: 'grammar', configHashes: [] }), '{"id":"grammar","configHashes":[]}');
+  });
+});
 
 const paths = (...list: string[]): ReadonlySet<string> => new Set(list);
 
