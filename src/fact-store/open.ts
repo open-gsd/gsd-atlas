@@ -34,6 +34,15 @@ export const DEFAULT_LEASE_RETRY_MAX_MS = 30000;
 /** The approved `store.dirtyIdleMs` of 02-CONSTANTS.md: quiet time after the last write before the dirty sentinel goes. */
 export const DEFAULT_DIRTY_IDLE_MS = 1000;
 
+/** The approved `gc.graceMs` of 02-CONSTANTS.md (D-16): how long a retired version is kept when git lacks its blob, 24 hours. */
+export const DEFAULT_GC_GRACE_MS = 86_400_000;
+
+/** How many retired files one `collect` transaction deletes (plan 02-18: 50 files per transaction). */
+export const DEFAULT_COLLECT_CHUNK_SIZE = 50;
+
+/** The approved `maintenance.sliceMs` of 02-CONSTANTS.md: the longest single maintenance pause, 200 ms. */
+export const DEFAULT_SLICE_MS = 200;
+
 /** Options of `openFactStore`: the engine-independent `StoreOptions` plus the SQL driver choice. */
 export interface OpenFactStoreOptions extends StoreOptions {
   /** Which SQLite driver to open. Default `node:sqlite`. */

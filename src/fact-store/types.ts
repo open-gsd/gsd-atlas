@@ -272,6 +272,11 @@ export interface ReconcileResult {
 
 export interface MaintenanceOptions {
   readonly budgetMs: number;
+  /**
+   * `compact` only: allow a full `VACUUM` when the free pages are more than a quarter of the file. Without it a
+   * full `VACUUM` never runs, because it rewrites the whole file while it holds the writer.
+   */
+  readonly full?: boolean;
 }
 
 /** Outcome of a time-boxed, resumable, idempotent maintenance task. */
@@ -380,6 +385,15 @@ export interface StoreOptions {
    * capability probe found it missing. Default: use the detected capability.
    */
   readonly trigram?: boolean;
+  /**
+   * How long a retired file version is kept when git does not have its blob (D-16), in milliseconds.
+   * Default: the approved `gc.graceMs` (24 hours).
+   */
+  readonly graceMs?: number;
+  /** How many retired files `collect` deletes in one transaction. Default 50; a test override. */
+  readonly chunkSize?: number;
+  /** The longest single pause `compact` may cause, in milliseconds. Default: the approved `maintenance.sliceMs`. */
+  readonly sliceMs?: number;
 }
 
 /**
