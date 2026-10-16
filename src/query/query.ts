@@ -2,16 +2,19 @@
  * Query: `ask(request)` returns the full envelope (QRY-01). It validates the request, resolves the worktree,
  * and routes to a tool. Every outcome, including every error, is an envelope.
  */
+import type { z } from 'zod';
 import { PROTOCOL_VERSION, diagnostic } from '../facts/index.ts';
 import type { Envelope, Request } from '../facts/index.ts';
 import { decodeCursor, queryHash } from './cursor.ts';
-import type { CursorPayload, CursorProblem } from './cursor.ts';
+import type { CursorPayload, CursorProblem, QueryParts } from './cursor.ts';
 import { resolveQueryConfig } from './defaults.ts';
 import { errorEnvelope } from './envelope.ts';
 import { newNonce, normalizeText } from './fence.ts';
 import { runFind } from './find.ts';
-import type { FreshOutcome } from './find.ts';
-import { codeFindSchema } from './tools.ts';
+import type { FindContext, FreshOutcome } from './find.ts';
+import { runRefs } from './refs.ts';
+import { codeFindSchema, codeRefsSchema } from './tools.ts';
+import type { ToolName } from './tools.ts';
 import type { Query, QueryConfig, QueryDeps } from './types.ts';
 
 /** The cap on any message that quotes something the caller supplied. */
@@ -79,6 +82,54 @@ async function freshOutcome(
   }
 }
 
+/** The arguments every code tool takes that Query itself uses. */
+interface CommonInput {
+  readonly repo?: string | undefined;
+  readonly more?: string | undefined;
+  readonly fresh?: readonly string[] | undefined;
+}
+
+/** A request ready to run (its context and checked input), or the error envelope that ends it. */
+type Prepared<I> = { readonly ctx: FindContext; readonly input: I } | { readonly error: Envelope };
+
+/**
+ * Everything the code tools share before they run: check the arguments against the tool's strict schema, find
+ * the worktree, bind the cursor to this query, and read your own writes. The hash binds a cursor to the tool and
+ * to the ranking-relevant arguments, so a cursor from another tool or another query is refused.
+ */
+async function prepare<I extends CommonInput>(
+  deps: QueryDeps,
+  config: QueryConfig,
+  request: Request,
+  tool: ToolName,
+  schema: z.ZodType<I>,
+  partsOf: (input: I, worktree: string) => QueryParts,
+): Promise<Prepared<I>> {
+  const parsed = schema.safeParse(mergedInput(request));
+  if (!parsed.success) {
+    const issue = parsed.error.issues[0];
+    const where = issue === undefined || issue.path.length === 0 ? 'arguments' : issue.path.join('.');
+    return { error: errorEnvelope('invalid_args', say(`${where}: ${issue?.message ?? 'invalid'}`)) };
+  }
+  const input = parsed.data;
+
+  const worktree = request.worktree ?? input.repo;
+  if (worktree === undefined || worktree === '') {
+    return { error: errorEnvelope('invalid_args', `${tool} needs a repository: pass repo or a worktree`) };
+  }
+
+  const hash = queryHash(tool, partsOf(input, worktree));
+  let cursor: CursorPayload | null = null;
+  if (input.more !== undefined) {
+    const decoded = decodeCursor(input.more, hash, config.cursorMaxChars);
+    if (!decoded.ok) return { error: errorEnvelope('bad_cursor', BAD_CURSOR[decoded.problem]) };
+    cursor = decoded.payload;
+  }
+
+  const fresh = await freshOutcome(deps, config, worktree, input.fresh);
+  return { ctx: { deps, config, worktree, fresh, nonce: (deps.nonce ?? newNonce)(), queryHash: hash, cursor }, input };
+}
+
 export function createQuery(deps: QueryDeps): Query {
   const config: QueryConfig = resolveQueryConfig(deps.config);
 
@@ -90,39 +141,32 @@ export function createQuery(deps: QueryDeps): Query {
           `protocol ${say(String(request.protocol))} is not supported; this host speaks protocol ${String(PROTOCOL_VERSION)}`,
         );
       }
-      if (request.kind !== 'code_find') {
-        return errorEnvelope('unknown_kind', `request kind ${say(JSON.stringify(request.kind))} is not known to this host`);
-      }
 
-      const parsed = codeFindSchema.safeParse(mergedInput(request));
-      if (!parsed.success) {
-        const issue = parsed.error.issues[0];
-        const where = issue === undefined || issue.path.length === 0 ? 'arguments' : issue.path.join('.');
-        return errorEnvelope('invalid_args', say(`${where}: ${issue?.message ?? 'invalid'}`));
+      switch (request.kind) {
+        case 'code_find': {
+          const ready = await prepare(deps, config, request, 'code_find', codeFindSchema, (input, worktree) => ({
+            worktree,
+            name: input.name,
+            kind: input.kind,
+            mode: input.mode ?? 'auto',
+            cwd: input.cwd,
+          }));
+          return 'error' in ready ? ready.error : runFind(ready.ctx, ready.input);
+        }
+        case 'code_refs': {
+          const ready = await prepare(deps, config, request, 'code_refs', codeRefsSchema, (input, worktree) => ({
+            worktree,
+            name: input.name,
+            kind: input.kind,
+            mode: 'refs',
+            path: input.path,
+            cwd: input.cwd,
+          }));
+          return 'error' in ready ? ready.error : runRefs(ready.ctx, ready.input);
+        }
+        default:
+          return errorEnvelope('unknown_kind', `request kind ${say(JSON.stringify(request.kind))} is not known to this host`);
       }
-      const input = parsed.data;
-
-      const worktree = request.worktree ?? input.repo;
-      if (worktree === undefined || worktree === '') {
-        return errorEnvelope('invalid_args', 'code_find needs a repository: pass repo or a worktree');
-      }
-
-      const hash = queryHash('code_find', {
-        worktree,
-        name: input.name,
-        kind: input.kind,
-        mode: input.mode ?? 'auto',
-        cwd: input.cwd,
-      });
-      let cursor: CursorPayload | null = null;
-      if (input.more !== undefined) {
-        const decoded = decodeCursor(input.more, hash, config.cursorMaxChars);
-        if (!decoded.ok) return errorEnvelope('bad_cursor', BAD_CURSOR[decoded.problem]);
-        cursor = decoded.payload;
-      }
-
-      const fresh = await freshOutcome(deps, config, worktree, input.fresh);
-      return runFind({ deps, config, worktree, fresh, nonce: (deps.nonce ?? newNonce)(), queryHash: hash, cursor }, input);
     },
   };
 }

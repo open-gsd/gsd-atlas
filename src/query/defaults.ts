@@ -4,7 +4,7 @@ import type { QueryConfig } from './types.ts';
  * Query's defaults. Every number comes from the user-approved constants table in
  * .planning/phases/02-grammar-tier-store-and-stdio-host/02-CONSTANTS.md (Status: Approved, 2026-10-16):
  * query.defaultBudgetTokens, query.hardCeilingTokens, query.lineTextMaxChars, query.defaultLimit,
- * query.maxLimit, query.cursorMaxChars and indexer.ensureFreshWaitMs.
+ * query.maxLimit, query.cursorMaxChars, indexer.ensureFreshWaitMs and query.resolveTimeoutMs.
  */
 export const DEFAULT_QUERY_CONFIG: QueryConfig = Object.freeze({
   defaultBudgetTokens: 2000,
@@ -14,6 +14,7 @@ export const DEFAULT_QUERY_CONFIG: QueryConfig = Object.freeze({
   maxLimit: 200,
   cursorMaxChars: 1024,
   ensureFreshWaitMs: 2000,
+  resolveTimeoutMs: 1500,
 });
 
 const KEYS = Object.keys(DEFAULT_QUERY_CONFIG) as ReadonlyArray<keyof QueryConfig>;

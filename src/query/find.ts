@@ -10,17 +10,17 @@
 import path from 'node:path';
 import { UnknownWorktree } from '../fact-store/index.ts';
 import type { FindMode, SymbolRecord } from '../fact-store/index.ts';
-import type { Answer, Citation, DegradedCode, Diagnostic, Envelope, UntrustedEntry, Watermark } from '../facts/index.ts';
+import type { Answer, DegradedCode, Diagnostic, Envelope, Watermark } from '../facts/index.ts';
 import { diagnostic, okEnvelope } from '../facts/index.ts';
-import { cutToBudget, estimateTokens } from './budget.ts';
-import { encodeCursor } from './cursor.ts';
+import { createCitations, memoLineText } from './cite.ts';
 import type { CursorPayload } from './cursor.ts';
 import { CODE_FIND_SCHEMA, errorEnvelope, errorWith, withDegraded } from './envelope.ts';
-import { FIELD_MAX_CHARS, fenceText, normalizeText } from './fence.ts';
+import { FIELD_MAX_CHARS, normalizeText } from './fence.ts';
+import { pageItems } from './page.ts';
+import type { PageState } from './page.ts';
 import { compareRanked, cwdHintDir, directoryDistance, nameAndTier, sortKeyOf } from './ranking.ts';
 import type { SortKey } from './ranking.ts';
 import { createLineReader } from './text.ts';
-import type { LineText } from './text.ts';
 import type { CodeFindInput } from './tools.ts';
 import type { QueryConfig, QueryDeps } from './types.ts';
 
@@ -94,11 +94,6 @@ interface Ranked {
   readonly key: SortKey;
 }
 
-interface Prepared {
-  readonly ranked: Ranked;
-  readonly line: LineText;
-}
-
 export async function runFind(ctx: FindContext, input: CodeFindInput): Promise<Envelope> {
   const { config } = ctx;
   const reads = readsFor(input.mode ?? 'auto', input.name);
@@ -130,7 +125,6 @@ export async function runFind(ctx: FindContext, input: CodeFindInput): Promise<E
     if (answer.watermark.seq > watermark.seq) watermark = answer.watermark;
     for (const code of answer.degraded ?? []) degraded.add(code);
   }
-  if (ctx.cursor !== null && ctx.cursor.seq !== watermark.seq) degraded.add('watermark_moved');
 
   const hint = cwdHintDir(ctx.worktree, input.cwd);
   const ranked: Ranked[] = [];
@@ -153,95 +147,57 @@ export async function runFind(ctx: FindContext, input: CodeFindInput): Promise<E
   }
   ranked.sort((a, b) => compareRanked(a.key, b.key));
 
-  // Keyset: resume strictly after the cursor's key.
-  const bound = ctx.cursor?.key;
-  const remaining = bound === undefined ? ranked : ranked.filter((item) => compareRanked(item.key, bound) > 0);
-  const limit = Math.min(input.limit ?? config.defaultLimit, config.maxLimit);
-  const limited = remaining.slice(0, limit);
-  const limitCut = remaining.length > limit;
-
   const lines = createLineReader(ctx.deps.text, ctx.worktree, new Set([...watermark.stalePaths, ...ctx.fresh.stalePaths]));
-  const prepared: Prepared[] = [];
-  const prepareUpTo = async (count: number): Promise<void> => {
-    while (prepared.length < count) {
-      const item = limited[prepared.length];
-      if (item === undefined) return;
-      prepared.push({ ranked: item, line: await lines.lineAt(item.record.source_path, item.record.span) });
-    }
-  };
+  const textOf = memoLineText<Ranked>(lines);
 
-  /** The response that carries exactly `kept`, marked as cut when `cut` is true. */
-  const assemble = (kept: readonly Prepared[], cut: boolean): Envelope => {
+  /** The response that carries exactly `kept`, marked as cut as `state` says. */
+  const render = async (kept: readonly Ranked[], state: PageState): Promise<Envelope> => {
     const results: FoundResult[] = [];
-    const citations: Citation[] = [];
-    const entries: UntrustedEntry[] = [];
-    const codes = new Set<DegradedCode>(degraded);
-    for (const { ranked: item, line } of kept) {
+    const cites = createCitations(ctx.nonce, config.lineTextMaxChars);
+    const codes = new Set<DegradedCode>([...degraded, ...state.degraded]);
+    for (const item of kept) {
       const { record } = item;
-      const id = `c${String(citations.length + 1)}`;
-      let textRef: string | undefined;
-      if (line.kind === 'ok') {
-        textRef = `ut${String(entries.length + 1)}`;
-        entries.push({ ref: textRef, text: fenceText(line.text, ctx.nonce, config.lineTextMaxChars) });
-      } else {
-        codes.add('stale');
-      }
-      const itemPath = clean(record.source_path);
-      const startLine = record.span.startLine + 1;
-      const startCol = record.span.startColumn + 1;
-      citations.push({
-        id,
-        path: itemPath,
-        line: startLine,
-        col: startCol,
-        endLine: record.span.endLine + 1,
-        endCol: record.span.endColumn + 1,
-        confidence: record.confidence,
-        debug: record.debug,
-        ...(textRef === undefined ? {} : { text_ref: textRef }),
-      });
+      const line = await textOf(item, record.source_path, record.span);
+      const id = cites.add({ path: record.source_path, span: record.span, confidence: record.confidence, debug: record.debug, line });
       results.push({
         name: clean(item.name),
         kind: clean(record.identity.kind),
-        path: itemPath,
-        line: startLine,
-        col: startCol,
+        path: clean(record.source_path),
+        line: record.span.startLine + 1,
+        col: record.span.startColumn + 1,
         ...(record.exported === undefined ? {} : { exported: record.exported }),
         confidence: record.confidence,
         citation: id,
       });
     }
+    if (cites.lacksText()) codes.add('stale');
 
-    const last = kept[kept.length - 1];
-    const more =
-      cut && last !== undefined
-        ? encodeCursor({ key: last.ranked.key, query: ctx.queryHash, seq: watermark.seq }, config.cursorMaxChars)
-        : null;
     const hints: string[] = [];
     if (results.length === 0) hints.push(NO_MATCH_HINT);
-    else if (cut) hints.push(more === null ? CURSOR_TOO_LONG_HINT : TRUNCATED_HINT);
+    else if (state.cut) hints.push(state.more === null ? CURSOR_TOO_LONG_HINT : TRUNCATED_HINT);
     if (capped) hints.push(CAPPED_HINT);
 
     const envelope = okEnvelope(CODE_FIND_SCHEMA, { results }, ctx.fresh.diagnostics, {
-      ...(citations.length === 0 ? {} : { citations }),
+      ...(cites.citations.length === 0 ? {} : { citations: cites.citations }),
       watermark,
-      ...(entries.length === 0 ? {} : { untrusted_text: { nonce: ctx.nonce, entries } }),
-      ...(cut || capped ? { truncated: true } : {}),
-      ...(more === null ? {} : { more }),
+      ...(cites.entries.length === 0 ? {} : { untrusted_text: { nonce: ctx.nonce, entries: cites.entries } }),
+      ...(state.cut || capped ? { truncated: true } : {}),
+      ...(state.more === null ? {} : { more: state.more }),
       ...(hints.length === 0 ? {} : { hints }),
     });
     return withDegraded(envelope, codes);
   };
 
-  const cut = await cutToBudget(
-    limited,
-    async (kept, truncated) => {
-      await prepareUpTo(kept.length);
-      return estimateTokens(assemble(prepared.slice(0, kept.length), truncated));
-    },
-    { budget: input.budget_tokens ?? config.defaultBudgetTokens, ceiling: config.hardCeilingTokens },
-    limitCut,
-  );
-  if (cut.tooLarge) return errorEnvelope('output_too_large', OUTPUT_TOO_LARGE_MESSAGE);
-  return assemble(prepared.slice(0, cut.kept.length), cut.truncated);
+  const page = await pageItems(ranked, {
+    budgetTokens: input.budget_tokens ?? config.defaultBudgetTokens,
+    ceilingTokens: config.hardCeilingTokens,
+    limit: Math.min(input.limit ?? config.defaultLimit, config.maxLimit),
+    cursor: ctx.cursor,
+    cursorMaxChars: config.cursorMaxChars,
+    queryHash: ctx.queryHash,
+    watermarkSeq: watermark.seq,
+    renderEnvelope: render,
+  });
+  if (page.envelope === null) return errorEnvelope('output_too_large', OUTPUT_TOO_LARGE_MESSAGE);
+  return page.envelope;
 }

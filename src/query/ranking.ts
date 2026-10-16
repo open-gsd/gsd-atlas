@@ -114,6 +114,96 @@ export function sortKeyOf(input: RankInput): SortKey {
   ];
 }
 
+const rankOf = (value: 'EXTRACTED' | 'INFERRED'): number => (value === 'EXTRACTED' ? 0 : 1);
+
+/** Which tier produced a reference edge, best first: a compiler result outranks a name match. */
+const REF_TIER_RANK: Readonly<Record<string, number>> = { precise: 0, base_commit: 1, grammar: 2 };
+
+/** What a reference site does with its name, in ranking order (a call matters most to a reader). */
+const REF_KIND_RANK: Readonly<Record<string, number>> = { call: 0, new: 1, type: 2, heritage: 3, read: 4, member: 5 };
+
+export interface RefRankInput {
+  readonly tier: string;
+  readonly confidence: 'EXTRACTED' | 'INFERRED';
+  /** The site's kind; a site that does not say sorts after every named kind. */
+  readonly kind: string | undefined;
+  readonly distance: number;
+  readonly path: string;
+  readonly line: number;
+  readonly col: number;
+  /** Anything that makes two otherwise equal keys differ (the site handle and the target handle). */
+  readonly handle: string;
+}
+
+/**
+ * Key of one reference under `code_refs`: [tier, confidence, kind, 0, dirDistance, path, line, col, handle], so
+ * precise comes before grammar, EXTRACTED before INFERRED, then call, new, type, heritage, read, member.
+ */
+export function refKeyOf(input: RefRankInput): SortKey {
+  return [
+    REF_TIER_RANK[input.tier] ?? 3,
+    rankOf(input.confidence),
+    input.kind === undefined ? 6 : (REF_KIND_RANK[input.kind] ?? 6),
+    0,
+    input.distance,
+    input.path,
+    input.line,
+    input.col,
+    input.handle,
+  ];
+}
+
+/** How an impacted item is reached, in ranking order. */
+export type ImpactVia = 'import' | 'call' | 'reference';
+
+const VIA_RANK: Readonly<Record<ImpactVia, number>> = { import: 0, call: 1, reference: 2 };
+
+export interface ImpactRankInput {
+  readonly hop: number;
+  /** A file item (an importer, or a module-level reference) sorts after the symbols of its hop. */
+  readonly isFile: boolean;
+  readonly confidence: 'EXTRACTED' | 'INFERRED';
+  readonly chain: 'EXTRACTED' | 'INFERRED';
+  readonly via: ImpactVia;
+  readonly distance: number;
+  readonly path: string;
+  readonly line: number;
+  readonly col: number;
+  readonly handle: string;
+}
+
+/**
+ * Key of one impacted item under `code_impact`: [hop, file, edge, 0, dirDistance, path, line, col, handle].
+ * Inside a hop symbols come before files; then the edge slot orders confidence (EXTRACTED first), chain
+ * confidence (EXTRACTED first) and how the item is reached (import, call, reference), most significant first.
+ */
+export function impactKeyOf(input: ImpactRankInput): SortKey {
+  return [
+    input.hop,
+    input.isFile ? 1 : 0,
+    rankOf(input.confidence) * 6 + rankOf(input.chain) * 3 + VIA_RANK[input.via],
+    0,
+    input.distance,
+    input.path,
+    input.line,
+    input.col,
+    input.handle,
+  ];
+}
+
+/** The sections of `code_context`, in the order they are listed and cut. */
+export const CONTEXT_SECTIONS = ['definition', 'parent', 'child', 'import', 'export', 'reference'] as const;
+
+export type ContextSection = (typeof CONTEXT_SECTIONS)[number];
+
+/**
+ * Key of one `code_context` item: [section, ordinal, 0, 0, 0, path, line, col, ''], where the ordinal is the
+ * item's place inside its section, so the list keeps the order the tool built it in and a cursor can continue it.
+ */
+export function contextKeyOf(section: ContextSection, ordinal: number, path: string, line: number, col: number): SortKey {
+  return [CONTEXT_SECTIONS.indexOf(section), ordinal, 0, 0, 0, path, line, col, ''];
+}
+
 const byNumber = (a: number, b: number): number => (a < b ? -1 : a > b ? 1 : 0);
 
 /** Strings compare by UTF-16 code unit, the same unit every position in the kernel uses. */

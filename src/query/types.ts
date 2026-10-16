@@ -25,6 +25,8 @@ export interface QueryConfig {
   readonly cursorMaxChars: number;
   /** How long Query waits for the Indexer when a request names `fresh` paths. */
   readonly ensureFreshWaitMs: number;
+  /** The bound Query passes to `Reader.refs`: a resolver slower than this degrades the answer to grammar edges. */
+  readonly resolveTimeoutMs: number;
 }
 
 /** What the Indexer answers to `ensureFresh` (structural, so Query does not import the Indexer). */
