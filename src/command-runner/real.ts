@@ -4,6 +4,10 @@
  *
  * Every run goes: decide -> resolve executable -> spawn with `shell: false` and an argument array.
  * A denied or unresolvable spec starts nothing. Failures to start are results, never exceptions.
+ *
+ * Limits: a spec's `timeoutMs` ends the child with SIGKILL (diagnostic `timeout`); stdout past its cap
+ * ends it too (diagnostic `output_cap_exceeded`, error); stderr past its cap is truncated and the child
+ * keeps running (`output_cap_exceeded`, warning).
  */
 import { spawn } from 'node:child_process';
 import type { ChildProcess } from 'node:child_process';

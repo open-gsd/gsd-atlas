@@ -4,7 +4,7 @@
  * It applies the same permission rule as the real runner, records every spec it is asked to start
  * (`starts`) and every spec it refused (`denials`), and answers from scripted results. Tests inject
  * it wherever a module takes a CommandRunner, and the "hostile repo runs nothing" proof asserts on
- * `starts`. It imports no test-kit and no node:test, so it is production-pure and exported from the index.
+ * `starts`. It imports no test-kit and no test runner, so it is production-pure and exported from the index.
  */
 import { decide as defaultDecide } from './decide.ts';
 import { deniedResult, emptyResult } from './spec.ts';
