@@ -5,7 +5,7 @@ import type { Db, DriverModule, DriverName } from '../sqlite/index.ts';
 import { SchemaTooNew } from './errors.ts';
 import { createLease, startTakeover } from './lease.ts';
 import type { Lease } from './lease.ts';
-import type { StoreParts } from './parts.ts';
+import type { LifecycleSettings, StoreParts } from './parts.ts';
 import {
   KEEP_QUARANTINED,
   clearDirty,
@@ -47,6 +47,11 @@ export const DEFAULT_SLICE_MS = 200;
 export interface OpenFactStoreOptions extends StoreOptions {
   /** Which SQLite driver to open. Default `node:sqlite`. */
   readonly driver?: DriverName;
+  /**
+   * TEST ONLY. Set `false` to create the fuzzy-name table without FTS5 `contentless_delete`, so tests can run the
+   * path an engine without it takes. It can not switch the capability on where the probe found it missing.
+   */
+  readonly contentlessDelete?: boolean;
 }
 
 /** Options of `openFactStore` that belong to the store's lifecycle (plan 02-12): the writer lease and recovery. */
@@ -193,6 +198,17 @@ async function attemptOpen(env: OpenEnv, authority: boolean): Promise<Attempt> {
   }
 }
 
+/** The upkeep settings of a store: the options, each checked, over the approved defaults. */
+function lifecycleSettings(options: StoreOptions, contentlessDelete: boolean): LifecycleSettings {
+  const graceMs = options.graceMs ?? DEFAULT_GC_GRACE_MS;
+  const chunkSize = options.chunkSize ?? DEFAULT_COLLECT_CHUNK_SIZE;
+  const sliceMs = options.sliceMs ?? DEFAULT_SLICE_MS;
+  if (!Number.isFinite(graceMs) || graceMs < 0) throw new RangeError('graceMs must be a finite number of milliseconds, zero or more');
+  if (!Number.isInteger(chunkSize) || chunkSize < 1) throw new RangeError('chunkSize must be a whole number, one or more');
+  if (!Number.isFinite(sliceMs) || sliceMs <= 0) throw new RangeError('sliceMs must be a finite number of milliseconds, above zero');
+  return { graceMs, chunkSize, sliceMs, contentlessDelete };
+}
+
 /** Delete the store database and its WAL companions (an older-schema store is derived data, D-15). */
 function removeStoreFiles(file: string): void {
   for (const suffix of ['', '-wal', '-shm']) fs.rmSync(`${file}${suffix}`, { force: true });
@@ -267,6 +283,8 @@ export async function openFactStore(
   // `trigram: false` can switch the table off for a test, never on where the probe found it missing.
   const driver = await loadDriver(options.driver ?? 'node:sqlite');
   const capabilities = selfTest(driver);
+  const contentlessDelete = capabilities.contentlessDelete && options.contentlessDelete !== false;
+  const baseSettings = lifecycleSettings(options, contentlessDelete); // checked before anything is opened
   const env: OpenEnv = {
     dir,
     file: path.join(dir, STORE_FILE_NAME),
@@ -274,7 +292,7 @@ export async function openFactStore(
     timeoutMs: options.busyTimeoutMs ?? DEFAULT_BUSY_TIMEOUT_MS,
     fuzzy: {
       trigram: capabilities.fts5Trigram && options.trigram !== false,
-      contentlessDelete: capabilities.contentlessDelete,
+      contentlessDelete,
     },
     version: options.version ?? 'unknown',
     schemaVersion: options.schemaVersion ?? SCHEMA_VERSION,
@@ -305,6 +323,14 @@ export async function openFactStore(
     throw error;
   }
   const { conns } = opened;
+  // What the table on disk can do decides how names leave it; a store made by another engine may differ from the probe.
+  const ftsRow = opened.fuzzyTrigram
+    ? conns.readDb.prepare("SELECT sql FROM sqlite_master WHERE name = 'names_fts'").get()
+    : undefined;
+  const settings: LifecycleSettings = {
+    ...baseSettings,
+    contentlessDelete: ftsRow !== undefined && /contentless_delete\s*=\s*1/.test(String(ftsRow.sql)),
+  };
 
   const lifecycle: StoreLifecycle = {
     ...(lease === undefined ? {} : { lease }),
@@ -327,6 +353,7 @@ export async function openFactStore(
         : () => lease.held && (options.canCache?.() ?? true),
     resolutionContext: options.resolutionContext ?? (() => ({ id: 'grammar', configHashes: [] })),
     fuzzyTrigram: opened.fuzzyTrigram,
+    settings,
     snapshotIds: new Map(),
     state: { closed: false, writerTaken: false },
     degradedNow: processDegraded(lifecycle, () => conns.readDb),

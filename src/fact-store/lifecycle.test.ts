@@ -255,10 +255,15 @@ for (const driver of ['node:sqlite', 'better-sqlite3'] as const satisfies readon
       });
     });
 
-    for (const trigram of [true, false]) {
-      it(`names: identifiers no fact uses any more are deleted with their trigram rows (trigram ${trigram ? 'on' : 'off'})`, async () => {
+    const nameVariants = [
+      { label: 'trigram on', trigram: true, contentlessDelete: true },
+      { label: 'trigram on, no contentless delete', trigram: true, contentlessDelete: false },
+      { label: 'trigram off', trigram: false, contentlessDelete: true },
+    ] as const;
+    for (const { label, trigram, contentlessDelete } of nameVariants) {
+      it(`names: identifiers no fact uses any more are deleted with their trigram rows (${label})`, async () => {
         await withRig(driver, async (rig) => {
-          const store = await rig.open({ trigram });
+          const store = await rig.open({ trigram, contentlessDelete });
           const writer = store.writer();
           await put(writer, H(1), ['alphaOnly', 'shared']);
           await put(writer, H(2), ['betaOnly', 'shared']);
@@ -283,6 +288,12 @@ for (const driver of ['node:sqlite', 'better-sqlite3'] as const satisfies readon
           }
           assert.equal((await store.at('main').find('alphaOnly', { mode: 'fuzzy' })).data.length, 0);
           assert.equal((await store.at('main').find('betaOnly', { mode: 'fuzzy' })).data.length, 1);
+
+          // The writer still works right after the trigram rows went: its first statement is an UPDATE, whose
+          // result the kit reads together with the connection's last-insert rowid.
+          const attach = await writer.link('main', 'b.ts', H(2));
+          assert.equal(attach.status, 'committed');
+          assert.equal((await writer.commitFile({ worktree: 'main', path: 'a.ts', hash: H(3), facts: facts('a.ts', H(3), ['gamma']) })).status, 'committed');
           writer.release();
         });
       });

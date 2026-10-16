@@ -13,6 +13,18 @@ export interface StoreState {
   writerTaken: boolean;
 }
 
+/** How the upkeep tasks (plan 02-18) behave, fixed when the store is opened. */
+export interface LifecycleSettings {
+  /** How long a retired file version is kept when git lacks its blob (D-16). */
+  readonly graceMs: number;
+  /** How many retired files `collect` deletes in one transaction. */
+  readonly chunkSize: number;
+  /** The longest single pause one incremental-vacuum slice may cause. */
+  readonly sliceMs: number;
+  /** Whether `names_fts` takes `DELETE ... WHERE rowid` (FTS5 `contentless_delete`); otherwise rows go by the `delete` command. */
+  readonly contentlessDelete: boolean;
+}
+
 /** Everything the writer, reader and store share. Built once by `openFactStore`. */
 export interface StoreParts {
   /** The single writable connection; only the writer and maintenance use it. */
@@ -26,6 +38,7 @@ export interface StoreParts {
   readonly resolutionContext: () => ResolutionContext;
   /** True when this session keeps `names_fts` in step with `names` and fuzzy find reads it (else the LIKE scan). */
   readonly fuzzyTrigram: boolean;
+  readonly settings: LifecycleSettings;
   /** The overlay snapshot id last computed for each worktree, valid for the seq it was computed at. */
   readonly snapshotIds: Map<string, { readonly seq: number; readonly id: string }>;
   readonly state: StoreState;

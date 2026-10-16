@@ -2,6 +2,7 @@ import type { DegradedCode } from '../facts/index.ts';
 import type { Db } from '../sqlite/index.ts';
 import { WriterBusy } from './errors.ts';
 import type { Lease } from './lease.ts';
+import { collectRetired } from './lifecycle.ts';
 import { assertOpen, readTransaction } from './parts.ts';
 import type { StoreParts } from './parts.ts';
 import { createReader } from './reader.ts';
@@ -155,13 +156,25 @@ function status(parts: StoreParts, lifecycle: StoreLifecycle): StoreStatus {
 /**
  * Assemble the `FactStore` from its parts.
  *
- * `collect`, `compact`, `check` and `maintain` are unimplemented by design in this plan: they report an
- * empty, successful run until plan 02-18 replaces them, and the contract suite does not assert on them.
+ * `collect`, `compact`, `check` and `maintain` are the upkeep tasks of plan 02-18 (lifecycle.ts, maintain.ts).
+ * They write, so they need write authority: a follower, or a store being replaced, answers `WriterBusy`.
  */
 export function createStore(parts: StoreParts, lifecycle: StoreLifecycle = {}): FactStore {
-  const idle = async (): Promise<MaintenanceResult> => {
+  const dirty = lifecycle.dirty;
+  /** Upkeep needs write authority, not the in-process writer slot: it may run while the Indexer holds the writer. */
+  const requireAuthority = (): void => {
     assertOpen(parts);
-    return { complete: true, spentMs: 0, processed: 0 };
+    if (lifecycle.lease !== undefined && !lifecycle.lease.held) throw new WriterBusy();
+    if (lifecycle.recovering === true) throw new WriterBusy();
+  };
+  /** Upkeep writes, so it keeps the dirty sentinel in step the way the writer does (D-14). */
+  const dirtied = async <T>(call: () => Promise<T>): Promise<T> => {
+    dirty?.begin();
+    try {
+      return await call();
+    } finally {
+      if (!parts.state.closed) dirty?.end();
+    }
   };
   return {
     at: (worktree) => createReader(parts, worktree),
@@ -177,13 +190,22 @@ export function createStore(parts: StoreParts, lifecycle: StoreLifecycle = {}): 
       assertOpen(parts);
       return reconcile(parts, truth);
     },
-    collect: idle,
-    compact: idle,
+    async collect(options) {
+      requireAuthority();
+      return dirtied(() => collectRetired(parts, options));
+    },
+    async compact() {
+      assertOpen(parts);
+      return { complete: true, spentMs: 0, processed: 0 };
+    },
     async check() {
       assertOpen(parts);
       return { ok: true, problems: [] };
     },
-    maintain: idle,
+    async maintain() {
+      assertOpen(parts);
+      return { complete: true, spentMs: 0, processed: 0 };
+    },
     async status() {
       assertOpen(parts);
       return status(parts, lifecycle);
