@@ -11,17 +11,17 @@ Scope is the full PRD 1.0 (M0-M6), with M4 split into SDK facts, agent integrati
 
 ### Foundations (FND)
 
-- [ ] **FND-01**: CI builds and tests every PR on macOS, Linux and Windows
-- [ ] **FND-02**: Repo is one npm package `@opengsd/gsd-atlas` (Node >= 24.16, tsc emit) exposing bins `gsd-atlas` and `gsd-atlas-mcp`
-- [ ] **FND-03**: A language-module manifest is validated against a JSON Schema generated from Zod; an invalid module is skipped with a diagnostic
-- [ ] **FND-04**: Grammar WASM is built reproducibly from pinned upstream releases with a pinned tree-sitter CLI, on all three OSes
-- [ ] **FND-05**: Each module seam (Fact Store, Source Tree, CommandRunner, Grammar Engine, PreciseResolver, Governor) has a fixed interface and a test double or conformance suite
-- [ ] **FND-06**: Every child process starts through the CommandRunner, enforced by lint, with streaming and batch support (e.g. one batched `git hash-object --stdin-paths`)
-- [ ] **FND-07**: Module-boundary lint rules are enforced from day one (child_process only in the runner; `sqlite/` only for the Fact Store, Metrics and SDK stores; imports via `index.ts`; Policy imports only `facts/`; adapters import only `HostClient`)
-- [ ] **FND-08**: Each eval corpus is pinned to a commit SHA in a corpus manifest
-- [ ] **FND-09**: Each ADR is ratified (issue opened, file renamed to `<issue#>-<slug>.md`, Proposed to Accepted) before the first phase that depends on it
-- [ ] **FND-10**: Three of the five ADR gaps found in research (ProjectModel seam, read-triggered cache write, SQLite-access wording) are amended in the language-modules, fact-store-interface and sqlite-store ADRs as they are ratified in Phase 1; the other two are FND-12
-- [ ] **FND-11**: `gsd-atlas lang test` runs a fixture module end to end on all three OSes (walking skeleton)
+- [x] **FND-01**: CI builds and tests every PR on macOS, Linux and Windows
+- [x] **FND-02**: Repo is one npm package `@opengsd/gsd-atlas` (Node >= 24.16, tsc emit) exposing bins `gsd-atlas` and `gsd-atlas-mcp`
+- [x] **FND-03**: A language-module manifest is validated against a JSON Schema generated from Zod; an invalid module is skipped with a diagnostic
+- [x] **FND-04**: Grammar WASM is built reproducibly from pinned upstream releases with a pinned tree-sitter CLI, on all three OSes
+- [x] **FND-05**: Each module seam (Fact Store, Source Tree, CommandRunner, Grammar Engine, PreciseResolver, Governor) has a fixed interface and a test double or conformance suite
+- [x] **FND-06**: Every child process starts through the CommandRunner, enforced by lint, with streaming and batch support (e.g. one batched `git hash-object --stdin-paths`)
+- [x] **FND-07**: Module-boundary lint rules are enforced from day one (child_process only in the runner; `sqlite/` only for the Fact Store, Metrics and SDK stores; imports via `index.ts`; Policy imports only `facts/`; adapters import only `HostClient`)
+- [x] **FND-08**: Each eval corpus is pinned to a commit SHA in a corpus manifest
+- [x] **FND-09**: Each ADR is ratified (issue opened, file renamed to `<issue#>-<slug>.md`, Proposed to Accepted) before the first phase that depends on it
+- [x] **FND-10**: Three of the five ADR gaps found in research (ProjectModel seam, read-triggered cache write, SQLite-access wording) are amended in the language-modules, fact-store-interface and sqlite-store ADRs as they are ratified in Phase 1; the other two are FND-12
+- [x] **FND-11**: `gsd-atlas lang test` runs a fixture module end to end on all three OSes (walking skeleton)
 - [ ] **FND-12**: The other two ADR gaps found in research (writer contention and leader/follower, metrics migrations) are amended in the worktree-lifecycle and value-dashboard ADRs as they are ratified at the start of Phase 2
 
 ### Fact Store and Lifecycle (STO)
@@ -39,12 +39,12 @@ Scope is the full PRD 1.0 (M0-M6), with M4 split into SDK facts, agent integrati
 
 ### Language Modules and Grammar Engine (LNG)
 
-- [ ] **LNG-01**: A language module is a folder (manifest, grammar.wasm, queries, fixtures) resolved repo > user > npm > built-in, and `lang list` shows source and active tiers
+- [x] **LNG-01**: A language module is a folder (manifest, grammar.wasm, queries, fixtures) resolved repo > user > npm > built-in, and `lang list` shows source and active tiers
 - [ ] **LNG-02**: The Grammar Engine extracts definitions, containment and imports with per-construct recall >= 90% against ground truth
 - [ ] **LNG-03**: Name-matched references are recorded as `INFERRED`; definitions and imports as `EXTRACTED`
 - [ ] **LNG-04**: Every fact carries `source_path`, `span`, `extractor`, `content_hash`, `first_seen`, `last_seen` and `confidence`
 - [ ] **LNG-05**: Only `git ls-files` plus untracked non-ignored files are indexed; `linguist-generated` and `linguist-vendored` are honoured; binaries and LFS pointers are skipped
-- [ ] **LNG-06**: Grammar parse quality is measured as bytes inside ERROR nodes per module, with a CI budget
+- [x] **LNG-06**: Grammar parse quality is measured as bytes inside ERROR nodes per module, with a CI budget
 - [ ] **LNG-07**: Parser objects are released deterministically and workers are recycled so WASM memory does not grow unbounded
 - [ ] **LNG-08**: A second non-TypeScript fixture language runs through the Grammar Engine tests from M1
 
@@ -194,17 +194,17 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| FND-01 | Phase 1 | Pending |
-| FND-02 | Phase 1 | Pending |
-| FND-03 | Phase 1 | Pending |
-| FND-04 | Phase 1 | Pending |
-| FND-05 | Phase 1 | Pending |
-| FND-06 | Phase 1 | Pending |
-| FND-07 | Phase 1 | Pending |
-| FND-08 | Phase 1 | Pending |
-| FND-09 | Phase 1 | Pending |
-| FND-10 | Phase 1 | Pending |
-| FND-11 | Phase 1 | Pending |
+| FND-01 | Phase 1 | Complete |
+| FND-02 | Phase 1 | Complete |
+| FND-03 | Phase 1 | Complete |
+| FND-04 | Phase 1 | Complete |
+| FND-05 | Phase 1 | Complete |
+| FND-06 | Phase 1 | Complete |
+| FND-07 | Phase 1 | Complete |
+| FND-08 | Phase 1 | Complete |
+| FND-09 | Phase 1 | Complete |
+| FND-10 | Phase 1 | Complete |
+| FND-11 | Phase 1 | Complete |
 | FND-12 | Phase 2 | Pending |
 | STO-01 | Phase 2 | Pending |
 | STO-02 | Phase 2 | Pending |
@@ -216,12 +216,12 @@ Which phases cover which requirements. Updated during roadmap creation.
 | STO-08 | Phase 2 | Pending |
 | STO-09 | Phase 2 | Pending |
 | STO-10 | Phase 2 | Pending |
-| LNG-01 | Phase 1 | Pending |
+| LNG-01 | Phase 1 | Complete |
 | LNG-02 | Phase 2 | Pending |
 | LNG-03 | Phase 2 | Pending |
 | LNG-04 | Phase 2 | Pending |
 | LNG-05 | Phase 2 | Pending |
-| LNG-06 | Phase 1 | Pending |
+| LNG-06 | Phase 1 | Complete |
 | LNG-07 | Phase 2 | Pending |
 | LNG-08 | Phase 2 | Pending |
 | IDX-01 | Phase 2 | Pending |

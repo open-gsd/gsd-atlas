@@ -14,7 +14,7 @@ gsd-atlas goes from a docs-only repo to a 1.0 local code-and-SDK fact server in 
 
 Decimal phases appear between their surrounding integers in numeric order.
 
-- [ ] **Phase 1: Foundations and Walking Skeleton** - Seams frozen with test doubles, 3-OS CI, and `lang test` running a fixture module end to end (M0)
+- [x] **Phase 1: Foundations and Walking Skeleton** - Seams frozen with test doubles, 3-OS CI, and `lang test` running a fixture module end to end (M0) (completed 2026-10-16)
 - [ ] **Phase 2: Grammar Tier, Store and stdio Host** - Cited, fresh, worktree-correct answers on gsd-core through the CLI and a stateless stdio MCP server (M1)
 - [ ] **Phase 3: TypeScript Module and MVP Eval** - Compiler-precise gsd-core answers, `explain`, skill and diagnostics, and a token-cost win over grep (M2, the MVP)
 - [ ] **Phase 4: Host Hardening** - Multi-tenant, versioned, authenticated Host with supervisor, full Governor and diagnostics intake (M2.5)
@@ -39,7 +39,7 @@ Decimal phases appear between their surrounding integers in numeric order.
   4. Each seam (Fact Store, Source Tree, CommandRunner, Grammar Engine, PreciseResolver, Governor) has a fixed interface plus a test double or conformance suite that passes in CI, and a hostile-repo test shows no child process starts except through the CommandRunner, including one batched `git hash-object --stdin-paths` over a whole snapshot.
   5. The corpus manifest pins each eval corpus to a commit SHA, and every ADR this phase depends on is Accepted (issue opened, file renamed to `<issue#>-<slug>.md`) with its research-gap amendments applied, alongside a schedule naming the phase that must ratify each remaining ADR.
 
-**Plans:** 20/20 plans executed
+**Plans:** 20/20 plans complete
 
 Plans:
 **Wave 1**
@@ -225,7 +225,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundations and Walking Skeleton | 20/20 | In Progress | - |
+| 1. Foundations and Walking Skeleton | 20/20 | Complete    | 2026-10-16 |
 | 2. Grammar Tier, Store and stdio Host | 0/TBD | Not started | - |
 | 3. TypeScript Module and MVP Eval | 0/TBD | Not started | - |
 | 4. Host Hardening | 0/TBD | Not started | - |
