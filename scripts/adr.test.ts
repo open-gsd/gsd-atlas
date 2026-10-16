@@ -310,3 +310,181 @@ describe('Phase 1 ADR set (integration over the real docs/adr)', () => {
     assert.deepEqual(broken, []);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Amendments (plan 01-08: FND-10, D-16, D-17, T-01-18)
+//
+// ADRs are append-only: every change is a dated `## Amendment YYYY-MM-DD: <title>` section
+// placed after the last original section. `preserved` holds one verbatim ASCII fragment per
+// original decision area; if any disappears, someone rewrote an Accepted ADR.
+// ---------------------------------------------------------------------------
+
+type Extra = 'git-hardening' | 'parse-budget' | 'node-floor';
+
+/**
+ * Task 1 (checkpoint:decision) of plan 01-08, resolved by the user on 2026-10-15:
+ * `core-plus-recommended`, that is D-16, D-17 and all three extras. Narrowing this list
+ * (`core-only` is the empty list) makes the extras tests assert the sections are ABSENT.
+ */
+const SELECTED_EXTRAS: readonly Extra[] = ['git-hardening', 'parse-budget', 'node-floor'];
+
+interface AmendmentSpec {
+  readonly title: string;
+  readonly keywords: readonly string[];
+  readonly extra?: Extra;
+}
+
+interface AmendedAdr {
+  readonly slug: string;
+  readonly preserved: readonly string[];
+  readonly amendments: readonly AmendmentSpec[];
+}
+
+const GIT_HARDENING_KEYWORDS = ['core.fsmonitor', 'core.hooksPath', 'filter', 'GIT_OPTIONAL_LOCKS', 'no allowlist'];
+
+const AMENDED: readonly AmendedAdr[] = [
+  {
+    slug: 'language-modules',
+    preserved: [
+      'A language is a module folder:',
+      'always on, no build, every branch',
+      'The only code a module may add is an optional `PreciseResolver`',
+      'Extension collisions fail loudly unless `replace`.',
+      'Grammars (sandboxed WebAssembly) and queries (data) are always allowed.',
+      'Files with parse errors are reported in `status` and use the precise tier where it exists.',
+      'skip binaries and LFS pointers',
+      'Precise resolution runs for a bounded number of active overlays',
+      'instead of depending on a community SCIP indexer.',
+    ],
+    amendments: [
+      { title: 'ProjectModel seam', keywords: ['ProjectModel', 'compiler-free', 'built-in', 'A44', 'project.model'] },
+    ],
+  },
+];
+
+const AMENDMENT_HEADING = /^## Amendment (\d{4}-\d{2}-\d{2}): (.+)$/;
+
+interface Section {
+  readonly heading: string;
+  readonly text: string;
+}
+
+/** Split an ADR into its `## ` sections (the title and status block before the first one are dropped). */
+function adrSections(body: string): Section[] {
+  const out: { heading: string; lines: string[] }[] = [];
+  for (const line of body.split('\n')) {
+    if (line.startsWith('## ')) out.push({ heading: line, lines: [line] });
+    else out.at(-1)?.lines.push(line);
+  }
+  return out.map((s) => ({ heading: s.heading, text: s.lines.join('\n') }));
+}
+
+function readAdr(slug: string): string {
+  const file = findAdrFile(ADR_DIR, slug);
+  assert.ok(file, `no ADR file found for ${slug}`);
+  return fs.readFileSync(path.join(ADR_DIR, file), 'utf8');
+}
+
+function findAmendment(body: string, title: string): { section: Section; date: string; index: number } | undefined {
+  const sections = adrSections(body);
+  for (const [index, section] of sections.entries()) {
+    const m = AMENDMENT_HEADING.exec(section.heading);
+    if (m?.[2] === title) return { section, date: m[1] ?? '', index };
+  }
+  return undefined;
+}
+
+function isRealDate(iso: string): boolean {
+  const d = new Date(`${iso}T00:00:00Z`);
+  return !Number.isNaN(d.getTime()) && d.toISOString().startsWith(iso);
+}
+
+describe('ADR amendments (FND-10, D-16, D-17)', () => {
+  const readme = fs.readFileSync(path.join(ADR_DIR, 'README.md'), 'utf8');
+
+  it('amendments are appended and dated', () => {
+    for (const adr of AMENDED) {
+      const body = readAdr(adr.slug);
+      const sections = adrSections(body);
+      const ratified = /^- \*\*Ratified:\*\* (\d{4}-\d{2}-\d{2})$/m.exec(body)?.[1] ?? '';
+      const originals = sections.filter((s) => !AMENDMENT_HEADING.test(s.heading));
+      const lastOriginal = sections.indexOf(originals.at(-1) as Section);
+      assert.ok(originals.length > 0, `${adr.slug} has no original sections`);
+
+      for (const spec of adr.amendments) {
+        if (spec.extra !== undefined && !SELECTED_EXTRAS.includes(spec.extra)) continue;
+        const found = findAmendment(body, spec.title);
+        assert.ok(found, `${adr.slug} has no heading '## Amendment YYYY-MM-DD: ${spec.title}'`);
+        assert.ok(isRealDate(found.date), `${adr.slug} amendment '${spec.title}' has an invalid date ${found.date}`);
+        assert.ok(found.date >= ratified, `${adr.slug} amendment '${spec.title}' predates ratification`);
+        assert.ok(found.index > lastOriginal, `${adr.slug} amendment '${spec.title}' is not after the last original section`);
+        assert.match(found.section.text, /^Sources: .+$/m, `${adr.slug} amendment '${spec.title}' names no sources`);
+        assert.ok(found.section.text.length > 300, `${adr.slug} amendment '${spec.title}' is too thin`);
+        for (const keyword of spec.keywords) {
+          assert.ok(found.section.text.includes(keyword), `${adr.slug} amendment '${spec.title}' lacks '${keyword}'`);
+        }
+      }
+
+      // Everything after the first amendment is an amendment: originals are never interleaved with them.
+      const firstAmendment = sections.findIndex((s) => AMENDMENT_HEADING.test(s.heading));
+      if (firstAmendment !== -1) {
+        for (const s of sections.slice(firstAmendment)) {
+          assert.match(s.heading, AMENDMENT_HEADING, `${adr.slug}: '${s.heading}' follows an amendment but is not one`);
+        }
+      }
+    }
+  });
+
+  it('original decision text is preserved', () => {
+    for (const adr of AMENDED) {
+      assert.ok(adr.preserved.length >= 5, `${adr.slug}: the append-only sentence table is too small`);
+      const body = readAdr(adr.slug);
+      const sections = adrSections(body);
+      const firstAmendment = sections.findIndex((s) => AMENDMENT_HEADING.test(s.heading));
+      const originalPart =
+        firstAmendment === -1 ? body : body.slice(0, body.indexOf(sections[firstAmendment]?.heading ?? ''));
+      for (const sentence of adr.preserved) {
+        assert.ok(originalPart.includes(sentence), `${adr.slug}: original text is gone: '${sentence}'`);
+      }
+    }
+  });
+
+  it('extra amendments match the recorded Task 1 selection', () => {
+    for (const adr of AMENDED) {
+      const body = readAdr(adr.slug);
+      for (const spec of adr.amendments) {
+        if (spec.extra === undefined) continue;
+        const present = findAmendment(body, spec.title) !== undefined;
+        assert.equal(
+          present,
+          SELECTED_EXTRAS.includes(spec.extra),
+          `${adr.slug} '${spec.title}' (${spec.extra}) ${present ? 'is present but was not selected' : 'was selected but is missing'}`,
+        );
+      }
+    }
+  });
+
+  it('the amendment log in the README lists every amendment', () => {
+    let checked = 0;
+    for (const adr of AMENDED) {
+      const body = readAdr(adr.slug);
+      for (const spec of adr.amendments) {
+        const found = findAmendment(body, spec.title);
+        if (found === undefined) continue; // an unselected extra; covered by the selection test
+        const logged = readme.split('\n').some((l) => l.startsWith(`- Amendment ${found.date}: ${adr.slug} - ${spec.title}`));
+        assert.ok(logged, `README amendment log has no line for ${adr.slug} - ${spec.title}`);
+        checked += 1;
+      }
+    }
+    assert.ok(checked > 0, 'no amendment was found to check against the README log');
+  });
+
+  it('the Phase 2 amendments are not applied here (writer contention, metrics migrations)', () => {
+    for (const slug of ['worktree-lifecycle', 'value-dashboard']) {
+      const file = findAdrFile(ADR_DIR, slug);
+      assert.equal(file, `draft-${slug}.md`);
+      const body = fs.readFileSync(path.join(ADR_DIR, file), 'utf8');
+      assert.doesNotMatch(body, /^## Amendment /m, `${slug} must wait for Phase 2's ratification (FND-12)`);
+    }
+  });
+});
