@@ -3,16 +3,16 @@ gsd_state_version: "1.0"
 current_phase: 02
 current_phase_name: Grammar Tier, Store and stdio Host
 status: executing
-stopped_at: Completed 02-12-PLAN.md
-last_updated: "2026-10-16T20:52:39.462Z"
+stopped_at: Completed 02-13-PLAN.md
+last_updated: "2026-10-16T21:24:13.212Z"
 last_activity: 2026-10-16
-last_activity_desc: Completed 02-12 Store lifecycle
-state_head: 3a0908b22ec5193be9cc8f68da6a5247f87df094
+last_activity_desc: Completed 02-13 TypeScript and JavaScript queries and recall
+state_head: 5ca69b2739371c243d7b3665c282a027acef915a
 progress:
   total_phases: 9
   completed_phases: 1
   total_plans: 48
-  completed_plans: 33
+  completed_plans: 34
   percent: 11
 ---
 
@@ -28,9 +28,9 @@ See: .planning/PROJECT.md (updated 2026-10-15)
 ## Current Position
 
 Phase: 02 (Grammar Tier, Store and stdio Host) — EXECUTING
-Plan: 13 of 28 complete (plans 02-01 to 02-12 and 02-21 complete; they ran out of order, next is the lowest-numbered incomplete plan, 02-13)
+Plan: 14 of 28 complete (plans 02-01 to 02-13 and 02-21 complete; they ran out of order, next is the lowest-numbered incomplete plan, 02-14)
 Status: Ready to execute
-Last activity: 2026-10-16 — Completed 02-12 (store lifecycle: cross-process writer lease with read-only followers and takeover, store location with cache fallback, dirty sentinel, quick_check, quarantine and rebuild, schema-version policy, SIGKILL and corruption proofs)
+Last activity: 2026-10-16 — Completed 02-13 (TypeScript and JavaScript tags, imports and refs queries for ES and CommonJS; per-construct recall at 100 percent on curated fixture truth and on a compiler-oracle run over 574 pinned gsd-core files; scripts/recall.ts and scripts/recall-oracle.ts)
 
 Progress: [█░░░░░░░░░] 11%
 
@@ -46,7 +46,7 @@ Progress: [█░░░░░░░░░] 11%
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 01 | 20 | - | - |
-| 02 | 13 of 28 | - | - |
+| 02 | 14 of 28 | - | - |
 
 **Recent Trend:**
 - Last 5 plans: -
@@ -70,6 +70,7 @@ Progress: [█░░░░░░░░░] 11%
 | Phase 02 P10 | 9 min | 3 tasks | 9 files |
 | Phase 02 P11 | 18 min | 3 tasks | 12 files |
 | Phase 02 P12 | 17 min | 3 tasks | 14 files |
+| Phase 02 P13 | 35 min | 3 tasks | 30 files |
 
 ## Accumulated Context
 
@@ -114,6 +115,9 @@ Recent decisions affecting current work:
 - [Phase 02]: [02-12] The rebuild is recorded in the database (meta rebuild_pending, rebuilt_moved_to, rebuilt_at): rebuilding ends at the first completed setOverlay for every process, and status().rebuiltAfterCorruption survives a reopen; a valid SQLite file without fact-store meta is moved aside, not an error. Plan 02-18 check should reuse noteRebuild and quarantine — D-14: derived data is rebuilt, evidence is kept (newest two moved-aside files)
 - [Phase 02]: [02-12] lease.db uses the kit's WAL default with BEGIN EXCLUSIVE held for the leader's life; busy opens retry four times with 20 to 80 ms jitter on real timers; a killed leader's lock is free at once (SIGKILL test). Linux and Windows are unverified until three-OS CI runs the lease, SIGKILL and concurrent-start tests — research assumption A1; ADR 11 amendment
 - [Phase 02]: [02-12] The store.dir override comes only from the resolveStoreLocation parameter or GSD_ATLAS_STORE_DIR (absolute path, storeId appended); location.ts reads no file in the repository, treats a symlinked gsd-atlas folder as unsafe, and the cache fallback is {XDG_CACHE_HOME or ~/.cache}/gsd-atlas/{storeId} — T-02-36
+- [Phase 02]: 02-13: a const, let or var bound to require() (also behind 'as T') is an import binding, not a const definition; constructors are not method definitions — Keeps find results to navigable definitions; the import is recorded as a CJS require site with its binding
+- [Phase 02]: 02-13: module.exports = {a, b: c} yields one export site per property, any other right side yields the name module.exports; the typescript module reads CommonJS forms too — .cts files use them; the harness tells ES from CJS exports by the first token of the site span
+- [Phase 02]: 02-13: recall compares queries with hand-curated fixture truth and a TypeScript-compiler oracle (createSourceFile only) over 574 pinned gsd-core files; oracle lines count line feeds only — Independent implementation avoids circular proof (T-02-41); the compiler line map also breaks at U+2028 and lone CR, the engine does not
 
 ### Pending Todos
 
@@ -140,6 +144,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-10-16T20:52:39.393Z
-Stopped at: Completed 02-12-PLAN.md
+Last session: 2026-10-16T21:24:13.149Z
+Stopped at: Completed 02-13-PLAN.md
 Resume file: None
