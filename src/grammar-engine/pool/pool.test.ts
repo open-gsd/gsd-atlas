@@ -3,7 +3,7 @@ import { describe, it } from 'node:test';
 
 import { defineGrammarEngineContract, loadToyScenarios } from '../contract.ts';
 import { GrammarRunError, GRAMMAR_LIMITS } from '../index.ts';
-import type { GrammarInput } from '../index.ts';
+import type { GrammarInput, GrammarRunResult } from '../index.ts';
 import { createPooledGrammarEngine } from './pool.ts';
 import { resolveWorkerUrl } from './worker-url.ts';
 
@@ -94,7 +94,7 @@ describe('pool scheduling', () => {
         }
       })();
       const pending = inputs.map((source) => grammar.run(source));
-      let results: Awaited<typeof pending>;
+      let results: GrammarRunResult[];
       try {
         const submitted = pooled.poolStatus();
         assert.equal(submitted.workers, 3);
