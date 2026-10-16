@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "corpora": [
+    {
+      "id": "gsd-core",
+      "repo": "open-gsd/gsd-core",
+      "ref": "next",
+      "sha": "10ac3a7a947903ba50f538a907af036744d759d5",
+      "status": "pinned",
+      "role": "primary validation corpus: TypeScript .cts emitted to .cjs, ADRs",
+      "pinnedAt": "2026-10-15"
+    }
+  ]
+}
