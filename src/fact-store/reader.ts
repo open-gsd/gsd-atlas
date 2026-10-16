@@ -1,9 +1,11 @@
+import { posix } from 'node:path';
 import type {
   Answer,
   DegradedCode,
   ExportSite,
   FileFacts,
   ImportSite,
+  ImportStyle,
   LocalSymbol,
   RefKind,
   RefSite,
@@ -14,7 +16,17 @@ import type { Db, Row } from '../sqlite/index.ts';
 import { UnknownWorktree } from './errors.ts';
 import { assertOpen, extractorOf, readTransaction } from './parts.ts';
 import type { StoreParts } from './parts.ts';
-import type { FindOptions, Reader, SymbolRecord, WorktreeId } from './types.ts';
+import type {
+  CallerRecord,
+  FindOptions,
+  ImporterRecord,
+  ImportersOptions,
+  Provenance,
+  Reader,
+  RefRecord,
+  SymbolRecord,
+  WorktreeId,
+} from './types.ts';
 
 /** The `files` columns a record's provenance is built from. */
 interface FileRow {
@@ -179,24 +191,42 @@ function answer<T>(
   });
 }
 
-function notYet(): never {
-  throw new Error('not implemented in this task');
-}
+/** `prefix` and `fuzzy` return at most this many rows unless the caller passes a limit. */
+const DEFAULT_FIND_LIMIT = 50;
+
+/** The shortest `fuzzy` query that returns rows (shorter ones match too much to be useful). */
+const MIN_FUZZY_CHARS = 3;
+
+/** Highest code point: a name that starts with the query sorts below `query + U+10FFFF`. */
+const RANGE_END = '\u{10FFFF}';
+
+const FIND_HEAD = `SELECT o.path AS path, s.file_id AS file_id, s.ord AS ord
+       FROM names n
+       JOIN symbols s ON s.name_id = n.id
+       JOIN overlay_files o ON o.file_id = s.file_id AND o.worktree = ?`;
+const FIND_TAIL = `ORDER BY o.path, s.start_line, s.start_col, s.ord
+       LIMIT ?`;
+const FIND_EXACT_SQL = `${FIND_HEAD} WHERE n.name = ? ${FIND_TAIL}`;
+const FIND_PREFIX_SQL = `${FIND_HEAD} WHERE n.name >= ? AND n.name < ? ${FIND_TAIL}`;
+const FIND_FUZZY_SQL = `${FIND_HEAD} WHERE instr(lower(n.name), lower(?)) > 0 ${FIND_TAIL}`;
 
 function find(snap: Snapshot, name: string, options: FindOptions | undefined): readonly SymbolRecord[] {
   if (name === '') return [];
-  const limit = options?.limit === undefined ? -1 : Math.max(0, Math.floor(options.limit));
-  const hits = snap.db
-    .prepare(
-      `SELECT o.path AS path, s.file_id AS file_id, s.ord AS ord
-       FROM names n
-       JOIN symbols s ON s.name_id = n.id
-       JOIN overlay_files o ON o.file_id = s.file_id AND o.worktree = ?
-       WHERE n.name = ?
-       ORDER BY o.path, s.start_line, s.start_col, s.ord
-       LIMIT ?`,
-    )
-    .all(snap.worktree, name, limit);
+  const mode = options?.mode ?? 'exact';
+  if (mode === 'fuzzy' && name.length < MIN_FUZZY_CHARS) return [];
+  const limit =
+    options?.limit !== undefined
+      ? Math.max(0, Math.floor(options.limit))
+      : mode === 'exact'
+        ? -1
+        : DEFAULT_FIND_LIMIT;
+  const db = snap.db;
+  const hits =
+    mode === 'prefix'
+      ? db.prepare(FIND_PREFIX_SQL).all(snap.worktree, name, name + RANGE_END, limit)
+      : mode === 'fuzzy'
+        ? db.prepare(FIND_FUZZY_SQL).all(snap.worktree, name, limit)
+        : db.prepare(FIND_EXACT_SQL).all(snap.worktree, name, limit);
   return hits.map((hit) => {
     const fileId = num(hit.file_id);
     const symbol = fileSymbols(snap, fileId).find((candidate) => candidate.ord === num(hit.ord));
@@ -290,42 +320,180 @@ function rebuildFacts(snap: Snapshot, path: string, fileId: number): FileFacts {
   };
 }
 
+/** The symbol an identity names in this overlay, with its file; null when the repo, path, kind or name differ. */
+function findSymbol(snap: Snapshot, id: SymbolIdentity): { file: FileRow; symbol: FileSymbol } | null {
+  if (id.repo !== snap.parts.repo) return null;
+  const fileId = fileIdAt(snap, id.path);
+  if (fileId === null) return null;
+  const symbol = fileSymbols(snap, fileId).find(
+    (candidate) =>
+      candidate.kind === id.kind &&
+      (candidate.qualifiedName ?? candidate.name) === id.qualifiedName &&
+      candidate.discriminator === id.discriminator,
+  );
+  return symbol === undefined ? null : { file: fileRow(snap, fileId), symbol };
+}
+
+/** One reference site of the overlay, with the identity of the symbol that contains it. */
+interface SiteHit {
+  readonly path: string;
+  readonly fileId: number;
+  readonly ord: number;
+  readonly name: string;
+  readonly kind: RefKind | null;
+  readonly span: Span;
+  readonly enclosing: SymbolIdentity | null;
+}
+
+const SITES_HEAD = `SELECT o.path AS path, r.file_id AS file_id, r.ord AS ord, r.kind AS kind, r.start_line AS start_line,
+       r.start_col AS start_col, r.end_line AS end_line, r.end_col AS end_col, r.enclosing AS enclosing
+       FROM names n
+       JOIN refs r ON r.name_id = n.id
+       JOIN overlay_files o ON o.file_id = r.file_id AND o.worktree = ?`;
+const SITES_TAIL = 'ORDER BY o.path, r.start_line, r.start_col, r.ord';
+const REF_SITES_SQL = `${SITES_HEAD} WHERE n.name = ? ${SITES_TAIL}`;
+const CALL_SITES_SQL = `${SITES_HEAD} WHERE n.name = ? AND r.kind = 'call' AND r.enclosing IS NOT NULL ${SITES_TAIL}`;
+
+/**
+ * Every reference site in the overlay whose name equals the identity's name, ordered by path then span. This is
+ * the simplest correct grammar-tier join: a name match with no scoping by imports and no ambiguity handling
+ * (plan 02-11 adds both). The name is the bare name of the symbol the identity names when the overlay has it
+ * (so `Box.put` matches sites named `put`), and the identity's qualified name otherwise.
+ */
+function refSites(snap: Snapshot, id: SymbolIdentity, callsOnly: boolean): readonly SiteHit[] {
+  const name = findSymbol(snap, id)?.symbol.name ?? id.qualifiedName;
+  if (name === '') return [];
+  const rows = snap.db.prepare(callsOnly ? CALL_SITES_SQL : REF_SITES_SQL).all(snap.worktree, name);
+  return rows.map((row) => {
+    const fileId = num(row.file_id);
+    const symbols = fileSymbols(snap, fileId);
+    const container = row.enclosing === null ? undefined : symbols[num(row.enclosing)];
+    const path = str(row.path);
+    return {
+      path,
+      fileId,
+      ord: num(row.ord),
+      name,
+      kind: row.kind === null ? null : (str(row.kind) as RefKind),
+      span: spanOf(row),
+      enclosing: container === undefined ? null : identityOf(snap, path, container),
+    };
+  });
+}
+
+/** Provenance of a grammar-tier edge: it names the site, never the definition, and is always `INFERRED`. */
+function siteProvenance(snap: Snapshot, hit: SiteHit): Provenance {
+  const file = fileRow(snap, hit.fileId);
+  return {
+    source_path: hit.path,
+    span: hit.span,
+    extractor: extractorOf(file.module, file.grammarVersion),
+    content_hash: file.hash,
+    first_seen: file.firstSeen,
+    last_seen: file.lastSeen,
+    confidence: 'INFERRED',
+    debug: `ref/${encodeURIComponent(hit.path)}/${file.hash}/${hit.ord}`,
+  };
+}
+
+function refRecord(snap: Snapshot, target: SymbolIdentity, hit: SiteHit): RefRecord {
+  const record: RefRecord = {
+    ...siteProvenance(snap, hit),
+    site: { path: hit.path, span: hit.span, name: hit.name },
+    target,
+    tier: 'grammar',
+    enclosing: hit.enclosing,
+  };
+  return hit.kind === null ? record : { ...record, kind: hit.kind };
+}
+
+function callerRecord(snap: Snapshot, callee: SymbolIdentity, hit: SiteHit, caller: SymbolIdentity): CallerRecord {
+  return { ...siteProvenance(snap, hit), caller, callee, hops: 1, tier: 'grammar' };
+}
+
+/** A specifier is relative when it names a file next to or above the importing file. */
+function isRelative(specifier: string): boolean {
+  return specifier === '.' || specifier === '..' || specifier.startsWith('./') || specifier.startsWith('../');
+}
+
+/** A path with its last extension removed: `src/a.ts` and `src/a.js` both become `src/a`. */
+function withoutExtension(filePath: string): string {
+  const ext = posix.extname(filePath);
+  return ext === '' ? filePath : filePath.slice(0, filePath.length - ext.length);
+}
+
+const IMPORTS_SQL = `SELECT o.path AS importer, i.file_id AS file_id, i.ord AS ord, i.path AS specifier, i.style AS style,
+       i.start_line AS start_line, i.start_col AS start_col, i.end_line AS end_line, i.end_col AS end_col
+       FROM overlay_files o
+       JOIN imports i ON i.file_id = o.file_id
+       WHERE o.worktree = ?
+       ORDER BY o.path, i.start_line, i.start_col, i.ord`;
+
+/**
+ * Direct importers of `target`: every import in the overlay whose relative specifier, resolved against the
+ * importing file's directory, equals the target path once the extension is removed on both sides. The match
+ * runs in JavaScript over the overlay's imports (the overlay fits in memory), so no SQL string function is
+ * involved. `INFERRED`: the statement is a cited fact, the link to a file is a path match.
+ */
+function importers(snap: Snapshot, target: string, options: ImportersOptions | undefined): readonly ImporterRecord[] {
+  const wanted = withoutExtension(posix.normalize(target));
+  const limit = options?.limit === undefined ? Number.POSITIVE_INFINITY : Math.max(0, Math.floor(options.limit));
+  const out: ImporterRecord[] = [];
+  for (const row of snap.db.prepare(IMPORTS_SQL).all(snap.worktree)) {
+    if (out.length >= limit) break;
+    const specifier = str(row.specifier);
+    if (!isRelative(specifier)) continue;
+    const importer = str(row.importer);
+    if (withoutExtension(posix.normalize(posix.join(posix.dirname(importer), specifier))) !== wanted) continue;
+    const fileId = num(row.file_id);
+    const file = fileRow(snap, fileId);
+    const record: ImporterRecord = {
+      source_path: importer,
+      span: spanOf(row),
+      extractor: extractorOf(file.module, file.grammarVersion),
+      content_hash: file.hash,
+      first_seen: file.firstSeen,
+      last_seen: file.lastSeen,
+      confidence: 'INFERRED',
+      debug: `imp/${encodeURIComponent(importer)}/${file.hash}/${num(row.ord)}`,
+      importer,
+      specifier,
+      hops: 1,
+    };
+    out.push(row.style === null ? record : { ...record, style: str(row.style) as ImportStyle });
+  }
+  return out;
+}
+
 /**
  * A read-only view of one worktree overlay on the store's read connection. Readers hold no snapshot across
- * calls: every call sees the state committed when it starts. Task 3 of plan 02-06 completes refs, callers,
- * importers and the prefix and fuzzy modes.
+ * calls: every call sees the state committed when it starts. `refs`, `callers` and `importers` are the
+ * simplest correct grammar-tier joins; plan 02-11 deepens them without changing these signatures.
  */
 export function createReader(parts: StoreParts, worktree: WorktreeId): Reader {
   return {
     async find(name, options) {
       return answer(parts, worktree, (snap) => find(snap, name, options));
     },
-    async refs() {
-      assertOpen(parts);
-      return notYet();
+    async refs(id) {
+      return answer(parts, worktree, (snap) => refSites(snap, id, false).map((hit) => refRecord(snap, id, hit)));
     },
-    async callers() {
-      assertOpen(parts);
-      return notYet();
+    async callers(id) {
+      // One hop only in this plan: `options.hops` above 1 returns the same set (plan 02-11 walks deeper).
+      return answer(parts, worktree, (snap) =>
+        refSites(snap, id, true).flatMap((hit) =>
+          hit.enclosing === null ? [] : [callerRecord(snap, id, hit, hit.enclosing)],
+        ),
+      );
     },
     async symbol(id) {
       return answer(parts, worktree, (snap) => {
-        if (id.repo !== parts.repo) return null;
-        const fileId = fileIdAt(snap, id.path);
-        if (fileId === null) return null;
-        const file = fileRow(snap, fileId);
-        const match = fileSymbols(snap, fileId).find(
-          (symbol) =>
-            symbol.kind === id.kind &&
-            (symbol.qualifiedName ?? symbol.name) === id.qualifiedName &&
-            symbol.discriminator === id.discriminator,
-        );
-        return match === undefined ? null : symbolRecord(snap, id.path, file, match);
+        const found = findSymbol(snap, id);
+        return found === null ? null : symbolRecord(snap, id.path, found.file, found.symbol);
       });
     },
-    async importers() {
-      assertOpen(parts);
-      return notYet();
+    async importers(target, options) {
+      return answer(parts, worktree, (snap) => importers(snap, target, options));
     },
     async fileFacts(path) {
       return answer(parts, worktree, (snap) => {
