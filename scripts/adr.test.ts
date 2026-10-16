@@ -17,8 +17,27 @@ const ROOT = path.resolve(import.meta.dirname, '..');
 const ADR_DIR = path.join(ROOT, 'docs', 'adr');
 const REPO_URL = 'https://github.com/open-gsd/gsd-atlas';
 
-// Slugs ratified so far. Task 3 of plan 01-02 extends this to all eight.
-const RATIFIED: readonly string[] = ['product-boundary'];
+// The eight Phase 1 ADRs, all ratified by plan 01-02.
+const RATIFIED: readonly string[] = [
+  'product-boundary',
+  'trust-boundaries',
+  'command-runner',
+  'language-modules',
+  'fact-model',
+  'fact-store-interface',
+  'sqlite-store',
+  'tenant-composition',
+];
+
+// The six ADRs that stay Proposed, and the phase that must ratify each.
+const REMAINING: Readonly<Record<string, string>> = {
+  'worktree-lifecycle': 'Phase 2',
+  'query-and-policy': 'Phase 2',
+  'mcp-contract': 'Phase 2',
+  'value-dashboard': 'Phase 2',
+  'user-controlled-diagnostics': 'Phase 3',
+  'host-process-model': 'Phase 4',
+};
 
 function tmpTree(files: Record<string, string>): string {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'adr-test-'));
@@ -224,6 +243,67 @@ describe('Phase 1 ADR set (integration over the real docs/adr)', () => {
       }
     });
   }
+
+  for (const [slug, phase] of Object.entries(REMAINING)) {
+    it(`${slug} stays a Proposed draft and is scheduled for ${phase}`, () => {
+      assert.equal(findAdrFile(ADR_DIR, slug), `draft-${slug}.md`);
+      const body = fs.readFileSync(path.join(ADR_DIR, `draft-${slug}.md`), 'utf8');
+      assert.match(body, /^- \*\*Status:\*\* Proposed$/m);
+      const row = readme.split('\n').find((l) => l.includes(`](draft-${slug}.md)`));
+      assert.ok(row?.trimEnd().endsWith('| Proposed |'), `README row for ${slug} is not Proposed`);
+
+      const schedule = readme.split(/^## Ratification schedule$/m)[1] ?? '';
+      const sRow = schedule.split('\n').find((l) => l.startsWith('|') && l.includes(`| ${slug} |`));
+      assert.ok(sRow, `schedule has no row for ${slug}`);
+      assert.ok(sRow.includes(`| ${phase} |`), `schedule row for ${slug} does not name ${phase}`);
+    });
+  }
+
+  it('git tracks eight numbered Phase 1 ADRs and six drafts', () => {
+    const names = fs.readdirSync(ADR_DIR).filter((n) => n !== 'README.md');
+    assert.equal(names.filter((n) => /^\d+-/.test(n)).length, 8);
+    assert.equal(names.filter((n) => n.startsWith('draft-')).length, 6);
+  });
+
+  it('README has a Ratification log with eight rows and a schedule with six', () => {
+    assert.match(readme, /^## Ratification log$/m);
+    assert.match(readme, /^## Ratification schedule$/m);
+    const afterLog = readme.split(/^## Ratification log$/m)[1] ?? '';
+    const logBlock = afterLog.split(/^## /m)[0] ?? '';
+    const logRows = logBlock.split('\n').filter((l) => /^\| \[?[a-z]/.test(l) && !l.startsWith('| Slug'));
+    assert.equal(logRows.length, 8);
+    for (const slug of RATIFIED) {
+      const row = logRows.find((l) => l.includes(`| ${slug} |`));
+      assert.ok(row, `log has no row for ${slug}`);
+      const file = findAdrFile(ADR_DIR, slug);
+      assert.ok(row.includes(`](${file})`), `log row for ${slug} does not link ${file}`);
+      assert.match(row, /issues\/\d+/);
+      assert.match(row, /\d{4}-\d{2}-\d{2}/);
+    }
+    const afterSchedule = readme.split(/^## Ratification schedule$/m)[1] ?? '';
+    const scheduleBlock = afterSchedule.split(/^## /m)[0] ?? '';
+    const scheduleRows = scheduleBlock.split('\n').filter((l) => /^\| [a-z]/.test(l) && !l.startsWith('| ADR'));
+    assert.equal(scheduleRows.length, 6);
+  });
+
+  it('no ratified ADR or docs/PRD.md contains a backslash followed by a digit', () => {
+    const files = [
+      path.join(ROOT, 'docs', 'PRD.md'),
+      ...RATIFIED.map((slug) => path.join(ADR_DIR, findAdrFile(ADR_DIR, slug) ?? `missing-${slug}`)),
+    ];
+    for (const f of files) {
+      assert.doesNotMatch(fs.readFileSync(f, 'utf8'), /\\[0-9]/, `${path.relative(ROOT, f)} still has a lost-text token`);
+    }
+  });
+
+  it('no scoped file still links a draft name of a ratified slug', () => {
+    for (const rel of collectLinkFiles(ROOT)) {
+      const text = fs.readFileSync(path.join(ROOT, rel), 'utf8');
+      for (const slug of RATIFIED) {
+        assert.equal(text.includes(`draft-${slug}`), false, `${rel} still mentions draft-${slug}`);
+      }
+    }
+  });
 
   it('every relative markdown link in scope resolves', () => {
     const broken = checkRelativeLinks(ROOT, collectLinkFiles(ROOT));
