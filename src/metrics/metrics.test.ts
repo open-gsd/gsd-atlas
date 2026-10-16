@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { afterEach, describe, it } from 'node:test';
+import { DEGRADED_CODES } from '../facts/index.ts';
 import type { Clock } from '../facts/index.ts';
 import { DbError, loadDriver, openDatabase } from '../sqlite/index.ts';
 import type { Db, DriverModule, DriverName } from '../sqlite/index.ts';
@@ -10,6 +11,17 @@ import type { TempDir } from '../test-kit/index.ts';
 import { createNoopMetrics, openMetrics } from './index.ts';
 import type { AnswerEvent, Metrics, MetricsEvent, MetricsOptions, MetricsRange, Migration } from './index.ts';
 import { MIGRATIONS } from './migrations.ts';
+import {
+  COUNTER_METRICS,
+  DIM_NONE,
+  GAUGE_METRICS,
+  GRAINS,
+  LAG_BUCKETS_MS,
+  LATENCY_BUCKETS_MS,
+  META_KEYS,
+  TOOL_NAMES,
+  bucketLabels,
+} from './types.ts';
 import { validateEvent } from './validate.ts';
 
 const DRIVERS: readonly DriverName[] = ['node:sqlite', 'better-sqlite3'];
@@ -419,6 +431,257 @@ for (const driver of DRIVERS) {
       assert.equal(metrics.record(answer()), undefined);
       assert.equal(counted.live(), 0, 'a closed instance arms nothing');
       assert.equal(metrics.status().recording, false);
+    });
+
+    const counterRows = (file: string): Promise<string[]> =>
+      peek(file, (db) =>
+        db
+          .prepare('select grain, bucket, metric, dim, value from counters order by grain, bucket, metric, dim')
+          .all()
+          .map((r) => `${String(r.grain)}|${String(r.bucket)}|${String(r.metric)}|${String(r.dim)}|${String(r.value)}`),
+      );
+
+    it('bucket edge: a latency equal to an edge counts in that bucket, one above the last edge in the overflow bucket', async () => {
+      const { open } = fixture();
+      const metrics = await open();
+      for (const latencyMs of [0, 1, 5, 5000, 5001]) metrics.record(answer({ latencyMs }));
+      for (const lagMs of [0, 10, 11, 5000, 5001]) metrics.record({ kind: 'freshness', lagMs });
+      const report = await metrics.report(ALL);
+      assert.equal(report.answers.latency.buckets.le1, 2, '0 and 1 ms');
+      assert.equal(report.answers.latency.buckets.le5, 1, 'exactly 5 ms is in the 5 ms bucket');
+      assert.equal(report.answers.latency.buckets.le5000, 1, 'exactly 5000 ms is in the 5000 ms bucket');
+      assert.equal(report.answers.latency.buckets.inf, 1, '5001 ms is in the overflow bucket');
+      assert.equal(report.freshness.buckets.le10, 2, 'a lag of 0 is in the first lag bucket, and so is 10');
+      assert.equal(report.freshness.buckets.le50, 1);
+      assert.equal(report.freshness.buckets.le5000, 1);
+      assert.equal(report.freshness.buckets.inf, 1);
+      assert.equal(report.freshness.count, 5);
+    });
+
+    it('percentiles are the upper edges of the buckets holding those ranks; null with no samples', async () => {
+      const { open } = fixture();
+      const metrics = await open();
+      const empty = await metrics.report(ALL);
+      assert.equal(empty.answers.latency.p50UpperBoundMs, null);
+      assert.equal(empty.answers.latency.p95UpperBoundMs, null);
+      assert.equal(empty.freshness.p50UpperBoundMs, null);
+      assert.equal(empty.freshness.p95UpperBoundMs, null);
+      for (let i = 0; i < 10; i += 1) metrics.record(answer({ latencyMs: 3 }));
+      for (let i = 0; i < 10; i += 1) metrics.record(answer({ latencyMs: 150 }));
+      const report = await metrics.report(ALL);
+      assert.equal(report.answers.latency.count, 20);
+      assert.equal(report.answers.latency.p50UpperBoundMs, 5);
+      assert.equal(report.answers.latency.p95UpperBoundMs, 200);
+      assert.equal(report.answers.latency.overflow, false);
+
+      for (let i = 0; i < 10; i += 1) metrics.record(answer({ latencyMs: 9000 }));
+      const slow = await metrics.report(ALL);
+      assert.equal(slow.answers.latency.p95UpperBoundMs, 5000, 'the overflow bucket reports the largest finite edge');
+      assert.equal(slow.answers.latency.overflow, true, 'and says it is a lower bound');
+    });
+
+    it('freshness events fill the lag histogram and index_health replaces the gauges, latest wins, with its timestamp', async () => {
+      const { clock, open } = fixture();
+      const metrics = await open();
+      metrics.record({ kind: 'freshness', lagMs: 80 });
+      metrics.record({ kind: 'index_health', files: 100, errorFiles: 1, staleFiles: 2, sizeBytes: 1000 });
+      await clock.advance(5000);
+      metrics.record({ kind: 'index_health', files: 120, errorFiles: 0, staleFiles: 3, sizeBytes: 2000 });
+      const report = await metrics.report(ALL);
+      assert.equal(report.freshness.count, 1);
+      assert.equal(report.freshness.p50UpperBoundMs, 100);
+      assert.deepStrictEqual(report.indexHealth, {
+        files: 120,
+        errorFiles: 0,
+        staleFiles: 3,
+        sizeBytes: 2000,
+        at: START + 5000,
+      });
+    });
+
+    it('degraded values and truncation recorded on answers appear in the report with counts', async () => {
+      const { open } = fixture();
+      const metrics = await open();
+      metrics.record(answer({ degraded: ['stale', 'follower'], truncated: true }));
+      metrics.record(answer({ degraded: ['stale'], truncated: true, ok: false }));
+      metrics.record(answer({ tool: 'code_refs' }));
+      const report = await metrics.report(ALL);
+      assert.deepStrictEqual(report.degraded, { stale: 2, follower: 1 });
+      assert.equal(report.answers.truncated, 2);
+      assert.equal(report.answers.total, 3);
+      assert.equal(report.answers.ok, 2);
+      assert.deepStrictEqual(report.answers.byTool, { code_find: 2, code_refs: 1 });
+    });
+
+    it('a report over an empty database is all zeros with null percentiles and an empty degraded map', async () => {
+      const { open } = fixture();
+      const metrics = await open();
+      const report = await metrics.report(ALL);
+      assert.equal(report.answers.total, 0);
+      assert.equal(report.answers.ok, 0);
+      assert.equal(report.answers.truncated, 0);
+      assert.deepStrictEqual(report.answers.byTool, {});
+      assert.deepStrictEqual(report.degraded, {});
+      assert.equal(report.freshness.count, 0);
+      assert.equal(report.freshness.p50UpperBoundMs, null);
+      assert.equal(report.freshness.p95UpperBoundMs, null);
+      assert.equal(report.indexHealth, null);
+      assert.equal(report.tokens.estimatedTotal, 0);
+      assert.equal(report.tokens.label, 'estimate');
+      assert.deepStrictEqual(report.range, ALL);
+    });
+
+    it('a report range includes the hour and day buckets that overlap it and no others', async () => {
+      const { clock, open } = fixture();
+      const metrics = await open();
+      metrics.record(answer());
+      await clock.advance(3 * 3_600_000);
+      metrics.record(answer());
+      await metrics.flush();
+      assert.equal((await metrics.report({ since: START, until: START })).answers.total, 1);
+      assert.equal((await metrics.report({ since: START + 3_600_000, until: START + 2 * 3_600_000 })).answers.total, 0);
+      assert.equal((await metrics.report({ since: START, until: START + 3 * 3_600_000 })).answers.total, 2);
+      assert.equal((await metrics.report({ since: START + 4 * 3_600_000, until: START + 5 * 3_600_000 })).answers.total, 0);
+    });
+
+    it('rollup merges hourly rows older than 7 days into one daily row per metric and dimension', async () => {
+      const { file, clock, open } = fixture();
+      const metrics = await open();
+      metrics.record(answer());
+      await clock.advance(5 * 3_600_000);
+      metrics.record(answer({ results: 4 }));
+      await metrics.flush();
+      const before = await metrics.report(ALL);
+      await clock.advance(8 * 86_400_000);
+      metrics.record(answer());
+      await metrics.flush();
+      await metrics.rollup();
+      const rows = await counterRows(file);
+      assert.ok(rows.some((r) => r.startsWith('day|2026-10-16|answers_calls|code_find|2')), 'two calls merged into one day row');
+      assert.ok(rows.some((r) => r.startsWith('day|2026-10-16|answers_results|code_find|7')), 'results are summed');
+      assert.equal(rows.filter((r) => r.startsWith('hour|2026-10-16')).length, 0, 'merged hourly rows are deleted');
+      assert.ok(rows.some((r) => r.startsWith('hour|2026-10-24T')), 'rows younger than 7 days stay hourly');
+      const after = await metrics.report(ALL);
+      assert.equal(after.answers.total, before.answers.total + 1, 'rolling up changes no total');
+      assert.equal(after.tokens.estimatedTotal, before.tokens.estimatedTotal + 120);
+    });
+
+    it('rollup deletes day rows older than 30 days', async () => {
+      const { file, clock, open } = fixture();
+      const metrics = await open();
+      metrics.record(answer());
+      await metrics.flush();
+      await clock.advance(31 * 86_400_000);
+      await metrics.rollup();
+      assert.deepStrictEqual(await counterRows(file), []);
+    });
+
+    it('rollup is idempotent: a second run changes nothing', async () => {
+      const { file, clock, open } = fixture();
+      const metrics = await open();
+      metrics.record(answer());
+      metrics.record(answer({ tool: 'code_refs', degraded: ['stale'] }));
+      await metrics.flush();
+      await clock.advance(10 * 86_400_000);
+      metrics.record(answer());
+      await metrics.flush();
+      await metrics.rollup();
+      const once = await counterRows(file);
+      await metrics.rollup();
+      assert.deepStrictEqual(await counterRows(file), once);
+      assert.ok(once.length > 0);
+    });
+
+    it('an event recorded while a rollup runs lands in exactly one bucket', async () => {
+      const { file, clock, open } = fixture();
+      const metrics = await open();
+      metrics.record(answer());
+      await metrics.flush();
+      await clock.advance(9 * 86_400_000);
+      const rolling = metrics.rollup();
+      metrics.record(answer());
+      await rolling;
+      await metrics.flush();
+      const calls = (await counterRows(file))
+        .filter((r) => r.includes('|answers_calls|'))
+        .map((r) => Number(r.split('|')[4]));
+      assert.equal(
+        calls.reduce((a, b) => a + b, 0),
+        2,
+      );
+      assert.equal((await metrics.report(ALL)).answers.total, 2);
+    });
+
+    it('reset deletes every counter and gauge and keeps the schema and user_version', async () => {
+      const { file, open } = fixture();
+      const metrics = await open();
+      metrics.record(answer());
+      metrics.record({ kind: 'index_health', files: 1, errorFiles: 0, staleFiles: 0, sizeBytes: 1 });
+      await metrics.flush();
+      metrics.record(answer());
+      await metrics.reset();
+      assert.equal(metrics.status().queued, 0, 'the queue is dropped too');
+      assert.deepStrictEqual(await counterRows(file), []);
+      assert.equal(await peek(file, (db) => db.prepare('select count(*) as n from gauges').get()?.n), 0);
+      assert.equal(await peek(file, (db) => db.pragma('user_version')), 1);
+      assert.equal(metrics.status().recording, true);
+      metrics.record(answer());
+      assert.equal((await metrics.report(ALL)).answers.total, 1, 'recording continues after a reset');
+    });
+
+    it('privacy: every string stored is a member of the closed vocabulary, and a path key leaves the dump unchanged', async () => {
+      const { file, open } = fixture();
+      const metrics = await open();
+      for (const tool of TOOL_NAMES) {
+        metrics.record(answer({ tool, degraded: [...DEGRADED_CODES], truncated: true, latencyMs: 1 }));
+        for (const latencyMs of [...LATENCY_BUCKETS_MS, 99_999]) metrics.record(answer({ tool, latencyMs }));
+      }
+      for (const lagMs of [...LAG_BUCKETS_MS, 99_999]) metrics.record({ kind: 'freshness', lagMs });
+      metrics.record({ kind: 'index_health', files: 3, errorFiles: 1, staleFiles: 1, sizeBytes: 10 });
+      metrics.record({ kind: 'nope' } as unknown as MetricsEvent);
+      await metrics.flush();
+      await metrics.rollup();
+
+      const allowed = new Set<string>([
+        ...GRAINS,
+        ...COUNTER_METRICS,
+        ...GAUGE_METRICS,
+        ...META_KEYS,
+        DIM_NONE,
+        ...TOOL_NAMES,
+        ...DEGRADED_CODES,
+        ...bucketLabels(LAG_BUCKETS_MS),
+        ...bucketLabels(LATENCY_BUCKETS_MS),
+        ...TOOL_NAMES.flatMap((tool) => bucketLabels(LATENCY_BUCKETS_MS).map((label) => `${tool}|${label}`)),
+      ]);
+      const stored = (): Promise<string[]> =>
+        peek(file, (db) => {
+          const out = new Set<string>();
+          for (const table of ['counters', 'gauges', 'meta']) {
+            for (const row of db.prepare(`select * from ${table}`).all()) {
+              for (const value of Object.values(row)) if (typeof value === 'string') out.add(value);
+            }
+          }
+          return [...out].sort();
+        });
+      const before = await stored();
+      assert.ok(before.length > 20);
+      for (const value of before) {
+        assert.ok(allowed.has(value) || /^\d{4}-\d{2}-\d{2}(T\d{2})?$/.test(value), `unexpected stored string: ${value}`);
+      }
+
+      const marker = 'secret-path-marker/src/private.ts';
+      metrics.record({ ...answer(), path: marker } as unknown as MetricsEvent);
+      metrics.record({ ...answer(), symbol: marker } as unknown as MetricsEvent);
+      metrics.record({ kind: 'freshness', lagMs: 1, repo: marker } as unknown as MetricsEvent);
+      await metrics.flush();
+      assert.deepStrictEqual(await stored(), before);
+      for (const suffix of ['', '-wal']) {
+        const candidate = `${file}${suffix}`;
+        if (fs.existsSync(candidate)) {
+          assert.ok(!fs.readFileSync(candidate).includes(marker), `${candidate} must not contain the marker`);
+        }
+      }
     });
   });
 }
