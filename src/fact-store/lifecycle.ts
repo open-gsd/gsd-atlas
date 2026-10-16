@@ -12,7 +12,8 @@
  */
 import type { Db } from '../sqlite/index.ts';
 import type { StoreParts } from './parts.ts';
-import type { MaintenanceOptions, MaintenanceResult } from './types.ts';
+import { isCorruptionError, recoveryCounters } from './recovery.ts';
+import type { CheckResult, MaintenanceOptions, MaintenanceResult } from './types.ts';
 
 /** Test-only hooks, in the way of `recoveryCounters` in recovery.ts. Never set outside a test. */
 export const lifecycleTestHooks: {
@@ -172,4 +173,103 @@ export async function collectRetired(parts: StoreParts, options: MaintenanceOpti
   else cursors.set(parts, cursor);
   if (processed > 0 && deleteUnusedNames(parts) > 0 && parts.fuzzyTrigram) resetLastInsertRowid(parts.writeDb);
   return { complete, spentMs: clock.now() - started, processed };
+}
+
+/** The pages the first incremental-vacuum slice asks for; later slices are sized from how long this one took. */
+const FIRST_SLICE_PAGES = 64;
+
+/** The most pages one slice may ask for (64 MiB at 4 KiB pages), and the most a slice may grow from its last. */
+const MAX_SLICE_PAGES = 16_384;
+const MAX_SLICE_GROWTH = 4;
+
+/** What a slice is sized to take: half the pause the plan allows, so noise does not push it over. */
+const SLICE_FRACTION = 0.5;
+
+/** The next slice's page count: aim for `target` ms given that `pages` took `ms`, growing by at most `MAX_SLICE_GROWTH`. */
+function nextSlicePages(pages: number, ms: number, target: number): number {
+  const scaled = Math.floor((pages * target) / Math.max(ms, 0.05));
+  return Math.max(1, Math.min(scaled, pages * MAX_SLICE_GROWTH, MAX_SLICE_PAGES));
+}
+
+/**
+ * Compact the file (STO-10): return free pages to the file system in incremental-vacuum slices, each aimed at
+ * well under the approved `maintenance.sliceMs` (the first slice is measured and the rest scaled from it), and
+ * stop after the first slice that ends past the budget. Every run ends with `PRAGMA optimize` and a WAL
+ * checkpoint, which truncates the log when the run finished.
+ *
+ * A full `VACUUM` rewrites the whole file while it holds the writer, so it runs only when the caller asks
+ * (`options.full`) and more than a quarter of the file is free; otherwise `full` changes nothing. `processed`
+ * counts the pages given back.
+ */
+export async function compactStore(parts: StoreParts, options: MaintenanceOptions): Promise<MaintenanceResult> {
+  const db = parts.writeDb;
+  const { clock } = parts.deps;
+  const started = clock.now();
+  const freePages = (): number => Number(db.pragma('freelist_count'));
+  const target = parts.settings.sliceMs * SLICE_FRACTION;
+  let processed = 0;
+  let complete = true;
+
+  let free = freePages();
+  if (options.full === true && free * 4 > Number(db.pragma('page_count'))) {
+    lifecycleTestHooks.onVacuum?.();
+    db.exec('VACUUM');
+    processed += free - freePages();
+    free = freePages();
+  }
+
+  let pages = FIRST_SLICE_PAGES;
+  while (free > 0) {
+    const began = performance.now();
+    db.pragma('incremental_vacuum', pages);
+    const ms = performance.now() - began;
+    lifecycleTestHooks.onSlice?.({ pages, ms });
+    const left = freePages();
+    if (left >= free) break; // nothing was freed: the file is not an incremental-vacuum database
+    processed += free - left;
+    free = left;
+    pages = nextSlicePages(pages, ms, target);
+    if (free > 0 && clock.now() - started >= options.budgetMs) {
+      complete = false;
+      break;
+    }
+  }
+
+  // `optimize` first: it may write planner statistics, and the checkpoint must be the last write so the log ends
+  // empty. A truncating checkpoint waits for readers, so only a finished run asks for one; an unfinished run
+  // lets the log drain.
+  db.pragma('optimize');
+  db.pragma('wal_checkpoint', complete ? 'TRUNCATE' : 'PASSIVE');
+  return { complete, spentMs: clock.now() - started, processed };
+}
+
+/** `quick_check` lines for the connection: none when the database answers `ok`. Damage that stops the check is a line too. */
+function quickCheckProblems(db: Db): string[] {
+  recoveryCounters.quickChecks += 1;
+  try {
+    const lines = db
+      .prepare('PRAGMA quick_check(20)')
+      .all()
+      .map((row) => String(Object.values(row)[0]));
+    if (lines.length === 1 && lines[0] === 'ok') return [];
+    return lines.length === 0 ? ['quick_check gave no answer'] : lines;
+  } catch (error) {
+    if (isCorruptionError(error)) return [error instanceof Error ? error.message : String(error)];
+    throw error;
+  }
+}
+
+/**
+ * Check the database (STO-06, A17): `quick_check`, and when it finds damage, `rebuild` moves the files aside
+ * and puts a fresh store in their place through the open path (plan 02-12), so reads say `rebuilding` until a
+ * full overlay is written again. Returns the problem lines.
+ */
+export async function checkStore(parts: StoreParts, rebuild: (() => Promise<void>) | undefined): Promise<CheckResult> {
+  const problems = quickCheckProblems(parts.writeDb);
+  if (problems.length === 0) return { ok: true, problems: [] };
+  if (rebuild !== undefined) {
+    await rebuild();
+    cursors.delete(parts); // the position described the file that was just moved aside
+  }
+  return { ok: false, problems };
 }

@@ -2,7 +2,8 @@ import type { DegradedCode } from '../facts/index.ts';
 import type { Db } from '../sqlite/index.ts';
 import { WriterBusy } from './errors.ts';
 import type { Lease } from './lease.ts';
-import { collectRetired } from './lifecycle.ts';
+import { checkStore, collectRetired, compactStore } from './lifecycle.ts';
+import { maintainStore } from './maintain.ts';
 import { assertOpen, readTransaction } from './parts.ts';
 import type { StoreParts } from './parts.ts';
 import { createReader } from './reader.ts';
@@ -59,6 +60,11 @@ export interface StoreLifecycle {
   readonly dirty?: DirtyGuard;
   /** True while the opener is replacing the database files (takeover found a damaged store): no writer is handed out. */
   recovering?: boolean;
+  /**
+   * Moves the damaged database aside and puts a fresh, rebuilding store in its place, through the opener's own
+   * recovery path. Called by `check` when `quick_check` fails; set by the opener.
+   */
+  rebuild?: () => Promise<void>;
 }
 
 /** `meta` entry: set when the store was rebuilt, cleared by the first completed `setOverlay` afterwards (D-14). */
@@ -194,17 +200,37 @@ export function createStore(parts: StoreParts, lifecycle: StoreLifecycle = {}): 
       requireAuthority();
       return dirtied(() => collectRetired(parts, options));
     },
-    async compact() {
-      assertOpen(parts);
-      return { complete: true, spentMs: 0, processed: 0 };
+    async compact(options) {
+      requireAuthority();
+      return dirtied(() => compactStore(parts, options));
     },
     async check() {
-      assertOpen(parts);
-      return { ok: true, problems: [] };
+      requireAuthority();
+      return dirtied(() => checkStore(parts, lifecycle.rebuild));
     },
-    async maintain() {
-      assertOpen(parts);
-      return { complete: true, spentMs: 0, processed: 0 };
+    async maintain(budgetMs) {
+      requireAuthority();
+      if (!Number.isFinite(budgetMs) || budgetMs < 0) {
+        throw new RangeError('the maintenance budget must be a finite number of milliseconds, zero or more');
+      }
+      // `maintain` takes the writer slot itself, so it can not run while the Indexer's writer is out.
+      if (parts.state.writerTaken) throw new WriterBusy();
+      parts.state.writerTaken = true;
+      try {
+        return await dirtied(() =>
+          maintainStore(
+            {
+              collect: (options) => collectRetired(parts, options),
+              compact: (options) => compactStore(parts, options),
+              check: () => checkStore(parts, lifecycle.rebuild),
+            },
+            parts.deps.clock,
+            budgetMs,
+          ),
+        );
+      } finally {
+        parts.state.writerTaken = false;
+      }
     },
     async status() {
       assertOpen(parts);

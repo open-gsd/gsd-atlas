@@ -382,6 +382,29 @@ export async function openFactStore(
     }
   };
 
+  /**
+   * `check` found the open store damaged (plan 02-18): close it, move its files aside (the newest two moved-aside
+   * files are kept), create a fresh store and mark it as rebuilding, exactly as the open path does for a damaged
+   * file, and swap the new connections in place. The writer gives way meanwhile.
+   */
+  lifecycle.rebuild = async (): Promise<void> => {
+    lifecycle.recovering = true;
+    try {
+      conns.readDb.close();
+      conns.writeDb.close();
+      const { movedTo } = quarantine(dir, deps.clock);
+      pruneQuarantine(dir, KEEP_QUARANTINED);
+      const attempt = await attemptOpen(env, true);
+      if (attempt.kind !== 'ready') throw new Error('the fact store could not be recreated after it was moved aside');
+      noteRebuild(attempt.conns.writeDb, { movedTo, at: deps.clock.now() });
+      conns.writeDb = attempt.conns.writeDb;
+      conns.readDb = attempt.conns.readDb;
+      parts.snapshotIds.clear(); // a rebuilt store counts its sequence numbers from zero again
+    } finally {
+      lifecycle.recovering = false;
+    }
+  };
+
   if (lease !== undefined && !lease.held) {
     const range = options.takeover ?? {
       retryMinMs: DEFAULT_LEASE_RETRY_MIN_MS,
