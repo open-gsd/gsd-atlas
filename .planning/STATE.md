@@ -3,16 +3,16 @@ gsd_state_version: "1.0"
 current_phase: 02
 current_phase_name: Grammar Tier, Store and stdio Host
 status: executing
-stopped_at: Completed 02-06-PLAN.md
-last_updated: "2026-10-16T19:15:13.260Z"
+stopped_at: Completed 02-07-PLAN.md
+last_updated: "2026-10-16T19:36:56.345Z"
 last_activity: 2026-10-16
-last_activity_desc: Completed 02-06 Fact Store core
-state_head: 017bb8dd0931ab7665a8d8d5c3698bc60015106a
+last_activity_desc: Completed 02-07 Grammar Engine extraction
+state_head: 9e22c4ce2364ea4f902e6c712e7f19259a0e0a85
 progress:
   total_phases: 9
   completed_phases: 1
   total_plans: 48
-  completed_plans: 28
+  completed_plans: 29
   percent: 11
 ---
 
@@ -28,16 +28,16 @@ See: .planning/PROJECT.md (updated 2026-10-15)
 ## Current Position
 
 Phase: 02 (Grammar Tier, Store and stdio Host) — EXECUTING
-Plan: 8 of 28 complete (plans 02-01, 02-02, 02-03, 02-04, 02-05, 02-06, 02-08 and 02-21 complete; they ran out of order, next is the lowest-numbered incomplete plan, 02-07)
+Plan: 9 of 28 complete (plans 02-01, 02-02, 02-03, 02-04, 02-05, 02-06, 02-07, 02-08 and 02-21 complete; they ran out of order, next is the lowest-numbered incomplete plan, 02-09)
 Status: Ready to execute
-Last activity: 2026-10-16 — Completed 02-06 (Fact Store core: schema, writer, reader, contract suite on both SQLite drivers)
+Last activity: 2026-10-16 — Completed 02-07 (Grammar Engine extraction: match grouping, extractFileFacts and capture vocabulary, match limit and parse deadline)
 
 Progress: [█░░░░░░░░░] 11%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 28
+- Total plans completed: 29
 - Average duration: -
 - Total execution time: 0.0 hours
 
@@ -46,7 +46,7 @@ Progress: [█░░░░░░░░░] 11%
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 01 | 20 | - | - |
-| 02 | 8 of 28 | - | - |
+| 02 | 9 of 28 | - | - |
 
 **Recent Trend:**
 - Last 5 plans: -
@@ -65,6 +65,7 @@ Progress: [█░░░░░░░░░] 11%
 | Phase 02 P04 | 12min | 3 tasks | 1 files |
 | Phase 02 P05 | 55min | 3 tasks | 10 files |
 | Phase 02 P06 | 22 min | 3 tasks | 11 files |
+| Phase 02 P07 | 20 min | 3 tasks | 21 files |
 
 ## Accumulated Context
 
@@ -94,6 +95,9 @@ Recent decisions affecting current work:
 - [Phase 02]: Fact Store: StoreOptions (engine-independent) lives in types.ts; the driver choice is OpenFactStoreOptions in open.ts so types.ts and index.ts stay free of engine vocabulary
 - [Phase 02]: Fact Store: overlays keep a dropped flag so a worktree's watermark seq stays monotonic across drop and re-creation; commits and markStale advance seq of other worktrees whose stalePaths changed
 - [Phase 02]: Fact Store: grammar-tier edges (refs, callers, importers) are INFERRED and match on bare symbol names; reconcile also reports pending and stale paths; facts are keyed by blob hash alone (first module to commit wins for identical bytes)
+- [Phase 02]: Plan 02-07: the 0.27.1 parse progress callback cancels a parse when it returns true; withTree resets the parser afterwards because a cancelled parse otherwise resumes on the next call — Verified at run time (1.7 MB source cancelled in about 1 ms); without reset the next parse of a different source returned the old document's tree
+- [Phase 02]: Plan 02-07: extractFileFacts derives parent, qualifiedName and enclosing from spans only; equal spans are siblings; exports mark only top-level non-re-exported symbols; reference sites are scope-filtered at extraction — A hostile or sloppy module cannot produce inconsistent FileFacts (T-02-20); the member-call rule is the first thing dropped if the 02-26 store-size gate fails
+- [Phase 02]: Plan 02-07: matchLimit bounds new capture-list allocation only (web-tree-sitter reuses lists allocated earlier in the process), so every engine of one process must use the same limit — Observed: a limit lower than an earlier unlimited run had no effect; documented on GrammarEngineOptions
 
 ### Pending Todos
 
@@ -120,6 +124,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-10-16T19:15:13.203Z
-Stopped at: Completed 02-06-PLAN.md
+Last session: 2026-10-16T19:36:56.291Z
+Stopped at: Completed 02-07-PLAN.md
 Resume file: None
