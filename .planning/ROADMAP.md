@@ -39,37 +39,42 @@ Decimal phases appear between their surrounding integers in numeric order.
   4. Each seam (Fact Store, Source Tree, CommandRunner, Grammar Engine, PreciseResolver, Governor) has a fixed interface plus a test double or conformance suite that passes in CI, and a hostile-repo test shows no child process starts except through the CommandRunner, including one batched `git hash-object --stdin-paths` over a whole snapshot.
   5. The corpus manifest pins each eval corpus to a commit SHA, and every ADR this phase depends on is Accepted (issue opened, file renamed to `<issue#>-<slug>.md`) with its research-gap amendments applied, alongside a schedule naming the phase that must ratify each remaining ADR.
 
-**Plans:** 17 plans
+**Plans:** 19/20 plans executed
 
 Plans:
 **Wave 1**
-- [ ] 01-01-PLAN.md — Pre-flight gates (stray files, package legitimacy) and package scaffold with Node 24.16.0 floor (FND-02)
-- [ ] 01-02-PLAN.md — Ratify the eight Phase 1 ADRs: issues, renames, Accepted, link repair, schedule (FND-09)
-- [ ] 01-04-PLAN.md — Shared kernel (facts), HostClient interface and test kit (FND-05)
+- [x] 01-01-PLAN.md — Pre-flight gates (stray files, package legitimacy) and package scaffold with Node 24.16.0 floor (FND-02)
+- [x] 01-02-PLAN.md — Ratify the eight Phase 1 ADRs: issues, renames, Accepted, link repair, schedule (FND-09)
+- [x] 01-04-PLAN.md — Shared kernel (facts), HostClient interface and test kit (FND-05)
 
 **Wave 2** *(blocked on Wave 1 completion)*
-- [ ] 01-03-PLAN.md — Boundary lint with one fixture test per rule, and the three-OS CI workflow (FND-01, FND-07)
-- [ ] 01-05-PLAN.md — Corpus manifest pinned to commit SHAs (FND-08)
-- [ ] 01-06-PLAN.md — Strict manifest schema, committed JSON Schema, Ajv parity (FND-03)
-- [ ] 01-07-PLAN.md — Reproducible grammar pipeline, grammar.lock, toy language module (FND-04)
+- [x] 01-03-PLAN.md — Boundary lint with one fixture test per rule, and the three-OS CI workflow (FND-01, FND-07)
+- [x] 01-05-PLAN.md — Corpus manifest pinned to commit SHAs (FND-08)
+- [x] 01-06-PLAN.md — Strict manifest schema, committed JSON Schema, Ajv parity (FND-03)
+- [x] 01-07-PLAN.md — Reproducible grammar pipeline, grammar.lock, toy language module (FND-04)
 
 **Wave 3** *(blocked on Wave 2 completion)*
-- [ ] 01-08-PLAN.md — ADR amendments (D-16, D-17) and Node floor record in planning artifacts (FND-10)
-- [ ] 01-09-PLAN.md — CommandRunner seam: spec, decide, real and recording adapters, contract (FND-05, FND-06)
-- [ ] 01-10-PLAN.md — SQLite driver layer with conformance on both drivers, frozen Fact Store interface (FND-05)
-- [ ] 01-11-PLAN.md — Governor and PreciseResolver seams with doubles and contracts (FND-05)
-- [ ] 01-12-PLAN.md — Grammar Engine seam, ERROR-byte measurement and parse-budget script (FND-05, LNG-06)
+- [x] 01-08-PLAN.md — ADR amendments (D-16, D-17) and Node floor record in planning artifacts (FND-10)
+- [x] 01-09-PLAN.md — CommandRunner seam: spec, decide, real and recording adapters, contract (FND-05, FND-06)
+- [x] 01-10-PLAN.md — SQLite driver layer with conformance on both drivers, frozen Fact Store interface (FND-05)
+- [x] 01-11-PLAN.md — Governor and PreciseResolver seams with doubles and contracts (FND-05)
+- [x] 01-12-PLAN.md — Grammar Engine seam, ERROR-byte measurement and parse-budget script (FND-05, LNG-06)
 
 **Wave 4** *(blocked on Wave 3 completion)*
-- [ ] 01-13-PLAN.md — Git hardening, Source Tree seam and the hostile-repo test (FND-05, FND-06)
-- [ ] 01-14-PLAN.md — lang test through the CLI, HostClient and goldens with UTF-16, CRLF and BOM cases (FND-11, FND-03)
-- [ ] 01-15-PLAN.md — First three-OS CI run and WASM hash-parity gate (FND-01, FND-04)
+- [x] 01-13-PLAN.md — Git hardening, Source Tree seam and the hostile-repo test (FND-05, FND-06)
+- [x] 01-14-PLAN.md — lang test through the CLI, HostClient and goldens with UTF-16, CRLF and BOM cases (FND-11, FND-03)
+- [x] 01-15-PLAN.md — First three-OS CI run and WASM hash-parity gate (FND-01, FND-04)
 
 **Wave 5** *(blocked on Wave 4 completion)*
-- [ ] 01-17-PLAN.md — Module registry with four-location precedence, lang list, invalid-module skipping, inert precise commands (LNG-01, FND-03)
+- [x] 01-17-PLAN.md — Module registry with four-location precedence, lang list, invalid-module skipping, inert precise commands (LNG-01, FND-03)
 
 **Wave 6** *(blocked on Wave 5 completion)*
-- [ ] 01-16-PLAN.md — Package tarball smoke, README quickstart, final three-OS CI evidence (FND-01, FND-02, FND-04, FND-11)
+- [x] 01-16-PLAN.md — Package tarball smoke, README quickstart, final three-OS CI evidence (FND-01, FND-02, FND-04, FND-11)
+
+**Gap closure** *(from 01-VERIFICATION.md; run with `--gaps-only`)*
+- [x] 01-18-PLAN.md — Gap closure CR-01: pin lazy-fetch and transport off in every git spec, decide requires the safety overrides and env, promisor hostile-repo case (FND-05, FND-06)
+- [x] 01-19-PLAN.md — Gap closure CR-02: neutralise every filter driver name through the GIT_CONFIG_* env channel, strict decide validation, fail-closed enumeration probe (FND-05, FND-06)
+- [ ] 01-20-PLAN.md — Gap closure CR-01 (new) and WR-01: a non-UTF-8 filter driver name fails the snapshot closed, one shared name rule for builder and gate, Buffer-based hostile fixtures, three-OS CI run (FND-05, FND-06)
 
 ### Phase 2: Grammar Tier, Store and stdio Host
 
@@ -220,7 +225,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundations and Walking Skeleton | 0/17 | Planned | - |
+| 1. Foundations and Walking Skeleton | 19/19 | In Progress | - |
 | 2. Grammar Tier, Store and stdio Host | 0/TBD | Not started | - |
 | 3. TypeScript Module and MVP Eval | 0/TBD | Not started | - |
 | 4. Host Hardening | 0/TBD | Not started | - |
