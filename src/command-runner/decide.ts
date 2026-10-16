@@ -83,11 +83,65 @@ function gitEnvPinned(env: CommandSpec['env']): boolean {
   return true;
 }
 
+/** Every spelling of the environment config channel, in any case (`GIT_CONFIG_GLOBAL` and friends are not part of it). */
+const CHANNEL_NAME = /^GIT_CONFIG_(COUNT|PARAMETERS|KEY_|VALUE_)/i;
+const CHANNEL_INDEXED = /^GIT_CONFIG_(KEY|VALUE)_(0|[1-9][0-9]*)$/;
+const CANONICAL_COUNT = /^(0|[1-9][0-9]*)$/;
+const FILTER_ENV_KEY = /^filter\.([^\0\r\n]*)\.(clean|smudge|process|required)$/;
+
+/**
+ * Validates the environment config channel (`GIT_CONFIG_COUNT`, `GIT_CONFIG_KEY_n`, `GIT_CONFIG_VALUE_n`),
+ * which `gitSpec` uses to neutralise filter drivers whose names a `-c` pair cannot express (CR-02, T-01-48).
+ * Git applies these variables as config, so an unvalidated entry (`core.sshCommand`, `alias.x`) would be
+ * repo-independent code execution. The grammar:
+ *   - no channel variable at all, or `GIT_CONFIG_COUNT` a canonical non-negative decimal (no sign, no
+ *     leading zero, no whitespace);
+ *   - the `KEY_n` index set and the `VALUE_n` index set are each exactly 0 to count-1. The sets are built by
+ *     scanning the env and compared with the count BEFORE any loop runs to the count, so a huge declared
+ *     count cannot stall the gate;
+ *   - every key is `filter.<name>.<clean|smudge|process|required>`; the name may be empty and may contain
+ *     any character except NUL, CR and LF (including `=` and `.`);
+ *   - every value is empty (`required` also allows `false`);
+ *   - `GIT_CONFIG_PARAMETERS` and every other spelling (case variants, non-canonical indexes) are denied.
+ * The three isolation variables `GIT_CONFIG_GLOBAL`, `GIT_CONFIG_SYSTEM` and `GIT_CONFIG_NOSYSTEM` do not
+ * match and are not touched.
+ */
+function gitConfigChannelAllowed(env: CommandSpec['env']): boolean {
+  if (env === undefined) return true;
+  let count: string | undefined;
+  const keys = new Set<number>();
+  const values = new Set<number>();
+  for (const name of Object.keys(env)) {
+    if (!CHANNEL_NAME.test(name)) continue;
+    if (name === 'GIT_CONFIG_COUNT') {
+      count = env[name];
+      continue;
+    }
+    const m = CHANNEL_INDEXED.exec(name);
+    if (m === null) return false; // PARAMETERS, case variants, non-canonical indexes
+    (m[1] === 'KEY' ? keys : values).add(Number(m[2]));
+  }
+  if (count === undefined) return keys.size === 0 && values.size === 0;
+  if (!CANONICAL_COUNT.test(count)) return false;
+  if (keys.size !== values.size || String(keys.size) !== count) return false;
+  for (let i = 0; i < keys.size; i += 1) {
+    if (!keys.has(i) || !values.has(i)) return false;
+    const key = env[`GIT_CONFIG_KEY_${String(i)}`];
+    const value = env[`GIT_CONFIG_VALUE_${String(i)}`];
+    if (key === undefined || value === undefined) return false;
+    const m = FILTER_ENV_KEY.exec(key);
+    if (m === null) return false;
+    if (m[2] === 'required' ? value !== '' && value !== 'false' : value !== '') return false;
+  }
+  return true;
+}
+
 function matchGit(spec: CommandSpec): boolean {
   if (spec.executable !== 'git') return false;
   const args = spec.args;
   if (args.length === 1 && args[0] === '--version') return true;
   if (!gitEnvPinned(spec.env)) return false;
+  if (!gitConfigChannelAllowed(spec.env)) return false;
 
   let i = 0;
   const seenKeys = new Set<string>();
