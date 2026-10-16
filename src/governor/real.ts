@@ -37,18 +37,34 @@ interface PoolEntry {
   onEvict: () => void;
 }
 
-/** Merge the caller's per-class overrides over the defaults. */
+/**
+ * Merge the caller's per-class overrides over the defaults and check every resulting value, so a
+ * bad option fails at construction with a RangeError that names `<option>.<class>`.
+ */
 function resolveClassValues(
+  option: string,
+  requirement: string,
+  isValid: (value: number) => boolean,
   overrides: Partial<Record<JobClass, number>> | undefined,
   defaults: Readonly<Record<JobClass, number>>,
 ): Record<JobClass, number> {
-  return {
+  const resolved: Record<JobClass, number> = {
     interactive: overrides?.interactive ?? defaults.interactive,
     fresh: overrides?.fresh ?? defaults.fresh,
     indexing: overrides?.indexing ?? defaults.indexing,
     maintenance: overrides?.maintenance ?? defaults.maintenance,
   };
+  for (const cls of JOB_CLASSES) {
+    if (!isValid(resolved[cls])) {
+      throw new RangeError(`${option}.${cls} must be ${requirement}, got ${String(resolved[cls])}`);
+    }
+  }
+  return resolved;
 }
+
+/** A queue bound must be finite: an unbounded queue is the failure this Governor exists to prevent. */
+const isQueueBound = (value: number): boolean => Number.isInteger(value) && value >= 0;
+const isRetryDelay = (value: number): boolean => Number.isInteger(value) && value >= 1;
 
 /**
  * The production Governor (HST-03). Four priority classes (`interactive`, `fresh`, `indexing`,
@@ -69,8 +85,20 @@ export function createGovernor(options: GovernorOptions): RealGovernor {
   if (!(memoryBudgetBytes >= 0)) {
     throw new RangeError('memoryBudgetBytes must be >= 0');
   }
-  const maxQueue = resolveClassValues(options.maxQueue, DEFAULT_GOVERNOR_OPTIONS.maxQueue);
-  const busyRetryMs = resolveClassValues(options.busyRetryMs, DEFAULT_GOVERNOR_OPTIONS.busyRetryMs);
+  const maxQueue = resolveClassValues(
+    'maxQueue',
+    'a finite integer >= 0',
+    isQueueBound,
+    options.maxQueue,
+    DEFAULT_GOVERNOR_OPTIONS.maxQueue,
+  );
+  const busyRetryMs = resolveClassValues(
+    'busyRetryMs',
+    'an integer >= 1 (milliseconds)',
+    isRetryDelay,
+    options.busyRetryMs,
+    DEFAULT_GOVERNOR_OPTIONS.busyRetryMs,
+  );
 
   let nextSeq = 0;
   let runningJobs = 0;
