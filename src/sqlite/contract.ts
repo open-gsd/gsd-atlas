@@ -9,6 +9,7 @@ import path from 'node:path';
 import { describe, it } from 'node:test';
 import { makeTempDir } from '../test-kit/index.ts';
 import type { Db, DriverModule, DriverName, OpenOptions } from './driver.ts';
+import { DbError, IntegerOutOfRangeError } from './errors.ts';
 import { loadDriver, openDatabase, selfTest } from './open.ts';
 
 type DriverUnderTest = DriverName | DriverModule;
@@ -83,6 +84,166 @@ define('close is idempotent and the database files can be deleted right after', 
     fs.rmSync(file + suffix, { force: true }); // EBUSY on Windows if a handle were still open
     assert.equal(fs.existsSync(file + suffix), false);
   }
+});
+
+define('integers beyond 2^53 throw IntegerOutOfRangeError in number mode and read exactly in bigint mode', async (ctx) => {
+  const db = await ctx.open();
+  db.exec('CREATE TABLE t (n INTEGER)');
+  const insert = db.prepare('INSERT INTO t (n) VALUES (?)');
+  insert.run(9007199254740993n);
+  insert.run(5);
+  const small = db.prepare('SELECT n FROM t WHERE n = ?').get(5);
+  assert.deepStrictEqual(small, { n: 5 });
+  assert.equal(typeof small?.n, 'number');
+  assert.throws(() => db.prepare('SELECT n FROM t ORDER BY n DESC').get(), IntegerOutOfRangeError);
+  assert.throws(() => db.prepare('SELECT n FROM t').all(), IntegerOutOfRangeError);
+
+  const exact = await ctx.open({ bigints: 'bigint' });
+  assert.deepStrictEqual(exact.prepare('SELECT n FROM t ORDER BY n DESC').get(), { n: 9007199254740993n });
+  assert.deepStrictEqual(exact.prepare('SELECT n FROM t WHERE n = ?').get(5), { n: 5n });
+});
+
+define('unsupported parameter types throw TypeError', async (ctx) => {
+  const db = await ctx.open();
+  db.exec('CREATE TABLE t (v)');
+  const insert = db.prepare('INSERT INTO t (v) VALUES (?)');
+  assert.throws(() => insert.run(undefined as never), TypeError);
+  assert.throws(() => insert.run(true as never), TypeError);
+  assert.throws(() => insert.run({} as never), TypeError);
+  assert.equal(db.prepare('SELECT count(*) AS c FROM t').get()?.c, 0);
+});
+
+define('bound parameters, run results and all()', async (ctx) => {
+  const db = await ctx.open();
+  db.exec('CREATE TABLE t (id INTEGER PRIMARY KEY, name TEXT)');
+  const insert = db.prepare('INSERT INTO t (name) VALUES (?)');
+  assert.deepStrictEqual(insert.run('a'), { changes: 1, lastInsertRowid: 1 });
+  assert.deepStrictEqual(insert.run('b'), { changes: 1, lastInsertRowid: 2 });
+  assert.deepStrictEqual(db.prepare('SELECT name FROM t WHERE id > ? ORDER BY id').all(0), [
+    { name: 'a' },
+    { name: 'b' },
+  ]);
+  assert.throws(() => db.prepare('SELEC nope'), (error: unknown) => error instanceof DbError && error.code === 'other');
+});
+
+define('a transaction commits on return and rolls back on throw; a nested transaction throws', async (ctx) => {
+  const db = await ctx.open();
+  db.exec('CREATE TABLE t (id INTEGER PRIMARY KEY)');
+  const count = () => db.prepare('SELECT count(*) AS c FROM t').get()?.c;
+  assert.equal(
+    db.transaction(() => {
+      db.prepare('INSERT INTO t DEFAULT VALUES').run();
+      return 'done';
+    }),
+    'done',
+  );
+  assert.equal(count(), 1);
+  assert.throws(
+    () =>
+      db.transaction(() => {
+        db.prepare('INSERT INTO t DEFAULT VALUES').run();
+        throw new Error('stop');
+      }),
+    /stop/,
+  );
+  assert.equal(count(), 1);
+  assert.throws(() => db.transaction(() => db.transaction(() => 1)), /savepoint/);
+  assert.equal(count(), 1);
+  // The failed nested attempt must not leave a transaction open.
+  assert.equal(db.transaction(() => 7), 7);
+});
+
+define('a savepoint rolls back only the inner work', async (ctx) => {
+  const db = await ctx.open();
+  db.exec('CREATE TABLE t (id INTEGER PRIMARY KEY, v TEXT)');
+  db.transaction(() => {
+    db.prepare('INSERT INTO t (v) VALUES (?)').run('outer');
+    assert.throws(
+      () =>
+        db.savepoint('inner', () => {
+          db.prepare('INSERT INTO t (v) VALUES (?)').run('inner');
+          throw new Error('undo');
+        }),
+      /undo/,
+    );
+    db.savepoint('kept', () => {
+      db.prepare('INSERT INTO t (v) VALUES (?)').run('kept');
+    });
+  });
+  assert.deepStrictEqual(
+    db.prepare('SELECT v FROM t ORDER BY id').all().map((r) => r.v),
+    ['outer', 'kept'],
+  );
+});
+
+define('savepoint names and pragma names and values are validated, so nothing is injected', async (ctx) => {
+  const db = await ctx.open();
+  db.exec('CREATE TABLE x (id INTEGER)');
+  const tableSurvives = () => db.prepare(`SELECT name FROM sqlite_master WHERE name = 'x'`).get() !== undefined;
+  assert.throws(() => db.savepoint('a; DROP TABLE x', () => 1), TypeError);
+  assert.throws(() => db.savepoint('1bad', () => 1), TypeError);
+  assert.throws(() => db.pragma('user_version; DROP TABLE x' as never), TypeError);
+  assert.throws(() => db.pragma('writable_schema' as never), TypeError);
+  assert.throws(() => db.pragma('user_version', '1; DROP TABLE x'), TypeError);
+  assert.throws(() => db.pragma('user_version', 1.5), TypeError);
+  assert.equal(tableSurvives(), true);
+  assert.equal(db.pragma('user_version', 7), undefined);
+  assert.equal(db.pragma('user_version'), 7);
+  assert.equal(db.pragma('quick_check'), 'ok');
+});
+
+define('a second connection gets DbError busy while the first holds a write transaction', async (ctx) => {
+  const first = await ctx.open({ timeoutMs: 0 });
+  first.exec('CREATE TABLE t (id INTEGER)');
+  const second = await ctx.open({ timeoutMs: 0 });
+  first.exec('BEGIN IMMEDIATE');
+  try {
+    assert.throws(
+      () => second.transaction(() => 1),
+      (error: unknown) => error instanceof DbError && error.code === 'busy' && error.sqliteCode === 5,
+    );
+  } finally {
+    first.exec('ROLLBACK');
+  }
+  assert.equal(second.transaction(() => 1), 1);
+});
+
+define('a read-only connection gets DbError readonly on insert', async (ctx) => {
+  const writer = await ctx.open();
+  writer.exec('CREATE TABLE t (id INTEGER)');
+  const reader = await ctx.open({ readOnly: true });
+  assert.deepStrictEqual(reader.prepare('SELECT count(*) AS c FROM t').get(), { c: 0 });
+  assert.throws(
+    () => reader.prepare('INSERT INTO t DEFAULT VALUES').run(),
+    (error: unknown) => error instanceof DbError && error.code === 'readonly',
+  );
+});
+
+define('a unique-key violation is DbError constraint', async (ctx) => {
+  const db = await ctx.open();
+  db.exec('CREATE TABLE t (k TEXT PRIMARY KEY)');
+  db.prepare('INSERT INTO t (k) VALUES (?)').run('a');
+  assert.throws(
+    () => db.prepare('INSERT INTO t (k) VALUES (?)').run('a'),
+    (error: unknown) => error instanceof DbError && error.code === 'constraint' && error.sqliteCode === 19,
+  );
+});
+
+define('FTS5 trigram finds a substring and returns no rows, and no error, for a two-character query', async (ctx) => {
+  const db = await ctx.open();
+  db.exec(`CREATE VIRTUAL TABLE names USING fts5(name, tokenize='trigram')`);
+  db.prepare('INSERT INTO names (name) VALUES (?)').run('getUserName');
+  assert.deepStrictEqual(db.prepare('SELECT name FROM names WHERE names MATCH ?').all('serNa'), [{ name: 'getUserName' }]);
+  assert.deepStrictEqual(db.prepare('SELECT name FROM names WHERE names MATCH ?').all('se'), []);
+});
+
+define('loadExtension is unavailable: the Db has none and the load_extension SQL function fails', async (ctx) => {
+  const db = await ctx.open();
+  assert.equal('loadExtension' in db, false);
+  assert.throws(
+    () => db.exec(`SELECT load_extension('nothing')`),
+    (error: unknown) => error instanceof DbError && error.code === 'other',
+  );
 });
 
 /** Register the whole suite for one driver. Call it from the driver's own `*.test.ts` file. */

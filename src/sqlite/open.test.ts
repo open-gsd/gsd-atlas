@@ -43,6 +43,14 @@ describe('openDatabase', () => {
     assert.equal(db.driver, 'node:sqlite');
   });
 
+  it('selects the better-sqlite3 adapter when asked', async (t) => {
+    const tmp = makeTempDir();
+    t.after(() => tmp.cleanup());
+    const db = tmp.adopt(await openDatabase(`${tmp.path}/b.db`, { driver: 'better-sqlite3' }));
+    assert.equal(db.driver, 'better-sqlite3');
+    assert.equal(db.pragma('journal_mode'), 'wal');
+  });
+
   it('refuses a driver that truncates TEXT at an embedded NUL (nul_truncation) and never returns a Db', async (t) => {
     const tmp = makeTempDir();
     t.after(() => tmp.cleanup());

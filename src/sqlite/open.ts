@@ -14,7 +14,7 @@ export type Loaders = Readonly<Record<DriverName, () => Promise<DriverModule>>>;
 
 const defaultLoaders: Loaders = {
   'node:sqlite': async () => (await import('./node-sqlite.ts')).nodeSqliteDriver,
-  'better-sqlite3': () => Promise.reject(new Error('the better-sqlite3 adapter is added in the next task')),
+  'better-sqlite3': async () => (await import('./better-sqlite3.ts')).loadBetterSqlite3(),
 };
 
 function compareVersions(a: string, b: string): number {
