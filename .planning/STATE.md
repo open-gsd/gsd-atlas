@@ -3,16 +3,16 @@ gsd_state_version: "1.0"
 current_phase: 02
 current_phase_name: Grammar Tier, Store and stdio Host
 status: executing
-stopped_at: Phase 2 context gathered
-last_updated: "2026-10-16T14:44:31.453Z"
+stopped_at: Completed 02-02-PLAN.md
+last_updated: "2026-10-16T17:47:01.591Z"
 last_activity: 2026-10-16
-last_activity_desc: Phase 01 complete, transitioned to Phase 2
-state_head: f7839d0d4d55ac802c3b8ced12a2a01505986232
+last_activity_desc: Phase 02 execution started
+state_head: 3d8813f7346d5e553323d0a61e2125e659772188
 progress:
   total_phases: 9
   completed_phases: 1
   total_plans: 48
-  completed_plans: 20
+  completed_plans: 21
   percent: 11
 ---
 
@@ -23,14 +23,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-10-15)
 
 **Core value:** Agents get correct, cited, current answers about the code and the platform they are building against, instead of guessing from stale training data or sweeping the repo with grep.
-**Current focus:** Phase 01 — Foundations and Walking Skeleton
+**Current focus:** Phase 02 — Grammar Tier, Store and stdio Host
 
 ## Current Position
 
-Phase: 02 (Grammar Tier, Store and stdio Host) — READY TO EXECUTE
-Plan: Not started
-Status: Ready to execute
-Last activity: 2026-10-16 — Phase 01 complete, transitioned to Phase 2
+Phase: 02 (Grammar Tier, Store and stdio Host) — EXECUTING
+Plan: 1 of 28
+Status: Executing Phase 02
+Last activity: 2026-10-16 — Phase 02 execution started
 
 Progress: [█░░░░░░░░░] 11%
 
@@ -52,6 +52,11 @@ Progress: [█░░░░░░░░░] 11%
 - Trend: -
 
 *Updated after each plan completion*
+**Per-Plan Metrics:**
+
+| Plan | Duration | Tasks | Files |
+|------|----------|-------|-------|
+| Phase 02 P02 | 9 min | 3 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -67,6 +72,7 @@ Recent decisions affecting current work:
 - [Roadmap]: Host is stateless; the stdio shim is the default client path. Tenant and a two-tenant smoke test exist from Phase 2 so Phase 4 is additive.
 - [Roadmap]: "Beats grep" means fewer tokens at non-inferior accuracy; the free-alternatives scan precedes the Phase 3 eval; the eval design is pre-registered.
 - [Roadmap]: Phases 4 and 5 are independent and may run in parallel; Phase 7 waits on Phase 6 only for hook rule R3.
+- [Phase 02]: Citation carries structure only (debug is a string handle, optional text_ref); repo text may appear only in Envelope.untrusted_text — QRY-01 prohibition: keep source text out of every other envelope field
 
 ### Pending Todos
 
@@ -93,6 +99,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-10-16T12:28:05.094Z
-Stopped at: Phase 2 context gathered
-Resume file: .planning/phases/02-grammar-tier-store-and-stdio-host/02-CONTEXT.md
+Last session: 2026-10-16T17:47:01.561Z
+Stopped at: Completed 02-02-PLAN.md
+Resume file: None
