@@ -13,6 +13,12 @@ import { parseArgs } from 'node:util';
 
 import { PROTOCOL_VERSION } from '../host-client/index.ts';
 import type { Envelope, HostClient } from '../host-client/index.ts';
+import { INIT_SCHEMA, runInit } from './init.ts';
+import type { InitEnvironment } from './init.ts';
+import { AGENT_IDS } from './init-targets.ts';
+import type { AgentId } from './init-targets.ts';
+
+export { INIT_SCHEMA };
 
 export const EXIT_OK = 0;
 export const EXIT_USAGE = 1;
@@ -24,10 +30,13 @@ export interface CliIo {
   readonly version: () => string;
   readonly stdout: { write(text: string): unknown };
   readonly stderr: { write(text: string): unknown };
+  /** Home, working directory, platform, environment and MCP launch command for `init`; the bin supplies it. */
+  readonly init?: InitEnvironment;
 }
 
 const USAGE = [
   'Usage: gsd-atlas [--version | -v] [--help | -h]',
+  '       gsd-atlas init [--agent claude|cursor|codex] [--dry-run]',
   '       gsd-atlas lang list [root flags]',
   '       gsd-atlas lang test <module-folder>|<module-id> [root flags]',
   'Root flags (where modules are searched; each one replaces its default):',
@@ -96,6 +105,39 @@ async function send(io: CliIo, kind: string, args: Record<string, unknown>): Pro
   return exitCodeFor(envelope);
 }
 
+interface InitFlags extends RootFlags {
+  readonly agent?: string[] | undefined;
+  readonly 'dry-run'?: boolean | undefined;
+}
+
+/** `gsd-atlas init`: validate the flags, run it and print its envelope. It never contacts the host. */
+async function init(io: CliIo, flags: InitFlags, hasArguments: boolean): Promise<number> {
+  if (hasArguments) {
+    return usageError(io, 'init takes no arguments, only --agent and --dry-run');
+  }
+  if (rootsFrom(flags) !== undefined) {
+    return usageError(io, 'the module root flags do not apply to init');
+  }
+  const wanted = new Set<AgentId>();
+  for (const name of flags.agent ?? []) {
+    const agent = AGENT_IDS.find((id) => id === name);
+    if (agent === undefined) {
+      return usageError(io, `unknown agent "${name}" (expected ${AGENT_IDS.join(', ')})`);
+    }
+    wanted.add(agent);
+  }
+  if (io.init === undefined) {
+    io.stderr.write('gsd-atlas: error init_unavailable: init is not available in this build\n');
+    return EXIT_FAILURE;
+  }
+  const result = await runInit({ dryRun: flags['dry-run'] === true, agents: wanted.size === 0 ? 'all' : [...wanted] }, io.init);
+  io.stdout.write(`${JSON.stringify(result.envelope)}\n`);
+  for (const line of result.stderrLines) {
+    io.stderr.write(`${line}\n`);
+  }
+  return result.exitCode;
+}
+
 export async function runCli(argv: readonly string[], io: CliIo): Promise<number> {
   let parsed;
   try {
@@ -110,6 +152,8 @@ export async function runCli(argv: readonly string[], io: CliIo): Promise<number
         'user-dir': { type: 'string' },
         'builtin-dir': { type: 'string' },
         'npm-root': { type: 'string', multiple: true },
+        agent: { type: 'string', multiple: true },
+        'dry-run': { type: 'boolean' },
       },
     });
   } catch (error) {
@@ -129,6 +173,12 @@ export async function runCli(argv: readonly string[], io: CliIo): Promise<number
   const [group, action, target, ...extra] = positionals;
   if (group === undefined) {
     return usageError(io, 'a command is required');
+  }
+  if (group === 'init') {
+    return init(io, values, positionals.length > 1);
+  }
+  if (values.agent !== undefined || values['dry-run'] === true) {
+    return usageError(io, '--agent and --dry-run apply only to the init command');
   }
   if (group !== 'lang' || (action !== 'test' && action !== 'list')) {
     return usageError(io, 'unknown command');
