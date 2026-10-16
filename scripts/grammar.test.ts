@@ -10,7 +10,15 @@ import { spawnSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 import { makeTempDir } from '../src/test-kit/index.ts';
 import type { GrammarLock } from '../src/lang/grammar-lock.ts';
-import { GrammarBuildError, checkAgainstLock, prepareSource, sha256Hex } from './grammar-build.ts';
+import {
+  GrammarBuildError,
+  checkAgainstLock,
+  prepareSource,
+  serializeLock,
+  sha256Hex,
+  updateLockRefusal,
+  updatedLock,
+} from './grammar-build.ts';
 import { compareHashes } from './grammar-verify.ts';
 import { FIXTURES } from './toy-fixtures.ts';
 
@@ -46,22 +54,119 @@ describe('parseCliVersion', () => {
   });
 });
 
-describe('checkAgainstLock', () => {
-  const lock = {
-    ...readToyLock(),
-    wasm: { file: 'grammar.wasm', sha256: 'c'.repeat(64) },
-  };
+const LINUX_HASH = 'c'.repeat(64);
+const WINDOWS_HASH = 'd'.repeat(64);
 
-  it('returns null on equality', () => {
-    assert.equal(checkAgainstLock(lock, 'c'.repeat(64)), null);
+/** A lock whose committed wasm is the linux build and whose windows rebuild differs by design. */
+function perPlatformLock(): GrammarLock {
+  return {
+    ...readToyLock(),
+    wasm: {
+      file: 'grammar.wasm',
+      sha256: LINUX_HASH,
+      platforms: { 'linux-x64': LINUX_HASH, 'darwin-arm64': LINUX_HASH, 'win32-x64': WINDOWS_HASH },
+    },
+  };
+}
+
+describe('toy grammar.lock (per-platform hashes, lockVersion 2)', () => {
+  it('records the CI-measured hashes: linux-x64 and darwin-arm64 are the committed wasm, win32-x64 differs', () => {
+    const lock = readToyLock();
+    const committed = 'ffe6c2edbbd5cb905f70f98a31ce17c354e6ec4da263bcc3e5aa70d52e1a0f9a';
+    const windows = 'cba9dce1c2048b2fc06d408d0c7d0f57c5ee026652a385e8c9080046bdb58853';
+    assert.equal(lock.wasm.sha256, committed);
+    assert.deepEqual(lock.wasm.platforms, { 'linux-x64': committed, 'darwin-arm64': committed, 'win32-x64': windows });
+  });
+});
+
+describe('checkAgainstLock', () => {
+  const lock = perPlatformLock();
+
+  it('returns null when the rebuild equals this platform entry', () => {
+    assert.equal(checkAgainstLock(lock, LINUX_HASH, 'linux', 'x64'), null);
+    assert.equal(checkAgainstLock(lock, WINDOWS_HASH, 'win32', 'x64'), null);
   });
 
-  it('names both hashes and the update-lock hint on inequality', () => {
-    const text = checkAgainstLock(lock, 'd'.repeat(64));
+  it('checks each platform against its own entry, never another platform entry', () => {
+    const onWindows = checkAgainstLock(lock, LINUX_HASH, 'win32', 'x64');
+    assert.ok(onWindows !== null);
+    assert.ok(onWindows.includes('win32-x64'));
+    assert.ok(onWindows.includes(WINDOWS_HASH));
+    assert.ok(onWindows.includes(LINUX_HASH));
+    assert.notEqual(checkAgainstLock(lock, WINDOWS_HASH, 'linux', 'x64'), null);
+  });
+
+  it('names expected, computed and the update hint on inequality', () => {
+    const text = checkAgainstLock(lock, 'e'.repeat(64), 'linux', 'x64');
     assert.ok(text !== null);
-    assert.ok(text.includes('c'.repeat(64)));
-    assert.ok(text.includes('d'.repeat(64)));
-    assert.ok(text.includes('run with --update-lock if this change is intentional'));
+    assert.ok(text.includes(LINUX_HASH));
+    assert.ok(text.includes('e'.repeat(64)));
+    assert.ok(text.includes('--update-platform'));
+    assert.ok(text.includes('--update-lock'));
+  });
+
+  it('fails, never passes, for a platform with no entry, naming the platform key', () => {
+    const text = checkAgainstLock(lock, LINUX_HASH, 'linux', 'arm64');
+    assert.ok(text !== null);
+    assert.ok(text.includes('linux-arm64'));
+    assert.ok(text.includes('--update-platform'));
+    const unsupported = checkAgainstLock(lock, LINUX_HASH, 'freebsd', 'x64');
+    assert.ok(unsupported !== null);
+    assert.ok(unsupported.includes('freebsd-x64'));
+  });
+});
+
+describe('updatedLock / updateLockRefusal / serializeLock', () => {
+  it('--update-platform records one platform and never touches the committed hash or other entries', () => {
+    const next = updatedLock(perPlatformLock(), 'win32-x64', 'e'.repeat(64), false);
+    assert.equal(next.wasm.sha256, LINUX_HASH);
+    assert.equal(next.wasm.platforms['win32-x64'], 'e'.repeat(64));
+    assert.equal(next.wasm.platforms['linux-x64'], LINUX_HASH);
+    assert.equal(next.wasm.platforms['darwin-arm64'], LINUX_HASH);
+  });
+
+  it('--update-lock replaces the committed hash and this platform entry, and keeps the others', () => {
+    const next = updatedLock(perPlatformLock(), 'linux-x64', 'e'.repeat(64), true);
+    assert.equal(next.wasm.sha256, 'e'.repeat(64));
+    assert.equal(next.wasm.platforms['linux-x64'], 'e'.repeat(64));
+    assert.equal(next.wasm.platforms['win32-x64'], WINDOWS_HASH);
+  });
+
+  it('allows --update-lock only on the artifact platforms', () => {
+    assert.equal(updateLockRefusal('linux', 'x64'), null);
+    assert.equal(updateLockRefusal('darwin', 'arm64'), null);
+    for (const [platform, arch] of [['win32', 'x64'], ['linux', 'arm64'], ['freebsd', 'x64']] as const) {
+      const text = updateLockRefusal(platform, arch);
+      assert.ok(text !== null);
+      assert.ok(text.includes('--update-platform'));
+      assert.ok(text.includes(`${platform}-${arch}`));
+    }
+  });
+
+  it('serialises platforms in PLATFORM_KEYS order with LF endings and round-trips through the parser', () => {
+    const shuffled: GrammarLock = {
+      ...perPlatformLock(),
+      wasm: {
+        file: 'grammar.wasm',
+        sha256: LINUX_HASH,
+        platforms: { 'win32-x64': WINDOWS_HASH, 'darwin-arm64': LINUX_HASH, 'linux-x64': LINUX_HASH },
+      },
+    };
+    const text = serializeLock(shuffled);
+    assert.ok(text.endsWith('\n'));
+    assert.equal(text.includes('\r'), false);
+    assert.ok(text.indexOf('linux-x64') < text.indexOf('darwin-arm64'));
+    assert.ok(text.indexOf('darwin-arm64') < text.indexOf('win32-x64'));
+    const reparsed = parseGrammarLock(text);
+    assert.equal(reparsed.ok, true);
+    if (reparsed.ok) {
+      assert.deepEqual(reparsed.lock, shuffled);
+    }
+  });
+
+  it('writes the committed toy grammar.lock byte-for-byte in canonical form', () => {
+    const text = fs.readFileSync(path.join(toyDir, 'grammar.lock'), 'utf8');
+    assert.equal(serializeLock(readToyLock()), text);
   });
 });
 
@@ -354,28 +459,48 @@ describe('prepareSource with an upstream archive (hermetic: no network, no wasi 
 });
 
 describe('compareHashes (grammar:verify decision)', () => {
-  const lock = { ...readToyLock(), wasm: { file: 'grammar.wasm', sha256: 'e'.repeat(64) } };
-  const same = 'e'.repeat(64);
+  const lock = perPlatformLock();
 
-  it('returns null only when both builds, the lock and the committed file all agree', () => {
-    assert.equal(compareHashes(lock, same, same, same), null);
+  it('passes on linux when both rebuilds equal the linux entry and the committed wasm equals wasm.sha256', () => {
+    assert.equal(compareHashes(lock, LINUX_HASH, LINUX_HASH, LINUX_HASH, 'linux', 'x64'), null);
   });
 
-  it('names platform, expected, both computed and committed on any disagreement', () => {
+  it('passes on windows when the rebuild equals the windows entry although it differs from the committed wasm', () => {
+    assert.equal(compareHashes(lock, WINDOWS_HASH, WINDOWS_HASH, LINUX_HASH, 'win32', 'x64'), null);
+  });
+
+  it('still pins the committed wasm on windows: a changed committed file fails', () => {
+    const text = compareHashes(lock, WINDOWS_HASH, WINDOWS_HASH, WINDOWS_HASH, 'win32', 'x64');
+    assert.ok(text !== null);
+    assert.ok(text.includes('win32-x64'));
+  });
+
+  it('fails on windows when the rebuild equals the linux hash (it must match its own entry)', () => {
+    assert.notEqual(compareHashes(lock, LINUX_HASH, LINUX_HASH, LINUX_HASH, 'win32', 'x64'), null);
+  });
+
+  it('names the platform key, both entries, both builds and the committed file on any disagreement', () => {
     const other = 'f'.repeat(64);
     for (const [first, second, committed] of [
-      [other, same, same],
-      [same, other, same],
-      [same, same, other],
+      [other, LINUX_HASH, LINUX_HASH],
+      [LINUX_HASH, other, LINUX_HASH],
+      [LINUX_HASH, LINUX_HASH, other],
     ] as const) {
-      const text = compareHashes(lock, first, second, committed);
+      const text = compareHashes(lock, first, second, committed, 'linux', 'x64');
       assert.ok(text !== null);
-      assert.ok(text.includes(process.platform));
+      assert.ok(text.includes('linux-x64'));
       assert.ok(text.includes(lock.wasm.sha256));
       assert.ok(text.includes(first));
       assert.ok(text.includes(second));
       assert.ok(text.includes(committed));
     }
+  });
+
+  it('fails, never passes, on a platform with no entry, naming the platform key and the update hint', () => {
+    const text = compareHashes(lock, LINUX_HASH, LINUX_HASH, LINUX_HASH, 'linux', 'arm64');
+    assert.ok(text !== null);
+    assert.ok(text.includes('linux-arm64'));
+    assert.ok(text.includes('--update-platform'));
   });
 });
 

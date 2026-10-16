@@ -1,5 +1,5 @@
 {
-  "lockVersion": 1,
+  "lockVersion": 2,
   "name": "atlas_toy",
   "source": {
     "type": "local",
@@ -13,6 +13,11 @@
   "abi": 15,
   "wasm": {
     "file": "grammar.wasm",
-    "sha256": "ffe6c2edbbd5cb905f70f98a31ce17c354e6ec4da263bcc3e5aa70d52e1a0f9a"
+    "sha256": "ffe6c2edbbd5cb905f70f98a31ce17c354e6ec4da263bcc3e5aa70d52e1a0f9a",
+    "platforms": {
+      "linux-x64": "ffe6c2edbbd5cb905f70f98a31ce17c354e6ec4da263bcc3e5aa70d52e1a0f9a",
+      "darwin-arm64": "ffe6c2edbbd5cb905f70f98a31ce17c354e6ec4da263bcc3e5aa70d52e1a0f9a",
+      "win32-x64": "cba9dce1c2048b2fc06d408d0c7d0f57c5ee026652a385e8c9080046bdb58853"
+    }
   }
 }
