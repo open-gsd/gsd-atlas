@@ -28,8 +28,8 @@ Scope is the full PRD 1.0 (M0-M6), with M4 split into SDK facts, agent integrati
 
 - [x] **STO-01**: Facts are stored in SQLite via `node:sqlite` with `better-sqlite3` working as fallback, behind one Fact Store interface and one conformance suite run over both drivers
 - [x] **STO-02**: Local facts are keyed by git blob id computed with git's clean filters, and spans line up on CRLF and BOM files
-- [ ] **STO-03**: Each worktree or branch is an overlay; two worktrees of one repo share local facts and a branch switch re-parses only changed files
-- [ ] **STO-04**: Resolved edges are keyed by overlay snapshot plus resolution context, so one file resolving to different targets on two branches gives each branch its correct target
+- [x] **STO-03**: Each worktree or branch is an overlay; two worktrees of one repo share local facts and a branch switch re-parses only changed files
+- [x] **STO-04**: Resolved edges are keyed by overlay snapshot plus resolution context, so one file resolving to different targets on two branches gives each branch its correct target
 - [x] **STO-05**: Retired file versions are collected when in git or past the grace period; after 20,000 edits the store is <= 1.25x a fresh build
 - [ ] **STO-06**: A store corrupted or interrupted by SIGKILL during writes is detected and rebuilt automatically
 - [x] **STO-07**: The store lives in the git common dir, falling back to the cache dir for non-git, read-only or synced paths, with `store.dir` override
@@ -52,7 +52,7 @@ Scope is the full PRD 1.0 (M0-M6), with M4 split into SDK facts, agent integrati
 
 - [ ] **IDX-01**: A file save updates grammar-tier facts in < 1 s
 - [x] **IDX-02**: Repeated change events coalesce into one index job per (worktree, path)
-- [ ] **IDX-03**: Reconcile repairs missed file events, and any watcher overflow triggers a Reconcile
+- [x] **IDX-03**: Reconcile repairs missed file events, and any watcher overflow triggers a Reconcile
 - [ ] **IDX-04**: A request with `fresh` paths indexes them first and answers with the updated facts
 
 ### Query, CLI and MCP (QRY)
@@ -208,8 +208,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | FND-12 | Phase 2 | Complete |
 | STO-01 | Phase 2 | Complete |
 | STO-02 | Phase 2 | Complete |
-| STO-03 | Phase 2 | Pending |
-| STO-04 | Phase 2 | Pending |
+| STO-03 | Phase 2 | Complete |
+| STO-04 | Phase 2 | Complete |
 | STO-05 | Phase 2 | Complete |
 | STO-06 | Phase 2 | Pending |
 | STO-07 | Phase 2 | Complete |
@@ -226,7 +226,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | LNG-08 | Phase 2 | Complete |
 | IDX-01 | Phase 2 | Pending |
 | IDX-02 | Phase 2 | Complete |
-| IDX-03 | Phase 2 | Pending |
+| IDX-03 | Phase 2 | Complete |
 | IDX-04 | Phase 2 | Pending |
 | QRY-01 | Phase 2 | Complete |
 | QRY-02 | Phase 2 | Pending |

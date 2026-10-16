@@ -3,16 +3,16 @@ gsd_state_version: "1.0"
 current_phase: 02
 current_phase_name: Grammar Tier, Store and stdio Host
 status: executing
-stopped_at: Completed 02-16-PLAN.md
-last_updated: "2026-10-16T22:33:32.140Z"
+stopped_at: Completed 02-17-PLAN.md
+last_updated: "2026-10-16T22:57:41.952Z"
 last_activity: 2026-10-16
-last_activity_desc: Completed 02-16 query core and code_find
-state_head: 6d6c70edb7e11bdfab72c0041fcb293150f157a9
+last_activity_desc: Completed 02-17 Reconcile, worktrees and the native watcher
+state_head: 92f2204ebbdc53f0a2254823d15ff023626f3a02
 progress:
   total_phases: 9
   completed_phases: 1
   total_plans: 48
-  completed_plans: 37
+  completed_plans: 38
   percent: 11
 ---
 
@@ -28,9 +28,9 @@ See: .planning/PROJECT.md (updated 2026-10-15)
 ## Current Position
 
 Phase: 02 (Grammar Tier, Store and stdio Host) — EXECUTING
-Plan: 17 of 28 complete (plans 02-01 to 02-16 and 02-21 complete; they ran out of order, next is the lowest-numbered incomplete plan, 02-17)
+Plan: 18 of 28 complete (plans 02-01 to 02-17 and 02-21 complete; they ran out of order, next is the lowest-numbered incomplete plan, 02-18)
 Status: Ready to execute
-Last activity: 2026-10-16 — Completed 02-16 (Query core and code_find: six shared strict-zod tool definitions, full citation and watermark envelope, total-order tiered ranking, token budget with hard ceiling and keyset cursor, nonce-fenced normalized line text, fresh handling; src/query)
+Last activity: 2026-10-16 — Completed 02-17 (Reconcile on start, problems, HEAD changes and the idle timer; one leader over every worktree with confined git-directory watching; branch switches that parse only changed files; the @parcel/watcher event source, a save reaching find in about 150 ms; src/indexer)
 
 Progress: [█░░░░░░░░░] 11%
 
@@ -46,7 +46,7 @@ Progress: [█░░░░░░░░░] 11%
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 01 | 20 | - | - |
-| 02 | 16 of 28 | - | - |
+| 02 | 17 of 28 | - | - |
 
 **Recent Trend:**
 - Last 5 plans: -
@@ -74,6 +74,7 @@ Progress: [█░░░░░░░░░] 11%
 | Phase 02 P14 | 16 min | 3 tasks | 9 files |
 | Phase 02 P15 | 22 min | 3 tasks | 13 files |
 | Phase 02 P16 | 15 min | 3 tasks | 19 files |
+| Phase 02 P17 | 21 min | 3 tasks | 19 files |
 
 ## Accumulated Context
 
@@ -131,6 +132,11 @@ Recent decisions affecting current work:
 - [Phase 02]: 02-16: a symbol name is the last segment of its qualified name, and only a symbol the exact read returned is the exact tier; any other hit is tier 1 or worse — Stops a CommonJS name such as module.exports from ranking as an exact match for exports; the Reader's exact read is the only proof of an exact name
 - [Phase 02]: 02-16: a cursor longer than query.cursorMaxChars (a path over about 330 characters) is not issued; the response is truncated with a static hint and no more cursor. The cursor query hash includes the worktree — Never issue a cursor Query would later refuse as oversized; a cursor must not be replayable against another repository
 - [Phase 02]: 02-16: when the Indexer could not finish a fresh path its line text is dropped and the result degrades stale; the Query clock dependency is reserved and unread, the fresh wait lives in the Indexer — The file on disk is newer than the facts, so the old span would point at the wrong line; Plan 02-19 reuses FindContext, cutToBudget, createLineReader and the cursor for the other tools
+- [Phase 02]: 02-17: a Reconcile run never undoes a concurrent commit: paths committed by file events or ensureFresh during a run are remembered and the whole-overlay write takes the store's current hash for them — setOverlay replaces the whole overlay, so a commit between the snapshot and the write would be reverted (mutation-checked by the during reconcile test)
+- [Phase 02]: 02-17: a HEAD change or watcher problem that arrives while a Reconcile runs gets one follow-up run that begins after it; plain reconcile calls share the run in progress — the run in progress may have taken its snapshot before the change; sharing it would answer with a stale tree
+- [Phase 02]: 02-17: a worktree whose .git does not lead to common/worktrees/NAME (or the common dir itself) is neither watched, mapped nor indexed; start with named worktrees covers only those and attach(worktree) adds one (D-11) — T-02-56: a repository file only names evidence; the watched git directory is always Source Tree identity().commonDir
+- [Phase 02]: 02-17: Reconcile does not re-extract a stale file because processBatch tries Writer.link first and the store still holds facts for that hash; a grammar upgrade needs a forced re-extract path (note for 02-18) — store.reconcile lists stale paths in reindex but link attaches the known hash; the stale marker is not cleared by a Reconcile
+- [Phase 02]: 02-17: @parcel/watcher 2.6.0 installed exact with scripts disabled (prebuilt darwin-arm64 package loads); a save reaches find in about 150 ms against the 3000 ms ceiling on macOS; Linux and Windows watcher behaviour rests on three-OS CI and the Reconcile backstop — assumption A2; internal RECONCILE_CHUNK 256 is not in 02-CONSTANTS.md
 
 ### Pending Todos
 
@@ -157,6 +163,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-10-16T22:33:32.077Z
-Stopped at: Completed 02-16-PLAN.md
+Last session: 2026-10-16T22:57:41.887Z
+Stopped at: Completed 02-17-PLAN.md
 Resume file: None

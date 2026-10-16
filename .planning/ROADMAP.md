@@ -90,7 +90,7 @@ Plans:
   5. Agents and developers get one answer surface: `code_find`, `code_refs`, `code_context` and `code_impact` return ranked, cited results (inline matched line text, `budget_tokens`, `more` cursor, server-side output ceiling) in the full envelope; the CLI and MCP return identical JSON for the same request; injection text in a doc comment returns fenced in `untrusted_text`; `atlas_status` and `lang_list` report freshness, health, policy mode and tiers; the default MCP profile is about 6 tools; the stateless stdio server survives a restart between two tool calls; a two-tenant smoke test passes; `busy` with `retry_after` appears under saturation; `gsd-atlas init` registers MCP at user scope only; and `gsd-atlas status` shows metrics panels with no source text, paths, symbols or prompts, a metrics write failure never blocking an answer.
   6. The four ADRs scheduled for this phase (worktree-lifecycle, query-and-policy, mcp-contract, value-dashboard) are ratified, and the two Phase 1 research-gap amendments D-16 assigned here are applied as dated sections: writer contention and leader/follower in worktree-lifecycle, and metrics migrations in value-dashboard (FND-12).
 
-**Plans:** 17/28 plans executed
+**Plans:** 18/28 plans executed
 
 Plans:
 **Wave 1**
@@ -117,7 +117,7 @@ Plans:
 - [x] 02-16-PLAN.md — Query core and `code_find`: tools, envelope, ranking, budget, cursor, nonce-fenced text (QRY-01, QRY-02, QRY-05)
 
 **Wave 4** *(blocked on Wave 3 completion)*
-- [ ] 02-17-PLAN.md — Reconcile, native watcher, git-directory watch, branch-switch behaviour (IDX-01, IDX-03, STO-03, STO-04)
+- [x] 02-17-PLAN.md — Reconcile, native watcher, git-directory watch, branch-switch behaviour (IDX-01, IDX-03, STO-03, STO-04)
 - [ ] 02-18-PLAN.md — Collect, compact, check and maintain, refresh, and the 20,000-edit size gate (STO-05, STO-10)
 - [ ] 02-19-PLAN.md — `code_refs`, `code_context`, `code_impact` (INFERRED-expanding) and `atlas_status` (QRY-02, QRY-03)
 
@@ -271,7 +271,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Foundations and Walking Skeleton | 20/20 | Complete    | 2026-10-16 |
-| 2. Grammar Tier, Store and stdio Host | 17/28 | In Progress | - |
+| 2. Grammar Tier, Store and stdio Host | 18/28 | In Progress | - |
 | 3. TypeScript Module and MVP Eval | 0/TBD | Not started | - |
 | 4. Host Hardening | 0/TBD | Not started | - |
 | 5. Swift Module | 0/TBD | Not started | - |
