@@ -7,7 +7,7 @@ import { ESLint } from 'eslint';
 // Repo root resolved from this file: src/lint/boundaries.test.ts -> ../..
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const eslint = new ESLint({ cwd: root });
-const RULES = new Set(['no-restricted-imports', 'no-restricted-syntax']);
+const RULES = new Set(['no-restricted-imports', 'no-restricted-syntax', 'no-console']);
 
 /** Lint `code` as if it lived at `relPath` (no file needs to exist) and return boundary messages. */
 async function violations(code: string, relPath: string): Promise<string[]> {
@@ -30,7 +30,7 @@ interface Case {
   /** Expected outcome: a violation, or a clean pass (positive control). */
   expect: 'fail' | 'pass';
   /** Optional rule id the violation must come from. */
-  rule?: 'no-restricted-imports' | 'no-restricted-syntax';
+  rule?: 'no-restricted-imports' | 'no-restricted-syntax' | 'no-console';
   /** Optional text the violation message must contain. */
   says?: string;
 }
@@ -144,6 +144,38 @@ const CASES: Case[] = [
   { group: 'purity', what: 'test file may dynamically import node:test (control)', at: 'src/command-runner/runner.test.ts', code: `await import('node:test');`, expect: 'pass' },
   { group: 'purity', what: 'cross-module contract import from a test file still fails (D-12 stays literal)', at: 'src/source-tree/source-tree.test.ts', code: imp('../command-runner/contract.ts'), expect: 'fail', rule: 'no-restricted-imports', says: 'index.ts' },
   { group: 'purity', what: 'cross-module index.ts import from a test file passes (control)', at: 'src/source-tree/source-tree.test.ts', code: imp('../command-runner/index.ts'), expect: 'pass' },
+
+  // Phase 2 modules: indexer, query, tenant and host get the boundary blocks from their first file.
+  { group: 'index.ts', what: 'host deep-importing indexer fails', at: 'src/host/x.ts', code: imp('../indexer/queue.ts'), expect: 'fail', rule: 'no-restricted-imports', says: 'index.ts' },
+  { group: 'index.ts', what: 'host importing indexer through index.ts passes (control)', at: 'src/host/x.ts', code: imp('../indexer/index.ts'), expect: 'pass' },
+  { group: 'index.ts', what: 'indexer deep-importing fact-store fails', at: 'src/indexer/x.ts', code: imp('../fact-store/writer/commit.ts'), expect: 'fail', rule: 'no-restricted-imports', says: 'index.ts' },
+  { group: 'index.ts', what: 'indexer importing fact-store through index.ts passes (control)', at: 'src/indexer/x.ts', code: imp('../fact-store/index.ts'), expect: 'pass' },
+  { group: 'index.ts', what: 'query deep-importing fact-store fails', at: 'src/query/x.ts', code: imp('../fact-store/reader.ts'), expect: 'fail', rule: 'no-restricted-imports', says: 'index.ts' },
+  { group: 'index.ts', what: 'query importing fact-store through index.ts passes (control)', at: 'src/query/x.ts', code: imp('../fact-store/index.ts'), expect: 'pass' },
+  { group: 'index.ts', what: 'tenant deep-importing host fails', at: 'src/tenant/x.ts', code: imp('../host/server.ts'), expect: 'fail', rule: 'no-restricted-imports', says: 'index.ts' },
+  { group: 'index.ts', what: 'tenant importing host through index.ts passes (control)', at: 'src/tenant/x.ts', code: imp('../host/index.ts'), expect: 'pass' },
+  { group: 'index.ts', what: 'source-tree deep-importing query fails', at: 'src/source-tree/x.ts', code: imp('../query/engine.ts'), expect: 'fail', rule: 'no-restricted-imports', says: 'index.ts' },
+  { group: 'index.ts', what: 'a test file in tenant deep-importing indexer still fails', at: 'src/tenant/x.test.ts', code: imp('../indexer/queue.ts'), expect: 'fail', rule: 'no-restricted-imports', says: 'index.ts' },
+  { group: 'index.ts', what: 'a test file in host importing query through index.ts passes (control)', at: 'src/host/x.test.ts', code: imp('../query/index.ts'), expect: 'pass' },
+  { group: 'sqlite', what: 'indexer importing node:sqlite fails', at: 'src/indexer/x.ts', code: imp('node:sqlite'), expect: 'fail', rule: 'no-restricted-imports' },
+  { group: 'sqlite', what: 'indexer importing src/sqlite fails (indexer is not a SQLite owner)', at: 'src/indexer/x.ts', code: imp('../sqlite/index.ts'), expect: 'fail', rule: 'no-restricted-imports' },
+  { group: 'sqlite', what: 'query importing src/sqlite fails', at: 'src/query/x.ts', code: imp('../sqlite/index.ts'), expect: 'fail', rule: 'no-restricted-imports' },
+  { group: 'sqlite', what: 'tenant importing src/sqlite fails', at: 'src/tenant/x.ts', code: imp('../sqlite/index.ts'), expect: 'fail', rule: 'no-restricted-imports' },
+  { group: 'sqlite', what: 'host importing better-sqlite3 fails', at: 'src/host/x.ts', code: imp('better-sqlite3'), expect: 'fail', rule: 'no-restricted-imports' },
+  { group: 'sqlite', what: 'host dynamically importing node:sqlite fails', at: 'src/host/x.ts', code: `await import('node:sqlite');`, expect: 'fail', rule: 'no-restricted-syntax' },
+  { group: 'child_process', what: 'host importing child_process fails', at: 'src/host/x.ts', code: imp('node:child_process'), expect: 'fail', rule: 'no-restricted-imports' },
+  { group: 'purity', what: 'node:test in a non-test indexer file fails', at: 'src/indexer/x.ts', code: imp('node:test'), expect: 'fail', rule: 'no-restricted-imports', says: 'test code' },
+  { group: 'purity', what: 'node:test in a host test file passes (control)', at: 'src/host/x.test.ts', code: imp('node:test'), expect: 'pass' },
+
+  // No stray console output: stdout carries protocol frames (HST-01, research Pitfall 8). process.stdout.write is the
+  // sanctioned path and is not a console call.
+  { group: 'console', what: 'console.log in query fails', at: 'src/query/x.ts', code: `console.log('x');`, expect: 'fail', rule: 'no-console' },
+  { group: 'console', what: 'console.log in a query test file fails', at: 'src/query/x.test.ts', code: `console.log('x');`, expect: 'fail', rule: 'no-console' },
+  { group: 'console', what: 'console.error in host fails', at: 'src/host/x.ts', code: `console.error('x');`, expect: 'fail', rule: 'no-console' },
+  { group: 'console', what: 'console.log in the cli fails (the rule covers every module)', at: 'src/cli/x.ts', code: `console.log('x');`, expect: 'fail', rule: 'no-console' },
+  { group: 'console', what: 'console.log in an indexer contract file fails', at: 'src/indexer/contract.ts', code: `console.log('x');`, expect: 'fail', rule: 'no-console' },
+  { group: 'console', what: 'process.stdout.write in host passes (control)', at: 'src/host/x.ts', code: `process.stdout.write('x');`, expect: 'pass' },
+  { group: 'console', what: 'process.stderr.write in query passes (control)', at: 'src/query/x.ts', code: `process.stderr.write('x');`, expect: 'pass' },
 ];
 
 for (const c of CASES) {
@@ -164,7 +196,13 @@ for (const c of CASES) {
 test('config exports the documented tables', async () => {
   const config = (await import(pathToFileURL(path.join(root, 'eslint.config.js')).href)) as ConfigExports;
   assert.equal(new Set(config.MODULES).size, config.MODULES.length, 'MODULES has duplicates');
-  assert.equal(config.MODULES.length, 17);
+  assert.equal(config.MODULES.length, 21);
+  for (const m of ['indexer', 'query', 'tenant', 'host']) {
+    assert.ok(config.MODULES.includes(m), `MODULES lacks ${m}`);
+    assert.deepEqual(config.TEST_CONTEXT_FILES[m], [`src/${m}/**/*.test.ts`, `src/${m}/**/contract.ts`]);
+  }
+  assert.ok(!config.SQLITE_OWNERS.some((m) => ['indexer', 'query', 'tenant', 'host'].includes(m)), 'a new module became a SQLite owner');
+  assert.ok(!config.ADAPTERS.some((m) => ['indexer', 'query', 'tenant', 'host'].includes(m)), 'a new module became an adapter');
   assert.deepEqual(config.CLOSED_IMPORTS.facts, { allow: [], builtins: true });
   assert.deepEqual(config.CLOSED_IMPORTS['test-kit'], { allow: ['facts'], builtins: true });
   assert.deepEqual(config.CLOSED_IMPORTS.policy, { allow: ['facts'], builtins: false });
