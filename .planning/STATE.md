@@ -3,16 +3,16 @@ gsd_state_version: "1.0"
 current_phase: 02
 current_phase_name: Grammar Tier, Store and stdio Host
 status: executing
-stopped_at: Completed 02-02-PLAN.md
-last_updated: "2026-10-16T17:47:01.591Z"
+stopped_at: Completed 02-03-PLAN.md
+last_updated: "2026-10-16T17:57:30.271Z"
 last_activity: 2026-10-16
 last_activity_desc: Phase 02 execution started
-state_head: 3d8813f7346d5e553323d0a61e2125e659772188
+state_head: 35087f7f23956a3a6fb3cd122c68c3b74e5d7bbe
 progress:
   total_phases: 9
   completed_phases: 1
   total_plans: 48
-  completed_plans: 21
+  completed_plans: 22
   percent: 11
 ---
 
@@ -28,8 +28,8 @@ See: .planning/PROJECT.md (updated 2026-10-15)
 ## Current Position
 
 Phase: 02 (Grammar Tier, Store and stdio Host) — EXECUTING
-Plan: 1 of 28
-Status: Executing Phase 02
+Plan: 2 of 28
+Status: Ready to execute
 Last activity: 2026-10-16 — Phase 02 execution started
 
 Progress: [█░░░░░░░░░] 11%
@@ -57,6 +57,7 @@ Progress: [█░░░░░░░░░] 11%
 | Plan | Duration | Tasks | Files |
 |------|----------|-------|-------|
 | Phase 02 P02 | 9 min | 3 tasks | 8 files |
+| Phase 02 P03 | 8 min | 3 tasks | 9 files |
 
 ## Accumulated Context
 
@@ -73,6 +74,8 @@ Recent decisions affecting current work:
 - [Roadmap]: "Beats grep" means fewer tokens at non-inferior accuracy; the free-alternatives scan precedes the Phase 3 eval; the eval design is pre-registered.
 - [Roadmap]: Phases 4 and 5 are independent and may run in parallel; Phase 7 waits on Phase 6 only for hook rule R3.
 - [Phase 02]: Citation carries structure only (debug is a string handle, optional text_ref); repo text may appear only in Envelope.untrusted_text — QRY-01 prohibition: keep source text out of every other envelope field
+- [Phase 02]: worktree git read shape is exactly list --porcelain -z; worktree is not in GIT_READ_SUBCOMMANDS — Plan 02-03: add/remove/prune/lock write to the repository; only the exact read form is reachable (T-02-06)
+- [Phase 02]: SQLite kit drives incremental_vacuum(N) itself; a fresh store needs auto_vacuum=INCREMENTAL plus VACUUM after the WAL open — Plan 02-03: better-sqlite3 steps a no-column statement once; the WAL open writes the header so the pragma alone is ignored
 
 ### Pending Todos
 
@@ -99,6 +102,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-10-16T17:47:01.561Z
-Stopped at: Completed 02-02-PLAN.md
+Last session: 2026-10-16T17:57:30.194Z
+Stopped at: Completed 02-03-PLAN.md
 Resume file: None
