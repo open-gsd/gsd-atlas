@@ -96,6 +96,16 @@ describe('decide: first-party git built-in', () => {
     assert.equal(decide(safeGit('config', '--name-only', '--get-regexp', '^filter\\.')).allowed, true);
   });
 
+  it('allows ls-tree with its ordinary read arguments (command-runner amendment 2026-10-16)', () => {
+    for (const rest of [['-r', '-z', 'HEAD'], ['--full-name', '-z', 'HEAD', '--', 'src'], []]) {
+      assert.deepEqual(decide(safeGit('ls-tree', ...rest)), { allowed: true, via: 'builtin', builtinId: 'git' }, rest.join(' '));
+    }
+  });
+
+  it('allows worktree only in the exact read form list --porcelain -z (command-runner amendment 2026-10-16)', () => {
+    assert.deepEqual(decide(safeGit('worktree', 'list', '--porcelain', '-z')), { allowed: true, via: 'builtin', builtinId: 'git' });
+  });
+
   it('allows git --version with no overrides and no environment', () => {
     assert.equal(decide({ executable: 'git', args: ['--version'], builtinId: 'git', env: {} }).allowed, true);
   });
@@ -127,6 +137,18 @@ describe('decide: git denials', () => {
     ['cat-file --filters runs repo-configured drivers', safeGit('cat-file', '--filters', 'HEAD:a')],
     ['hash-object -w writes to the object database', safeGit('hash-object', '-w', 'a')],
     ['--help opens a pager', safeGit('rev-parse', '--help')],
+    ['ls-tree --help opens a pager', safeGit('ls-tree', '--help')],
+    ['worktree add creates a worktree', safeGit('worktree', 'add', 'x')],
+    ['worktree add with a branch creates a worktree', safeGit('worktree', 'add', '-b', 'b', 'x')],
+    ['worktree remove deletes a worktree', safeGit('worktree', 'remove', 'x')],
+    ['worktree prune writes to the repository', safeGit('worktree', 'prune')],
+    ['worktree lock writes to the repository', safeGit('worktree', 'lock', 'x')],
+    ['worktree list without --porcelain is not the read form', safeGit('worktree', 'list')],
+    ['worktree list --porcelain without -z is not the read form', safeGit('worktree', 'list', '--porcelain')],
+    ['worktree list -z --porcelain is not the read form (order is fixed)', safeGit('worktree', 'list', '-z', '--porcelain')],
+    ['worktree list --porcelain -z with an extra argument', safeGit('worktree', 'list', '--porcelain', '-z', 'extra')],
+    ['worktree with no arguments', safeGit('worktree')],
+    ['worktree list with a different second word', safeGit('worktree', 'lis', '--porcelain', '-z')],
   ];
   for (const [name, spec] of denied) {
     it(`denies ${name}`, () => {
@@ -138,6 +160,12 @@ describe('decide: git denials', () => {
     ['core.fsmonitor override is missing', withoutOverride('core.fsmonitor', 'ls-files')],
     ['core.hooksPath override is missing', withoutOverride('core.hooksPath', 'ls-files')],
     ['core.quotepath override is missing', withoutOverride('core.quotepath', 'ls-files')],
+    ['core.fsmonitor override is missing from an ls-tree', withoutOverride('core.fsmonitor', 'ls-tree', '-r', 'HEAD')],
+    ['core.hooksPath override is missing from an ls-tree', withoutOverride('core.hooksPath', 'ls-tree', '-r', 'HEAD')],
+    ['core.quotepath override is missing from an ls-tree', withoutOverride('core.quotepath', 'ls-tree', '-r', 'HEAD')],
+    ['core.fsmonitor override is missing from a worktree list', withoutOverride('core.fsmonitor', 'worktree', 'list', '--porcelain', '-z')],
+    ['core.hooksPath override is missing from a worktree list', withoutOverride('core.hooksPath', 'worktree', 'list', '--porcelain', '-z')],
+    ['core.quotepath override is missing from a worktree list', withoutOverride('core.quotepath', 'worktree', 'list', '--porcelain', '-z')],
   ];
   for (const [name, spec] of missingOverride) {
     it(`denies a spec when the ${name}`, () => {
@@ -155,6 +183,13 @@ describe('decide: git denials', () => {
     ['GIT_ALLOW_PROTOCOL is missing', withEnv('GIT_ALLOW_PROTOCOL', undefined, 'cat-file', '-e', 'a')],
     ['GIT_ALLOW_PROTOCOL is file', withEnv('GIT_ALLOW_PROTOCOL', 'file', 'cat-file', '-e', 'a')],
     ['GIT_ALLOW_PROTOCOL is ssh', withEnv('GIT_ALLOW_PROTOCOL', 'ssh', 'cat-file', '-e', 'a')],
+    ['GIT_OPTIONAL_LOCKS is missing from an ls-tree', withEnv('GIT_OPTIONAL_LOCKS', undefined, 'ls-tree', '-r', 'HEAD')],
+    ['GIT_NO_LAZY_FETCH is missing from an ls-tree', withEnv('GIT_NO_LAZY_FETCH', undefined, 'ls-tree', '-r', 'HEAD')],
+    ['GIT_ALLOW_PROTOCOL is file on an ls-tree', withEnv('GIT_ALLOW_PROTOCOL', 'file', 'ls-tree', '-r', 'HEAD')],
+    ['GIT_OPTIONAL_LOCKS is missing from a worktree list', withEnv('GIT_OPTIONAL_LOCKS', undefined, 'worktree', 'list', '--porcelain', '-z')],
+    ['GIT_TERMINAL_PROMPT is not 0 on a worktree list', withEnv('GIT_TERMINAL_PROMPT', '1', 'worktree', 'list', '--porcelain', '-z')],
+    ['GIT_NO_LAZY_FETCH is missing from a worktree list', withEnv('GIT_NO_LAZY_FETCH', undefined, 'worktree', 'list', '--porcelain', '-z')],
+    ['GIT_ALLOW_PROTOCOL is ssh on a worktree list', withEnv('GIT_ALLOW_PROTOCOL', 'ssh', 'worktree', 'list', '--porcelain', '-z')],
   ];
   for (const [name, spec] of badEnv) {
     it(`denies a spec when ${name}`, () => {
@@ -165,6 +200,13 @@ describe('decide: git denials', () => {
   it('denies a spec with no env at all, even with every override present', () => {
     const { env: _env, ...noEnv } = safeGit('ls-files');
     assertDenied(decide(noEnv));
+  });
+
+  it('denies an ls-tree and a worktree list with no env at all, even with every override present', () => {
+    for (const sub of [['ls-tree', '-r', 'HEAD'], ['worktree', 'list', '--porcelain', '-z']]) {
+      const { env: _env, ...noEnv } = safeGit(...sub);
+      assertDenied(decide(noEnv));
+    }
   });
 
   it('denies a missing-override or missing-env spec with code command_denied, starting nothing, naming permissions.commands', () => {
