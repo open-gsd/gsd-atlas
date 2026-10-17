@@ -147,8 +147,20 @@ async function registerWith(target: Target, dryRun: boolean, env: InitEnvironmen
 }
 
 /**
- * The repository root when `cwd` is inside a git repository that has no atlas index, else null.
- * Found by looking for a `.git` entry upwards and for `{git dir}/gsd-atlas`, without running git.
+ * The git COMMON directory for a git directory: a linked worktree's git directory holds a `commondir`
+ * file (relative to it, or absolute) naming the main one; any other git directory is its own.
+ */
+async function commonGitDir(gitDir: string): Promise<string> {
+  const text = await readFile(path.join(gitDir, 'commondir'), 'utf8').catch(() => null);
+  const line = text?.split(/\r?\n/, 1)[0]?.trim();
+  return line === undefined || line === '' ? gitDir : path.resolve(gitDir, line);
+}
+
+/**
+ * The repository root when `cwd` is inside a git repository whose common git directory has no
+ * `gsd-atlas` folder, else null. Found by looking for a `.git` entry upwards, without running git. A
+ * store kept in the cache directory (synced folder, network mount, `store.dir`) is invisible here, so
+ * a repository returned here may still be indexed; the hint is worded not to claim otherwise.
  */
 async function repoWithoutIndex(cwd: string): Promise<string | null> {
   let dir = cwd;
@@ -172,7 +184,8 @@ async function repoWithoutIndex(cwd: string): Promise<string | null> {
       if (gitDir === null) {
         return null;
       }
-      return (await detectHomeFile(path.join(gitDir, 'gsd-atlas'))) === 'missing' ? dir : null;
+      const common = await commonGitDir(gitDir);
+      return (await detectHomeFile(path.join(common, 'gsd-atlas'))) === 'missing' ? dir : null;
     }
     const parent = path.dirname(dir);
     if (parent === dir) {
@@ -223,7 +236,7 @@ export async function runInit(options: InitOptions, env: InitEnvironment): Promi
   if (registered && !refused && !options.dryRun) {
     const repo = await repoWithoutIndex(env.cwd);
     if (repo !== null) {
-      stderrLines.push(`gsd-atlas: ${repo} has no atlas index yet; run \`gsd-atlas build\` there to create one`);
+      stderrLines.push(`gsd-atlas: to index ${repo}, run \`gsd-atlas build\` inside it`);
     }
   }
 

@@ -155,8 +155,9 @@ export interface WriteOutcome {
  * copied to `{file}.gsd-atlas-backup` (exclusive create, so a backup is never overwritten); the new
  * text goes to a temp file in the same directory and is renamed over the target. The temp file is
  * removed on any failure. The target is compared with `options.expected` before the backup and again
- * just before the rename; on a difference the temp file (and a backup this call made) is removed and
- * `ConfigChangedError` is thrown.
+ * just before the rename; on a difference nothing is written, the temp file is removed and
+ * `ConfigChangedError` is thrown. A difference at the first compare makes no backup; a difference at
+ * the second leaves the backup the call made, which holds the file as init read it.
  */
 export async function writeUserFile(p: string, nextText: string, options: WriteOptions): Promise<WriteOutcome> {
   const target = await resolveTarget(p);
@@ -199,10 +200,9 @@ export async function writeUserFile(p: string, nextText: string, options: WriteO
     await assertUnchanged(target, options.expected); // second compare, immediately before the rename
     await rename(temp, target);
   } catch (error) {
+    // A backup made earlier in this call stays: it is a copy of the file as init read it (the first compare
+    // ran just before the copy), and removing it would race with a concurrent init that relies on it.
     await rm(temp, { force: true }).catch(() => undefined);
-    if (error instanceof ConfigChangedError && backupCreated) {
-      await rm(backup, { force: true }).catch(() => undefined); // a refusal leaves no backup behind
-    }
     throw error;
   }
   return { path: target, backupCreated };

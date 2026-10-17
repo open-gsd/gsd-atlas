@@ -139,15 +139,20 @@ const claude: Target = {
       .join(' '),
 };
 
-// Cursor and Codex file shapes follow the shapes gsd-graph's installer uses; they are not checked against
-// current host documentation (research assumption A3). Cursor keeps its user scope servers in
-// ~/.cursor/mcp.json; Codex keeps its in ~/.codex/config.toml.
+// Cursor and Codex file shapes were checked on 2026-10-17 against the primary documentation recorded in
+// .planning/research/MCP-HOST-CONFIGS.md (the Cursor MCP page, the Codex config reference and
+// mcp_types.rs); the shapes began as the ones gsd-graph's installer uses. Cursor keeps its user scope
+// servers in ~/.cursor/mcp.json; Codex keeps its in ~/.codex/config.toml. Still unconfirmed there: the
+// Windows paths of both files (path.join(home, ...) gives the conventional location), whether Cursor
+// tolerates unknown keys, and whether either host needs a restart (init therefore never says so).
+// The Cursor docs list `type` as "stdio" in the field table while their own example omits it; writing
+// it satisfies both readings. The Codex entry has no `type` key: its transport is inferred from `command`.
 const cursor: Target = {
   agent: 'cursor',
   file: (home) => path.join(home, '.cursor', 'mcp.json'),
   detect: (home) => detectBy(path.join(home, '.cursor', 'mcp.json'), [path.join(home, '.cursor')]),
   createsFile: true,
-  render: (existing, launch) => renderJsonServers(existing, { command: launch.command, args: [...launch.args] }),
+  render: (existing, launch) => renderJsonServers(existing, { type: 'stdio', command: launch.command, args: [...launch.args] }),
 };
 
 const CODEX_HEADER = '[mcp_servers.gsd-atlas]';

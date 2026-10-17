@@ -307,9 +307,10 @@ describe('gsd-atlas init and a config the host changes while init runs (WR-12)',
     assert.deepEqual(fs.readdirSync(rig.home), ['.claude.json'], 'no backup and no temp file');
   });
 
-  it('changed after temp: refused, the temp file and the backup are removed, the host bytes stay', async () => {
+  it('changed after temp: refused, the temp file is removed, the host bytes stay, the backup holds the file as init read it', async () => {
     const rig = makeRig();
     const file = seedClaude(rig);
+    const original = fs.readFileSync(file);
     let hostBytes: Buffer | null = null;
 
     const out = await rig.run(['init', '--agent', 'claude'], {
@@ -325,7 +326,8 @@ describe('gsd-atlas init and a config the host changes while init runs (WR-12)',
     assert.match(out.stderr.join(''), /config_changed_during_init/);
     assert.ok(hostBytes !== null);
     assert.deepEqual(fs.readFileSync(file), hostBytes);
-    assert.deepEqual(fs.readdirSync(rig.home), ['.claude.json'], 'no backup and no temp file');
+    assert.deepEqual(fs.readdirSync(rig.home).sort(), ['.claude.json', `.claude.json${BACKUP}`], 'no temp file remains');
+    assert.deepEqual(fs.readFileSync(`${file}${BACKUP}`), original);
   });
 
   it('new file raced: a file that appears after init saw none is not overwritten', async () => {
@@ -495,6 +497,85 @@ describe('gsd-atlas init and the working directory', () => {
     assert.ok(!outside.stderr.join('').includes('gsd-atlas build'));
   });
 
+  it('the hint names the repository and does not claim the repository has no index', async () => {
+    const rig = makeRig();
+    seedClaude(rig);
+    fs.mkdirSync(path.join(rig.cwd, '.git'));
+
+    const out = await rig.run(['init', '--agent', 'claude']);
+
+    const lines = out.stderr.join('').split('\n');
+    assert.ok(lines.includes(`gsd-atlas: to index ${rig.cwd}, run \`gsd-atlas build\` inside it`), lines.join('\n'));
+    assert.ok(!out.stderr.join('').includes('has no atlas index yet'));
+  });
+
+  it('prints no hint on a dry run or after a refusal', async () => {
+    const dry = makeRig();
+    seedClaude(dry);
+    fs.mkdirSync(path.join(dry.cwd, '.git'));
+    assert.ok(!(await dry.run(['init', '--agent', 'claude', '--dry-run'])).stderr.join('').includes('gsd-atlas build'));
+
+    const refused = makeRig();
+    seedClaude(refused, '{ not json');
+    fs.mkdirSync(path.join(refused.cwd, '.git'));
+    assert.ok(!(await refused.run(['init', '--agent', 'claude'])).stderr.join('').includes('gsd-atlas build'));
+  });
+
+  describe('linked worktree hint', () => {
+    /** A main checkout `main/.git` and a linked worktree `wt` whose `.git` file points into `main/.git/worktrees/wt1`. */
+    function linkedWorktree(rig: Rig, commondir: 'relative' | 'absolute' | 'none'): { common: string; worktree: string } {
+      const base = path.dirname(rig.cwd);
+      const common = path.join(base, 'main', '.git');
+      const gitDir = path.join(common, 'worktrees', 'wt1');
+      const worktree = path.join(base, 'wt');
+      fs.mkdirSync(gitDir, { recursive: true });
+      fs.mkdirSync(worktree);
+      fs.writeFileSync(path.join(worktree, '.git'), `gitdir: ${gitDir}\n`);
+      if (commondir === 'relative') {
+        fs.writeFileSync(path.join(gitDir, 'commondir'), '../..\n');
+      } else if (commondir === 'absolute') {
+        fs.writeFileSync(path.join(gitDir, 'commondir'), `${common}\n`);
+      }
+      return { common, worktree };
+    }
+
+    for (const kind of ['relative', 'absolute'] as const) {
+      it(`linked worktree hint: no hint when the common directory (${kind} commondir) holds gsd-atlas`, async () => {
+        const rig = makeRig();
+        seedClaude(rig);
+        const { common, worktree } = linkedWorktree(rig, kind);
+        fs.mkdirSync(path.join(common, 'gsd-atlas'));
+
+        const out = await rig.run(['init', '--agent', 'claude'], { cwd: worktree });
+
+        assert.equal(out.code, 0);
+        assert.ok(!out.stderr.join('').includes('gsd-atlas build'), out.stderr.join(''));
+      });
+
+      it(`linked worktree hint: the hint appears when the common directory (${kind} commondir) has no gsd-atlas`, async () => {
+        const rig = makeRig();
+        seedClaude(rig);
+        const { worktree } = linkedWorktree(rig, kind);
+
+        const out = await rig.run(['init', '--agent', 'claude'], { cwd: worktree });
+
+        assert.ok(out.stderr.join('').split('\n').includes(`gsd-atlas: to index ${worktree}, run \`gsd-atlas build\` inside it`));
+      });
+    }
+
+    it('linked worktree hint: without a commondir file the git directory itself is the common directory', async () => {
+      const rig = makeRig();
+      seedClaude(rig);
+      const { worktree } = linkedWorktree(rig, 'none');
+      const gitDir = path.join(path.dirname(rig.cwd), 'main', '.git', 'worktrees', 'wt1');
+      fs.mkdirSync(path.join(gitDir, 'gsd-atlas'));
+
+      const out = await rig.run(['init', '--agent', 'claude'], { cwd: worktree });
+
+      assert.ok(!out.stderr.join('').includes('gsd-atlas build'));
+    });
+  });
+
   it('never writes a registration into the repository or the working directory', async () => {
     const rig = makeRig();
     seedClaude(rig);
@@ -503,6 +584,31 @@ describe('gsd-atlas init and the working directory', () => {
     assert.ok(!fs.existsSync(path.join(rig.cwd, '.mcp.json')));
     assert.deepEqual(listing(rig.cwd), ['.git']);
   });
+});
+
+describe('gsd-atlas init and restarts', () => {
+  const agents = ['claude', 'cursor', 'codex'] as const;
+
+  function seedAll(rig: Rig): void {
+    seedClaude(rig);
+    seed(rig, '.cursor/mcp.json', '{}\n');
+    seed(rig, '.codex/config.toml', 'model = "o3"\n');
+    fs.mkdirSync(path.join(rig.cwd, '.git'));
+  }
+
+  for (const argv of [...agents.map((agent) => ['init', '--agent', agent]), ['init']]) {
+    it(`no restart claim: \`${argv.join(' ')}\` prints no restart or reload instruction in stderr or the envelope`, async () => {
+      const rig = makeRig();
+      seedAll(rig);
+
+      const out = await rig.run(argv);
+
+      assert.equal(out.code, 0);
+      assert.doesNotMatch(out.stderr.join(''), /restart|reload/i);
+      assert.doesNotMatch(out.stdout.join(''), /restart|reload/i);
+      assert.ok(out.stderr.join('').includes('gsd-atlas build'), 'the build hint is still there, so the stderr check had something to check');
+    });
+  }
 });
 
 describe('gsd-atlas init command line', () => {
@@ -555,7 +661,7 @@ function seed(rig: Rig, relative: string, content: string | Buffer): string {
   return file;
 }
 
-const CURSOR_ENTRY = { command: NODE, args: [ENTRY] };
+const CURSOR_ENTRY = { type: 'stdio', command: NODE, args: [ENTRY] };
 
 describe('gsd-atlas init for Cursor', () => {
   it('merges mcpServers["gsd-atlas"] into ~/.cursor/mcp.json, keeps the rest and one backup, and is idempotent', async () => {
@@ -593,6 +699,23 @@ describe('gsd-atlas init for Cursor', () => {
     assert.deepEqual(fs.readdirSync(path.dirname(file)), ['mcp.json'], 'a new file has nothing to back up');
   });
 
+  it('entry without type is updated: an entry written by an earlier init gets type stdio, the backup keeps the original', async () => {
+    const rig = makeRig();
+    const original = `${JSON.stringify({ mcpServers: { other: { command: 'x' }, 'gsd-atlas': { command: NODE, args: [ENTRY] } }, extra: true }, null, 2)}\n`;
+    const file = seed(rig, '.cursor/mcp.json', original);
+
+    const out = await rig.run(['init', '--agent', 'cursor']);
+
+    assert.equal(out.code, 0);
+    assert.deepEqual(out.envelope().data.hosts, [{ agent: 'cursor', file, action: 'updated' }]);
+    assert.deepEqual(JSON.parse(fs.readFileSync(file, 'utf8')), {
+      mcpServers: { other: { command: 'x' }, 'gsd-atlas': CURSOR_ENTRY },
+      extra: true,
+    });
+    assert.equal(fs.readFileSync(`${file}${BACKUP}`, 'utf8'), original);
+    assert.equal((await rig.run(['init', '--agent', 'cursor'])).envelope().data.hosts[0]!.action, 'unchanged');
+  });
+
   it('refused: a ~/.cursor/mcp.json that does not parse is refused untouched', async () => {
     const rig = makeRig();
     const file = seed(rig, '.cursor/mcp.json', '{ "mcpServers": ');
@@ -619,6 +742,15 @@ describe('gsd-atlas init for Codex', () => {
     const after = fs.readFileSync(file, 'utf8');
     assert.equal(after, `${before}\n${table().join('\n')}\n`);
     assert.equal(fs.readFileSync(`${file}${BACKUP}`, 'utf8'), before);
+  });
+
+  it('writes no type key for Codex: its transport is inferred from command', async () => {
+    const rig = makeRig();
+    fs.mkdirSync(path.join(rig.home, '.codex'));
+    await rig.run(['init', '--agent', 'codex']);
+    const text = fs.readFileSync(path.join(rig.home, '.codex', 'config.toml'), 'utf8');
+    assert.ok(!/\btype\b/.test(text), text);
+    assert.ok(text.includes('command = '));
   });
 
   it('adds the missing final newline before the blank line', async () => {
