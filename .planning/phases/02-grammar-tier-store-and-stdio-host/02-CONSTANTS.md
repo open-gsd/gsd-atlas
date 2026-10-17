@@ -106,7 +106,7 @@ Both blocking-human checkpoints were answered by the user on 2026-10-16, each wi
 
 ## Addendum 2026-10-17 (gap closure)
 
-Addendum status: Proposed
+Addendum status: Approved (2026-10-17, by the user, relayed by the orchestrator)
 
 This addendum belongs to plan 02-29 and adds rows only. No value in the Constants table above changes. Plans 02-38, 02-39 and 02-41 carry a precondition that the line above reads `Addendum status: Approved`; if it reads Proposed they halt. Plans 02-30 and 02-37 use only the two recorded existing thresholds, which are already in code, so they do not wait.
 
@@ -148,3 +148,11 @@ This addendum belongs to plan 02-29 and adds rows only. No value in the Constant
 A full VACUUM is a single synchronous rewrite of the live data and cannot be sliced, so the idle loop's full compaction (STO-05, D-16) is a pause longer than 200 ms on a large store. It runs only after a completed collect, only when `compact.fullFreeFraction` or `compact.fullUnusedFraction` is crossed, and the size gate (plan 02-37) prints its measured length so the owner can judge it against a real store.
 
 ### Addendum approvals
+
+The blocking-human checkpoint (plan 02-29, Task 2) was answered by the user on 2026-10-17 in the user's own session through an AskUserQuestion prompt, relayed by the orchestrator. It was not auto-approved.
+
+| Checkpoint | Date | User reply (verbatim) | Effect |
+|------------|------|-----------------------|--------|
+| Task 2: gap-closure constants addendum | 2026-10-17 | "Approve all four (Recommended)" | `pool.loadTimeoutMs` 30000, `pool.terminateGraceMs` 2000, `host.idleEvictMs` 1800000 and `runner.defaultTimeoutMs` 60000 accepted unchanged. The recorded thresholds `compact.fullFreeFraction` and `compact.fullUnusedFraction` stay as the idle policy and the full-VACUUM exception to `maintenance.sliceMs` stands, as listed in this addendum. No existing approved value changed. Status set to Approved. |
+
+Derived values (checkpoint busy timeout 0, per-record allowance 128 bytes, batch-check bound, `compact.afterChurnFallback`) are properties of the design, not choices, and were in force without a reply.
