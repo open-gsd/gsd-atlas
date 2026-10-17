@@ -24,7 +24,7 @@ import { parseArgs } from 'node:util';
 
 import { composeHost } from '../src/bin/compose.ts';
 import type { Composed } from '../src/bin/compose.ts';
-import { PROTOCOL_VERSION } from '../src/facts/index.ts';
+import { PROTOCOL_VERSION, isInside } from '../src/facts/index.ts';
 
 const repoRoot = path.resolve(import.meta.dirname, '..');
 
@@ -155,7 +155,7 @@ export async function runFreshnessGate(options: FreshnessGateOptions): Promise<F
   checkWhole('max-ms', options.maxMs, 0);
   const out = options.out ?? ((line: string) => process.stdout.write(`${line}\n`));
   const tmpRoot = fs.realpathSync.native(path.resolve(options.tmpRoot ?? os.tmpdir()));
-  if (tmpRoot === repoRoot || tmpRoot.startsWith(repoRoot + path.sep)) {
+  if (isInside(repoRoot, tmpRoot)) {
     throw new Error(`${tmpRoot} is inside the repository (${repoRoot}); the synthetic repository must not land in a checkout`);
   }
   const base = fs.mkdtempSync(path.join(tmpRoot, 'gsd-atlas-freshness-gate-'));

@@ -5,7 +5,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { after, before, describe, it } from 'node:test';
 
-import { validateFileFacts } from '../src/facts/index.ts';
+import { isInside, validateFileFacts } from '../src/facts/index.ts';
 import type { FileFacts } from '../src/facts/index.ts';
 import { createGrammarEngine } from '../src/grammar-engine/index.ts';
 import type { GrammarEngine } from '../src/grammar-engine/index.ts';
@@ -723,7 +723,7 @@ describe('corpus mode (compiler oracle on a pinned sample)', () => {
     assert.equal(probe.calls.length, 1);
     assert.equal(probe.calls[0]?.id, 'gsd-core');
     const destination = probe.calls[0]?.destination ?? '';
-    assert.ok(destination.startsWith(tmpRoot), 'the destination is under the temp root');
+    assert.ok(isInside(tmpRoot, destination), 'the destination is under the temp root');
     assert.ok(!destination.startsWith(repoRoot), 'the destination is outside the repository');
     assert.ok(!fs.existsSync(destination), 'the temp directory is removed');
     assert.deepEqual(
@@ -760,7 +760,7 @@ describe('corpus mode (compiler oracle on a pinned sample)', () => {
       }),
       /fetch_failed: no network/,
     );
-    assert.ok(destination.startsWith(tmpRoot));
+    assert.ok(isInside(tmpRoot, destination));
     assert.ok(!fs.existsSync(destination));
   });
 
@@ -774,6 +774,24 @@ describe('corpus mode (compiler oracle on a pinned sample)', () => {
       }),
       /inside the repository/,
     );
+  });
+
+  it('a temp root beside the repository whose name shares the repository name as a prefix is not inside it (shared isInside)', async () => {
+    const sibling = `${repoRoot}-sibling-recall`;
+    fs.mkdirSync(sibling, { recursive: true });
+    try {
+      await assert.rejects(
+        runRecall({
+          corpus: 'gsd-core',
+          tmpRoot: sibling,
+          out: () => undefined,
+          fetch: () => Promise.reject(new Error('stop after the containment check')),
+        }),
+        (error: unknown) => error instanceof Error && /stop after the containment check/.test(error.message) && !/inside the repository/.test(error.message),
+      );
+    } finally {
+      fs.rmSync(sibling, { recursive: true, force: true });
+    }
   });
 
   it('a pattern the oracle disagrees with shows as a failing row of its own and fails the run', async () => {

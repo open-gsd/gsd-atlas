@@ -12,6 +12,7 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
+import { isInside } from '../facts/index.ts';
 import { makeTempDir, realPath } from './tmpdir.ts';
 
 /** The argv-style spec the setup runner is given. Never a shell string. */
@@ -99,7 +100,7 @@ export async function createTempGitRepo(options: TempGitRepoOptions): Promise<Te
 
     const abs = (rel: string): string => {
       const full = path.resolve(dir, rel);
-      if (full !== dir && !full.startsWith(dir + path.sep)) throw new Error(`path escapes the repo: ${rel}`);
+      if (!isInside(dir, full)) throw new Error(`path escapes the repo: ${rel}`);
       return full;
     };
 

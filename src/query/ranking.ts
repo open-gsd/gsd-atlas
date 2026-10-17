@@ -12,6 +12,7 @@
  *   dirDistance     path segments between the cwd hint's directory and the file's directory (0 without a hint)
  */
 import path from 'node:path';
+import { isInside } from '../facts/index.ts';
 
 export type MatchTier = 0 | 1 | 2 | 3;
 
@@ -90,9 +91,8 @@ export function directoryDistance(fileDir: string, hintDir: string | null): numb
 export function cwdHintDir(worktree: string, cwd: string | undefined): string | null {
   if (cwd === undefined || cwd === '') return null;
   if (path.isAbsolute(cwd)) {
-    const rel = path.relative(worktree, cwd);
-    if (rel === '..' || rel.startsWith(`..${path.sep}`) || path.isAbsolute(rel)) return null;
-    return rel.split(path.sep).join('/');
+    if (!isInside(worktree, cwd)) return null;
+    return path.relative(worktree, cwd).split(path.sep).join('/');
   }
   const normal = path.posix.normalize(cwd.split(path.sep).join('/'));
   if (normal === '..' || normal.startsWith('../')) return null;

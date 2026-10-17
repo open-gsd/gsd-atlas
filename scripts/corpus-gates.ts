@@ -26,7 +26,7 @@ import { parseArgs } from 'node:util';
 
 import { composeHost } from '../src/bin/compose.ts';
 import { STORE_FILE_NAME } from '../src/fact-store/schema.ts';
-import { PROTOCOL_VERSION } from '../src/facts/index.ts';
+import { PROTOCOL_VERSION, isInside } from '../src/facts/index.ts';
 import { DEFAULT_INDEXER_CONFIG } from '../src/indexer/defaults.ts';
 import { readModuleInputs } from '../src/lang/index.ts';
 import { openDatabase } from '../src/sqlite/index.ts';
@@ -390,10 +390,6 @@ export interface CorpusGatesReport {
   readonly workDir: string;
 }
 
-function isInside(child: string, parent: string): boolean {
-  return child === parent || child.startsWith(parent.endsWith(path.sep) ? parent : parent + path.sep);
-}
-
 /** Windows keeps files locked briefly after a child exits, hence the retries. */
 function removeTree(directory: string): void {
   fs.rmSync(directory, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
@@ -466,13 +462,13 @@ export async function runCorpusGates(options: CorpusGatesOptions = {}): Promise<
   const out = options.out ?? ((line: string) => process.stdout.write(`${line}\n`));
   const tmpRoot = path.resolve(options.tmpRoot ?? os.tmpdir());
   const realRepo = fs.realpathSync.native(repoRoot);
-  const inside = (): boolean => isInside(tmpRoot, realRepo) || isInside(tmpRoot, repoRoot);
+  const inside = (): boolean => isInside(realRepo, tmpRoot) || isInside(repoRoot, tmpRoot);
   // Refused before anything is created, then again after the real path is known.
   if (inside()) {
     throw new Error(`${tmpRoot} is inside the repository (${repoRoot}); a corpus checkout must never land in a checkout`);
   }
   fs.mkdirSync(tmpRoot, { recursive: true });
-  if (isInside(fs.realpathSync.native(tmpRoot), realRepo)) {
+  if (isInside(realRepo, fs.realpathSync.native(tmpRoot))) {
     throw new Error(`${tmpRoot} is inside the repository (${repoRoot}); a corpus checkout must never land in a checkout`);
   }
   const workDir = fs.mkdtempSync(path.join(fs.realpathSync.native(tmpRoot), 'gsd-atlas-corpus-gates-'));
