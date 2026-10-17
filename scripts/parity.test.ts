@@ -5,7 +5,9 @@
  *
  * The comparison is on strings: the CLI's stdout line equals the MCP result text after the per-response nonce is
  * replaced by a fixed token. Nothing else is masked, except the one named clock field of `atlas_status` (see the
- * health case). A failure prints the stderr of both processes.
+ * health case, which compares two SETTLED snapshots: each surface is asked until the product itself reports no
+ * Reconcile in flight, because the two surfaces are two processes with a start-up Reconcile each and an answer given
+ * mid-Reconcile is honestly `reconciling`). A failure prints the stderr of both processes.
  *
  * Order matters and is deliberate: a CLI run is its own process, so it is the writer-lease leader only while no MCP
  * server holds the lease. Every case therefore runs its CLI requests first (each process exits and releases the
@@ -19,6 +21,7 @@ import { describe, it } from 'node:test';
 import { FORGED_FENCE, INJECTION_SENTENCE, maskNonce, withFixture } from './test-helpers/fixture-repo.ts';
 import type { CliRun, FixtureRepo } from './test-helpers/fixture-repo.ts';
 import type { Envelope } from './test-helpers/mcp-client.ts';
+import { untilSettled } from './test-helpers/settle.ts';
 
 interface Row {
   readonly name: string;
@@ -29,6 +32,22 @@ interface Row {
 }
 
 const rowsOf = (envelope: Envelope): Row[] => (envelope.data as { results: Row[] }).results;
+
+/** How often and how long the health case asks before it gives up on the product settling. */
+const SETTLE = { attempts: 40, delayMs: 250 } as const;
+
+/** The product's own word for at rest: no Reconcile in flight, nothing queued or running, healthy, and a Reconcile has finished once. */
+function isSettled(envelope: Envelope): boolean {
+  const data = envelope.data as { health?: string; indexer?: { reconciling?: boolean; queued?: number; running?: number; lastReconcileAt?: number | null } } | undefined;
+  const indexer = data?.indexer;
+  return (
+    data?.health === 'ok' &&
+    indexer?.reconciling === false &&
+    indexer.queued === 0 &&
+    indexer.running === 0 &&
+    typeof indexer.lastReconcileAt === 'number'
+  );
+}
 
 /** The one JSON line a CLI run printed, without its newline. */
 function cliLine(run: CliRun): string {
@@ -144,7 +163,7 @@ describe('CLI and MCP parity on the TypeScript import chain', () => {
     });
   });
 
-  it('health: identical JSON except the one clock field lastReconcileAt, which is masked by name and asserted to be a time', async () => {
+  it('health: identical JSON once both surfaces are settled, except the one clock field lastReconcileAt, which is masked by name and asserted to be a time', async () => {
     await withFixture('ts-three-files', async (fixture) => {
       await build(fixture);
       const clock = /"lastReconcileAt":(\d+|null)/g;
@@ -154,12 +173,32 @@ describe('CLI and MCP parity on the TypeScript import chain', () => {
           seen.push(value);
           return '"lastReconcileAt":CLOCK';
         });
-      const [pair] = await askBoth(fixture, [{ cli: ['health', '--repo', fixture.dir], tool: 'atlas_status', args: { repo: fixture.dir } }], mask);
-      assert.equal(pair?.envelope.schema, 'gsd-atlas.atlas-status/1');
-      assert.equal(pair.code, 0);
+      // The two surfaces are two processes with a start-up Reconcile each (D-02: a request waits at most the approved
+      // deadline and then honestly answers `reconciling`), so equality holds only when both are at rest. Each side is
+      // asked until the PRODUCT says it is settled; a Reconcile that never ends fails with the last observation.
+      const cli = await untilSettled(
+        async () => {
+          const run = await fixture.cli(['health', '--repo', fixture.dir]);
+          const line = cliLine(run);
+          return { run, line, envelope: JSON.parse(line) as Envelope };
+        },
+        (answer) => isSettled(answer.envelope),
+        SETTLE,
+      );
+      const server = fixture.mcp();
+      await server.initialize();
+      const call = await untilSettled(() => server.callTool('atlas_status', { repo: fixture.dir }), (answer) => isSettled(answer.envelope), SETTLE);
+      const text = call.result.content[0]?.text ?? '';
+      assert.equal(mask(cli.line), mask(text), 'the CLI line and the MCP result text for atlas_status differ with both surfaces settled');
+      const exit = await server.close();
+      assert.equal(exit.exitCode, 0, server.stderrText());
+
+      assert.equal(cli.envelope.schema, 'gsd-atlas.atlas-status/1');
+      assert.equal(cli.run.code, 0);
       assert.equal(seen.length, 2, 'the clock field was found exactly once in the CLI line and once in the MCP text');
       assert.ok(seen.every((value) => /^\d+$/.test(value)), `the reconcile time is a number on both surfaces, got ${seen.join(',')}`);
-      const data = pair.envelope.data as { health: string; store: { writerLeaseHeld: boolean } };
+      // governor.running is not masked: the equality above compares it strictly.
+      const data = cli.envelope.data as { health: string; store: { writerLeaseHeld: boolean } };
       assert.equal(data.health, 'ok');
       assert.equal(data.store.writerLeaseHeld, true);
     });
