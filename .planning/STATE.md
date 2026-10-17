@@ -3,16 +3,16 @@ gsd_state_version: "1.0"
 current_phase: 02
 current_phase_name: Grammar Tier, Store and stdio Host
 status: executing
-stopped_at: Completed 02-19-PLAN.md
-last_updated: "2026-10-16T23:45:55.286Z"
-last_activity: 2026-10-16
-last_activity_desc: Completed 02-19 Query answer surface (refs, context, impact, status)
-state_head: 5f19c11bff1f5fedcf5db0d03da602c6de294e3a
+stopped_at: Completed 02-20-PLAN.md
+last_updated: "2026-10-17T00:12:04.337Z"
+last_activity: 2026-10-17
+last_activity_desc: Completed 02-20 Tenant, Host and the composition root
+state_head: 1f8039a93e48f4aea3891243eee83103c7358b03
 progress:
   total_phases: 9
   completed_phases: 1
   total_plans: 48
-  completed_plans: 40
+  completed_plans: 41
   percent: 11
 ---
 
@@ -28,16 +28,16 @@ See: .planning/PROJECT.md (updated 2026-10-15)
 ## Current Position
 
 Phase: 02 (Grammar Tier, Store and stdio Host) — EXECUTING
-Plan: 20 of 28 complete (plans 02-01 to 02-19 and 02-21 complete; they ran out of order, next is the lowest-numbered incomplete plan, 02-20)
+Plan: 21 of 28 complete (plans 02-01 to 02-21 complete; they ran out of order, next is the lowest-numbered incomplete plan, 02-22)
 Status: Ready to execute
-Last activity: 2026-10-16 — Completed 02-19 (Query answer surface: code_refs, code_context, code_impact with per-hop and chain confidence and the ADR golden example, atlas_status from injected ports, one shared keyset paging mechanism; src/query)
+Last activity: 2026-10-17 — Completed 02-20 (Tenant, Host and the composition root: build then find through the real stack, Governor classes with busy, follower basics, maintain tasks with a forced stale-file refresh, user-only config; src/tenant, src/host, src/bin/compose.ts)
 
 Progress: [█░░░░░░░░░] 11%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 35
+- Total plans completed: 36
 - Average duration: -
 - Total execution time: 0.0 hours
 
@@ -46,7 +46,7 @@ Progress: [█░░░░░░░░░] 11%
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 01 | 20 | - | - |
-| 02 | 20 of 28 | - | - |
+| 02 | 21 of 28 | - | - |
 
 **Recent Trend:**
 - Last 5 plans: -
@@ -77,6 +77,7 @@ Progress: [█░░░░░░░░░] 11%
 | Phase 02 P17 | 21 min | 3 tasks | 19 files |
 | Phase 02 P18 | 24 min | 3 tasks | 10 files |
 | Phase 02 P19 | 16 min | 3 tasks | 19 files |
+| Phase 02 P20 | 18 min | 3 tasks | 27 files |
 
 ## Accumulated Context
 
@@ -147,6 +148,12 @@ Recent decisions affecting current work:
 - [Phase 02]: 02-19: every code tool pages through src/query/page.ts pageItems; hops, targets and candidates are capped (5 targets, per-hop row cap, 4x cap pre-cut) and any cut sets truncated plus a hint — T-02-65: depth clamp, row caps and target caps bound the work; the QRY-02 prohibition forbids hiding a capped expansion. Internal bounds not in 02-CONSTANTS.md: 5 targets or seeds, 5 alternatives, 10 context references, candidate factor 4.
 - [Phase 02]: 02-19: code_context composes imp/ and exp/ handles for a file's own imports and exports in Query, because the Reader returns no handle for them; parent and child handles come from Reader.symbol — Citation.debug is required. The imp/ shape matches the store's own importer records; open item for the explain work (Phase 3) to resolve or replace them.
 - [Phase 02]: 02-19: atlas_status counts stale and failed paths and never lists them, reduces the corrupt-file path to a rebuilt flag, and answers unavailable (without echoing the port's text) when a port is missing or throws — T-02-66 and the QRY-03 prohibition: state not benefit, no source text, no file paths beyond the repository root. StatusPort and IndexerStatusLike are structural so Query imports no Indexer; plan 02-20 wires them.
+- [Phase 02]: 02-20: build and maintain take only an admission turn in their Governor class and run outside the slot; code requests hold an interactive slot for the read — four concurrent builds holding all four slots would starve the indexing-class pieces the Indexer schedules for them
+- [Phase 02]: 02-20: collect, compact and check are called on the store directly (write authority, not the in-process writer slot) so maintenance runs while the Indexer holds the writer; the Host never uses store.maintain — dispatch open item 4
+- [Phase 02]: 02-20: Indexer.refresh is the forced re-extract path (batch processing takes force; in a forced pass only the first path of a content hash is extracted, the rest link) — Reconcile still attaches a stale hash through Writer.link and does not clear it; nobody calls markStale yet, so a grammar upgrade needs a refresh request
+- [Phase 02]: 02-20: a follower tenant creates no Indexer and no watcher, answers fresh paths as not completed (degraded fresh_timeout) and build and maintain with lease_held; an unbuilt worktree is never indexed because a request named fresh paths (D-11) — plan 02-27 adds the overlay, 02-28 the takeover
+- [Phase 02]: 02-20: loadUserConfig ignores a wrong file whole with one user_config_ignored warning and takes permissions as { allow: [...] } (UserPermissions), not the permissions.commands the plan prose wrote — half a configuration could leave a permission wider or narrower than the user wrote
+- [Phase 02]: 02-20: the tenant directory is the repository's main worktree and the overlay is the longest listed worktree containing the request; the tenant's Indexer starts in the background for worktrees the store already indexes (start-up Reconcile deadline and reconciling degraded code are 02-28); a code request holds an interactive slot while Query waits for ensureFresh, so four simultaneous fresh requests at concurrency 4 degrade with fresh_timeout (fairness is HRD-05)
 
 ### Pending Todos
 
@@ -173,6 +180,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-10-16T23:45:55.232Z
-Stopped at: Completed 02-19-PLAN.md
+Last session: 2026-10-17T00:12:04.269Z
+Stopped at: Completed 02-20-PLAN.md
 Resume file: None
