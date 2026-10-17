@@ -11,11 +11,11 @@
 import path from 'node:path';
 import { parseArgs } from 'node:util';
 
-import { PROTOCOL_VERSION } from '../host-client/index.ts';
-import type { Envelope, HostClient, Request } from '../host-client/index.ts';
+import { INDEX_STATE_SCHEMA, PROTOCOL_VERSION } from '../host-client/index.ts';
+import type { Envelope, HostClient, IndexStateData, Request } from '../host-client/index.ts';
 import { EXIT_FAILURE, EXIT_LEASE_HELD, EXIT_OK, EXIT_USAGE, exitCodeFor } from './exit.ts';
 import { INIT_SCHEMA, runInit } from './init.ts';
-import type { InitEnvironment } from './init.ts';
+import type { IndexState, InitEnvironment } from './init.ts';
 import { AGENT_IDS } from './init-targets.ts';
 import type { AgentId } from './init-targets.ts';
 import { COMMANDS, FLAGS, inputFromFlags, requestFor, resolveCommand, unusedFlag } from './tool-commands.ts';
@@ -119,7 +119,26 @@ async function send(io: CliIo, request: Request): Promise<number> {
 
 const langRequest = (kind: string, args: Record<string, unknown>): Request => ({ protocol: PROTOCOL_VERSION, kind, args });
 
-/** `gsd-atlas init`: validate the flags, run it and print its envelope. It never contacts the host. */
+/**
+ * Ask the Host whether the repository around `cwd` has an index (the internal `index_state` request, not an MCP tool).
+ * Anything but a well-formed ok reply is `unknown`, and init then falls back to its file-system probe.
+ */
+async function askIndexState(client: HostClient, cwd: string): Promise<IndexState> {
+  const reply = await client.handle({ protocol: PROTOCOL_VERSION, kind: 'index_state', args: { cwd } });
+  const data = reply.data as Partial<IndexStateData> | null;
+  if (!reply.ok || reply.schema !== INDEX_STATE_SCHEMA || typeof data !== 'object' || data === null || typeof data.indexed !== 'boolean') {
+    return { kind: 'unknown' };
+  }
+  if (data.indexed) {
+    return { kind: 'indexed' };
+  }
+  return typeof data.repo === 'string' && data.repo !== '' ? { kind: 'not_indexed', repo: data.repo } : { kind: 'unknown' };
+}
+
+/**
+ * `gsd-atlas init`: validate the flags, run it and print its envelope. It edits files and launches no program; the one
+ * thing it asks the host is whether the working directory's repository has an index, for the `gsd-atlas build` hint.
+ */
 async function init(io: CliIo, values: FlagValues): Promise<number> {
   const wanted = new Set<AgentId>();
   for (const name of Array.isArray(values.agent) ? values.agent : []) {
@@ -133,7 +152,8 @@ async function init(io: CliIo, values: FlagValues): Promise<number> {
     io.stderr.write('gsd-atlas: error init_unavailable: init is not available in this build\n');
     return EXIT_FAILURE;
   }
-  const result = await runInit({ dryRun: values['dry-run'] === true, agents: wanted.size === 0 ? 'all' : [...wanted] }, io.init);
+  const environment: InitEnvironment = { ...io.init, indexState: io.init.indexState ?? ((cwd) => askIndexState(io.client, cwd)) };
+  const result = await runInit({ dryRun: values['dry-run'] === true, agents: wanted.size === 0 ? 'all' : [...wanted] }, environment);
   io.stdout.write(`${JSON.stringify(result.envelope)}\n`);
   for (const line of result.stderrLines) {
     io.stderr.write(`${line}\n`);

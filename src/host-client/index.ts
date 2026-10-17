@@ -14,8 +14,8 @@ export interface HostClient {
 
 export { createInProcessHostClient } from './in-process.ts';
 export type { InProcessHostClientOptions } from './in-process.ts';
-export { LANG_LIST_SCHEMA, LANG_TEST_SCHEMA } from '../host/index.ts';
-export type { LangListData } from '../host/index.ts';
+export { INDEX_STATE_SCHEMA, LANG_LIST_SCHEMA, LANG_TEST_SCHEMA } from '../host/index.ts';
+export type { IndexStateData, LangListData } from '../host/index.ts';
 // One definition of the tools and of the error schema, shared with Query, so the CLI and the MCP server read the
 // same tool list and build the same requests (QRY-04 parity is structural).
 export { ERROR_SCHEMA, TOOLS, TOOL_NAMES, buildRequest } from '../query/index.ts';

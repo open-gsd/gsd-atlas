@@ -38,6 +38,8 @@ interface RunOptions {
   readonly platform?: NodeJS.Platform;
   /** False simulates a build whose bin supplies no io.init. */
   readonly withInit?: boolean;
+  /** The host client init is given (see {@link scriptedClient}). */
+  readonly client?: HostClient;
   /** TEST ONLY hooks forwarded to the init environment: they run between init's read and its write. */
   readonly beforeWrite?: (file: string) => void | Promise<void>;
   readonly afterTemp?: (file: string) => void | Promise<void>;
@@ -57,12 +59,38 @@ afterEach(() => {
   }
 });
 
-/** The host must never be contacted by init: it only edits files. */
+/**
+ * The default client: init edits files and contacts the host only for the `no index yet` hint, so a test that does not
+ * script that question gets a rejected call, which init answers with the file-system probe.
+ */
 const client: HostClient = {
   async handle(): Promise<Envelope> {
     throw new Error('init must not contact the host');
   },
 };
+
+/** A client double that records every request and answers the `index_state` question as scripted. */
+function scriptedClient(answer: (cwd: unknown) => Envelope | Error): { readonly client: HostClient; readonly requests: Array<{ kind: string; args: unknown }> } {
+  const requests: Array<{ kind: string; args: unknown }> = [];
+  return {
+    requests,
+    client: {
+      async handle(request): Promise<Envelope> {
+        requests.push({ kind: request.kind, args: request.args });
+        const reply = answer((request.args as { cwd?: unknown } | undefined)?.cwd);
+        if (reply instanceof Error) throw reply;
+        return reply;
+      },
+    },
+  };
+}
+
+const indexStateReply = (repo: string, indexed: boolean): Envelope => ({
+  schema: 'gsd-atlas.index-state/1',
+  ok: true,
+  data: { repo, indexed },
+  diagnostics: [],
+});
 
 function makeRig(): Rig {
   const tmp = makeTempDir();
@@ -79,7 +107,7 @@ function makeRig(): Rig {
       const stdout: string[] = [];
       const stderr: string[] = [];
       const io = {
-        client,
+        client: options.client ?? client,
         version: () => '9.9.9',
         stdout: { write: (text: string) => stdout.push(text) },
         stderr: { write: (text: string) => stderr.push(text) },
@@ -583,6 +611,114 @@ describe('gsd-atlas init and the working directory', () => {
     await rig.run(['init', '--agent', 'claude']);
     assert.ok(!fs.existsSync(path.join(rig.cwd, '.mcp.json')));
     assert.deepEqual(listing(rig.cwd), ['.git']);
+  });
+});
+
+describe('gsd-atlas init and the build hint through the Host (plan 02-44, IN-04)', () => {
+  const buildLines = (out: Outcome): string[] => out.stderr.join('').split('\n').filter((line) => line.includes('gsd-atlas build'));
+
+  it('indexed: when the Host says the repository has an index there is no hint, even if the git directory holds no gsd-atlas folder (a store in the cache directory)', async () => {
+    const rig = makeRig();
+    seedClaude(rig);
+    fs.mkdirSync(path.join(rig.cwd, '.git'));
+    const host = scriptedClient(() => indexStateReply(rig.cwd, true));
+
+    const out = await rig.run(['init', '--agent', 'claude'], { client: host.client });
+
+    assert.equal(out.code, 0);
+    assert.deepEqual(buildLines(out), []);
+    assert.deepEqual(host.requests, [{ kind: 'index_state', args: { cwd: rig.cwd } }], 'one question, about the working directory');
+  });
+
+  it('not indexed: the hint names the repository root the Host reported', async () => {
+    const rig = makeRig();
+    seedClaude(rig);
+    fs.mkdirSync(path.join(rig.cwd, '.git'));
+    const root = path.join(rig.cwd, 'host-root');
+    const host = scriptedClient(() => indexStateReply(root, false));
+
+    const out = await rig.run(['init', '--agent', 'claude'], { client: host.client });
+
+    assert.deepEqual(buildLines(out), [`gsd-atlas: to index ${root}, run \`gsd-atlas build\` inside it`]);
+  });
+
+  const unusable: ReadonlyArray<{ title: string; reply: Envelope | Error }> = [
+    { title: 'an error envelope', reply: { schema: 'gsd-atlas.error/1', ok: false, data: null, diagnostics: [{ code: 'not_a_repo', severity: 'error', message: 'x' }] } },
+    { title: 'a rejected call', reply: new Error('host exploded') },
+    { title: 'an unexpected reply', reply: { schema: 'gsd-atlas.something-else/1', ok: true, data: { indexed: 'maybe' }, diagnostics: [] } },
+    { title: 'a reply without data', reply: { schema: 'gsd-atlas.index-state/1', ok: true, data: null, diagnostics: [] } },
+  ];
+  for (const { title, reply } of unusable) {
+    it(`${title}: the file-system probe decides, as it did before`, async () => {
+      const without = makeRig();
+      seedClaude(without);
+      fs.mkdirSync(path.join(without.cwd, '.git'));
+      const hint = await without.run(['init', '--agent', 'claude'], { client: scriptedClient(() => reply).client });
+      assert.deepEqual(buildLines(hint), [`gsd-atlas: to index ${without.cwd}, run \`gsd-atlas build\` inside it`]);
+
+      const withFolder = makeRig();
+      seedClaude(withFolder);
+      fs.mkdirSync(path.join(withFolder.cwd, '.git', 'gsd-atlas'), { recursive: true });
+      const quiet = await withFolder.run(['init', '--agent', 'claude'], { client: scriptedClient(() => reply).client });
+      assert.deepEqual(buildLines(quiet), []);
+    });
+  }
+
+  it('the linked worktree probe still decides when the Host cannot answer', async () => {
+    const rig = makeRig();
+    seedClaude(rig);
+    const base = path.dirname(rig.cwd);
+    const common = path.join(base, 'main', '.git');
+    const gitDir = path.join(common, 'worktrees', 'wt1');
+    const worktree = path.join(base, 'wt');
+    fs.mkdirSync(path.join(common, 'gsd-atlas'), { recursive: true });
+    fs.mkdirSync(gitDir, { recursive: true });
+    fs.mkdirSync(worktree);
+    fs.writeFileSync(path.join(worktree, '.git'), `gitdir: ${gitDir}\n`);
+    fs.writeFileSync(path.join(gitDir, 'commondir'), '../..\n');
+
+    const out = await rig.run(['init', '--agent', 'claude'], { cwd: worktree, client: scriptedClient(() => new Error('down')).client });
+
+    assert.deepEqual(buildLines(out), []);
+  });
+
+  it('no call is made on a dry run, after a refusal, when nothing was registered, or when no .git entry exists above the working directory', async () => {
+    const cases: ReadonlyArray<{ title: string; setup: (rig: Rig) => void; argv: string[] }> = [
+      { title: 'dry run', setup: (rig) => { seedClaude(rig); fs.mkdirSync(path.join(rig.cwd, '.git')); }, argv: ['init', '--agent', 'claude', '--dry-run'] },
+      { title: 'refusal', setup: (rig) => { seedClaude(rig, '{ not json'); fs.mkdirSync(path.join(rig.cwd, '.git')); }, argv: ['init', '--agent', 'claude'] },
+      { title: 'nothing registered', setup: (rig) => { fs.mkdirSync(path.join(rig.cwd, '.git')); }, argv: ['init', '--agent', 'claude'] },
+      { title: 'not a repository', setup: (rig) => { seedClaude(rig); }, argv: ['init', '--agent', 'claude'] },
+      { title: 'help', setup: (rig) => { fs.mkdirSync(path.join(rig.cwd, '.git')); }, argv: ['--help'] },
+      { title: 'a usage error', setup: (rig) => { fs.mkdirSync(path.join(rig.cwd, '.git')); }, argv: ['init', '--agent', 'nobody'] },
+    ];
+    for (const { title, setup, argv } of cases) {
+      const rig = makeRig();
+      setup(rig);
+      const host = scriptedClient(() => indexStateReply(rig.cwd, false));
+      await rig.run(argv, { client: host.client });
+      assert.deepEqual(host.requests, [], `${title}: the Host was not contacted`);
+    }
+  });
+
+  it('two inits and a question at once: each asks the Host once and none blocks the other', async () => {
+    const first = makeRig();
+    const second = makeRig();
+    for (const rig of [first, second]) {
+      seedClaude(rig);
+      fs.mkdirSync(path.join(rig.cwd, '.git'));
+    }
+    const hostOne = scriptedClient(() => indexStateReply(first.cwd, false));
+    const hostTwo = scriptedClient(() => indexStateReply(second.cwd, true));
+
+    const [one, two] = await Promise.all([
+      first.run(['init', '--agent', 'claude'], { client: hostOne.client }),
+      second.run(['init', '--agent', 'claude'], { client: hostTwo.client }),
+    ]);
+
+    assert.equal(buildLines(one).length, 1);
+    assert.equal(buildLines(two).length, 0);
+    assert.equal(hostOne.requests.length, 1);
+    assert.equal(hostTwo.requests.length, 1);
   });
 });
 

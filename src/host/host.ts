@@ -13,7 +13,7 @@ import { createRealRunner } from '../command-runner/index.ts';
 import type { CommandRunner } from '../command-runner/index.ts';
 import { SchemaTooNew, findExistingStore, probeStore } from '../fact-store/index.ts';
 import type { ResolveStoreLocationInput } from '../fact-store/index.ts';
-import { PROTOCOL_VERSION, diagnostic, failEnvelope, systemClock } from '../facts/index.ts';
+import { PROTOCOL_VERSION, diagnostic, failEnvelope, okEnvelope, systemClock } from '../facts/index.ts';
 import type { Envelope, Request } from '../facts/index.ts';
 import { createGovernor } from '../governor/index.ts';
 import type { Governor, JobClass } from '../governor/index.ts';
@@ -42,6 +42,15 @@ const errorName = (error: unknown): string => {
 };
 
 const NOT_A_REPO = 'repo must be an existing directory inside a git repository.';
+
+/** Envelope schema of an `index_state` reply (internal, plan 02-44). */
+export const INDEX_STATE_SCHEMA = 'gsd-atlas.index-state/1';
+
+/** The data of an `index_state` reply: the repository's main worktree, and whether it has an index to read. */
+export interface IndexStateData {
+  readonly repo: string;
+  readonly indexed: boolean;
+}
 
 export function createHost(options: HostOptions): Host {
   const tenants = new Map<string, Promise<Tenant>>();
@@ -168,6 +177,21 @@ export function createHost(options: HostOptions): Host {
     return { ...request, args: rest };
   }
 
+  /**
+   * The ONE predicate that says whether a repository has an index to read: a tenant is already open for it, or the
+   * shared location rules find a store file that holds an index (or one written by a newer gsd-atlas, which a tenant
+   * reports as `schema_too_new`). It opens no tenant, takes no lease and writes nothing; the read gate of every
+   * non-build request and the `index_state` request both ask it, so they can never disagree. A probe that fails
+   * throws, and each caller turns that into its own error envelope.
+   */
+  async function hasIndex(resolved: Resolved): Promise<boolean> {
+    if (tenants.has(resolved.identity.storeId)) return true;
+    const existing = findExistingStore(locationInput(resolved));
+    if (existing === undefined) return false;
+    const state = await probeStore(existing);
+    return state === 'indexed' || state === 'newer_schema';
+  }
+
   async function repoRequest(request: Request, kind: RepoKind): Promise<Envelope> {
     const parsed: RepoArgs = parseRepoArgs(kind, request.args);
     if (!parsed.ok) return errorEnvelope('invalid_args', parsed.message);
@@ -197,16 +221,23 @@ export function createHost(options: HostOptions): Host {
     // open the same store; otherwise the new tenant would find the lease taken and start as a follower.
     await closing.get(resolved.identity.storeId);
 
+    // Plan 02-44: `index_state` is the read gate's own question, answered and nothing more: no tenant, no lease, no write.
+    if (kind === 'index_state') {
+      try {
+        const data: IndexStateData = { repo: resolved.repoDir, indexed: await hasIndex(resolved) };
+        return okEnvelope(INDEX_STATE_SCHEMA, data);
+      } catch (error) {
+        return tenantFailure(error);
+      }
+    }
+
     // WR-01: only `build` may create a store. Any other kind needs a tenant that is already open or a store that
     // already holds an index; otherwise nothing is opened, created, locked or written (QRY-06).
     // WR-02: a store that exists but holds nothing to read is not opened by a question either, because opening it
     // as the leader would take the lease and make the advertised `gsd-atlas build` fail with exit 3.
-    if (kind !== 'build' && !tenants.has(resolved.identity.storeId)) {
+    if (kind !== 'build') {
       try {
-        const existing = findExistingStore(locationInput(resolved));
-        if (existing === undefined) return notIndexedNoStore();
-        const state = await probeStore(existing);
-        if (state !== 'indexed' && state !== 'newer_schema') return notIndexedNoStore();
+        if (!(await hasIndex(resolved))) return notIndexedNoStore();
       } catch (error) {
         return tenantFailure(error);
       }

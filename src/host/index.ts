@@ -5,7 +5,8 @@
  */
 export { loadUserConfig } from './config.ts';
 export type { LoadedUserConfig } from './config.ts';
-export { createHost } from './host.ts';
+export { INDEX_STATE_SCHEMA, createHost } from './host.ts';
+export type { IndexStateData } from './host.ts';
 export { HISTORY_KIND, HISTORY_MAX_FILES, HISTORY_SCHEMA, HISTORY_TOOLS } from './history.ts';
 export type { HistoryArgs } from './history.ts';
 export { LANG_LIST_SCHEMA, LANG_TEST_SCHEMA } from './lang.ts';

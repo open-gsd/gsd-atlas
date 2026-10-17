@@ -12,7 +12,10 @@ import type { SourceTree, SourceTreeIdentity } from '../source-tree/index.ts';
 import { MAINTAIN_TASKS } from '../tenant/index.ts';
 import type { MaintainTask } from '../tenant/index.ts';
 
-/** The request kinds that name a repository. */
+/**
+ * The request kinds that name a repository. `index_state` is internal (plan 02-44): the CLI's `no index yet` hint asks
+ * it, it is not an MCP tool and not a CLI command, so the six-tool profile (QRY-06) is unchanged.
+ */
 export const REPO_KINDS = [
   'code_find',
   'code_refs',
@@ -22,6 +25,7 @@ export const REPO_KINDS = [
   'build',
   'maintain',
   'status',
+  'index_state',
 ] as const;
 
 export type RepoKind = (typeof REPO_KINDS)[number];
@@ -64,6 +68,8 @@ const text = z.string().min(1);
 const selection = { repo: text.optional(), cwd: text.optional() };
 
 const buildSchema = z.strictObject({ ...selection });
+/** `index_state` takes the selection and nothing else. */
+const indexStateSchema = z.strictObject({ ...selection });
 const maintainSchema = z.strictObject({
   ...selection,
   task: z.enum(MAINTAIN_TASKS).optional(),
@@ -108,7 +114,15 @@ export function parseRepoArgs(kind: RepoKind, args: unknown): RepoArgs {
     return { ok: false, message: 'args must be an object' };
   }
   const schema =
-    kind === 'build' ? buildSchema : kind === 'maintain' ? maintainSchema : kind === 'status' ? statusSchema : selectionOnly;
+    kind === 'build'
+      ? buildSchema
+      : kind === 'index_state'
+        ? indexStateSchema
+        : kind === 'maintain'
+          ? maintainSchema
+          : kind === 'status'
+            ? statusSchema
+            : selectionOnly;
   const parsed = schema.safeParse(given);
   if (!parsed.success) return { ok: false, message: firstProblem(parsed.error) };
   const data = parsed.data as { repo?: string; cwd?: string; task?: MaintainTask; full?: boolean; since?: string };
