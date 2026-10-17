@@ -425,7 +425,7 @@ export function createIndexer(deps: IndexerDeps): Indexer {
     void hintChanged(activeSource, worktree);
   }
 
-  /** Close a subscription that finished opening after stop(); a watcher that fails to stop is not an error. */
+  /** Close a subscription (one that finished opening after stop(), or any one stop() closes); a watcher that fails to stop is not an error. */
   async function closeLate(unsubscribe: () => Promise<void>): Promise<void> {
     try {
       await unsubscribe();
@@ -691,31 +691,31 @@ export function createIndexer(deps: IndexerDeps): Indexer {
       if (stopping !== undefined) return stopping;
       stopped = true;
       stopping = (async () => {
-        queue.close();
-        idleCancel?.();
-        idleCancel = undefined;
-        for (const wake of [...wakers]) wake();
-        for (const unsubscribe of unsubscribes.splice(0)) await unsubscribe();
+        // Whatever fails below, the module host is disposed and the writer slot is given back (WR-13): a leader
+        // that loses and regains the lease must find the slot free.
         try {
-          await gitUnsubscribe?.();
-        } catch {
-          // a watcher that fails to stop must not keep the Indexer from stopping
-        }
-        gitUnsubscribe = undefined;
-        for (const entry of covered.values()) {
+          queue.close();
+          idleCancel?.();
+          idleCancel = undefined;
+          for (const wake of [...wakers]) wake();
+          for (const unsubscribe of unsubscribes.splice(0)) await closeLate(unsubscribe);
+          if (gitUnsubscribe !== undefined) await closeLate(gitUnsubscribe);
+          gitUnsubscribe = undefined;
+          for (const entry of covered.values()) {
+            if (entry.unsubscribe !== undefined) await closeLate(entry.unsubscribe);
+          }
+          const roots = [...covered.keys()];
+          covered.clear();
+          while (active.size > 0) await Promise.allSettled([...active]);
+          if (activeSource !== undefined) for (const root of roots) await writeHint(activeSource, root);
+        } finally {
           try {
-            await entry.unsubscribe?.();
-          } catch {
-            // a watcher that fails to stop must not keep the Indexer from stopping
+            await host.dispose();
+          } finally {
+            writer?.release();
+            writer = undefined;
           }
         }
-        const roots = [...covered.keys()];
-        covered.clear();
-        while (active.size > 0) await Promise.allSettled([...active]);
-        if (activeSource !== undefined) for (const root of roots) await writeHint(activeSource, root);
-        await host.dispose();
-        writer?.release();
-        writer = undefined;
       })();
       return stopping;
     },
