@@ -50,3 +50,27 @@ The hostile-repo test of Phase 1 (plan 01-13) proves it against a poisoned `.git
 Sources: FND-12; 02-CONTEXT.md D-02 and D-03; 02-RESEARCH.md Pattern 3.
 
 Phase 2's Source Tree needs two more git reads than the allowlist in the amendment above. The built-in git allowlist gains `ls-tree` and `worktree`. `worktree` is allowed with the single shape `worktree list --porcelain -z`, which lists the repo's worktrees and runs nothing from repo config. `ls-tree` reads a commit's tree. Both carry the same pinned `-c` overrides and environment as every other git spec, and the runner neutralises filter drivers before them as before. No other `worktree` subcommand (`add`, `remove`, `prune`, `move`) is allowed, and `status` stays refused. The recording-fake decide tests cover both new shapes: each is allowed in its exact form, and `worktree list` without `--porcelain -z` or any other `worktree` verb is denied with a diagnostic.
+
+## Amendment 2026-10-17: Git option allowlist
+
+Sources: FND-12; 02-REVIEW WR-07, WR-11 and IN-05; plans 02-33 and 02-38; the 2026-10-17 addendum of 02-CONSTANTS.md (`runner.defaultTimeoutMs`, approved that day).
+
+The review showed that the git gate denied a list of write options, so a bundled spelling such as `hash-object -wt blob --stdin` passed and wrote an object, and an abbreviated driver option could pass too. This amendment records the gate that replaced the list. The decisions above and the two earlier amendments stand unedited.
+
+1. **An allowlist of exact option tokens per subcommand.** After the subcommand is known, every argument that starts with `-` must be one of the exact tokens allowed for that subcommand; positional arguments pass, and `--` is in no set. A bundled, abbreviated or late-placed option no longer passes, and a subcommand with no entry is denied. `config` and `worktree` keep their fixed-shape checks. The sets are written by value in the gate, which imports nothing from the git spec builder:
+
+   | Subcommand | Allowed option tokens |
+   |------------|-----------------------|
+   | `ls-files` | `-z`, `-s`, `--others`, `--exclude-standard` |
+   | `ls-tree` | `-r`, `-z`, `--full-tree`, `--name-only` |
+   | `hash-object` | `--stdin-paths` |
+   | `cat-file` | `-e`, `--batch`, `--batch-check` |
+   | `rev-parse` | `--verify`, `--quiet`, `--git-common-dir` |
+   | `rev-list` | `--max-parents=0` |
+   | `check-attr` | `-z`, `--stdin`, `-a` |
+
+   A new option is a reviewed change to this table, as decision 3 already says of the built-in list.
+2. **`cat-file --batch-check` is an allowed shape.** The Source Tree asks for object sizes first and reads only the blobs it keeps, so a large blob is never buffered and then discarded. `cat-file --batch` and `-e` stay allowed; the allowed subcommand list of the amendment of 2026-10-15 is otherwise unchanged and `status` stays refused.
+3. **A default timeout.** `run()` applies a 60 s limit (the approved `runner.defaultTimeoutMs`, equal to `git.timeoutMs`) to a spec that sets no usable `timeoutMs`; a value that is not a positive finite number counts as none. An explicit `timeoutMs` always wins and `stream()` never gets the default, because a long-lived child has no deadline by design. A real runner built with an invalid default throws `RangeError`. Callers that legitimately run longer set their own limit.
+4. **A wider environment denylist.** The inherited environment passed to a child still loses names that look like secrets, and now also the names containing `PASSWD`, `ACCESS_KEY` (which covers the AWS key id) or `PRIVATE_KEY`, names ending in `_AUTH`, and the exact names `SSH_AUTH_SOCK` and `DATABASE_URL`. `GIT_AUTHOR_*`, `GIT_COMMITTER_*`, `GIT_CONFIG_GLOBAL`, `XDG_CONFIG_HOME` and names that only contain `AUTH` (for example `AUTHORITY_NAME`) are kept. The overlay a spec supplies still wins.
+5. **Deferred.** Replacing the denylist with an allowlist of inherited names is not done in Phase 2. An allowlist is the right shape once the first non-git provider is added; the deferral is recorded in the header of the runner's environment module, with its home in ROADMAP Phase 4, success criterion 8.
