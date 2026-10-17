@@ -168,8 +168,8 @@ function insertFile(db: Db, hash: string, facts: FileFacts, now: number, trigram
 }
 
 /**
- * Replace the facts of an existing `files` row: a stale file re-extracted by a newer grammar, or a collected
- * file whose rows are gone. Keeps the row id and `first_seen`, so overlays that point at it stay valid.
+ * Replace the facts of an existing `files` row: a stale file re-extracted by a newer grammar. Keeps the row id
+ * and `first_seen`, so overlays that point at it stay valid.
  */
 function rewriteFile(db: Db, fileId: number, facts: FileFacts, now: number, trigram: boolean): void {
   db.prepare('DELETE FROM symbols WHERE file_id = ?').run(fileId);
@@ -307,7 +307,7 @@ function commitFile(parts: StoreParts, input: CommitFileInput): CommitResult {
     let fileId: number;
     if (existing === undefined) {
       fileId = insertFile(db, hash, facts, now, parts.fuzzyTrigram);
-    } else if (existing.state === 'collected' || existing.stale) {
+    } else if (existing.stale) {
       rewriteFile(db, existing.id, facts, now, parts.fuzzyTrigram);
       fileId = existing.id;
     } else {
@@ -326,7 +326,7 @@ function link(parts: StoreParts, worktree: WorktreeId, path: string, hash: strin
   const now = parts.deps.clock.now();
   return db.transaction(() => {
     const existing = fileEntry(db, hash);
-    if (existing === undefined || existing.state === 'collected') {
+    if (existing === undefined) {
       return result('rejected', seqOf(db, worktree), [
         diagnostic('hash_unknown', 'error', `the store holds no facts for content hash ${hash}`, path),
       ]);
@@ -387,7 +387,7 @@ function setOverlay(
     for (const [path, hash] of pathToHash) {
       if (!known.has(hash)) known.set(hash, fileEntry(db, hash));
       const file = known.get(hash);
-      const fileId = file === undefined || file.state === 'collected' ? null : file.id;
+      const fileId = file === undefined ? null : file.id;
       const entry = stored.get(path);
       if (entry?.hash === hash && entry.fileId === fileId) continue;
       if (fileId !== null) touch(db, fileId, now);

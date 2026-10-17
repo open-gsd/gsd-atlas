@@ -6,8 +6,12 @@ export const SCHEMA_VERSION = 1;
 /** The store database file inside the store directory. */
 export const STORE_FILE_NAME = 'facts.db';
 
-/** The life of a `files` row: facts serve while `live`, wait for collection when `retired`, are gone when `collected`. */
-export const FILE_STATES = ['live', 'retired', 'collected'] as const;
+/**
+ * The life of a `files` row: facts serve while `live` and wait for collection when `retired`. A collected
+ * file's row is deleted (`deleteRetired`), so there is no state for it; committing the same hash again inserts
+ * a new row with a new id.
+ */
+export const FILE_STATES = ['live', 'retired'] as const;
 
 export type FileState = (typeof FILE_STATES)[number];
 
@@ -45,7 +49,7 @@ CREATE TABLE IF NOT EXISTS files (
   nref INTEGER NOT NULL,
   error_bytes INTEGER NOT NULL,
   total_bytes INTEGER NOT NULL,
-  state TEXT NOT NULL DEFAULT 'live' CHECK (state IN ('live', 'retired', 'collected')),
+  state TEXT NOT NULL DEFAULT 'live' CHECK (state IN ('live', 'retired')),
   stale INTEGER NOT NULL DEFAULT 0,
   retired_at INTEGER,
   first_seen INTEGER NOT NULL,

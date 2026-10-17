@@ -11,7 +11,7 @@ import { openDatabase } from '../sqlite/index.ts';
 import type { DriverName } from '../sqlite/index.ts';
 import { FakeClock, makeTempDir, realPath } from '../test-kit/index.ts';
 import { openFactStore } from './open.ts';
-import { STORE_FILE_NAME } from './schema.ts';
+import { FILE_STATES, STORE_FILE_NAME } from './schema.ts';
 import type { FactStore, Resolver, StoreDeps } from './types.ts';
 
 const noResolver: Resolver = async function* () {
@@ -164,6 +164,19 @@ for (const driver of ['node:sqlite', 'better-sqlite3'] as const satisfies readon
         const main = (await store.status()).worktrees.find((entry) => entry.worktree === 'main');
         assert.equal(main?.stalePaths, 1);
         writer.release();
+      });
+    });
+
+    it('CHECK: the files table accepts only live and retired', async () => {
+      assert.deepEqual([...FILE_STATES], ['live', 'retired']);
+      await withRig(driver, async (rig) => {
+        const store = await rig.open();
+        const insert = (state: string): string =>
+          `INSERT INTO files (hash, module, grammar_version, nsym, nref, error_bytes, total_bytes, state, first_seen, last_seen) VALUES ('${H(9)}', 'm', 'g', 0, 0, 0, 0, '${state}', 1, 1)`;
+        await assert.rejects(rig.exec(insert('collected')), /CHECK|constraint/i);
+        await rig.exec(insert('retired'));
+        assert.equal((await rig.rows(`SELECT state FROM files WHERE hash = '${H(9)}'`))[0]?.state, 'retired');
+        await store.close();
       });
     });
   });
