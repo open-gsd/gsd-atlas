@@ -2,9 +2,9 @@ import assert from 'node:assert/strict';
 import path from 'node:path';
 import { describe, it } from 'node:test';
 
-import { PROTOCOL_VERSION } from '../host-client/index.ts';
+import { PROTOCOL_VERSION, buildRequest } from '../host-client/index.ts';
 import type { Diagnostic, Envelope, HostClient, Request } from '../host-client/index.ts';
-import { runCli } from './index.ts';
+import { EXIT_FAILURE, EXIT_LEASE_HELD, EXIT_OK, EXIT_USAGE, runCli } from './index.ts';
 
 interface Harness {
   readonly requests: Request[];
@@ -12,6 +12,9 @@ interface Harness {
   readonly stderr: string[];
   run(argv: readonly string[]): Promise<number>;
 }
+
+/** The working directory the harness gives the CLI; relative flags resolve against it. */
+const WORK = path.resolve('some', 'work');
 
 function harness(reply: Envelope | Error): Harness {
   const requests: Request[] = [];
@@ -36,6 +39,7 @@ function harness(reply: Envelope | Error): Harness {
         version: () => '9.9.9',
         stdout: { write: (text) => stdout.push(text) },
         stderr: { write: (text) => stderr.push(text) },
+        cwd: WORK,
       }),
   };
 }
@@ -140,6 +144,123 @@ describe('runCli root flags', () => {
     await h.run(['--help']);
     for (const text of ['lang list', '--repo-root', '--user-dir', '--builtin-dir', '--npm-root']) {
       assert.ok(h.stdout.join('').includes(text), text);
+    }
+  });
+});
+
+describe('runCli exit codes', () => {
+  it('exports the four exit codes', () => {
+    assert.deepEqual([EXIT_OK, EXIT_USAGE, EXIT_FAILURE, EXIT_LEASE_HELD], [0, 1, 2, 3]);
+  });
+});
+
+describe('runCli find', () => {
+  const findReply: Envelope = { schema: 'gsd-atlas.code-find/1', ok: true, data: { results: [] }, diagnostics: [] };
+  const repo = path.resolve('a', 'repository');
+
+  it('sends exactly the request the MCP adapter builds for code_find, with cwd unset when --repo is given, and prints one JSON line', async () => {
+    const h = harness(findReply);
+    assert.equal(await h.run(['find', 'helper', '--repo', repo]), 0);
+    assert.deepEqual(h.requests, [buildRequest('code_find', { name: 'helper', repo })]);
+    assert.equal(h.requests[0]?.worktree, repo);
+    assert.equal(h.stdout.length, 1);
+    assert.ok(h.stdout[0]!.endsWith('\n'));
+    assert.equal(h.stdout[0]!.indexOf('\n'), h.stdout[0]!.length - 1, 'one line');
+    assert.deepEqual(JSON.parse(h.stdout[0]!), findReply);
+    assert.deepEqual(h.stderr, []);
+  });
+
+  it('maps --budget, --more, --fresh (repeatable), --limit, --kind and --mode onto the schema fields', async () => {
+    const h = harness(findReply);
+    const argv = ['find', 'helper', '--repo', repo, '--budget', '500', '--more', 'cursor-1', '--fresh', 'a.ts', '--fresh', 'b/c.ts', '--limit', '7', '--kind', 'function', '--mode', 'prefix'];
+    assert.equal(await h.run(argv), 0);
+    assert.deepEqual(
+      h.requests,
+      [buildRequest('code_find', { name: 'helper', repo, budget_tokens: 500, more: 'cursor-1', fresh: ['a.ts', 'b/c.ts'], limit: 7, kind: 'function', mode: 'prefix' })],
+    );
+    assert.equal(h.requests[0]?.budget_tokens, 500);
+    assert.deepEqual(h.requests[0]?.fresh, ['a.ts', 'b/c.ts']);
+  });
+
+  it('resolves a relative --repo and --cwd against the working directory before the host sees them', async () => {
+    const h = harness(findReply);
+    assert.equal(await h.run(['find', 'x', '--repo', 'r', '--cwd', path.join('r', 'sub')]), 0);
+    assert.deepEqual(h.requests, [buildRequest('code_find', { name: 'x', repo: path.join(WORK, 'r'), cwd: path.join(WORK, 'r', 'sub') })]);
+  });
+
+  it('sends no repo at all when neither --repo nor --cwd is given (the host uses its own working directory)', async () => {
+    const h = harness(findReply);
+    assert.equal(await h.run(['find', 'x']), 0);
+    assert.deepEqual(h.requests, [buildRequest('code_find', { name: 'x' })]);
+    assert.equal(h.requests[0]?.worktree, undefined);
+  });
+
+  it('exits 2 with the reason line on stderr and the envelope unchanged on stdout for not_indexed', async () => {
+    const reply: Envelope = {
+      schema: 'gsd-atlas.error/1',
+      ok: false,
+      data: null,
+      diagnostics: [d('not_indexed', 'error', 'This repository has not been indexed yet. Run "gsd-atlas build" in it, then ask again.')],
+    };
+    const h = harness(reply);
+    assert.equal(await h.run(['find', 'x']), 2);
+    assert.deepEqual(h.stdout.map((line) => JSON.parse(line)), [reply]);
+    assert.equal(h.stderr.length, 1);
+    assert.match(h.stderr[0]!, /gsd-atlas build/);
+  });
+
+  it('exits 1 with the usage text on stderr and nothing on stdout for every bad find invocation', async () => {
+    const cases: string[][] = [
+      ['find'],
+      ['find', 'a', 'b'],
+      ['find', 'x', '--bogus'],
+      ['find', 'x', '--depth', '2'],
+      ['find', 'x', '--limit', 'abc'],
+      ['find', 'x', '--limit', '1.5'],
+      ['find', 'x', '--limit', '0'],
+      ['find', 'x', '--budget', 'lots'],
+      ['find', 'x', '--mode', 'wild'],
+      ['find', ''],
+      ['find', 'x', '--repo'],
+      ['find', 'x', '--agent', 'claude'],
+    ];
+    for (const argv of cases) {
+      const h = harness(findReply);
+      assert.equal(await h.run(argv), 1, `argv ${JSON.stringify(argv)}`);
+      assert.deepEqual(h.requests, [], `argv ${JSON.stringify(argv)} must not reach the host`);
+      assert.deepEqual(h.stdout, [], `argv ${JSON.stringify(argv)}`);
+      assert.match(h.stderr.join(''), /^gsd-atlas: [^\n]*\nUsage: gsd-atlas/, `argv ${JSON.stringify(argv)}`);
+    }
+  });
+
+  it('lists find and the other new commands in the usage text', async () => {
+    const h = harness(findReply);
+    await h.run(['--help']);
+    const text = h.stdout.join('');
+    for (const word of ['find', 'build', '--repo', '--cwd', '--budget', '--fresh']) {
+      assert.ok(text.includes(word), word);
+    }
+  });
+});
+
+describe('runCli build', () => {
+  const buildReply: Envelope = { schema: 'gsd-atlas.build/1', ok: true, data: { files: 3 }, diagnostics: [] };
+
+  it('sends a build request with the repository and prints one JSON line', async () => {
+    const h = harness(buildReply);
+    assert.equal(await h.run(['build', '--repo', 'r']), 0);
+    assert.deepEqual(h.requests, [{ protocol: PROTOCOL_VERSION, kind: 'build', args: { repo: path.join(WORK, 'r') } }]);
+    assert.deepEqual(h.stdout.map((line) => JSON.parse(line)), [buildReply]);
+  });
+
+  it('sends empty arguments without a flag, and refuses a positional and a flag it does not use', async () => {
+    const h = harness(buildReply);
+    assert.equal(await h.run(['build']), 0);
+    assert.deepEqual(h.requests, [{ protocol: PROTOCOL_VERSION, kind: 'build', args: {} }]);
+    for (const argv of [['build', 'x'], ['build', '--limit', '1'], ['build', '--full']]) {
+      const refused = harness(buildReply);
+      assert.equal(await refused.run(argv), 1, `argv ${JSON.stringify(argv)}`);
+      assert.deepEqual(refused.requests, []);
     }
   });
 });

@@ -13,6 +13,7 @@ import { parseArgs } from 'node:util';
 
 import { PROTOCOL_VERSION } from '../host-client/index.ts';
 import type { Envelope, HostClient } from '../host-client/index.ts';
+import { EXIT_FAILURE, EXIT_LEASE_HELD, EXIT_OK, EXIT_USAGE, exitCodeFor } from './exit.ts';
 import { INIT_SCHEMA, runInit } from './init.ts';
 import type { InitEnvironment } from './init.ts';
 import { AGENT_IDS } from './init-targets.ts';
@@ -20,9 +21,7 @@ import type { AgentId } from './init-targets.ts';
 
 export { INIT_SCHEMA };
 
-export const EXIT_OK = 0;
-export const EXIT_USAGE = 1;
-export const EXIT_FAILURE = 2;
+export { EXIT_FAILURE, EXIT_LEASE_HELD, EXIT_OK, EXIT_USAGE, exitCodeFor };
 
 export interface CliIo {
   readonly client: HostClient;
@@ -51,13 +50,6 @@ function usageError(io: CliIo, message: string): number {
 
 function reasonOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
-}
-
-function exitCodeFor(envelope: Envelope): number {
-  if (envelope.diagnostics.some((d) => d.code === 'module_not_found')) {
-    return EXIT_USAGE;
-  }
-  return envelope.ok ? EXIT_OK : EXIT_FAILURE;
 }
 
 interface RootFlags {
