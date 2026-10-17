@@ -193,11 +193,16 @@ describe('history: questions about a past commit from git alone (STO-09)', () =>
     assert.equal(reply.ok, true, JSON.stringify(reply.diagnostics));
     assert.deepEqual(names(reply), ['parse']);
     const batches = world.recording.starts.filter((s) => subcommand(s) === 'cat-file');
-    assert.equal(batches.length, 1, 'ONE cat-file batch');
-    const lines = String(batches[0]?.stdin).split('\n').filter((l) => l !== '');
-    const blobLines = lines.filter((l) => !l.endsWith('^{commit}'));
-    assert.equal(blobLines.length, 1, JSON.stringify(lines));
-    assert.ok(blobLines[0]?.endsWith(':a.toy'));
+    assert.equal(batches.length, 2, 'a size check, then ONE cat-file batch');
+    assert.ok(batches[0]?.args.includes('--batch-check'));
+    assert.ok(batches[1]?.args.includes('--batch'));
+    for (const batch of batches) {
+      const lines = String(batch.stdin).split('\n').filter((l) => l !== '');
+      // The commit line is `<commit>^{commit}` in the size check and the peeled id (no colon) in the byte batch.
+      const blobLines = lines.filter((l) => l.includes(':'));
+      assert.equal(blobLines.length, 1, JSON.stringify(lines));
+      assert.ok(blobLines[0]?.endsWith(':a.toy'));
+    }
 
     const missing = await history(world, { tool: 'find', name: 'parse', at: world.ids[0], path: 'nope/x.toy' });
     assert.equal(missing.ok, true, JSON.stringify(missing.diagnostics));

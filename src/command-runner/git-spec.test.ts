@@ -272,6 +272,15 @@ describe('listFilterNames', () => {
     assert.deepEqual(await listFilterNames(runner, W), []);
   });
 
+  it('puts the timeout it is given on its config spec, and none when it is given none (WR-07)', async () => {
+    const runner = createRecordingRunner({ respond: (spec) => ({ stdout: listing(spec) }) });
+    await listFilterNames(runner, W);
+    await listFilterNames(runner, W, undefined, undefined, 4321);
+    assert.equal(runner.starts.length, 2);
+    assert.equal('timeoutMs' in (runner.starts[0] as object), false);
+    assert.equal(runner.starts[1]?.timeoutMs, 4321);
+  });
+
   it('rejects with git_env_config_unsupported, naming git 2.31, when exit 0 output lacks the probe', async () => {
     for (const stdout of ['', 'filter.evil.clean\n']) {
       const runner = createRecordingRunner({ respond: () => ({ exitCode: 0, stdout }) });

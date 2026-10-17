@@ -130,7 +130,10 @@ export interface ReadManyResult {
 
 /** Which repository this is, stable across clones' checkouts of the same history at the same git directory. */
 export interface SourceTreeIdentity {
-  /** The first root commit of HEAD's history, or null for a repository with no commits. */
+  /**
+   * The smallest object id among the root commits reachable from HEAD (the same set of roots always gives the same
+   * id, whatever order git prints them in), or null for a repository with no commits.
+   */
   readonly rootCommit: string | null;
   /** 16 hex characters of sha256(rootCommit, newline, real path of the common git directory). */
   readonly storeId: string;
@@ -180,8 +183,12 @@ export interface SourceTree {
   readText(worktree: string, path: string, options?: { readonly maxBytes?: number }): Promise<ReadTextResult>;
   /** True when the object database holds the object. False for an unknown or malformed id. */
   hasObject(hash: string): Promise<boolean>;
-  /** The bytes of `path` at `commit`, or null when the commit has no such blob. */
-  read(commit: string, path: string): Promise<Uint8Array | null>;
+  /**
+   * The bytes of `path` at `commit`, or null when the commit has no such blob. A blob over `options.maxBytes`
+   * (default 2 MiB) throws {@link SourceTreeError} with code `source_too_large`; the real tree stops git one byte
+   * past the cap, so an oversize blob is never buffered whole.
+   */
+  read(commit: string, path: string, options?: { readonly maxBytes?: number }): Promise<Uint8Array | null>;
   identity(): Promise<SourceTreeIdentity>;
   /**
    * The full commit id `rev` names, or null when no commit does. A revision that git could read as an option
@@ -195,9 +202,11 @@ export interface SourceTree {
    */
   listTree(commit: string): Promise<ListTreeResult>;
   /**
-   * The bytes of `paths` at `commit` from ONE `git cat-file --batch` run (none at all for an empty list),
-   * parsed binary-safely. A missing path is null; a blob over `options.maxBlobBytes` (default 2 MiB) is null with
-   * `source_too_large` and a path that cannot ride the line-oriented batch is null with `unhashable_path`.
+   * The bytes of `paths` at `commit`, parsed binary-safely. The real tree first runs `git cat-file --batch-check`
+   * (sizes only), then `git cat-file --batch` for the blobs at or under the cap alone, with an output cap that
+   * follows their sizes; no git at all for an empty list and only the size check when nothing is selected. A
+   * missing path is null; a blob over `options.maxBlobBytes` (default 2 MiB) is null with `source_too_large`
+   * and a path that cannot ride the line-oriented batch is null with `unhashable_path`.
    * An unknown commit throws `commit_not_found`.
    */
   readMany(commit: string, paths: readonly string[], options?: { readonly maxBlobBytes?: number }): Promise<ReadManyResult>;

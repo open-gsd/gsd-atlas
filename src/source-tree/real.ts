@@ -15,6 +15,7 @@ import { diagnostic } from '../facts/index.ts';
 import type { Diagnostic } from '../facts/index.ts';
 import { SOURCE_TREE_CODES, SourceTreeError } from './types.ts';
 import { assertReadArguments, assertRevision, batchPathReason, isObjectId, unhashableReason } from './validate.ts';
+import { pickRootCommit } from './identity.ts';
 import { DEFAULT_READ_TEXT_BYTES, readConfinedText } from './read-text.ts';
 import { filterSourceSet, SOURCE_PEEK_BYTES } from './source-set.ts';
 import type { PathAttributes, PeekResult } from './source-set.ts';
@@ -50,6 +51,15 @@ const LSTAT_BATCH = 256;
 const GIT_TIMEOUT_MS = 60000;
 /** Timeout of the one batched `hash-object`. Value: `git.hashBatchTimeoutMs` in 02-CONSTANTS.md (Approved 2026-10-16). */
 const GIT_HASH_BATCH_TIMEOUT_MS = 120000;
+/**
+ * Output cap of `cat-file --batch-check` per input line is the larger of a found record and the echoed spec plus
+ * ` missing`/` ambiguous` and a line feed. Derived from the request (`source.batchCheckLineBytes`, 02-CONSTANTS.md,
+ * Addendum 2026-10-17, Approved): a found record is at most 94 bytes; the absent form is the spec plus 12.
+ */
+const CHECK_FOUND_LINE_BYTES = 94;
+const CHECK_ABSENT_SUFFIX_BYTES = 12;
+/** Per-record allowance of the object batch beyond the body (`source.batchRecordAllowanceBytes`, 02-CONSTANTS.md, Approved 2026-10-17). */
+const BATCH_RECORD_ALLOWANCE_BYTES = 128;
 /** `O_NOFOLLOW` where the platform has it (Windows has none; lstat is the guard there). */
 const O_NOFOLLOW: number = (fs.constants as Partial<Record<string, number>>)['O_NOFOLLOW'] ?? 0;
 
@@ -81,7 +91,7 @@ export function createSourceTree(options: SourceTreeOptions): SourceTree {
     };
 
     // 1. Every configured filter driver, so the hash call can neutralise each of them.
-    const filterNames = await listFilterNames(runner, worktree, ctx, env);
+    const filterNames = await listFilterNames(runner, worktree, ctx, env, GIT_TIMEOUT_MS);
 
     // 2. Tracked entries: "<mode> <hash> <stage>\t<path>" separated by NUL. The index hash is not used:
     //    the working-tree content is what gets hashed, so an edited file is reported as edited.
@@ -204,7 +214,7 @@ export function createSourceTree(options: SourceTreeOptions): SourceTree {
     const hashable = await vetPaths(worktree, [...new Set(paths)].sort(compareCodeUnits), diagnostics);
     if (hashable.length === 0) return { files: new Map(), diagnostics };
     // Filter drivers are enumerated on every call, never cached, so a driver added since the last call is neutralised.
-    const filterNames = await listFilterNames(runner, worktree, ctx, env);
+    const filterNames = await listFilterNames(runner, worktree, ctx, env, GIT_TIMEOUT_MS);
     return { files: await hashBatch(worktree, hashable, filterNames), diagnostics };
   }
 
@@ -287,7 +297,7 @@ export function createSourceTree(options: SourceTreeOptions): SourceTree {
   async function probe(s: CommandSpec, label: string): Promise<{ stdout: Uint8Array; found: boolean }> {
     const result = await runner.run(s, ctx);
     if (result.denied !== undefined || result.spawnError !== undefined || result.timedOut || result.truncated) {
-      const why = result.denied?.message ?? result.spawnError?.message ?? 'timed out or output exceeded its cap';
+      const why = result.denied?.message ?? result.spawnError?.message ?? (result.timedOut ? 'timed out' : 'output exceeded its cap');
       throw new SourceTreeError('git_failed', `git ${label} failed: ${why}`);
     }
     return { stdout: result.stdout, found: result.exitCode === 0 };
@@ -295,17 +305,30 @@ export function createSourceTree(options: SourceTreeOptions): SourceTree {
 
   async function hasObject(hash: string): Promise<boolean> {
     if (!isObjectId(hash)) return false;
-    const { found } = await probe(spec(['cat-file', '-e', hash], repoDir), 'cat-file -e');
+    const { found } = await probe(spec(['cat-file', '-e', hash], repoDir, { timeoutMs: GIT_TIMEOUT_MS }), 'cat-file -e');
     return found;
   }
 
-  async function read(commit: string, relPath: string): Promise<Uint8Array | null> {
+  async function read(commit: string, relPath: string, readOptions?: { readonly maxBytes?: number }): Promise<Uint8Array | null> {
     assertReadArguments(commit, relPath);
-    const { stdout, found } = await probe(
-      spec(['cat-file', 'blob', `${commit}:${relPath}`], repoDir, { maxStdoutBytes: BIG_OUTPUT_BYTES }),
-      'cat-file blob',
+    const cap = readOptions?.maxBytes ?? DEFAULT_READ_TEXT_BYTES;
+    if (!Number.isSafeInteger(cap) || cap < 0) {
+      throw new SourceTreeError('invalid_argument', `maxBytes must be a non-negative integer, got ${String(cap)}`);
+    }
+    // The runner stops git one byte past the cap, so an oversize blob is never buffered whole.
+    const result = await runner.run(
+      spec(['cat-file', 'blob', `${commit}:${relPath}`], repoDir, { maxStdoutBytes: cap + 1, timeoutMs: GIT_TIMEOUT_MS }),
+      ctx,
     );
-    return found ? stdout : null;
+    if (result.denied !== undefined || result.spawnError !== undefined || result.timedOut) {
+      const why = result.denied?.message ?? result.spawnError?.message ?? 'timed out';
+      throw new SourceTreeError('git_failed', `git cat-file blob failed: ${why}`);
+    }
+    if (result.stdout.length > cap) {
+      throw new SourceTreeError(SOURCE_TREE_CODES.sourceTooLarge, `the blob is over the ${String(cap)}-byte read cap`);
+    }
+    if (result.truncated) throw new SourceTreeError('git_failed', 'git cat-file blob failed: output exceeded its cap');
+    return result.exitCode === 0 ? result.stdout : null;
   }
 
   async function resolveCommit(rev: string): Promise<string | null> {
@@ -376,47 +399,93 @@ export function createSourceTree(options: SourceTreeOptions): SourceTree {
     }
     if (asked.length === 0) return { blobs, diagnostics };
 
-    // The first line proves the commit exists (an unknown commit would otherwise look like "every path missing").
+    // Step 1, sizes only: one short line per input. The first line proves the commit exists (an unknown commit
+    // would otherwise look like "every path missing") and names the commit id the second step reads from.
     const lines = [`${commit}^{commit}`, ...asked.map((rel) => `${commit}:${rel}`)];
-    const result = await runner.run(
-      spec(['cat-file', '--batch'], repoDir, {
-        stdin: `${lines.join('\n')}\n`,
-        maxStdoutBytes: BIG_OUTPUT_BYTES,
-        timeoutMs: GIT_HASH_BATCH_TIMEOUT_MS,
-      }),
-      ctx,
+    const checkCap = lines.reduce((sum, line) => sum + Math.max(CHECK_FOUND_LINE_BYTES, Buffer.byteLength(line) + CHECK_ABSENT_SUFFIX_BYTES), 0);
+    const checked = await runObjectBatch(
+      spec(['cat-file', '--batch-check'], repoDir, { stdin: `${lines.join('\n')}\n`, maxStdoutBytes: checkCap, timeoutMs: GIT_TIMEOUT_MS }),
+      'cat-file --batch-check',
+      commit,
     );
+    const sizes = parseBatchCheck(checked, lines.length);
+    const commitSize = sizes[0];
+    if (commitSize?.kind !== 'found') {
+      throw new SourceTreeError(SOURCE_TREE_CODES.commitNotFound, `commit ${commit.slice(0, 64)} is not available in this repository`);
+    }
+
+    // Step 2, bytes: only the blobs at or under the cap, with an output cap that follows their sizes.
+    const selected: string[] = [];
+    let selectedBytes = 0;
+    asked.forEach((rel, i) => {
+      const size = sizes[i + 1];
+      if (size?.kind === 'found' && size.type === 'blob' && size.size <= cap) {
+        selected.push(rel);
+        selectedBytes += size.size;
+      }
+    });
+    let bytesOf = new Map<string, Uint8Array>();
+    if (selected.length > 0) {
+      // The peeled commit id (not the caller's spelling of it), so a ref that moves between the two runs cannot
+      // make the second answer differ from the sizes the cap was computed from.
+      const pinned = commitSize.oid;
+      const batchLines = [pinned, ...selected.map((rel) => `${pinned}:${rel}`)];
+      const batchCap = commitSize.size + selectedBytes + BATCH_RECORD_ALLOWANCE_BYTES * batchLines.length;
+      const out = await runObjectBatch(
+        spec(['cat-file', '--batch'], repoDir, { stdin: `${batchLines.join('\n')}\n`, maxStdoutBytes: batchCap, timeoutMs: GIT_HASH_BATCH_TIMEOUT_MS }),
+        'cat-file --batch',
+        commit,
+      );
+      const records = parseObjectBatch(out, batchLines.length);
+      if (records[0]?.kind !== 'found') {
+        throw new SourceTreeError(SOURCE_TREE_CODES.commitNotFound, `commit ${commit.slice(0, 64)} is not available in this repository`);
+      }
+      bytesOf = new Map();
+      selected.forEach((rel, i) => {
+        const record = records[i + 1];
+        if (record?.kind !== 'found' || record.type !== 'blob') {
+          throw new SourceTreeError('git_failed', 'git cat-file --batch output is malformed: a blob changed between the size check and the read');
+        }
+        bytesOf.set(rel, record.bytes());
+      });
+    }
+    asked.forEach((rel, i) => {
+      const size = sizes[i + 1];
+      const bytes = bytesOf.get(rel);
+      if (bytes !== undefined) {
+        blobs.set(rel, bytes);
+      } else {
+        blobs.set(rel, null);
+        if (size?.kind === 'found' && size.type === 'blob') {
+          diagnostics.push(diagnostic(SOURCE_TREE_CODES.sourceTooLarge, 'info', `the blob is ${String(size.size)} bytes, over the ${String(cap)}-byte cap`, rel));
+        }
+      }
+    });
+    return { blobs, diagnostics };
+  }
+
+  /** Runs one `cat-file` batch where exit 128 means "an object is not here" and anything else not ok is a failure. */
+  async function runObjectBatch(s: CommandSpec, label: string, commit: string): Promise<Uint8Array> {
+    const result = await runner.run(s, ctx);
     if (!result.ok && result.exitCode === 128 && result.denied === undefined && result.spawnError === undefined) {
       // git died on an object it could not read (a shallow or partial clone): nothing is fetched, so say so.
       throw new SourceTreeError(SOURCE_TREE_CODES.commitNotFound, `an object of commit ${commit.slice(0, 64)} is not available in this repository`);
     }
     if (!result.ok) {
       const why = result.denied?.message ?? result.spawnError?.message ?? (result.timedOut ? 'timed out' : result.truncated ? 'output exceeded its cap' : `exit ${String(result.exitCode)}`);
-      throw new SourceTreeError('git_failed', `git cat-file --batch failed: ${why}`);
+      throw new SourceTreeError('git_failed', `git ${label} failed: ${why}`);
     }
-    const records = parseObjectBatch(result.stdout, lines.length);
-    if (records[0]?.kind !== 'found') {
-      throw new SourceTreeError(SOURCE_TREE_CODES.commitNotFound, `commit ${commit.slice(0, 64)} is not available in this repository`);
-    }
-    asked.forEach((rel, i) => {
-      const record = records[i + 1];
-      if (record?.kind !== 'found' || record.type !== 'blob') {
-        blobs.set(rel, null);
-      } else if (record.size > cap) {
-        blobs.set(rel, null);
-        diagnostics.push(diagnostic(SOURCE_TREE_CODES.sourceTooLarge, 'info', `the blob is ${String(record.size)} bytes, over the ${String(cap)}-byte cap`, rel));
-      } else {
-        blobs.set(rel, record.bytes());
-      }
-    });
-    return { blobs, diagnostics };
+    return result.stdout;
   }
 
   async function identity(): Promise<SourceTreeIdentity> {
     // An unborn branch has no HEAD: rev-list fails with 128 and the repository has no root commit yet.
-    const roots = await probe(spec(['rev-list', '--max-parents=0', 'HEAD'], repoDir), 'rev-list --max-parents=0');
-    const rootCommit = roots.found ? (decoder.decode(roots.stdout).split('\n')[0] ?? '') || null : null;
-    const common = (await gitText(spec(['rev-parse', '--git-common-dir'], repoDir), 'rev-parse --git-common-dir')).trim();
+    const roots = await probe(spec(['rev-list', '--max-parents=0', 'HEAD'], repoDir, { timeoutMs: GIT_TIMEOUT_MS }), 'rev-list --max-parents=0');
+    // Several roots print in no stable order; the smallest id is the identity (WR-06, see identity.ts).
+    const rootCommit = roots.found ? pickRootCommit(decoder.decode(roots.stdout)) : null;
+    const common = (
+      await gitText(spec(['rev-parse', '--git-common-dir'], repoDir, { timeoutMs: GIT_TIMEOUT_MS }), 'rev-parse --git-common-dir')
+    ).trim();
     const realCommon = fs.realpathSync.native(path.resolve(repoDir, common));
     const storeId = createHash('sha256').update(`${rootCommit ?? ''}\n${realCommon}`).digest('hex').slice(0, 16);
     return { rootCommit, storeId, commonDir: realCommon };
@@ -452,6 +521,34 @@ export function createSourceTree(options: SourceTreeOptions): SourceTree {
   }
 
   return { snapshot, hashPaths, sourceSet, worktrees, readText, hasObject, read, identity, resolveCommit, listTree, readMany };
+}
+
+/** One answer of `cat-file --batch-check`: the object's id, type and size, or `missing`/`ambiguous`. */
+type CheckRecord =
+  | { readonly kind: 'found'; readonly oid: string; readonly type: string; readonly size: number }
+  | { readonly kind: 'absent' };
+
+/**
+ * Parses the output of `git cat-file --batch-check` for exactly `expected` requests, one line each, in request
+ * order. A found line is `<oid> <type> <size>`; an absent one is `<spec> missing` or `<spec> ambiguous`, where
+ * the echoed spec is repository-chosen text, so only the suffix is looked at and the answer is matched to its
+ * request by position, never by the echoed name. Anything else throws `git_failed`.
+ */
+function parseBatchCheck(out: Uint8Array, expected: number): CheckRecord[] {
+  const lines = Buffer.from(out.buffer, out.byteOffset, out.byteLength).toString('utf8').split('\n');
+  if (lines[lines.length - 1] === '') lines.pop();
+  const bad = (why: string): SourceTreeError => new SourceTreeError('git_failed', `git cat-file --batch-check output is malformed: ${why}`);
+  if (lines.length !== expected) throw bad(`${String(lines.length)} answers for ${String(expected)} requests`);
+  return lines.map((line): CheckRecord => {
+    const match = /^([0-9a-f]{40}|[0-9a-f]{64}) ([a-z]+) ([0-9]+)$/.exec(line);
+    if (match !== null) {
+      const size = Number(match[3]);
+      if (!Number.isSafeInteger(size)) throw bad('a size is not a safe integer');
+      return { kind: 'found', oid: match[1] as string, type: match[2] as string, size };
+    }
+    if (line.endsWith(' missing') || line.endsWith(' ambiguous')) return { kind: 'absent' };
+    throw bad('a line is not "<oid> <type> <size>"');
+  });
 }
 
 /** One answer of `cat-file --batch`: an object (its bytes are copied out only on request) or `missing`/`ambiguous`. */

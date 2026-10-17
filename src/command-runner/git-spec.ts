@@ -237,12 +237,14 @@ export async function listFilterNames(
   worktree: string,
   ctx?: RunContext,
   env?: Readonly<Record<string, string>>,
+  timeoutMs?: number,
 ): Promise<string[]> {
   const probe = `atlas-probe-${randomBytes(8).toString('hex')}`;
   const spec = gitSpec(['config', '--name-only', '--get-regexp', '^filter\\.'], {
     worktree,
     filterNames: [probe],
     ...(env === undefined ? {} : { env }),
+    ...(timeoutMs === undefined ? {} : { timeoutMs }),
   });
   const result = await runner.run(spec, ctx);
   if (!result.ok) {

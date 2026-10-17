@@ -5,7 +5,8 @@
  * Every run goes: decide -> resolve executable -> spawn with `shell: false` and an argument array.
  * A denied or unresolvable spec starts nothing. Failures to start are results, never exceptions.
  *
- * Limits: a spec's `timeoutMs` ends the child with SIGKILL (diagnostic `timeout`); stdout past its cap
+ * Limits: a spec's `timeoutMs` ends the child with SIGKILL (diagnostic `timeout`; `run()` applies
+ * {@link DEFAULT_RUN_TIMEOUT_MS} to a spec that sets none, `stream()` never does); stdout past its cap
  * ends it too (diagnostic `output_cap_exceeded`, error); stderr past its cap is truncated and the child
  * keeps running (`output_cap_exceeded`, warning).
  */
@@ -46,7 +47,19 @@ export interface RealRunnerOptions {
   readonly env?: Readonly<Record<string, string | undefined>>;
   /** Defaults to `process.platform`. */
   readonly platform?: NodeJS.Platform;
+  /**
+   * Test override of the limit `run()` applies to a spec without `timeoutMs`; defaults to
+   * {@link DEFAULT_RUN_TIMEOUT_MS}. Must be a positive finite number, else `createRealRunner` throws a RangeError.
+   */
+  readonly defaultTimeoutMs?: number;
 }
+
+/**
+ * The limit `run()` applies to a spec that sets no `timeoutMs` (WR-07). Value: `runner.defaultTimeoutMs` in
+ * 02-CONSTANTS.md, "Addendum 2026-10-17" (Addendum status: Approved 2026-10-17, by the user). It equals the approved
+ * `git.timeoutMs`. `stream()` never gets it, and an explicit `timeoutMs` always wins.
+ */
+export const DEFAULT_RUN_TIMEOUT_MS = 60000;
 
 /** After a kill, how long to wait for the child's pipes to close before abandoning them (a grandchild may hold them open). */
 const PIPE_GRACE_MS = 1000;
@@ -136,6 +149,10 @@ const settled = (result: CommandResult): CommandStream => ({
 export function createRealRunner(opts: RealRunnerOptions = {}): CommandRunner {
   const platform = opts.platform ?? process.platform;
   const rule: DecideFn = opts.decide ?? ((spec, ctx) => defaultDecide(spec, ctx, opts.user));
+  const defaultTimeoutMs = opts.defaultTimeoutMs ?? DEFAULT_RUN_TIMEOUT_MS;
+  if (!Number.isFinite(defaultTimeoutMs) || defaultTimeoutMs <= 0) {
+    throw new RangeError(`defaultTimeoutMs must be a positive finite number, got ${String(defaultTimeoutMs)}`);
+  }
 
   function start(spec: CommandSpec, ctx: RunContext, streaming: boolean): CommandStream {
     const decision = rule(spec, ctx);
@@ -259,8 +276,11 @@ export function createRealRunner(opts: RealRunnerOptions = {}): CommandRunner {
       }
     });
 
-    const limit = spec.timeoutMs;
-    if (limit !== undefined && Number.isFinite(limit) && limit > 0) {
+    // A streamed child is long-lived by design (no deadline); a run with no limit of its own gets the default.
+    // A `timeoutMs` that is not a positive finite number is no timeout at all, so it gets the default too.
+    const own = spec.timeoutMs !== undefined && Number.isFinite(spec.timeoutMs) && spec.timeoutMs > 0 ? spec.timeoutMs : undefined;
+    const limit = own ?? (streaming ? undefined : defaultTimeoutMs);
+    if (limit !== undefined) {
       timer = setTimeout(() => {
         timedOut = true;
         diagnostics.push(

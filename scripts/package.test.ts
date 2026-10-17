@@ -247,7 +247,8 @@ interface Run {
 }
 
 async function runChild(executable: string, args: string[], cwd: string): Promise<Run> {
-  const result = await runner.run({ executable, args, cwd });
+  // Explicit limit: `npm pack` and the registry install can take longer than the runner's 60 s default (WR-07).
+  const result = await runner.run({ executable, args, cwd, timeoutMs: 300_000 });
   assert.equal(result.spawnError, undefined, `could not start ${executable}: ${JSON.stringify(result.spawnError)}`);
   assert.equal(result.denied, undefined);
   return {

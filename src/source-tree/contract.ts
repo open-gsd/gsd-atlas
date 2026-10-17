@@ -549,6 +549,18 @@ export function defineSourceTreeContract(label: string, make: MakeSourceTree): v
       );
 
       it(
+        'read answers a blob over options.maxBytes with source_too_large, returns one exactly at the cap, and still answers null for a missing path',
+        withTree(HISTORY_WORLD, async ({ tree }) => {
+          const { first } = await idsOf(tree);
+          await assert.rejects(() => tree.read(first, 'big.ts', { maxBytes: 100 }), { code: 'source_too_large' });
+          await assert.rejects(() => tree.read(first, 'big.ts', { maxBytes: 300 }), { code: 'source_too_large' });
+          assert.equal((await tree.read(first, 'big.ts', { maxBytes: 301 }))?.length, 301);
+          assert.equal(text(await tree.read(first, 'a.ts')), HISTORY_FIRST['a.ts']);
+          assert.equal(await tree.read(first, 'missing.ts', { maxBytes: 10 }), null);
+        }),
+      );
+
+      it(
         'readMany of an empty list is an empty map, of a duplicated path reads it once, and of a path with a newline is null with unhashable_path',
         withTree(HISTORY_WORLD, async ({ tree }) => {
           const { first } = await idsOf(tree);

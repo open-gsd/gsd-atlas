@@ -11,6 +11,7 @@ import { describe, it } from 'node:test';
 import { makeTempDir } from '../test-kit/index.ts';
 import { allowAll, createRealRunner } from './index.ts';
 import type { CommandSpec } from './index.ts';
+import { DEFAULT_RUN_TIMEOUT_MS } from './real.ts';
 
 const text = (bytes: Uint8Array): string => new TextDecoder().decode(bytes);
 const runner = createRealRunner({ decide: allowAll });
@@ -55,6 +56,49 @@ describe('timeout and kill', () => {
     const result = await runner.run(node("process.stdout.write('quick')", { timeoutMs: 20_000 }));
     assert.equal(result.timedOut, false);
     assert.equal(result.ok, true);
+  });
+});
+
+describe('default run timeout (WR-07, runner.defaultTimeoutMs)', () => {
+  const SLEEP_THEN_WRITE = "setTimeout(() => process.stdout.write('late'), 1200)";
+
+  it('the production default equals the approved value', () => {
+    assert.equal(DEFAULT_RUN_TIMEOUT_MS, 60000);
+  });
+
+  it('default timeout applies to run', async () => {
+    const short = createRealRunner({ decide: allowAll, defaultTimeoutMs: 400 });
+    const began = Date.now();
+    const result = await short.run(node('setInterval(() => {}, 1000)'));
+    assert.equal(result.timedOut, true);
+    assert.equal(result.ok, false);
+    assert.equal(result.diagnostics.some((d) => d.code === 'timeout'), true);
+    assert.ok(Date.now() - began < 5000, 'the default ended the run');
+  });
+
+  it('explicit timeout wins', async () => {
+    const short = createRealRunner({ decide: allowAll, defaultTimeoutMs: 300 });
+    const result = await short.run(node(SLEEP_THEN_WRITE, { timeoutMs: 20_000 }));
+    assert.equal(result.timedOut, false);
+    assert.equal(result.ok, true);
+    assert.equal(text(result.stdout), 'late');
+  });
+
+  it('stream has no default', async () => {
+    const short = createRealRunner({ decide: allowAll, defaultTimeoutMs: 300 });
+    const stream = short.stream(node(SLEEP_THEN_WRITE));
+    let out = '';
+    for await (const chunk of stream.stdout) out += text(chunk);
+    const result = await stream.result;
+    assert.equal(result.timedOut, false);
+    assert.equal(result.exitCode, 0);
+    assert.equal(out, 'late');
+  });
+
+  it('rejects a default that is not a positive finite number', () => {
+    for (const bad of [0, -1, Number.NaN, Number.POSITIVE_INFINITY]) {
+      assert.throws(() => createRealRunner({ decide: allowAll, defaultTimeoutMs: bad }), RangeError, String(bad));
+    }
   });
 });
 
