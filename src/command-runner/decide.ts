@@ -22,21 +22,12 @@ interface Builtin {
 }
 
 /**
- * The generic read subcommands, plus `config` and `worktree` which {@link matchGit} accepts only in one
- * exact shape each. The command-runner ADR amendment dated 2026-10-16 added two read shapes to the original
- * list: `ls-tree` (any arguments not in {@link GIT_DENIED_OPTIONS}, like the others here) and the single
- * worktree shape `worktree list --porcelain -z`. `worktree` is deliberately NOT in this set: `add`, `remove`,
- * `prune`, `lock` and `move` write to the repository, so no other worktree subcommand is reachable.
+ * The generic read subcommands are the keys of {@link GIT_ALLOWED_OPTIONS}; `config` and `worktree` are accepted
+ * by {@link matchGit} only in one exact shape each. The command-runner ADR amendment dated 2026-10-16 added two
+ * read shapes to the original list: `ls-tree` (with the options in its set, like the others) and the single
+ * worktree shape `worktree list --porcelain -z`. `worktree` is deliberately NOT a generic subcommand: `add`,
+ * `remove`, `prune`, `lock` and `move` write to the repository, so no other worktree subcommand is reachable.
  */
-const GIT_READ_SUBCOMMANDS: ReadonlySet<string> = new Set([
-  'ls-files',
-  'ls-tree',
-  'hash-object',
-  'cat-file',
-  'rev-parse',
-  'rev-list',
-  'check-attr',
-]);
 
 /** Values of the allowed `-c` keys. Every one only turns repo-controlled execution OFF (Pitfall 3). */
 const NULL_DEVICES: ReadonlySet<string> = new Set(['', '/dev/null', 'NUL']);
@@ -48,8 +39,31 @@ const GIT_C_VALUES: ReadonlyMap<string, (value: string) => boolean> = new Map([
 ]);
 const GIT_FILTER_KEY = /^filter\.[^=\s]+\.(clean|smudge|process|required)$/;
 
-/** Options that execute repo-configured drivers or write to the repository. */
-const GIT_DENIED_OPTIONS: ReadonlySet<string> = new Set(['--help', '--textconv', '--filters', '-w']);
+/**
+ * The exact option tokens each generic read subcommand may carry (WR-11). The gate allows argument shapes, it
+ * does not deny a list: git accepts bundled short options (`-wt`) and abbreviated long options (`--textc`), so
+ * a denylist of exact tokens cannot be complete, while an allowlist of exact tokens can. Every token of a spec
+ * that starts with `-` must be a member of the set of the subcommand being run; anything else (a bundled or
+ * abbreviated spelling, `--help`, an option of another subcommand, `--`, an `=` form whose whole text is not
+ * listed) is denied. Tokens that do not start with `-` are positional (revisions, paths, attribute names) and
+ * pass: Source Tree validates them before it builds a spec.
+ *
+ * The sets are the union of what Source Tree (`src/source-tree/real.ts`) and `gitSpec` send, plus
+ * `cat-file --batch-check` (size-capped object reads, WR-08) and `check-attr -a` (the read-only attribute
+ * listing the builder tests exercise). They are written out by value: the gate does not import the builder.
+ * A Map of Sets, so a subcommand named `constructor` cannot resolve to an inherited member.
+ *
+ * Adding an option here is a reviewed change; the command-runner ADR amendment records the sets.
+ */
+const GIT_ALLOWED_OPTIONS: ReadonlyMap<string, ReadonlySet<string>> = new Map([
+  ['ls-files', new Set(['-z', '-s', '--others', '--exclude-standard'])],
+  ['ls-tree', new Set(['-r', '-z', '--full-tree', '--name-only'])],
+  ['hash-object', new Set(['--stdin-paths'])],
+  ['cat-file', new Set(['-e', '--batch', '--batch-check'])],
+  ['rev-parse', new Set(['--verify', '--quiet', '--git-common-dir'])],
+  ['rev-list', new Set(['--max-parents=0'])],
+  ['check-attr', new Set(['-z', '--stdin', '-a'])],
+]);
 
 function gitConfigOverrideAllowed(kv: string | undefined): boolean {
   if (kv === undefined) return false;
@@ -198,8 +212,9 @@ function matchGit(spec: CommandSpec): boolean {
     // The one worktree read shape (amendment 2026-10-16): exactly `list --porcelain -z`, in this order.
     return rest.length === 3 && rest[0] === 'list' && rest[1] === '--porcelain' && rest[2] === '-z';
   }
-  if (!GIT_READ_SUBCOMMANDS.has(sub)) return false;
-  return !rest.some((r) => GIT_DENIED_OPTIONS.has(r));
+  const allowedOptions = GIT_ALLOWED_OPTIONS.get(sub);
+  if (allowedOptions === undefined) return false; // a subcommand with no entry is denied
+  return rest.every((token) => !token.startsWith('-') || allowedOptions.has(token));
 }
 
 /** The first-party built-in table. Adding an entry is a reviewed change (ADR consequences). */

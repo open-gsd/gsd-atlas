@@ -97,9 +97,28 @@ describe('decide: first-party git built-in', () => {
   });
 
   it('allows ls-tree with its ordinary read arguments (command-runner amendment 2026-10-16)', () => {
-    for (const rest of [['-r', '-z', 'HEAD'], ['--full-name', '-z', 'HEAD', '--', 'src'], []]) {
+    for (const rest of [['-r', '-z', 'HEAD'], ['-r', '-z', '--full-tree', 'HEAD'], ['-r', '-z', '--name-only', 'HEAD'], []]) {
       assert.deepEqual(decide(safeGit('ls-tree', ...rest)), { allowed: true, via: 'builtin', builtinId: 'git' }, rest.join(' '));
     }
+  });
+
+  it('allows every option Source Tree and gitSpec send, per subcommand (WR-11)', () => {
+    const shapes: ReadonlyArray<readonly string[]> = [
+      ['ls-files', '-z', '-s'],
+      ['ls-files', '-z', '--others', '--exclude-standard'],
+      ['hash-object', '--stdin-paths'],
+      ['check-attr', '-z', '--stdin', 'filter', 'text', 'eol'],
+      ['check-attr', '-a', 'a.txt'],
+      ['cat-file', '-e', 'a'.repeat(40)],
+      ['cat-file', 'blob', 'HEAD:a.txt'],
+      ['cat-file', '--batch'],
+      ['cat-file', '--batch-check'],
+      ['rev-parse', '--verify', '--quiet', 'HEAD^{commit}'],
+      ['rev-parse', '--git-common-dir'],
+      ['ls-tree', '-r', '-z', '--full-tree', 'HEAD'],
+      ['rev-list', '--max-parents=0', 'HEAD'],
+    ];
+    for (const shape of shapes) assert.equal(decide(safeGit(...shape)).allowed, true, shape.join(' '));
   });
 
   it('allows worktree only in the exact read form list --porcelain -z (command-runner amendment 2026-10-16)', () => {
@@ -150,6 +169,40 @@ describe('decide: git denials', () => {
     ['worktree with no arguments', safeGit('worktree')],
     ['worktree list with a different second word', safeGit('worktree', 'lis', '--porcelain', '-z')],
   ];
+  const allowlistDenied: Array<[string, CommandSpec]> = [
+    ['bundled short option: hash-object -wt blob x', safeGit('hash-object', '-wt', 'blob', 'x')],
+    ['bundled short option: hash-object -tw blob x', safeGit('hash-object', '-tw', 'blob', 'x')],
+    ['hash-object -w --stdin-paths', safeGit('hash-object', '-w', '--stdin-paths')],
+    ['hash-object --stdin-paths -w (late write option)', safeGit('hash-object', '--stdin-paths', '-w')],
+    ['abbreviated long option: cat-file --textc x', safeGit('cat-file', '--textc', 'x')],
+    ['abbreviated long option: cat-file --filt x', safeGit('cat-file', '--filt', 'x')],
+    ['cat-file --textconv x', safeGit('cat-file', '--textconv', 'x')],
+    ['cat-file --filters x', safeGit('cat-file', '--filters', 'x')],
+    ['ls-files --help', safeGit('ls-files', '--help')],
+    ['an extra option on an allowed shape: ls-files --ignored', safeGit('ls-files', '-z', '--others', '--exclude-standard', '--ignored')],
+    ['rev-list --max-parents=1 (value outside the set)', safeGit('rev-list', '--max-parents=1', 'HEAD')],
+    ['rev-list --max-parents without the value', safeGit('rev-list', '--max-parents', 'HEAD')],
+    ['an extra rev-parse option: --show-toplevel', safeGit('rev-parse', '--git-common-dir', '--show-toplevel')],
+    ['option of another subcommand: ls-tree --stdin-paths', safeGit('ls-tree', '--stdin-paths')],
+    ['option of another subcommand: cat-file --git-common-dir', safeGit('cat-file', '--git-common-dir')],
+    ['-- after an allowed option', safeGit('ls-tree', '-r', 'HEAD', '--', 'src')],
+    ['-- as the first argument', safeGit('cat-file', '--', '-e')],
+    ['a lone dash', safeGit('cat-file', '-')],
+  ];
+  for (const [name, spec] of allowlistDenied) {
+    it(`denies ${name}`, () => {
+      assertDenied(decide(spec));
+    });
+  }
+
+  it('denies a bundled short option, an abbreviated long option and an option of another subcommand with the denial diagnostic', () => {
+    for (const rest of [['hash-object', '-wt', 'blob', 'x'], ['cat-file', '--textc', 'x'], ['ls-tree', '--stdin-paths']]) {
+      const d = decide(safeGit(...rest));
+      assertDenied(d);
+      assert.equal(d.diagnostic.code, 'command_denied');
+    }
+  });
+
   for (const [name, spec] of denied) {
     it(`denies ${name}`, () => {
       assertDenied(decide(spec));
