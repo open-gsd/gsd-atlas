@@ -42,6 +42,7 @@ const USAGE = [
   ...COMMANDS.map((command) => `       ${command.usage}`),
   'Selection flags (every repository command): --repo <dir>  --cwd <dir>',
   'Paging flags (find, refs, context, impact): --budget <tokens>  --more <cursor>  --fresh <path> (repeatable)  --limit <n>',
+  'History flags (history): --at <revision> (required)  --path <file> (one file of that commit)  --limit <n>  --budget <tokens>. History reads git objects only: it never writes to the index and never contacts a remote.',
   'Root flags (where modules are searched; each one replaces its default):',
   '       --repo-root <dir>  --user-dir <dir>  --builtin-dir <dir>  --npm-root <dir> (repeatable)',
   'Output: one JSON envelope on stdout; reasons on stderr. Exit codes: 0 ok, 1 usage error, 2 failure, 3 writer lease held or host busy.',

@@ -28,6 +28,7 @@ export const FLAGS = {
   kind: { type: 'string' },
   mode: { type: 'string' },
   path: { type: 'string' },
+  at: { type: 'string' },
   depth: { type: 'string' },
   full: { type: 'boolean' },
   since: { type: 'string' },
@@ -66,14 +67,17 @@ const SINCE = /^[1-9][0-9]{0,3}[mhd]$/;
 /** The window `status` shows when `--since` is not given. */
 const DEFAULT_SINCE = '7d';
 
-/** How a command takes its positional arguments. */
-export type Positional = 'name' | 'task' | 'none';
+/** How a command takes its positional arguments. `tool name` is `history`'s pair: the code tool, then the symbol. */
+export type Positional = 'name' | 'task' | 'tool name' | 'none';
+
+/** The code tools `history` can answer as of a commit (the Host's `HISTORY_TOOLS`, kept here because an adapter imports only the host-client seam). */
+export const HISTORY_TOOLS = ['find', 'refs', 'context', 'impact'] as const;
 
 export interface Command {
   /** What the user types; `lang list` and `lang test` have two words. */
   readonly name: string;
-  /** `tool`: an MCP tool's twin. `index`: a Host request with no MCP tool. `lang` and `init` have their own handlers. */
-  readonly kind: 'tool' | 'index' | 'lang' | 'init';
+  /** `tool`: an MCP tool's twin. `index`: a Host request with no MCP tool. `history`: a code tool as of a commit. `lang` and `init` have their own handlers. */
+  readonly kind: 'tool' | 'index' | 'history' | 'lang' | 'init';
   /** The MCP tool whose schema and request builder this command shares. */
   readonly tool?: ToolName;
   /** The Host request kind an `index` command sends. */
@@ -116,6 +120,15 @@ export const COMMANDS: readonly Command[] = [
     positional: 'name',
     flags: [...SELECTION, ...PAGING, 'path', 'depth'],
     usage: 'gsd-atlas impact <name> [--path <file>] [--depth <hops>] [selection and paging flags]',
+  },
+  {
+    name: 'history',
+    kind: 'history',
+    request: 'history',
+    positional: 'tool name',
+    flags: [...SELECTION, 'budget', 'limit', 'at', 'path', 'kind', 'mode', 'depth'],
+    usage:
+      'gsd-atlas history <find|refs|context|impact> <name> --at <revision> [--path <file>] [--kind <kind>] [--mode exact|prefix|fuzzy|auto] [--depth <hops>] [--limit <n>] [--budget <tokens>] [--repo <dir>] [--cwd <dir>]   (the code as of a commit, from git alone; never writes to the index)',
   },
   {
     name: 'health',
@@ -234,6 +247,18 @@ export function inputFromFlags(
     }
     input['task'] = task;
     if (values.full === true) input['full'] = true;
+  } else if (command.positional === 'tool name') {
+    const [tool, name, ...extra] = positionals;
+    if (tool === undefined || !(HISTORY_TOOLS as readonly string[]).includes(tool)) {
+      return refuse(`${command.name} needs a tool (${HISTORY_TOOLS.join(', ')}) and a symbol name`);
+    }
+    if (name === undefined || extra.length > 0) return refuse(`${command.name} ${tool} needs exactly one symbol name`);
+    input['tool'] = tool;
+    input['name'] = name;
+    const at = stringOf(values.at);
+    if (at === undefined) return refuse(`${command.name} needs --at <revision>`);
+    if (at === '' || at.startsWith('-')) return refuse('--at must be a revision name or commit id, not an option');
+    input['at'] = at;
   } else if (command.positional === 'none' && positionals.length > 0) {
     return refuse(`${command.name} takes no arguments`);
   }
@@ -268,7 +293,25 @@ export function inputFromFlags(
   }
 
   if (command.kind === 'tool') return validateTool(command, input);
+  if (command.kind === 'history') return validateHistory(command, input);
   return { ok: true, input };
+}
+
+/**
+ * Check a history command's tool arguments against the schema the MCP server publishes for that tool. `at` and
+ * `path` are history's own (the commit, and the one file to read), so the tool's schema never sees them.
+ */
+function validateHistory(command: Command, input: Record<string, unknown>): InputResult {
+  const definition = TOOLS.find((tool) => tool.name === `code_${String(input['tool'])}`);
+  if (definition === undefined) return refuse(`${command.name} has no tool definition for ${String(input['tool'])}`);
+  const { tool: _tool, at: _at, path: _path, ...toolInput } = input;
+  const checked = definition.inputSchema.safeParse(toolInput);
+  if (checked.success) return { ok: true, input };
+  const issues = checked.error.issues.map((issue) => {
+    const where = issue.path.length === 0 ? 'arguments' : issue.path.map(String).join('.');
+    return `${where}: ${issue.message}`;
+  });
+  return refuse(`invalid arguments: ${issues.join('; ')}`);
 }
 
 /** Check a tool command's input against the schema the MCP server publishes for the same tool. */
@@ -289,5 +332,10 @@ function validateTool(command: Command, input: Record<string, unknown>): InputRe
 /** The Request a command sends for `input`. A tool command uses the builder the MCP adapter uses. */
 export function requestFor(command: Command, input: Record<string, unknown>): Request {
   if (command.kind === 'tool' && command.tool !== undefined) return buildRequest(command.tool, input);
+  if (command.kind === 'history') {
+    // As for a tool request, the budget rides at the request level and everything else stays in `args`.
+    const { budget_tokens: budget, ...args } = input;
+    return { protocol: PROTOCOL_VERSION, kind: 'history', args, ...(typeof budget === 'number' ? { budget_tokens: budget } : {}) };
+  }
   return { protocol: PROTOCOL_VERSION, kind: command.request ?? command.name, args: input };
 }
