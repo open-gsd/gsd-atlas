@@ -85,8 +85,48 @@ function writeAttributes(repoDir: string, attributes: NonNullable<SourceTreeWorl
   fs.appendFileSync(file, `${lines.join('\n')}\n`);
 }
 
+/**
+ * Realises `SourceTreeWorld.commits` and `modes` on top of the first commit the test-kit made: each later commit
+ * rewrites the tree to its file map, the LAST one also gets the special modes through the index (so no symlink
+ * privileges are needed), and the world's working-tree edits are applied after the final commit.
+ */
+async function realiseHistory(repo: Awaited<ReturnType<typeof createTempGitRepo>>, world: SourceTreeWorld): Promise<void> {
+  const commits = world.commits ?? [];
+  for (let i = 1; i < commits.length; i += 1) {
+    const previous = commits[i - 1] ?? {};
+    const next = commits[i] ?? {};
+    const last = i === commits.length - 1;
+    const modes = last ? (world.modes ?? {}) : {};
+    for (const rel of Object.keys(previous)) if (!Object.hasOwn(next, rel)) repo.remove(rel);
+    for (const [rel, content] of Object.entries(next)) if (!Object.hasOwn(modes, rel)) repo.write(rel, content);
+    await repo.git(['add', '-A']);
+    for (const [rel, mode] of Object.entries(modes)) {
+      if (mode === 'executable') {
+        repo.write(rel, next[rel] ?? '');
+        await repo.git(['add', '--', rel]);
+        await repo.git(['update-index', '--chmod=+x', '--', rel]);
+      } else if (mode === 'symlink') {
+        const oid = (await repo.git(['hash-object', '-w', '--stdin'], next[rel] ?? '')).trim();
+        await repo.git(['update-index', '--add', '--cacheinfo', `120000,${oid},${rel}`]);
+      } else {
+        await repo.git(['update-index', '--add', '--cacheinfo', `160000,${'1'.repeat(40)},${rel}`]);
+      }
+    }
+    await repo.git(['commit', '--quiet', '--no-verify', '-m', `commit ${String(i + 1)}`]);
+  }
+  for (const [rel, content] of Object.entries(world.working)) {
+    if (content === null) repo.remove(rel);
+    else repo.write(rel, content);
+  }
+}
+
 defineSourceTreeContract('real', async (world) => {
-  const repo = await createTempGitRepo({ runner: setupRunner, world });
+  const history = world.commits !== undefined;
+  const repo = await createTempGitRepo({
+    runner: setupRunner,
+    world: history ? { committed: world.commits?.[0] ?? {}, working: {}, ignored: world.ignored } : world,
+  });
+  if (history) await realiseHistory(repo, world);
   if (world.attributes !== undefined) writeAttributes(repo.dir, world.attributes);
   const tree = createSourceTree({ runner: createRealRunner(), repoDir: repo.dir, envOverlay: repo.envOverlay });
   return { tree, worktree: repo.dir, cleanup: () => repo.cleanup() };
@@ -542,5 +582,81 @@ describe('real Source Tree hashPaths', () => {
     const tree = createSourceTree({ runner: recording, repoDir: repo.dir });
     await assert.rejects(() => tree.hashPaths(repo.dir, ['a.txt']), { code: 'filter_enumeration_failed' });
     assert.equal(hashStarts(recording), 0);
+  });
+});
+
+describe('real Source Tree history reads (STO-09)', () => {
+  const names = Array.from({ length: 40 }, (_, i) => `src/file${String(i)}.ts`);
+  const world = Object.fromEntries(names.map((n) => [n, `export const v = '${n}';\n`]));
+
+  it('reads a historical blob and many more through exactly one cat-file --batch start, with the vetted commit:path lines on stdin', async (t) => {
+    const { repo, recording, tree } = await realTree(t, { files: world });
+    const commit = await tree.resolveCommit('HEAD');
+    assert.ok(commit !== null);
+    repo.write(names[0] as string, 'export const edited = 1;\n');
+    await repo.commitAll('edit');
+    recording.reset();
+
+    const { blobs } = await tree.readMany(commit, names);
+    assert.equal(blobs.size, names.length);
+    assert.equal(Buffer.from(blobs.get(names[0] as string) ?? new Uint8Array()).toString('utf8'), world[names[0] as string]);
+    const batches = recording.starts.filter((s) => subcommand(s) === 'cat-file');
+    assert.equal(batches.length, 1);
+    assert.equal(recording.starts.length, 1, recording.starts.map((s) => subcommand(s)).join(','));
+    assert.ok(batches[0]?.args.includes('--batch'));
+    assert.equal(batches[0]?.timeoutMs, 120000);
+    const lines = String(batches[0]?.stdin).split('\n').filter((l) => l !== '');
+    assert.ok(lines.includes(`${commit}:${names[1] as string}`));
+    assert.equal(recording.denials.length, 0);
+  });
+
+  it('starts no git for an empty path list and none for an option-like or NUL revision', async (t) => {
+    const { recording, tree } = await realTree(t, { files: { 'a.ts': 'a\n' } });
+    assert.equal((await tree.readMany('f'.repeat(40), [])).blobs.size, 0);
+    await assert.rejects(() => tree.resolveCommit('--output=x'), { code: 'invalid_argument' });
+    await assert.rejects(() => tree.resolveCommit('a\0b'), { code: 'invalid_argument' });
+    await assert.rejects(() => tree.listTree('--x'), { code: 'invalid_argument' });
+    assert.equal(recording.starts.length, 0);
+  });
+
+  it('pins lazy fetch and transport off on every history spec', async (t) => {
+    const { recording, tree } = await realTree(t, { files: { 'a.ts': 'a\n' } });
+    const commit = await tree.resolveCommit('HEAD');
+    assert.ok(commit !== null);
+    await tree.listTree(commit);
+    await tree.readMany(commit, ['a.ts']);
+    assert.equal(recording.starts.length, 3);
+    for (const s of recording.starts) {
+      assert.equal(s.env?.['GIT_NO_LAZY_FETCH'], '1');
+      assert.equal(s.env?.['GIT_ALLOW_PROTOCOL'], 'none');
+    }
+    assert.ok(recording.starts.every((s) => !['fetch', 'pull', 'clone', 'remote'].includes(subcommand(s) ?? '')));
+  });
+
+  it('parses a header-and-body stream binary-safely even when a body contains header-looking lines and newlines', async (t) => {
+    const tricky = Buffer.from(`${'0'.repeat(40)} blob 3\nabc\n${'1'.repeat(40)} missing\n`);
+    const oid = (c: string): string => c.repeat(40);
+    const stream = Buffer.concat([
+      Buffer.from(`${oid('a')} commit 4\nroot\n`),
+      Buffer.from(`${oid('b')} blob ${String(tricky.length)}\n`),
+      tricky,
+      Buffer.from('\n'),
+      Buffer.from('HEAD:gone.ts missing\n'),
+    ]);
+    const repo = await createTempGitRepo({ runner: setupRunner, files: { 'a.ts': 'a\n' } });
+    t.after(() => repo.cleanup());
+    const fake = createRecordingRunner({ respond: () => ({ stdout: stream }) });
+    const tree = createSourceTree({ runner: fake, repoDir: repo.dir, envOverlay: repo.envOverlay });
+    const { blobs } = await tree.readMany('HEAD', ['tricky.ts', 'gone.ts']);
+    assert.deepEqual(Buffer.from(blobs.get('tricky.ts') ?? new Uint8Array()), tricky);
+    assert.equal(blobs.get('gone.ts'), null);
+  });
+
+  it('throws git_failed when the batch output is shorter than the request', async (t) => {
+    const repo = await createTempGitRepo({ runner: setupRunner, files: { 'a.ts': 'a\n' } });
+    t.after(() => repo.cleanup());
+    const fake = createRecordingRunner({ respond: () => ({ stdout: `${'a'.repeat(40)} commit 0\n\n` }) });
+    const tree = createSourceTree({ runner: fake, repoDir: repo.dir, envOverlay: repo.envOverlay });
+    await assert.rejects(() => tree.readMany('HEAD', ['a.ts']), { code: 'git_failed' });
   });
 });

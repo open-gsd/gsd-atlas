@@ -254,6 +254,99 @@ describe('status --since', () => {
   });
 });
 
+describe('history', () => {
+  const historyReply = okReply('gsd-atlas.history/1');
+
+  it('history request: sends kind history with the tool, name and commit, and maps path, limit, budget and depth', async () => {
+    const h = harness(historyReply);
+    assert.equal(await h.run(['history', 'find', 'parse', '--at', 'abc1234', '--repo', REPO]), 0);
+    assert.deepEqual(h.requests, [{ protocol: PROTOCOL_VERSION, kind: 'history', args: { tool: 'find', name: 'parse', at: 'abc1234', repo: REPO } }]);
+    assert.equal(h.stdout.length, 1);
+    assert.deepEqual(h.stderr, []);
+
+    const full = harness(historyReply);
+    assert.equal(
+      await full.run(['history', 'impact', 'load', '--at', 'v1.0', '--path', 'src/a.ts', '--limit', '4', '--budget', '800', '--depth', '3', '--cwd', SUB, '--repo', REPO]),
+      0,
+    );
+    assert.deepEqual(full.requests, [
+      {
+        protocol: PROTOCOL_VERSION,
+        kind: 'history',
+        args: { tool: 'impact', name: 'load', at: 'v1.0', path: 'src/a.ts', limit: 4, depth: 3, repo: REPO, cwd: SUB },
+        budget_tokens: 800,
+      },
+    ]);
+    const kinds = harness(historyReply);
+    assert.equal(await kinds.run(['history', 'find', 'x', '--at', 'HEAD~2', '--kind', 'function', '--mode', 'prefix']), 0);
+    assert.deepEqual(kinds.requests[0]?.args, { tool: 'find', name: 'x', at: 'HEAD~2', kind: 'function', mode: 'prefix' });
+  });
+
+  it('history exit codes follow the shared mapping: commit_not_found gives 2 and invalid_args gives 1, and the envelope is printed unchanged', async () => {
+    const missing: Envelope = {
+      schema: 'gsd-atlas.error/1',
+      ok: false,
+      data: null,
+      diagnostics: [{ code: 'commit_not_found', severity: 'error', message: 'The revision "zzz" names no commit that this repository holds; nothing was fetched.' }],
+    };
+    const gone = harness(missing);
+    assert.equal(await gone.run(['history', 'find', 'x', '--at', 'zzz']), 2);
+    assert.deepEqual(gone.stdout.map((line) => JSON.parse(line)), [missing]);
+    assert.match(gone.stderr.join(''), /commit_not_found/);
+
+    const invalid: Envelope = { ...missing, diagnostics: [{ code: 'invalid_args', severity: 'error', message: 'at: not a usable revision name' }] };
+    const refused = harness(invalid);
+    assert.equal(await refused.run(['history', 'find', 'x', '--at', 'zzz']), 1);
+  });
+
+  it('missing --at is a usage error that does not reach the host', async () => {
+    const h = harness(historyReply);
+    assert.equal(await h.run(['history', 'find', 'x']), 1);
+    assert.deepEqual(h.requests, []);
+    assert.match(h.stderr.join(''), /--at/);
+  });
+
+  it('unknown tool, a missing or extra name and a flag history does not accept are usage errors', async () => {
+    const cases: string[][] = [
+      ['history', 'delete', 'x', '--at', 'HEAD'],
+      ['history', 'health', 'x', '--at', 'HEAD'],
+      ['history', '--at', 'HEAD'],
+      ['history', 'find', '--at', 'HEAD'],
+      ['history', 'find', 'a', 'b', '--at', 'HEAD'],
+      ['history', 'find', 'x', '--at', 'HEAD', '--fresh', 'a.ts'],
+      ['history', 'find', 'x', '--at', 'HEAD', '--more', 'cursor'],
+      ['history', 'find', 'x', '--at', 'HEAD', '--full'],
+      ['history', 'find', 'x', '--at', 'HEAD', '--depth', '2'],
+      ['history', 'refs', 'x', '--at', 'HEAD', '--mode', 'exact'],
+      ['history', 'find', 'x', '--at', 'HEAD', '--limit', 'many'],
+      ['history', 'find', 'x', '--at', 'HEAD', '--budget', '0'],
+      ['find', 'x', '--at', 'HEAD'],
+    ];
+    for (const argv of cases) {
+      const h = harness(historyReply);
+      assert.equal(await h.run(argv), 1, `argv ${JSON.stringify(argv)}`);
+      assert.deepEqual(h.requests, [], `argv ${JSON.stringify(argv)} must not reach the host`);
+      assert.deepEqual(h.stdout, []);
+    }
+  });
+
+  it('dash revision: a revision that starts with a dash is rejected before anything is sent', async () => {
+    for (const argv of [['history', 'find', 'x', '--at=-x'], ['history', 'find', 'x', '--at=--output=/tmp/x'], ['history', 'find', 'x', '--at', '-x'], ['history', 'find', 'x', '--at=']]) {
+      const h = harness(historyReply);
+      assert.equal(await h.run(argv), 1, `argv ${JSON.stringify(argv)}`);
+      assert.deepEqual(h.requests, []);
+    }
+  });
+
+  it('the usage text documents the command and states that it never writes to the index', async () => {
+    const h = harness(historyReply);
+    await h.run(['--help']);
+    const text = h.stdout.join('');
+    assert.match(text, /gsd-atlas history <find\|refs\|context\|impact> <name> --at <revision>/);
+    assert.match(text, /never writes to the index/);
+  });
+});
+
 describe('usage text', () => {
   it('names every command', async () => {
     const h = harness(okReply('gsd-atlas.x/1'));

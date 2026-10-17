@@ -10,12 +10,14 @@
 import { createHash } from 'node:crypto';
 import { diagnostic } from '../facts/index.ts';
 import type { Diagnostic } from '../facts/index.ts';
-import { SOURCE_TREE_CODES } from './types.ts';
+import { SOURCE_TREE_CODES, SourceTreeError } from './types.ts';
 import { DEFAULT_READ_TEXT_BYTES } from './read-text.ts';
 import { filterSourceSet, SOURCE_PEEK_BYTES } from './source-set.ts';
 import type { PathAttributes, PeekResult } from './source-set.ts';
 import type {
   HashPathsResult,
+  ListTreeResult,
+  ReadManyResult,
   ReadTextResult,
   SnapshotResult,
   SourceSetOptions,
@@ -23,9 +25,10 @@ import type {
   SourceTree,
   SourceTreeIdentity,
   SourceTreeWorld,
+  TreeEntry,
   WorktreeInfo,
 } from './types.ts';
-import { assertReadArguments, escapesWorktree, isObjectId, unhashableReason } from './validate.ts';
+import { assertReadArguments, assertRevision, batchPathReason, escapesWorktree, isObjectId, unhashableReason } from './validate.ts';
 
 /** The one worktree the fake has when the world describes none, and the root of its fake git directory. */
 const FAKE_WORKTREE = '/fake';
@@ -54,8 +57,35 @@ export function createFakeSourceTree(world: Partial<SourceTreeWorld> = {}): Sour
   const isIgnored = (rel: string): boolean => ignored.some((entry) => (entry.endsWith('/') ? rel.startsWith(entry) : rel === entry));
 
   const committedPaths = Object.keys(committed);
-  const rootCommit = committedPaths.length === 0 ? null : commitId(committed);
-  const committedBlobs = new Set(committedPaths.map((rel) => blobId(committed[rel] ?? '')));
+  // The history, oldest first. A world with one commit keeps the id it always had; later commits chain onto their parent.
+  const history = world.commits ?? [committed];
+  const modes = world.modes ?? {};
+  const hasCommits = Object.keys(history[0] ?? {}).length > 0 || history.length > 1;
+  const commitIds: string[] = [];
+  history.forEach((files, i) => {
+    const own = commitId(files);
+    const parent = commitIds[i - 1];
+    commitIds.push(parent === undefined ? own : createHash('sha1').update(`${parent}\n${own}`).digest('hex'));
+  });
+  const rootCommit = hasCommits ? (commitIds[0] ?? null) : null;
+  const allBlobs = new Set(history.flatMap((files) => Object.values(files).map((content) => blobId(content))));
+  const committedBlobs = new Set([...committedPaths.map((rel) => blobId(committed[rel] ?? '')), ...allBlobs]);
+  /** The index in `history` that `rev` names (`HEAD`, `HEAD~N` or a full commit id), or null. */
+  const commitIndex = (rev: string): number | null => {
+    if (!hasCommits) return null;
+    const last = history.length - 1;
+    if (rev === 'HEAD') return last;
+    const back = /^HEAD~([0-9]+)$/.exec(rev);
+    if (back !== null) {
+      const at = last - Number(back[1]);
+      return at >= 0 ? at : null;
+    }
+    const at = commitIds.indexOf(rev);
+    return at === -1 ? null : at;
+  };
+  const isLast = (index: number): boolean => index === history.length - 1;
+  const notFound = (commit: string): SourceTreeError =>
+    new SourceTreeError(SOURCE_TREE_CODES.commitNotFound, `commit ${commit.slice(0, 64)} is not available in this repository`);
   const storeId = createHash('sha256').update(`${rootCommit ?? ''}\nfake`).digest('hex').slice(0, 16);
 
   /** The working-tree content of `rel`: a string, or null when the file is not on disk. */
@@ -151,15 +181,78 @@ export function createFakeSourceTree(world: Partial<SourceTreeWorld> = {}): Sour
     },
 
     hasObject(hash: string): Promise<boolean> {
-      return Promise.resolve(isObjectId(hash) && (committedBlobs.has(hash) || hash === rootCommit));
+      return Promise.resolve(isObjectId(hash) && (committedBlobs.has(hash) || commitIds.includes(hash)));
     },
 
     // async so that invalid arguments reject, exactly as the real tree's read does.
     async read(commit: string, relPath: string): Promise<Uint8Array | null> {
       assertReadArguments(commit, relPath);
-      const known = commit === 'HEAD' || (rootCommit !== null && commit === rootCommit);
-      if (!known || !Object.hasOwn(committed, relPath)) return null;
-      return encoder.encode(committed[relPath] ?? '');
+      const index = commitIndex(commit);
+      const files = index === null ? undefined : history[index];
+      if (files === undefined || !Object.hasOwn(files, relPath)) return null;
+      return encoder.encode(files[relPath] ?? '');
+    },
+
+    async resolveCommit(rev: string): Promise<string | null> {
+      assertRevision(rev);
+      const index = commitIndex(rev);
+      return index === null ? null : (commitIds[index] ?? null);
+    },
+
+    async listTree(commit: string): Promise<ListTreeResult> {
+      assertReadArguments(commit, 'x');
+      const index = commitIndex(commit);
+      const files = index === null ? undefined : history[index];
+      if (index === null || files === undefined) throw notFound(commit);
+      const entries: TreeEntry[] = [];
+      const diagnostics: Diagnostic[] = [];
+      for (const rel of Object.keys(files).sort(compareCodeUnits)) {
+        const mode = isLast(index) ? modes[rel] : undefined;
+        if (mode === 'symlink') {
+          diagnostics.push(diagnostic(SOURCE_TREE_CODES.symlinkSkipped, 'info', 'a symbolic link is never followed', rel));
+        } else if (mode === 'gitlink') {
+          diagnostics.push(diagnostic(SOURCE_TREE_CODES.gitlinkSkipped, 'info', 'a submodule entry is not read as a file', rel));
+        } else {
+          entries.push({ path: rel, mode: mode === 'executable' ? '100755' : '100644', type: 'blob', oid: blobId(files[rel] ?? '') });
+        }
+      }
+      return { entries, diagnostics };
+    },
+
+    async readMany(commit: string, paths: readonly string[], options?: { readonly maxBlobBytes?: number }): Promise<ReadManyResult> {
+      assertReadArguments(commit, 'x');
+      const cap = options?.maxBlobBytes ?? DEFAULT_READ_TEXT_BYTES;
+      const blobs = new Map<string, Uint8Array | null>();
+      const diagnostics: Diagnostic[] = [];
+      const asked: string[] = [];
+      for (const rel of new Set(paths)) {
+        const reason = batchPathReason(rel);
+        if (reason === null) {
+          asked.push(rel);
+        } else {
+          blobs.set(rel, null);
+          diagnostics.push(diagnostic(SOURCE_TREE_CODES.unhashablePath, 'warning', reason, rel));
+        }
+      }
+      if (asked.length === 0) return { blobs, diagnostics };
+      const index = commitIndex(commit);
+      const files = index === null ? undefined : history[index];
+      if (index === null || files === undefined) throw notFound(commit);
+      for (const rel of asked) {
+        const mode = isLast(index) ? modes[rel] : undefined;
+        if (!Object.hasOwn(files, rel) || mode === 'gitlink') {
+          blobs.set(rel, null);
+          continue;
+        }
+        const bytes = encoder.encode(files[rel] ?? '');
+        if (bytes.length > cap) {
+          blobs.set(rel, null);
+          diagnostics.push(diagnostic(SOURCE_TREE_CODES.sourceTooLarge, 'info', `the blob is ${String(bytes.length)} bytes, over the ${String(cap)}-byte cap`, rel));
+        } else {
+          blobs.set(rel, bytes);
+        }
+      }
+      return { blobs, diagnostics };
     },
 
     identity(): Promise<SourceTreeIdentity> {
