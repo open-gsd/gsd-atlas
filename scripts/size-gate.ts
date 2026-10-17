@@ -3,9 +3,13 @@
  *
  * The store size gate (STO-05, DESIGN lifecycle budgets). It builds a store of synthetic files, applies many
  * edits (each recommits one file under a new content hash with changed facts and new identifier names), runs the
- * store's idle maintenance at its normal cadence, then builds a second store from the final content and
- * compares the two settled files. The edited store must be at most `max-ratio` (default the approved
- * `gate.storeEditsRatio`, 1.25) times the fresh one; otherwise the command prints OVER and exits 1.
+ * store's idle maintenance at its normal cadence (the same `IDLE_MAINTENANCE` policy the Tenant runs), then builds
+ * a second store from the final content and compares sizes. The asserted figure is the IDLE-ONLY size: the edited
+ * store's file after the idle loop alone, measured before any explicit full compaction, divided by a settled fresh
+ * build of the same final content. It must be at most `max-ratio` (default the approved `gate.storeEditsRatio`,
+ * 1.25); otherwise the command prints OVER and exits 1. The size after an explicit final `compact({ full: true })`
+ * is printed as `settledBytes` and `settledRatio` for information only: a store that meets the bound only after a
+ * manual full compaction does not pass.
  *
  * The generator is deterministic: file choice comes from a seeded linear congruential counter and every fact
  * from the file index and its version number, so two runs give the same sizes. Time comes from a counter clock
@@ -16,9 +20,11 @@ import os from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { parseArgs } from 'node:util';
-import { openFactStore } from '../src/fact-store/index.ts';
-import type { FactStore, Resolver, StoreDeps, Writer } from '../src/fact-store/index.ts';
+import { IDLE_MAINTENANCE, openFactStore } from '../src/fact-store/index.ts';
+import type { FactStore, Resolver, StoreDeps, StoreMaintainOptions, Writer } from '../src/fact-store/index.ts';
 import type { Clock, FileFacts, Span } from '../src/facts/index.ts';
+import { lifecycleTestHooks, resetLifecycleTestHooks } from '../src/fact-store/lifecycle.ts';
+import { openDatabase } from '../src/sqlite/index.ts';
 
 /** The approved `gate.storeEditsRatio` of 02-CONSTANTS.md (STO-05). */
 export const DEFAULT_MAX_RATIO = 1.25;
@@ -38,28 +44,49 @@ export interface SizeGateOptions {
   readonly symbolsPerFile?: number;
   /** How many single-file edits to apply. Default 20,000. */
   readonly edits?: number;
-  /** The largest edited-to-fresh size ratio that passes. Default 1.25. */
+  /** The largest idle-only edited-to-fresh size ratio that passes. Default 1.25. */
   readonly maxRatio?: number;
   /** Run `store.maintain` after every this many edits; 0 turns maintenance off (the negative control). Default 200. */
   readonly maintainEvery?: number;
   /** The SQLite driver to run on. Default `node:sqlite`. */
   readonly driver?: 'node:sqlite' | 'better-sqlite3';
+  /**
+   * The options passed to every idle `store.maintain` call. Default `IDLE_MAINTENANCE`, the policy the Tenant runs.
+   * A test passes `{}` (the policy before plan 02-30) to prove the gate fails without the fix.
+   */
+  readonly idle?: StoreMaintainOptions;
 }
 
 export interface SizeGateResult {
   /** Size of the store built once from the final content, after compaction. */
   readonly freshBytes: number;
-  /** Size of the store that took every edit, after its idle maintenance and the same compaction. */
+  /** Informational: size of the store that took every edit, after the idle loop AND an explicit full compaction. */
   readonly editedBytes: number;
+  /** The asserted figure: `idleBytes / freshBytes`. */
   readonly ratio: number;
   readonly ok: boolean;
   /**
-   * Informational, not asserted: the edited store's size after the idle loop alone, before the final full
-   * compaction. The idle loop never vacuums a fragmented file, so this is where the gap to a fresh build shows.
+   * The edited store's size after the idle maintenance loop alone, measured before any explicit full compaction.
+   * This is what the gate asserts.
    */
   readonly idleBytes: number;
+  /** Informational, not asserted: `editedBytes / freshBytes`, the ratio after the explicit final compaction. */
+  readonly settledRatio: number;
   /** How many times `maintain` ran during the edits. */
   readonly maintainRuns: number;
+  /** Informational: how many full VACUUMs the idle loop ran (counted through the lifecycle `onVacuum` hook). */
+  readonly vacuums: number;
+  /**
+   * Informational, never asserted: the longest wall-clock duration of one `maintain` call, in milliseconds. It is the
+   * one pause `maintenance.sliceMs` cannot bound (a full VACUUM; 02-CONSTANTS.md addendum), so the owner reads it
+   * from a real run. Wall clock, unlike the sizes, so it differs between runs.
+   */
+  readonly longestMaintainMs: number;
+  /**
+   * Which in-page rule the idle policy used: `present` when this SQLite build has the `dbstat` table (a full VACUUM
+   * follows the unused-space fraction), `absent` when it has not or a test forced it off (the after-churn fallback).
+   */
+  readonly dbstat: 'present' | 'absent';
 }
 
 const span = (startLine: number, startColumn: number, endLine: number, endColumn: number): Span => ({
@@ -155,6 +182,20 @@ async function settledSize(store: FactStore): Promise<number> {
   return (await store.status()).sizeBytes;
 }
 
+/** Whether the driver's SQLite build has the `dbstat` table, as the store's own vacuum rule asks it. */
+async function dbstatOf(options: SizeGateOptions): Promise<'present' | 'absent'> {
+  if (lifecycleTestHooks.noDbstat === true) return 'absent';
+  const db = await openDatabase(':memory:', { driver: options.driver ?? 'node:sqlite' });
+  try {
+    db.prepare('SELECT sum(unused) AS unused FROM dbstat').get();
+    return 'present';
+  } catch {
+    return 'absent';
+  } finally {
+    db.close();
+  }
+}
+
 function checkCount(name: string, value: number, minimum: number): void {
   if (!Number.isInteger(value) || value < minimum) throw new RangeError(`size-gate: --${name} must be a whole number, ${minimum} or more`);
 }
@@ -165,6 +206,7 @@ export async function runSizeGate(options: SizeGateOptions = {}): Promise<SizeGa
   const edits = options.edits ?? DEFAULTS.edits;
   const maxRatio = options.maxRatio ?? DEFAULT_MAX_RATIO;
   const maintainEvery = options.maintainEvery ?? DEFAULTS.maintainEvery;
+  const idle = options.idle ?? IDLE_MAINTENANCE;
   checkCount('files', files, 1);
   checkCount('symbols', symbolsPerFile, 1);
   checkCount('edits', edits, 0);
@@ -174,12 +216,25 @@ export async function runSizeGate(options: SizeGateOptions = {}): Promise<SizeGa
   const root = fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()), 'gsd-atlas-size-gate-'));
   const stores: FactStore[] = [];
   try {
+    const dbstat = await dbstatOf(options);
+    let vacuums = 0;
+    lifecycleTestHooks.onVacuum = () => {
+      vacuums += 1;
+    };
     const clock = countingClock();
     const versions = new Array<number>(files).fill(0);
 
     // The edited store: every file at version 0, then `edits` single-file edits with maintenance in between.
     const edited = await openStore(path.join(root, 'edited'), options, clock);
     stores.push(edited);
+    // Wall clock, informational and never asserted (the sizes stay deterministic): the longest single `maintain` call.
+    let longestMaintainMs = 0;
+    const maintain = async (): Promise<boolean> => {
+      const began = performance.now();
+      const result = await edited.maintain(MAINTAIN_BUDGET_MS, idle);
+      longestMaintainMs = Math.max(longestMaintainMs, performance.now() - began);
+      return result.complete;
+    };
     let writer = edited.writer();
     for (let file = 0; file < files; file += 1) await commit(writer, file, 0, files, symbolsPerFile);
     let state = 20_261_016;
@@ -191,7 +246,7 @@ export async function runSizeGate(options: SizeGateOptions = {}): Promise<SizeGa
       await commit(writer, file, versions[file] ?? 0, files, symbolsPerFile);
       if (maintainEvery > 0 && edit % maintainEvery === 0) {
         writer.release(); // `maintain` takes the writer slot itself
-        await edited.maintain(MAINTAIN_BUDGET_MS);
+        await maintain();
         maintainRuns += 1;
         writer = edited.writer();
       }
@@ -201,10 +256,12 @@ export async function runSizeGate(options: SizeGateOptions = {}): Promise<SizeGa
       // Settle: whatever the last edits left behind, within the same idle task.
       for (let round = 0; round < SETTLE_LIMIT; round += 1) {
         maintainRuns += 1;
-        if ((await edited.maintain(MAINTAIN_BUDGET_MS)).complete) break;
+        if (await maintain()) break;
       }
     }
+    // The asserted figure is read here, before the explicit full compaction below can hide the idle loop's gap.
     const idleBytes = (await edited.status()).sizeBytes;
+    const idleVacuums = vacuums; // the explicit compactions below may vacuum too; those are not the idle loop's
     const editedBytes = await settledSize(edited);
 
     // The fresh store: only the final content, written once.
@@ -215,9 +272,10 @@ export async function runSizeGate(options: SizeGateOptions = {}): Promise<SizeGa
     freshWriter.release();
     const freshBytes = await settledSize(fresh);
 
-    const ratio = editedBytes / freshBytes;
-    return { freshBytes, editedBytes, ratio, ok: ratio <= maxRatio, idleBytes, maintainRuns };
+    const ratio = idleBytes / freshBytes;
+    return { freshBytes, editedBytes, ratio, ok: ratio <= maxRatio, idleBytes, settledRatio: editedBytes / freshBytes, maintainRuns, vacuums: idleVacuums, longestMaintainMs, dbstat };
   } finally {
+    resetLifecycleTestHooks(); // the gate sets the vacuum hook itself and leaves none behind
     for (const store of stores) await store.close(); // every handle is closed before the files go (EBUSY on Windows)
     removeTree(root);
   }
@@ -268,8 +326,9 @@ export async function runCli(argv: string[], write: (text: string) => void): Pro
   const result = await runSizeGate(options);
   write(
     `size-gate: files ${options.files} symbols ${options.symbolsPerFile} edits ${options.edits} maintain-every ${options.maintainEvery} ` +
-      `freshBytes ${result.freshBytes} editedBytes ${result.editedBytes} ratio ${result.ratio.toFixed(4)} max ${maxRatio} ` +
-      `idleBytes ${result.idleBytes} idleRatio ${(result.idleBytes / result.freshBytes).toFixed(4)} ` +
+      `freshBytes ${result.freshBytes} idleBytes ${result.idleBytes} idleRatio ${result.ratio.toFixed(4)} max ${maxRatio} ` +
+      `settledBytes ${result.editedBytes} settledRatio ${result.settledRatio.toFixed(4)} ` +
+      `vacuums ${result.vacuums} longestMaintainMs ${result.longestMaintainMs.toFixed(1)} dbstat ${result.dbstat} ` +
       `maintainRuns ${result.maintainRuns} seconds ${((Date.now() - began) / 1000).toFixed(1)} ${result.ok ? 'OK' : 'OVER'}\n`,
   );
   return result.ok ? 0 : 1;
