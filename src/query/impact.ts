@@ -305,7 +305,7 @@ export interface ImpactResult {
 
 export async function runImpact(ctx: FindContext, input: CodeImpactInput): Promise<Envelope> {
   const { config } = ctx;
-  const reader = ctx.deps.store.at(ctx.worktree);
+  const { reader } = ctx;
   const requested = input.depth ?? config.impactDefaultDepth;
   const depth = Math.min(requested, config.impactMaxDepth);
   try {

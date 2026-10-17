@@ -4,6 +4,8 @@
  */
 export { createTenant } from './create.ts';
 export { DEFAULT_TENANT_TUNING } from './defaults.ts';
+export { createFollowerFresh, createOverlayReader } from './follower-overlay.ts';
+export type { FollowerFreshDeps, OverlayContext, Patch } from './follower-overlay.ts';
 export { createIdleMaintainer } from './idle.ts';
 export type { IdleMaintainer, IdleMaintainerOptions } from './idle.ts';
 export { answerEvent } from './record.ts';

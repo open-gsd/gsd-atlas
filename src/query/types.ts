@@ -5,7 +5,7 @@
  * handles, the nonce-fenced `untrusted_text`, the watermark and the degraded codes. The MCP server, the CLI and
  * the hooks are adapters that hand it a `Request` and return the `Envelope` unchanged.
  */
-import type { FactStore, StoreStatus } from '../fact-store/index.ts';
+import type { FactStore, Reader, StoreStatus } from '../fact-store/index.ts';
 import type { Clock, Envelope, Request } from '../facts/index.ts';
 import type { GovernorStatus } from '../governor/index.ts';
 import type { SourceTree } from '../source-tree/index.ts';
@@ -44,6 +44,11 @@ export interface FreshReport {
   readonly stalePaths: readonly string[];
   /** Paths that were refused without being read. */
   readonly invalid: readonly string[];
+  /**
+   * A follower's per-request overlay (D-03): the Reader this one request reads through instead of the store's. Absent
+   * when the answer needs no overlay, which is every answer of a process that holds the writer lease.
+   */
+  readonly reader?: Reader;
 }
 
 /** The slice of the Indexer that Query uses: read-your-writes for the paths a request names (A26). */

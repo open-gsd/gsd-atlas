@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import type { TestContext } from 'node:test';
+import type { Reader } from '../fact-store/index.ts';
 import type { Envelope, Request } from '../facts/index.ts';
 import { createHarness } from './harness.test.ts';
 import type { Harness } from './harness.test.ts';
-import type { FreshPort, FreshReport } from './index.ts';
+import type { FreshPort, FreshReport, QueryDeps } from './index.ts';
 
 async function world(t: TestContext): Promise<Harness> {
   const harness = await createHarness();
@@ -151,5 +152,60 @@ describe('fresh paths: read your own writes, or degrade', () => {
     assert.equal('untrusted_text' in envelope, false);
     assert.equal(envelope.citations?.[0]?.text_ref, undefined);
     assert.deepEqual(envelope.degraded, ['fresh_timeout', 'stale']);
+  });
+});
+
+describe('fresh paths: one Reader per request', () => {
+  it('reads every code tool through the Reader the fresh port returned and never asks the store for one', async (t) => {
+    const h = await world(t);
+    let storeAsked = 0;
+    const store: QueryDeps['store'] = {
+      at: (worktree) => {
+        storeAsked += 1;
+        return h.store.at(worktree);
+      },
+    };
+    const real = h.store.at(h.dir);
+    const calls: string[] = [];
+    const counting: Reader = {
+      find: (name, options) => {
+        calls.push('find');
+        return real.find(name, options);
+      },
+      refs: (id, options) => {
+        calls.push('refs');
+        return real.refs(id, options);
+      },
+      callers: (id, options) => {
+        calls.push('callers');
+        return real.callers(id, options);
+      },
+      symbol: (id) => {
+        calls.push('symbol');
+        return real.symbol(id);
+      },
+      fileFacts: (path) => {
+        calls.push('fileFacts');
+        return real.fileFacts(path);
+      },
+      importers: (path, options) => {
+        calls.push('importers');
+        return real.importers(path, options);
+      },
+    };
+    const port: FreshPort = { ensureFresh: () => Promise.resolve({ ...COMPLETE, reader: counting }) };
+    const query = h.query({ store, fresh: port });
+
+    for (const kind of ['code_find', 'code_refs', 'code_context', 'code_impact']) {
+      calls.length = 0;
+      const envelope = await query.ask({ protocol: 1, kind, args: { name: 'parse', repo: h.dir }, worktree: h.dir, fresh: ['src/a.ts'] });
+      assert.equal(envelope.ok, true, `${kind}: ${JSON.stringify(envelope.diagnostics)}`);
+      assert.ok(calls.includes('find'), `${kind} read through the overlay Reader`);
+    }
+    assert.equal(storeAsked, 0, 'the store was never asked for a Reader of an overlay request');
+
+    // Without an overlay the store's own Reader is the one request Reader.
+    await h.query({ store }).ask(findWith(h, undefined));
+    assert.equal(storeAsked, 1, 'exactly one Reader is asked for per request');
   });
 });

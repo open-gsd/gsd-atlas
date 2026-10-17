@@ -337,7 +337,15 @@ describe('Host: follower and lease_held (STO-08)', () => {
 
     const fresh = await ask('code_find', { name: 'helper', repo }, ['b.toy']);
     assert.equal(fresh.ok, true, JSON.stringify(fresh.diagnostics));
-    assert.ok(fresh.degraded?.includes('fresh_timeout'), 'fresh paths are not completed until the overlay of plan 02-27');
+    assert.equal(fresh.degraded?.includes('fresh_timeout') ?? false, false, 'a follower completes fresh paths in its own overlay');
+    assert.ok(fresh.degraded?.includes('follower'));
+
+    writeFiles(world.repo.dir, { 'b.toy': 'fn helper_two {\n}\n' });
+    const edited = await ask('code_find', { name: 'helper_two', repo }, ['b.toy']);
+    assert.equal(edited.ok, true, JSON.stringify(edited.diagnostics));
+    assert.equal((edited.data as FindData).results[0]?.name, 'helper_two', 'the follower sees its own edit without the leader');
+    assert.equal(edited.degraded?.includes('fresh_timeout') ?? false, false);
+    assert.ok(edited.degraded?.includes('follower'));
 
     const status = await ask('atlas_status', { repo });
     const data = status.data as { store: { writerLeaseHeld: boolean }; indexer: unknown };
