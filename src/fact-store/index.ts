@@ -9,6 +9,8 @@ export type { CacheReason, ResolveStoreLocationInput, StoreLocation, StoreLocati
 export { IDLE_MAINTENANCE } from './maintain.ts';
 export { openFactStore } from './open.ts';
 export type { OpenFactStoreOptions, StoreOpenOptions } from './open.ts';
+export { probeStore } from './probe.ts';
+export type { ProbeOptions, StoreProbe } from './probe.ts';
 export { candidatePaths, resolveSpecifier } from './specifier.ts';
 export type {
   CallerRecord,

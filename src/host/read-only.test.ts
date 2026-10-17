@@ -9,8 +9,10 @@ import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { describe, it } from 'node:test';
+import { openFactStore } from '../fact-store/index.ts';
 import { PROTOCOL_VERSION } from '../facts/index.ts';
 import type { Envelope } from '../facts/index.ts';
+import { FakeClock } from '../test-kit/index.ts';
 import { notIndexedNoStore } from '../tenant/index.ts';
 import { makeWorld, storeIdOf } from './harness.test.ts';
 import type { World } from './harness.test.ts';
@@ -173,5 +175,95 @@ describe('Host: read tools never create a store (WR-01)', () => {
     assert.equal(fs.existsSync(path.join(world.tmp.path, 'cache', 'gsd-atlas')), false, 'exactly one store exists');
     const after = await world.ask('code_find', { name: 'helper', repo: world.repo.dir });
     assert.equal(after.ok, true, JSON.stringify(after.diagnostics));
+  });
+});
+
+/**
+ * A store directory fingerprint that tolerates exactly what a read-only connection to a write-ahead-log database
+ * leaves behind: the wal-index `facts.db-shm` and an empty `facts.db-wal` (see the probe's test).
+ */
+const storeFingerprint = (dir: string): string[] =>
+  fingerprint(dir).filter((entry) => !entry.startsWith('facts.db-shm|') && !entry.startsWith('facts.db-wal|0|'));
+
+/** Create a store in the directory the Host looks in, with the given schema version, and close it again. */
+async function makeStoreFile(dir: string, schemaVersion?: number): Promise<void> {
+  fs.mkdirSync(dir, { recursive: true });
+  const store = await openFactStore(
+    dir,
+    { resolver: async function* () {}, clock: new FakeClock(1000), gitHas: async () => true },
+    { repo: 'repo', ...(schemaVersion === undefined ? {} : { schemaVersion }) },
+  );
+  await store.close();
+}
+
+/** True when a process opening this directory with the lease becomes the leader, i.e. nothing else holds it. */
+async function leaseIsFree(dir: string): Promise<boolean> {
+  const store = await openFactStore(
+    dir,
+    { resolver: async function* () {}, clock: new FakeClock(1000), gitHas: async () => true },
+    { repo: 'repo', lease: 'acquire' },
+  );
+  try {
+    return (await store.status()).writerLeaseHeld;
+  } finally {
+    await store.close();
+  }
+}
+
+describe('Host: a store that holds no index is not opened by a read request (WR-02)', () => {
+  const states: ReadonlyArray<readonly [string, (dir: string) => Promise<void>]> = [
+    ['created and never built', (dir) => makeStoreFile(dir)],
+    ['older schema', (dir) => makeStoreFile(dir, 0)],
+    [
+      'not a database',
+      (dir) => {
+        fs.mkdirSync(dir, { recursive: true });
+        fs.writeFileSync(path.join(dir, 'facts.db'), 'this is not a database, it is text'.repeat(50));
+        return Promise.resolve();
+      },
+    ],
+  ];
+
+  for (const [label, make] of states) {
+    it(`${label}: not_indexed, no tenant, the lease stays free and the store is untouched`, async (t) => {
+      const world = await makeWorld(t);
+      const dir = gitStoreDir(world);
+      await make(dir);
+      const before = storeFingerprint(dir);
+      for (const [kind, args] of READ_REQUESTS) {
+        const reply = await world.ask(kind, args(world.repo.dir));
+        assert.deepEqual(codes(reply), ['not_indexed'], `${kind}: ${JSON.stringify(reply.diagnostics)}`);
+        assert.equal(reply.diagnostics[0]?.message, notIndexedNoStore().diagnostics[0]?.message, kind);
+      }
+      assert.deepEqual(storeFingerprint(dir), before, 'the read moved nothing aside and rewrote nothing');
+      for (const created of ['lease.json', 'lease.db', 'metrics.db']) {
+        assert.equal(fs.existsSync(path.join(dir, created)), false, `${created} was created`);
+      }
+      assert.equal(world.manual.subscriptions(), 0);
+      if (label !== 'not a database') assert.equal(await leaseIsFree(dir), true, 'nothing holds the writer lease');
+    });
+  }
+
+  it('a newer-schema store reaches the tenant and answers the ratified schema_too_new error', async (t) => {
+    const world = await makeWorld(t);
+    await makeStoreFile(gitStoreDir(world), 2);
+    const reply = await world.ask('code_find', { name: 'helper', repo: world.repo.dir });
+    assert.deepEqual(codes(reply), ['schema_too_new']);
+  });
+
+  it('after a build the same store is opened by the next read, and an open tenant is not probed again', { skip: process.platform === 'win32' }, async (t) => {
+    const world = await makeWorld(t);
+    assert.equal((await world.ask('build', { repo: world.repo.dir })).ok, true);
+    const file = path.join(gitStoreDir(world), 'facts.db');
+    // The file is moved away while the tenant keeps its connections: a probe or a location check would now say
+    // "no store", so a normal answer proves the open tenant is used without consulting either (the tenant is open
+    // by then, so this holds on a POSIX file system where a rename does not close the file).
+    fs.renameSync(file, `${file}.moved`);
+    try {
+      const found = await world.ask('code_find', { name: 'helper', repo: world.repo.dir });
+      assert.equal(found.ok, true, JSON.stringify(found.diagnostics));
+    } finally {
+      fs.renameSync(`${file}.moved`, file);
+    }
   });
 });

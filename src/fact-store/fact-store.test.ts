@@ -94,6 +94,7 @@ describe('fact-store interface', () => {
       'findExistingStore',
       'isSyncedFolderPath',
       'openFactStore',
+      'probeStore',
       'resolveSpecifier',
       'resolveStoreLocation',
     ]);

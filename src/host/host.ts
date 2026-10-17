@@ -11,7 +11,7 @@
 import path from 'node:path';
 import { createRealRunner } from '../command-runner/index.ts';
 import type { CommandRunner } from '../command-runner/index.ts';
-import { SchemaTooNew, findExistingStore } from '../fact-store/index.ts';
+import { SchemaTooNew, findExistingStore, probeStore } from '../fact-store/index.ts';
 import type { ResolveStoreLocationInput } from '../fact-store/index.ts';
 import { PROTOCOL_VERSION, diagnostic, failEnvelope, systemClock } from '../facts/index.ts';
 import type { Envelope, Request } from '../facts/index.ts';
@@ -168,9 +168,14 @@ export function createHost(options: HostOptions): Host {
 
     // WR-01: only `build` may create a store. Any other kind needs a tenant that is already open or a store that
     // already holds an index; otherwise nothing is opened, created, locked or written (QRY-06).
+    // WR-02: a store that exists but holds nothing to read is not opened by a question either, because opening it
+    // as the leader would take the lease and make the advertised `gsd-atlas build` fail with exit 3.
     if (kind !== 'build' && !tenants.has(resolved.identity.storeId)) {
       try {
-        if (findExistingStore(locationInput(resolved)) === undefined) return notIndexedNoStore();
+        const existing = findExistingStore(locationInput(resolved));
+        if (existing === undefined) return notIndexedNoStore();
+        const state = await probeStore(existing);
+        if (state !== 'indexed' && state !== 'newer_schema') return notIndexedNoStore();
       } catch (error) {
         return tenantFailure(error);
       }
