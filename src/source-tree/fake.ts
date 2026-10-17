@@ -185,12 +185,20 @@ export function createFakeSourceTree(world: Partial<SourceTreeWorld> = {}): Sour
     },
 
     // async so that invalid arguments reject, exactly as the real tree's read does.
-    async read(commit: string, relPath: string): Promise<Uint8Array | null> {
+    async read(commit: string, relPath: string, options?: { readonly maxBytes?: number }): Promise<Uint8Array | null> {
       assertReadArguments(commit, relPath);
+      const cap = options?.maxBytes ?? DEFAULT_READ_TEXT_BYTES;
+      if (!Number.isSafeInteger(cap) || cap < 0) {
+        throw new SourceTreeError('invalid_argument', `maxBytes must be a non-negative integer, got ${String(cap)}`);
+      }
       const index = commitIndex(commit);
       const files = index === null ? undefined : history[index];
       if (files === undefined || !Object.hasOwn(files, relPath)) return null;
-      return encoder.encode(files[relPath] ?? '');
+      const bytes = encoder.encode(files[relPath] ?? '');
+      if (bytes.length > cap) {
+        throw new SourceTreeError(SOURCE_TREE_CODES.sourceTooLarge, `the blob is over the ${String(cap)}-byte read cap`);
+      }
+      return bytes;
     },
 
     async resolveCommit(rev: string): Promise<string | null> {

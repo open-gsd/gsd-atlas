@@ -589,7 +589,7 @@ describe('real Source Tree history reads (STO-09)', () => {
   const names = Array.from({ length: 40 }, (_, i) => `src/file${String(i)}.ts`);
   const world = Object.fromEntries(names.map((n) => [n, `export const v = '${n}';\n`]));
 
-  it('reads a historical blob and many more through exactly one cat-file --batch start, with the vetted commit:path lines on stdin', async (t) => {
+  it('reads a historical blob and many more through exactly two cat-file starts (sizes, then bytes), with the vetted commit:path lines on stdin', async (t) => {
     const { repo, recording, tree } = await realTree(t, { files: world });
     const commit = await tree.resolveCommit('HEAD');
     assert.ok(commit !== null);
@@ -601,12 +601,17 @@ describe('real Source Tree history reads (STO-09)', () => {
     assert.equal(blobs.size, names.length);
     assert.equal(Buffer.from(blobs.get(names[0] as string) ?? new Uint8Array()).toString('utf8'), world[names[0] as string]);
     const batches = recording.starts.filter((s) => subcommand(s) === 'cat-file');
-    assert.equal(batches.length, 1);
-    assert.equal(recording.starts.length, 1, recording.starts.map((s) => subcommand(s)).join(','));
-    assert.ok(batches[0]?.args.includes('--batch'));
-    assert.equal(batches[0]?.timeoutMs, 120000);
-    const lines = String(batches[0]?.stdin).split('\n').filter((l) => l !== '');
-    assert.ok(lines.includes(`${commit}:${names[1] as string}`));
+    assert.equal(batches.length, 2);
+    assert.equal(recording.starts.length, 2, recording.starts.map((s) => subcommand(s)).join(','));
+    assert.ok(batches[0]?.args.includes('--batch-check'));
+    assert.equal(batches[0]?.timeoutMs, 60000);
+    assert.ok(batches[1]?.args.includes('--batch'));
+    assert.equal(batches[1]?.timeoutMs, 120000);
+    for (const batch of batches) {
+      const lines = String(batch.stdin).split('\n').filter((l) => l !== '');
+      assert.ok(lines.includes(`${commit}:${names[1] as string}`));
+      assert.equal(lines.length, names.length + 1);
+    }
     assert.equal(recording.denials.length, 0);
   });
 
@@ -625,7 +630,7 @@ describe('real Source Tree history reads (STO-09)', () => {
     assert.ok(commit !== null);
     await tree.listTree(commit);
     await tree.readMany(commit, ['a.ts']);
-    assert.equal(recording.starts.length, 3);
+    assert.equal(recording.starts.length, 4, recording.starts.map((s) => subcommand(s)).join(','));
     for (const s of recording.starts) {
       assert.equal(s.env?.['GIT_NO_LAZY_FETCH'], '1');
       assert.equal(s.env?.['GIT_ALLOW_PROTOCOL'], 'none');
@@ -636,16 +641,17 @@ describe('real Source Tree history reads (STO-09)', () => {
   it('parses a header-and-body stream binary-safely even when a body contains header-looking lines and newlines', async (t) => {
     const tricky = Buffer.from(`${'0'.repeat(40)} blob 3\nabc\n${'1'.repeat(40)} missing\n`);
     const oid = (c: string): string => c.repeat(40);
+    // Run 1 (`--batch-check`) answers the sizes by position; run 2 (`--batch`) carries the commit and the one blob kept.
+    const sizes = `${oid('a')} commit 4\n${oid('b')} blob ${String(tricky.length)}\nHEAD:gone.ts missing\n`;
     const stream = Buffer.concat([
       Buffer.from(`${oid('a')} commit 4\nroot\n`),
       Buffer.from(`${oid('b')} blob ${String(tricky.length)}\n`),
       tricky,
       Buffer.from('\n'),
-      Buffer.from('HEAD:gone.ts missing\n'),
     ]);
     const repo = await createTempGitRepo({ runner: setupRunner, files: { 'a.ts': 'a\n' } });
     t.after(() => repo.cleanup());
-    const fake = createRecordingRunner({ respond: () => ({ stdout: stream }) });
+    const fake = createRecordingRunner({ respond: (spec) => ({ stdout: spec.args.includes('--batch-check') ? sizes : stream }) });
     const tree = createSourceTree({ runner: fake, repoDir: repo.dir, envOverlay: repo.envOverlay });
     const { blobs } = await tree.readMany('HEAD', ['tricky.ts', 'gone.ts']);
     assert.deepEqual(Buffer.from(blobs.get('tricky.ts') ?? new Uint8Array()), tricky);
@@ -655,8 +661,21 @@ describe('real Source Tree history reads (STO-09)', () => {
   it('throws git_failed when the batch output is shorter than the request', async (t) => {
     const repo = await createTempGitRepo({ runner: setupRunner, files: { 'a.ts': 'a\n' } });
     t.after(() => repo.cleanup());
-    const fake = createRecordingRunner({ respond: () => ({ stdout: `${'a'.repeat(40)} commit 0\n\n` }) });
+    const fake = createRecordingRunner({
+      respond: (spec) => ({
+        stdout: spec.args.includes('--batch-check') ? `${'a'.repeat(40)} commit 0\n${'b'.repeat(40)} blob 2\n` : `${'a'.repeat(40)} commit 0\n\n`,
+      }),
+    });
     const tree = createSourceTree({ runner: fake, repoDir: repo.dir, envOverlay: repo.envOverlay });
     await assert.rejects(() => tree.readMany('HEAD', ['a.ts']), { code: 'git_failed' });
+  });
+
+  it('throws git_failed when the size check answers fewer lines than requested, and starts no byte batch', async (t) => {
+    const repo = await createTempGitRepo({ runner: setupRunner, files: { 'a.ts': 'a\n' } });
+    t.after(() => repo.cleanup());
+    const fake = createRecordingRunner({ respond: () => ({ stdout: `${'a'.repeat(40)} commit 0\n` }) });
+    const tree = createSourceTree({ runner: fake, repoDir: repo.dir, envOverlay: repo.envOverlay });
+    await assert.rejects(() => tree.readMany('HEAD', ['a.ts']), { code: 'git_failed' });
+    assert.equal(fake.starts.length, 1);
   });
 });
