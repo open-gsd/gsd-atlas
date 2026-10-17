@@ -159,7 +159,12 @@ export async function resolveRepository(
   }
   try {
     const probe = makeTree(dir);
-    const [identity, worktrees] = await Promise.all([probe.identity(), probe.worktrees()]);
+    // Both git runs finish before the answer goes out. `Promise.all` would answer as soon as the first one failed and
+    // leave the other running in `dir`, which on Windows keeps that directory from being removed (found by plan 02-26).
+    const [identityRun, worktreesRun] = await Promise.allSettled([probe.identity(), probe.worktrees()]);
+    if (identityRun.status === 'rejected' || worktreesRun.status === 'rejected') return null;
+    const identity = identityRun.value;
+    const worktrees = worktreesRun.value;
     const usable = worktrees.filter((entry) => !entry.bare);
     const containing = usable
       .filter((entry) => isInside(dir, entry.path))
