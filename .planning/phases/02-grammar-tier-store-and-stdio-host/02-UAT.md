@@ -37,8 +37,9 @@ expected: freshness-gate (100 saves, 1000 ms) and corpus-gates pass on ubuntu, m
 result: [pending]
 
 ### 4. ADR editorial repairs and amendments from 02-01
-expected: Reconstructed passages and six 2026-10-16 amendments accepted; lost clause in docs/SDK-PROVIDERS.md supplied or left by choice
-result: [pending]
+expected: Reconstructed passages and the dated amendments accepted; lost clause in docs/SDK-PROVIDERS.md supplied or left by choice
+result: pass
+evidence: Accepted by the user on 2026-10-17 after reading summaries of the restored passages (ADR 3 decision 2, ADR 5 decision 5, ADR 6, PRD 4.7) and the six 2026-10-17 amendments (ADRs 4, 5, 7, 9, 11, 13). The lost clause in docs/SDK-PROVIDERS.md stays as it is, by choice.
 
 ### 5. Flaky wall-clock assertion in src/fact-store/maintain.test.ts
 expected: Bound the first compaction slice in the product, or assert page counts instead of wall time
@@ -49,9 +50,9 @@ evidence: |
 ## Summary
 
 total: 5
-passed: 2
+passed: 3
 issues: 0
-pending: 3
+pending: 2
 skipped: 0
 blocked: 0
 
