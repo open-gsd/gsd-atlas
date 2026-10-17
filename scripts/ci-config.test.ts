@@ -254,3 +254,11 @@ test('nightly.yml: triggers on one schedule entry and workflow_dispatch, and run
   assert.ok(text.includes('scripts/corpus-gates.ts'));
   assert.deepEqual(maxMsOf(text), [FRESHNESS_NIGHTLY_P99_MS]);
 });
+
+test('ci.yml: the grammar job prints each module rebuild hash before it judges them, so a new platform entry comes from evidence', () => {
+  const grammar = (jobs(readLines('ci.yml')).get('grammar') ?? []).join('\n');
+  const report = grammar.indexOf('node scripts/grammar-build.ts --report');
+  const verify = grammar.indexOf('npm run grammar:verify');
+  assert.ok(report >= 0, 'the grammar job does not print the rebuild hashes');
+  assert.ok(report < verify, 'the hashes are printed before grammar:verify runs');
+});

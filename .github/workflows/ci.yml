@@ -88,6 +88,10 @@ jobs:
             ~\AppData\Local\tree-sitter
           key: ${{ runner.os }}-wasi34-binaryen132
       - run: node scripts/ensure-tree-sitter.ts
+      # One JSON line per module with this OS's rebuild sha256. grammar:verify below is what judges it; a platform with no
+      # grammar.lock entry fails there, and its entry is then recorded from this printed value (grammar-build --update-platform).
+      - name: Report rebuild hashes
+        run: node scripts/grammar-build.ts --report
       - run: npm run grammar:verify
 
   # The measured gates of the pinned corpus (ROADMAP success criteria 1, 2 and 4) on every OS: recall, the corpus build
