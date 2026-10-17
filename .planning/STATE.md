@@ -3,16 +3,16 @@ gsd_state_version: "1.0"
 current_phase: 02
 current_phase_name: Grammar Tier, Store and stdio Host
 status: executing
-stopped_at: Completed 02-20-PLAN.md
-last_updated: "2026-10-17T00:12:04.337Z"
+stopped_at: Completed 02-22-PLAN.md
+last_updated: "2026-10-17T00:25:53.449Z"
 last_activity: 2026-10-17
-last_activity_desc: Completed 02-20 Tenant, Host and the composition root
-state_head: 1f8039a93e48f4aea3891243eee83103c7358b03
+last_activity_desc: Completed 02-22 CLI tool commands, exit codes and bin wiring
+state_head: c000e43cceab7c63905f5de032a1461805ca9d2f
 progress:
   total_phases: 9
   completed_phases: 1
   total_plans: 48
-  completed_plans: 41
+  completed_plans: 42
   percent: 11
 ---
 
@@ -28,9 +28,9 @@ See: .planning/PROJECT.md (updated 2026-10-15)
 ## Current Position
 
 Phase: 02 (Grammar Tier, Store and stdio Host) — EXECUTING
-Plan: 21 of 28 complete (plans 02-01 to 02-21 complete; they ran out of order, next is the lowest-numbered incomplete plan, 02-22)
+Plan: 22 of 28 complete (plans 02-01 to 02-22 complete; they ran out of order, next is the lowest-numbered incomplete plan, 02-23)
 Status: Ready to execute
-Last activity: 2026-10-17 — Completed 02-20 (Tenant, Host and the composition root: build then find through the real stack, Governor classes with busy, follower basics, maintain tasks with a forced stale-file refresh, user-only config; src/tenant, src/host, src/bin/compose.ts)
+Last activity: 2026-10-17 — Completed 02-22 (CLI tool commands find, refs, context, impact, health, build, maintain, status; exit codes 0 to 3; bin supplies io.init and io.cwd; CLI-layer walking skeleton; src/cli, src/bin/gsd-atlas.ts, scripts/cli-e2e.test.ts)
 
 Progress: [█░░░░░░░░░] 11%
 
@@ -46,7 +46,7 @@ Progress: [█░░░░░░░░░] 11%
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 01 | 20 | - | - |
-| 02 | 21 of 28 | - | - |
+| 02 | 22 of 28 | - | - |
 
 **Recent Trend:**
 - Last 5 plans: -
@@ -78,6 +78,7 @@ Progress: [█░░░░░░░░░] 11%
 | Phase 02 P18 | 24 min | 3 tasks | 10 files |
 | Phase 02 P19 | 16 min | 3 tasks | 19 files |
 | Phase 02 P20 | 18 min | 3 tasks | 27 files |
+| Phase 02 P22 | 11 min | 3 tasks | 9 files |
 
 ## Accumulated Context
 
@@ -154,6 +155,9 @@ Recent decisions affecting current work:
 - [Phase 02]: 02-20: a follower tenant creates no Indexer and no watcher, answers fresh paths as not completed (degraded fresh_timeout) and build and maintain with lease_held; an unbuilt worktree is never indexed because a request named fresh paths (D-11) — plan 02-27 adds the overlay, 02-28 the takeover
 - [Phase 02]: 02-20: loadUserConfig ignores a wrong file whole with one user_config_ignored warning and takes permissions as { allow: [...] } (UserPermissions), not the permissions.commands the plan prose wrote — half a configuration could leave a permission wider or narrower than the user wrote
 - [Phase 02]: 02-20: the tenant directory is the repository's main worktree and the overlay is the longest listed worktree containing the request; the tenant's Indexer starts in the background for worktrees the store already indexes (start-up Reconcile deadline and reconciling degraded code are 02-28); a code request holds an interactive slot while Query waits for ensureFresh, so four simultaneous fresh requests at concurrency 4 degrade with fresh_timeout (fairness is HRD-05)
+- [Phase 02]: [02-22] exitCodeFor precedence is usage (invalid_args, module_not_found), then lease_held or busy, then any other failure, then ok; maintain takes its task only as a positional (default all) and --full only with compact or all — A busy or lease_held diagnostic must win over other errors in the same envelope so scripts can retry; the plan's flag list named task as a positional, so no --task flag exists
+- [Phase 02]: [02-22] The CLI prints the Host envelope untouched (status included): overflow:true with the largest finite edge and tokens.label estimate reach scripts as the Metrics report carries them; stderr reasons are one sanitized line per diagnostic and busy repeats retry_after — QRY-04 prohibition: no change or filtering of the envelope between the Host and the printed JSON; MET-02 honesty about overflow and estimates
+- [Phase 02]: [02-22] gsd-atlas status shows zero counts until plan 02-28 wires Metrics.record (no production caller yet); health returns the atlas_status envelope and carries no metrics panels — Observed after build and find: answers.total 0, recording true; the display, schema and estimate labels are complete, the producers belong to 02-28
 
 ### Pending Todos
 
@@ -180,6 +184,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-10-17T00:12:04.269Z
-Stopped at: Completed 02-20-PLAN.md
+Last session: 2026-10-17T00:25:53.386Z
+Stopped at: Completed 02-22-PLAN.md
 Resume file: None

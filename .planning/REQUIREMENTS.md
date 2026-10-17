@@ -70,7 +70,7 @@ Scope is the full PRD 1.0 (M0-M6), with M4 split into SDK facts, agent integrati
 - [x] **HST-01**: `gsd-atlas-mcp` serves MCP over stdio, stateless, and survives a host restart between two tool calls
 - [ ] **HST-02**: The Host composes a Tenant per repo from M1, with a two-tenant smoke test
 - [x] **HST-03**: The Governor schedules by priority class (interactive > fresh > indexing > maintenance) and answers `busy` with `retry_after` under saturation
-- [ ] **HST-04**: `gsd-atlas init` registers MCP and hooks at user scope for detected agent hosts, never in repo config
+- [x] **HST-04**: `gsd-atlas init` registers MCP and hooks at user scope for detected agent hosts, never in repo config
 
 ### Metrics (MET)
 
@@ -238,7 +238,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | HST-01 | Phase 2 | Complete |
 | HST-02 | Phase 2 | Pending |
 | HST-03 | Phase 2 | Complete |
-| HST-04 | Phase 2 | Pending |
+| HST-04 | Phase 2 | Complete |
 | MET-01 | Phase 2 | Complete |
 | MET-02 | Phase 2 | Pending |
 | TSM-01 | Phase 3 | Pending |
