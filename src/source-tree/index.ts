@@ -9,6 +9,8 @@ export { createFakeSourceTree } from './fake.ts';
 export { SOURCE_TREE_CODES, SourceTreeError } from './types.ts';
 export type {
   HashPathsResult,
+  ListTreeResult,
+  ReadManyResult,
   ReadTextResult,
   SnapshotResult,
   SourceSetOptions,
@@ -16,5 +18,6 @@ export type {
   SourceTree,
   SourceTreeIdentity,
   SourceTreeWorld,
+  TreeEntry,
   WorktreeInfo,
 } from './types.ts';

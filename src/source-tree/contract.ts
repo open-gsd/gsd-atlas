@@ -94,6 +94,42 @@ export const READ_TEXT_WORLD: SourceTreeWorld = {
   ignored: [],
 };
 
+/** The first commit of {@link HISTORY_WORLD}: a CRLF file, a binary file with NUL, a deleted-later file. */
+export const HISTORY_FIRST: Readonly<Record<string, string>> = {
+  'a.ts': 'export const a = 1;\n',
+  'old.ts': 'export const old = 1;\n',
+  'dir/c.ts': 'export const c = 1;\n',
+  'crlf.ts': 'one\r\ntwo\r\n',
+  'bin/blob.dat': 'MZ\0\0binary payload\n',
+  'big.ts': `${'y'.repeat(300)}\n`,
+  'sp ace/é.ts': 'export const spaced = 1;\n',
+};
+
+/** The second (HEAD) commit: `a.ts` edited, `old.ts` deleted, a link, an executable and a submodule added. */
+export const HISTORY_SECOND: Readonly<Record<string, string>> = {
+  'a.ts': 'export const a = 2;\n',
+  'dir/c.ts': 'export const c = 1;\n',
+  'crlf.ts': 'one\r\ntwo\r\n',
+  'bin/blob.dat': 'MZ\0\0binary payload\n',
+  'big.ts': `${'y'.repeat(300)}\n`,
+  'sp ace/é.ts': 'export const spaced = 1;\n',
+  'link.ts': 'a.ts',
+  'tool.sh': '#!/bin/sh\necho tool\n',
+  'vendor/sub': '',
+};
+
+/**
+ * A world with two commits whose working tree differs from both, for the history reads (STO-09): `listTree` and
+ * `readMany` must follow the commit and never the working tree.
+ */
+export const HISTORY_WORLD: SourceTreeWorld = {
+  committed: HISTORY_SECOND,
+  working: { 'a.ts': 'export const a = "working tree edit";\n', 'untracked.ts': 'export const u = 1;\n' },
+  ignored: [],
+  commits: [HISTORY_FIRST, HISTORY_SECOND],
+  modes: { 'link.ts': 'symlink', 'tool.sh': 'executable', 'vendor/sub': 'gitlink' },
+};
+
 /** What a snapshot of {@link CONTRACT_WORLD} must be, derived from the world alone. */
 function expectedFiles(world: SourceTreeWorld): Array<[string, string]> {
   const isIgnored = (rel: string): boolean => world.ignored.some((e) => (e.endsWith('/') ? rel.startsWith(e) : rel === e));
@@ -389,6 +425,156 @@ export function defineSourceTreeContract(label: string, make: MakeSourceTree): v
           assert.deepEqual(await tree.readText(worktree, 'hundred.txt', { maxBytes: 99 }), { kind: 'too_large' });
           assert.deepEqual(await tree.readText(worktree, 'hundred.txt', { maxBytes: 100 }), { kind: 'ok', text: 'z'.repeat(100) });
           assert.equal((await tree.readText(worktree, 'hundred.txt')).kind, 'ok');
+        }),
+      );
+    });
+
+    describe('history reads', () => {
+      const FULL_ID = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
+      const text = (bytes: Uint8Array | null | undefined): string | null => (bytes === null || bytes === undefined ? null : Buffer.from(bytes).toString('utf8'));
+      const idsOf = async (tree: SourceTree): Promise<{ head: string; first: string }> => {
+        const head = await tree.resolveCommit('HEAD');
+        const first = await tree.resolveCommit('HEAD~1');
+        assert.ok(head !== null && first !== null);
+        return { head, first };
+      };
+
+      it(
+        'resolveCommit returns the full id of HEAD and of an earlier commit, null for an unknown revision',
+        withTree(HISTORY_WORLD, async ({ tree }) => {
+          const { head, first } = await idsOf(tree);
+          assert.match(head, FULL_ID);
+          assert.match(first, FULL_ID);
+          assert.notEqual(head, first);
+          assert.equal(await tree.resolveCommit(first), first);
+          assert.equal(await tree.resolveCommit('nosuchrev'), null);
+          assert.equal(await tree.resolveCommit('f'.repeat(40)), null);
+        }),
+      );
+
+      it(
+        'resolveCommit rejects a revision git could read as an option and one holding NUL or a line break',
+        withTree(HISTORY_WORLD, async ({ tree }) => {
+          for (const bad of ['--output=x', '-x', 'a\0b', 'a\nb', '']) {
+            await assert.rejects(() => tree.resolveCommit(bad), { code: 'invalid_argument' }, JSON.stringify(bad));
+          }
+        }),
+      );
+
+      it(
+        'listTree returns every blob of the commit with its mode, type and the git blob oid, sorted by path, from the commit and not the working tree',
+        withTree(HISTORY_WORLD, async ({ tree }) => {
+          const { first } = await idsOf(tree);
+          const { entries, diagnostics } = await tree.listTree(first);
+          const expected = Object.entries(HISTORY_FIRST)
+            .map(([rel, content]): [string, string] => [rel, blobId(content)])
+            .sort(byPath);
+          assert.deepEqual(
+            entries.map((e): [string, string] => [e.path, e.oid]),
+            expected,
+          );
+          assert.ok(entries.every((e) => e.type === 'blob' && e.mode === '100644'));
+          assert.deepEqual(diagnostics, []);
+          assert.ok(!entries.some((e) => e.path === 'untracked.ts'), 'the working tree is never listed');
+          assert.equal(entries.find((e) => e.path === 'a.ts')?.oid, blobId(HISTORY_FIRST['a.ts'] ?? ''));
+        }),
+      );
+
+      it(
+        'listTree reports a symlink as symlink_skipped and a submodule as gitlink_skipped, keeps an executable as a blob, and does not list them as entries',
+        withTree(HISTORY_WORLD, async ({ tree }) => {
+          const { head } = await idsOf(tree);
+          const { entries, diagnostics } = await tree.listTree(head);
+          assert.deepEqual(
+            diagnostics.map((d) => `${d.code}:${d.subject ?? ''}`).sort(),
+            ['gitlink_skipped:vendor/sub', 'symlink_skipped:link.ts'],
+          );
+          assert.ok(!entries.some((e) => e.path === 'link.ts' || e.path === 'vendor/sub'));
+          assert.equal(entries.find((e) => e.path === 'tool.sh')?.mode, '100755');
+          assert.equal(entries.find((e) => e.path === 'a.ts')?.oid, blobId(HISTORY_SECOND['a.ts'] ?? ''));
+          assert.ok(!entries.some((e) => e.path === 'old.ts'), 'a file deleted in this commit is absent');
+          assert.deepEqual(entries.map((e) => e.path), entries.map((e) => e.path).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0)));
+        }),
+      );
+
+      it(
+        'listTree of an unknown commit id throws commit_not_found',
+        withTree(HISTORY_WORLD, async ({ tree }) => {
+          await assert.rejects(() => tree.listTree('f'.repeat(40)), { code: 'commit_not_found' });
+          await assert.rejects(() => tree.listTree('-x'), { code: 'invalid_argument' });
+        }),
+      );
+
+      it(
+        'readMany returns the exact bytes of the commit, null for a missing path and for a file deleted later, never the working tree',
+        withTree(HISTORY_WORLD, async ({ tree }) => {
+          const { first } = await idsOf(tree);
+          const { blobs, diagnostics } = await tree.readMany(first, ['a.ts', 'old.ts', 'missing.ts']);
+          assert.equal(text(blobs.get('a.ts')), HISTORY_FIRST['a.ts']);
+          assert.equal(text(blobs.get('old.ts')), HISTORY_FIRST['old.ts']);
+          assert.equal(blobs.get('missing.ts'), null);
+          assert.equal(blobs.size, 3);
+          assert.deepEqual(diagnostics, []);
+          const { head } = await idsOf(tree);
+          const later = await tree.readMany(head, ['a.ts', 'old.ts']);
+          assert.equal(text(later.blobs.get('a.ts')), HISTORY_SECOND['a.ts']);
+          assert.equal(later.blobs.get('old.ts'), null);
+        }),
+      );
+
+      it(
+        'readMany returns a binary blob with NUL and a CRLF blob byte for byte, and handles names with spaces and non-ASCII letters',
+        withTree(HISTORY_WORLD, async ({ tree }) => {
+          const { first } = await idsOf(tree);
+          const { blobs } = await tree.readMany(first, ['bin/blob.dat', 'crlf.ts', 'sp ace/é.ts']);
+          assert.deepEqual(Buffer.from(blobs.get('bin/blob.dat') ?? new Uint8Array()), Buffer.from(HISTORY_FIRST['bin/blob.dat'] ?? ''));
+          assert.ok(Buffer.from(blobs.get('bin/blob.dat') ?? new Uint8Array()).includes(0), 'the NUL survived');
+          assert.deepEqual(Buffer.from(blobs.get('crlf.ts') ?? new Uint8Array()), Buffer.from('one\r\ntwo\r\n'));
+          assert.equal(text(blobs.get('sp ace/é.ts')), HISTORY_FIRST['sp ace/é.ts']);
+        }),
+      );
+
+      it(
+        'readMany answers a blob over the size cap with null and source_too_large, and still reads the blobs after it',
+        withTree(HISTORY_WORLD, async ({ tree }) => {
+          const { first } = await idsOf(tree);
+          const { blobs, diagnostics } = await tree.readMany(first, ['big.ts', 'a.ts'], { maxBlobBytes: 100 });
+          assert.equal(blobs.get('big.ts'), null);
+          assert.equal(text(blobs.get('a.ts')), HISTORY_FIRST['a.ts']);
+          assert.deepEqual(diagnostics.map((d) => `${d.code}:${d.subject ?? ''}`), ['source_too_large:big.ts']);
+          const exact = await tree.readMany(first, ['big.ts'], { maxBlobBytes: 301 });
+          assert.equal(exact.blobs.get('big.ts')?.length, 301);
+        }),
+      );
+
+      it(
+        'readMany of an empty list is an empty map, of a duplicated path reads it once, and of a path with a newline is null with unhashable_path',
+        withTree(HISTORY_WORLD, async ({ tree }) => {
+          const { first } = await idsOf(tree);
+          const none = await tree.readMany(first, []);
+          assert.equal(none.blobs.size, 0);
+          assert.deepEqual(none.diagnostics, []);
+          const dup = await tree.readMany(first, ['a.ts', 'a.ts']);
+          assert.equal(dup.blobs.size, 1);
+          const bad = await tree.readMany(first, ['bad\nname.ts', 'a.ts']);
+          assert.equal(bad.blobs.get('bad\nname.ts'), null);
+          assert.equal(text(bad.blobs.get('a.ts')), HISTORY_FIRST['a.ts']);
+          assert.deepEqual(bad.diagnostics.map((d) => `${d.code}:${d.subject ?? ''}`), ['unhashable_path:bad\nname.ts']);
+        }),
+      );
+
+      it(
+        'readMany of an unknown commit id throws commit_not_found, and of an option-like commit throws invalid_argument',
+        withTree(HISTORY_WORLD, async ({ tree }) => {
+          await assert.rejects(() => tree.readMany('f'.repeat(40), ['a.ts']), { code: 'commit_not_found' });
+          await assert.rejects(() => tree.readMany('-x', ['a.ts']), { code: 'invalid_argument' });
+        }),
+      );
+
+      it(
+        'history reads leave a repository without commits answerable: resolveCommit is null',
+        withTree({ committed: {}, working: {}, ignored: [] }, async ({ tree }) => {
+          assert.equal(await tree.resolveCommit('HEAD'), null);
         }),
       );
     });

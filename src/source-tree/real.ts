@@ -14,18 +14,21 @@ import type { CommandRunner, CommandSpec, RunContext } from '../command-runner/i
 import { diagnostic } from '../facts/index.ts';
 import type { Diagnostic } from '../facts/index.ts';
 import { SOURCE_TREE_CODES, SourceTreeError } from './types.ts';
-import { assertReadArguments, isObjectId, unhashableReason } from './validate.ts';
+import { assertReadArguments, assertRevision, batchPathReason, isObjectId, unhashableReason } from './validate.ts';
 import { DEFAULT_READ_TEXT_BYTES, readConfinedText } from './read-text.ts';
 import { filterSourceSet, SOURCE_PEEK_BYTES } from './source-set.ts';
 import type { PathAttributes, PeekResult } from './source-set.ts';
 import type {
   HashPathsResult,
+  ListTreeResult,
+  ReadManyResult,
   ReadTextResult,
   SnapshotResult,
   SourceSetOptions,
   SourceSetResult,
   SourceTree,
   SourceTreeIdentity,
+  TreeEntry,
   WorktreeInfo,
 } from './types.ts';
 import { parseWorktreeList } from './worktrees.ts';
@@ -305,6 +308,110 @@ export function createSourceTree(options: SourceTreeOptions): SourceTree {
     return found ? stdout : null;
   }
 
+  async function resolveCommit(rev: string): Promise<string | null> {
+    assertRevision(rev);
+    const { stdout, found } = await probe(
+      spec(['rev-parse', '--verify', '--quiet', `${rev}^{commit}`], repoDir, { timeoutMs: GIT_TIMEOUT_MS }),
+      'rev-parse --verify',
+    );
+    if (!found) return null;
+    const id = decoder.decode(stdout).trim();
+    return isObjectId(id) ? id : null;
+  }
+
+  async function listTree(commit: string): Promise<ListTreeResult> {
+    assertReadArguments(commit, 'x');
+    const result = await runner.run(
+      spec(['ls-tree', '-r', '-z', '--full-tree', commit], repoDir, { maxStdoutBytes: BIG_OUTPUT_BYTES, timeoutMs: GIT_TIMEOUT_MS }),
+      ctx,
+    );
+    if (result.denied !== undefined || result.spawnError !== undefined || result.timedOut || result.truncated) {
+      const why = result.denied?.message ?? result.spawnError?.message ?? 'timed out or output exceeded its cap';
+      throw new SourceTreeError('git_failed', `git ls-tree failed: ${why}`);
+    }
+    if (!result.ok) {
+      // 128: the commit (or a tree it needs) is not in this object database; nothing was fetched.
+      throw new SourceTreeError(SOURCE_TREE_CODES.commitNotFound, `commit ${commit.slice(0, 64)} is not available in this repository`);
+    }
+    const entries: TreeEntry[] = [];
+    const diagnostics: Diagnostic[] = [];
+    for (const record of decoder.decode(result.stdout).split('\0')) {
+      if (record === '') continue;
+      const tab = record.indexOf('\t');
+      if (tab === -1) continue;
+      const [mode, type, oid] = record.slice(0, tab).split(' ');
+      const rel = record.slice(tab + 1);
+      if (mode === undefined || type === undefined || oid === undefined) continue;
+      if (mode === '120000') {
+        diagnostics.push(diagnostic(SOURCE_TREE_CODES.symlinkSkipped, 'info', 'a symbolic link is never followed', rel));
+      } else if (mode === '160000' || type === 'commit') {
+        diagnostics.push(diagnostic(SOURCE_TREE_CODES.gitlinkSkipped, 'info', 'a submodule entry is not read as a file', rel));
+      } else if (type === 'blob') {
+        entries.push({ path: rel, mode, type, oid });
+      }
+    }
+    entries.sort((a, b) => compareCodeUnits(a.path, b.path));
+    diagnostics.sort((a, b) => compareCodeUnits(a.subject ?? '', b.subject ?? ''));
+    return { entries, diagnostics };
+  }
+
+  async function readMany(
+    commit: string,
+    paths: readonly string[],
+    readOptions?: { readonly maxBlobBytes?: number },
+  ): Promise<ReadManyResult> {
+    assertReadArguments(commit, 'x');
+    const cap = readOptions?.maxBlobBytes ?? DEFAULT_READ_TEXT_BYTES;
+    const blobs = new Map<string, Uint8Array | null>();
+    const diagnostics: Diagnostic[] = [];
+    const asked: string[] = [];
+    for (const rel of new Set(paths)) {
+      const reason = batchPathReason(rel);
+      if (reason !== null) {
+        blobs.set(rel, null);
+        diagnostics.push(diagnostic(SOURCE_TREE_CODES.unhashablePath, 'warning', reason, rel));
+      } else {
+        asked.push(rel);
+      }
+    }
+    if (asked.length === 0) return { blobs, diagnostics };
+
+    // The first line proves the commit exists (an unknown commit would otherwise look like "every path missing").
+    const lines = [`${commit}^{commit}`, ...asked.map((rel) => `${commit}:${rel}`)];
+    const result = await runner.run(
+      spec(['cat-file', '--batch'], repoDir, {
+        stdin: `${lines.join('\n')}\n`,
+        maxStdoutBytes: BIG_OUTPUT_BYTES,
+        timeoutMs: GIT_HASH_BATCH_TIMEOUT_MS,
+      }),
+      ctx,
+    );
+    if (!result.ok && result.exitCode === 128 && result.denied === undefined && result.spawnError === undefined) {
+      // git died on an object it could not read (a shallow or partial clone): nothing is fetched, so say so.
+      throw new SourceTreeError(SOURCE_TREE_CODES.commitNotFound, `an object of commit ${commit.slice(0, 64)} is not available in this repository`);
+    }
+    if (!result.ok) {
+      const why = result.denied?.message ?? result.spawnError?.message ?? (result.timedOut ? 'timed out' : result.truncated ? 'output exceeded its cap' : `exit ${String(result.exitCode)}`);
+      throw new SourceTreeError('git_failed', `git cat-file --batch failed: ${why}`);
+    }
+    const records = parseObjectBatch(result.stdout, lines.length);
+    if (records[0]?.kind !== 'found') {
+      throw new SourceTreeError(SOURCE_TREE_CODES.commitNotFound, `commit ${commit.slice(0, 64)} is not available in this repository`);
+    }
+    asked.forEach((rel, i) => {
+      const record = records[i + 1];
+      if (record?.kind !== 'found' || record.type !== 'blob') {
+        blobs.set(rel, null);
+      } else if (record.size > cap) {
+        blobs.set(rel, null);
+        diagnostics.push(diagnostic(SOURCE_TREE_CODES.sourceTooLarge, 'info', `the blob is ${String(record.size)} bytes, over the ${String(cap)}-byte cap`, rel));
+      } else {
+        blobs.set(rel, record.bytes());
+      }
+    });
+    return { blobs, diagnostics };
+  }
+
   async function identity(): Promise<SourceTreeIdentity> {
     // An unborn branch has no HEAD: rev-list fails with 128 and the repository has no root commit yet.
     const roots = await probe(spec(['rev-list', '--max-parents=0', 'HEAD'], repoDir), 'rev-list --max-parents=0');
@@ -342,5 +449,42 @@ export function createSourceTree(options: SourceTreeOptions): SourceTree {
     return readConfinedText(worktree, relPath, readOptions?.maxBytes ?? DEFAULT_READ_TEXT_BYTES);
   }
 
-  return { snapshot, hashPaths, sourceSet, worktrees, readText, hasObject, read, identity };
+  return { snapshot, hashPaths, sourceSet, worktrees, readText, hasObject, read, identity, resolveCommit, listTree, readMany };
+}
+
+/** One answer of `cat-file --batch`: an object (its bytes are copied out only on request) or `missing`/`ambiguous`. */
+type BatchRecord =
+  | { readonly kind: 'found'; readonly type: string; readonly size: number; bytes(): Uint8Array }
+  | { readonly kind: 'absent' };
+
+/**
+ * Parses the output of `git cat-file --batch` for exactly `expected` requests, in request order. Each answer is
+ * a header line `<oid> <type> <size>` followed by exactly `size` bytes and a newline, or `<spec> missing` or
+ * `<spec> ambiguous`. The size, never a scan for newlines, says where a body ends, so a body holding
+ * header-looking lines or NUL cannot desynchronise the stream. Anything else throws `git_failed`.
+ */
+function parseObjectBatch(out: Uint8Array, expected: number): BatchRecord[] {
+  const buffer = Buffer.from(out.buffer, out.byteOffset, out.byteLength);
+  const records: BatchRecord[] = [];
+  let at = 0;
+  const bad = (why: string): SourceTreeError => new SourceTreeError('git_failed', `git cat-file --batch output is malformed: ${why}`);
+  while (records.length < expected) {
+    const eol = buffer.indexOf(0x0a, at);
+    if (eol === -1) throw bad(`${String(records.length)} of ${String(expected)} answers`);
+    const header = buffer.toString('utf8', at, eol);
+    at = eol + 1;
+    if (header.endsWith(' missing') || header.endsWith(' ambiguous')) {
+      records.push({ kind: 'absent' });
+      continue;
+    }
+    const match = /^([0-9a-f]{40}|[0-9a-f]{64}) ([a-z]+) ([0-9]+)$/.exec(header);
+    if (match === null) throw bad('a header line is not "<oid> <type> <size>"');
+    const size = Number(match[3]);
+    if (!Number.isSafeInteger(size) || at + size + 1 > buffer.length || buffer[at + size] !== 0x0a) throw bad('a body does not match its declared size');
+    const start = at;
+    records.push({ kind: 'found', type: match[2] as string, size, bytes: () => Uint8Array.from(buffer.subarray(start, start + size)) });
+    at += size + 1;
+  }
+  if (at !== buffer.length) throw bad('unexpected output after the last answer');
+  return records;
 }

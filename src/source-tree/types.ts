@@ -24,6 +24,8 @@ export const SOURCE_TREE_CODES = {
   extensionNotClaimed: 'extension_not_claimed',
   /** Source set (LNG-05): the file is larger than the byte cap. */
   sourceTooLarge: 'source_too_large',
+  /** History (STO-09): the commit, or an object it needs, is not in this repository (an unknown revision, a shallow clone). */
+  commitNotFound: 'commit_not_found',
 } as const;
 
 /** Thrown for failures that make a result untrustworthy (a failed git command, a hash batch that does not line up). */
@@ -98,6 +100,34 @@ export interface SourceSetResult {
   readonly skipped: readonly Diagnostic[];
 }
 
+/** One blob of a commit's tree, as `git ls-tree` reports it. */
+export interface TreeEntry {
+  /** Repo-relative POSIX path, verbatim. */
+  readonly path: string;
+  /** The git file mode as printed (`100644`, `100755`); links and submodules are never entries. */
+  readonly mode: string;
+  /** Always `blob` for an entry; other object types are skipped with a diagnostic. */
+  readonly type: string;
+  /** The blob id (40 hex characters in a SHA-1 repository, 64 in a SHA-256 one). */
+  readonly oid: string;
+}
+
+/** What {@link SourceTree.listTree} found. */
+export interface ListTreeResult {
+  /** Every blob of the commit's tree (executables included), sorted by path in code-unit order. */
+  readonly entries: readonly TreeEntry[];
+  /** One entry per skipped path: `symlink_skipped` for a link, `gitlink_skipped` for a submodule. */
+  readonly diagnostics: Diagnostic[];
+}
+
+/** What {@link SourceTree.readMany} found. */
+export interface ReadManyResult {
+  /** Every requested path (once) to its bytes, or null when the commit has no such blob or it could not be used. */
+  readonly blobs: ReadonlyMap<string, Uint8Array | null>;
+  /** `source_too_large` for a blob over the cap and `unhashable_path` for a name that cannot ride the batch. */
+  readonly diagnostics: Diagnostic[];
+}
+
 /** Which repository this is, stable across clones' checkouts of the same history at the same git directory. */
 export interface SourceTreeIdentity {
   /** The first root commit of HEAD's history, or null for a repository with no commits. */
@@ -153,6 +183,24 @@ export interface SourceTree {
   /** The bytes of `path` at `commit`, or null when the commit has no such blob. */
   read(commit: string, path: string): Promise<Uint8Array | null>;
   identity(): Promise<SourceTreeIdentity>;
+  /**
+   * The full commit id `rev` names, or null when no commit does. A revision that git could read as an option
+   * (leading dash), or that holds NUL or a line break, throws `invalid_argument` before git starts.
+   */
+  resolveCommit(rev: string): Promise<string | null>;
+  /**
+   * Every blob of `commit`'s tree from one `git ls-tree -r -z --full-tree` run: git objects only, never the
+   * working tree. Links and submodules are left out with a diagnostic. An unknown commit throws
+   * {@link SourceTreeError} with code `commit_not_found`.
+   */
+  listTree(commit: string): Promise<ListTreeResult>;
+  /**
+   * The bytes of `paths` at `commit` from ONE `git cat-file --batch` run (none at all for an empty list),
+   * parsed binary-safely. A missing path is null; a blob over `options.maxBlobBytes` (default 2 MiB) is null with
+   * `source_too_large` and a path that cannot ride the line-oriented batch is null with `unhashable_path`.
+   * An unknown commit throws `commit_not_found`.
+   */
+  readMany(commit: string, paths: readonly string[], options?: { readonly maxBlobBytes?: number }): Promise<ReadManyResult>;
 }
 
 /**
@@ -177,4 +225,15 @@ export interface SourceTreeWorld {
    * directly in the real-only tests.
    */
   readonly worktrees?: readonly WorktreeInfo[];
+  /**
+   * The history (oldest first): each element is the complete file map of one commit. Absent: one commit made of
+   * `committed`. HEAD is the last element; when present, `committed` should equal it. `HEAD~N` addresses earlier ones.
+   */
+  readonly commits?: readonly Readonly<Record<string, string>>[];
+  /**
+   * File modes of entries in the LAST commit that are not plain files: `symlink` (the content is the link target),
+   * `executable` (mode 100755) and `gitlink` (a submodule; the content is ignored). Realised in the real harness
+   * through the index, so it needs no file-system privileges.
+   */
+  readonly modes?: Readonly<Record<string, 'symlink' | 'executable' | 'gitlink'>>;
 }
