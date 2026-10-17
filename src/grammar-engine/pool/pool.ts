@@ -31,6 +31,12 @@ export const POOL_DEFAULTS = {
    */
   runTimeoutMs: 5000,
   /**
+   * pool.loadTimeoutMs: the deadline of one grammar load (WASM instantiate plus query compile) in a worker.
+   * 02-CONSTANTS.md, "Addendum 2026-10-17 (gap closure)", Addendum status: Approved (2026-10-17). A load
+   * that passes it ends its worker; the load then fails with `engine_init_failed` (WR-09).
+   */
+  loadTimeoutMs: 30000,
+  /**
    * The one match limit of every engine in a worker: web-tree-sitter reuses capture lists it allocated
    * earlier in the process, so engines must agree. It is the largest value the library documents, as in
    * the recall script of plan 02-13.
@@ -45,10 +51,12 @@ export interface PoolOptions {
   readonly recycleAfterRuns?: number;
   /** Hard per-run deadline in milliseconds, finite and above 0. The worker is terminated when it passes. */
   readonly runTimeoutMs?: number;
+  /** Hard deadline of one grammar load in milliseconds, finite and above 0. The worker is terminated when it passes. */
+  readonly loadTimeoutMs?: number;
   /** Limits of the engine inside each worker. Defaults: the shared match limit and the run deadline. */
   readonly engineOptions?: GrammarEngineOptions;
-  /** Test-only: a different worker entry file. */
-  readonly workerUrl?: URL;
+  /** Test-only: a different worker entry file, or a function of the 1-based spawn count that names one. */
+  readonly workerUrl?: URL | ((spawnCount: number) => URL);
   /** Test-only: stands in for os.availableParallelism. */
   readonly availableParallelism?: () => number;
 }
@@ -174,7 +182,12 @@ export function createPooledGrammarEngine(options: PoolOptions = {}): GrammarEng
   if (!Number.isFinite(runTimeoutMs) || runTimeoutMs <= 0) {
     throw new RangeError(`runTimeoutMs must be a finite number above 0, got ${String(runTimeoutMs)}`);
   }
+  const loadTimeoutMs = options.loadTimeoutMs ?? POOL_DEFAULTS.loadTimeoutMs;
+  if (!Number.isFinite(loadTimeoutMs) || loadTimeoutMs <= 0) {
+    throw new RangeError(`loadTimeoutMs must be a finite number above 0, got ${String(loadTimeoutMs)}`);
+  }
   const workerUrl = options.workerUrl ?? resolveWorkerUrl();
+  let spawnCount = 0;
   const start: WorkerStartData = {
     engineOptions: {
       matchLimit: options.engineOptions?.matchLimit ?? POOL_DEFAULTS.matchLimit,
@@ -238,7 +251,9 @@ export function createPooledGrammarEngine(options: PoolOptions = {}): GrammarEng
   }
 
   function spawn(slot: Slot): Worker {
-    const worker = new Worker(workerUrl, { workerData: start });
+    spawnCount += 1;
+    const url = typeof workerUrl === 'function' ? workerUrl(spawnCount) : workerUrl;
+    const worker = new Worker(url, { workerData: start });
     slot.worker = worker;
     worker.on('message', (reply: WorkerReply) => {
       if (slot.worker !== worker) {
@@ -278,7 +293,28 @@ export function createPooledGrammarEngine(options: PoolOptions = {}): GrammarEng
   }
 
   async function loadInto(slot: Slot, grammar: GrammarRecord): Promise<LoadedInfo> {
-    const reply = await request(slot, (id) => ({ type: 'load', id, grammarKey: grammar.key, input: grammar.input }));
+    const worker = slot.worker;
+    const answer = request(slot, (id) => ({ type: 'load', id, grammarKey: grammar.key, input: grammar.input }));
+    // A language module can come from the repository: a load that never finishes must not hold the worker for ever.
+    const timer = setTimeout(() => {
+      if (slot.worker !== worker) {
+        return;
+      }
+      detach(
+        slot,
+        new GrammarLoadError(
+          'engine_init_failed',
+          `${grammar.name}: the grammar load timed out after ${String(loadTimeoutMs)} ms; the parser worker was terminated`,
+        ),
+      );
+    }, loadTimeoutMs);
+    timer.unref();
+    let reply: WorkerReply;
+    try {
+      reply = await answer;
+    } finally {
+      clearTimeout(timer);
+    }
     if (reply.type === 'error') {
       throw rebuildError(reply);
     }
