@@ -165,15 +165,31 @@ export function createParcelEventSource(options: ParcelEventSourceOptions = {}):
       let open = true;
 
       /**
-       * A worktree appeared. The native watcher can miss it (found by plan 02-26 on Linux CI): `git worktree add` makes
-       * `worktrees/` and `worktrees/NAME/` back to back, inotify reports the first and can miss the second, and a
-       * directory nobody watches never reports its HEAD again. A new subscription starts from a scan of what exists, so it
-       * covers the directory the old one missed. The new one is opened BEFORE the old one is dropped, so no event falls
-       * in between; a duplicate event is harmless because every event only means "look again". Renewals do not queue up:
-       * events that arrive during one cost a single further renewal.
+       * A worktree appeared. The native watcher can miss the new directory (found by plan 02-26 on Linux CI): `git worktree
+       * add` makes `worktrees/` and `worktrees/NAME/` back to back, and when a directory is created inotify watches it
+       * without scanning what is already inside, so `worktrees/NAME/` is never watched and its HEAD changes never arrive.
+       *
+       * A subscription on `worktrees/` itself starts from a recursive scan of what exists, so it covers the directory the
+       * first subscription missed. It is replaced on every worktrees event. The old one is dropped BEFORE the new one is
+       * opened because @parcel/watcher shares one watcher per directory and ignore list: subscribing again while the old
+       * subscription is alive would hand back the same watcher and its stale tree instead of scanning. The few milliseconds
+       * without it can only lose a linked worktree's HEAD event, and the worktrees event that started the renewal is what
+       * makes the Indexer Reconcile that worktree. A duplicate event is harmless, since every event only means "look again".
+       * Renewals do not queue up: events that arrive during one cost a single further renewal.
        */
+      const worktreesDir = path.join(commonDir, 'worktrees');
+      let nested: WatcherSubscription | undefined;
       let renewing: Promise<void> | undefined;
       let renewAgain = false;
+      const renewNested = async (): Promise<void> => {
+        const previous = nested;
+        nested = undefined;
+        await previous?.unsubscribe();
+        if (!open || !fs.statSync(worktreesDir, { throwIfNoEntry: false })?.isDirectory()) return;
+        const next = await api.subscribe(worktreesDir, onEvents, { ignore: GIT_IGNORE });
+        if (open) nested = next;
+        else await next.unsubscribe();
+      };
       const renew = (): void => {
         if (!open) return;
         if (renewing !== undefined) {
@@ -184,16 +200,9 @@ export function createParcelEventSource(options: ParcelEventSourceOptions = {}):
           do {
             renewAgain = false;
             try {
-              const next = await api.subscribe(commonDir, onEvents, { ignore: GIT_IGNORE });
-              if (!open) {
-                await next.unsubscribe();
-                return;
-              }
-              const previous = subscription;
-              subscription = next;
-              await previous.unsubscribe();
+              await renewNested();
             } catch {
-              // The old subscription still serves; say that the watch is in doubt so the Indexer reconciles.
+              // Say that the watch is in doubt so the Indexer reconciles.
               if (open) guarded(handler, { kind: 'problem', problem: 'error' });
             }
           } while (renewAgain && open);
@@ -230,6 +239,7 @@ export function createParcelEventSource(options: ParcelEventSourceOptions = {}):
       return async () => {
         open = false;
         await renewing;
+        await nested?.unsubscribe();
         await subscription.unsubscribe();
       };
     },
