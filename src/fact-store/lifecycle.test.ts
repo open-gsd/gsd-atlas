@@ -6,13 +6,13 @@
  */
 import assert from 'node:assert/strict';
 import path from 'node:path';
-import { describe, it } from 'node:test';
+import { afterEach, describe, it } from 'node:test';
 import type { FileFacts, Span } from '../facts/index.ts';
 import { openDatabase } from '../sqlite/index.ts';
 import type { DriverName } from '../sqlite/index.ts';
 import { FakeClock, makeTempDir, realPath } from '../test-kit/index.ts';
 import { WriterBusy } from './errors.ts';
-import { lifecycleTestHooks } from './lifecycle.ts';
+import { lifecycleTestHooks, resetLifecycleTestHooks } from './lifecycle.ts';
 import { DEFAULT_GC_GRACE_MS, openFactStore } from './open.ts';
 import type { StoreOpenOptions } from './open.ts';
 import { STORE_FILE_NAME } from './schema.ts';
@@ -21,6 +21,11 @@ import type { FactStore, Resolver, StoreDeps, Writer } from './types.ts';
 const noResolver: Resolver = async function* () {
   // a resolver that resolves nothing
 };
+
+// IN-08: a hook one test set must not reach the stores of the next one, however that test ended.
+afterEach(() => {
+  resetLifecycleTestHooks();
+});
 
 /** A 40-hex blob id built from a number. */
 const H = (n: number): string => n.toString(16).padStart(40, '0');
@@ -83,7 +88,7 @@ async function withRig(driver: DriverName, run: (rig: Rig) => Promise<void>): Pr
   try {
     await run(rig);
   } finally {
-    delete lifecycleTestHooks.onSelected;
+    resetLifecycleTestHooks();
     for (const store of opened) await store.close();
     tmp.cleanup();
   }
@@ -314,6 +319,43 @@ for (const driver of ['node:sqlite', 'better-sqlite3'] as const satisfies readon
       });
     });
 
+    it('empty name: a live fact named with the empty string does not make collect fail after it deleted rows (WR-05)', async () => {
+      await withRig(driver, async (rig) => {
+        const store = await rig.open(); // the trigram index is on, which is what the rowid reset is for
+        const writer = store.writer();
+        await put(writer, H(1), ['old']);
+        await put(writer, H(2), ['keep']);
+        rig.git.add(H(1));
+        // The extractors never write this name; raw SQL stands in for a fact that does.
+        const raw = await openDatabase(rig.file, { driver });
+        try {
+          raw.exec("INSERT INTO names (name) VALUES ('')");
+          raw.exec(
+            `INSERT INTO symbols (file_id, ord, name_id, kind, start_line, start_col, end_line, end_col)
+             SELECT f.id, 99, n.id, 'function', 0, 0, 1, 1 FROM files f, names n WHERE f.hash = '${H(2)}' AND n.name = ''`,
+          );
+          raw.exec("INSERT INTO names_fts (rowid, name) SELECT id, name FROM names WHERE name = ''");
+        } finally {
+          raw.close();
+        }
+
+        const result = await store.collect({ budgetMs: 1000 });
+        assert.equal(result.processed, 1);
+        assert.equal(result.complete, true);
+        assert.equal(await rig.count("SELECT count(*) AS n FROM files WHERE hash = '" + H(1) + "'"), 0, 'the retired version is gone');
+        assert.equal(await rig.count("SELECT count(*) AS n FROM names WHERE name = ''"), 1, 'and the live empty name is still there');
+        assert.equal(
+          await rig.count(
+            `SELECT count(*) AS n FROM names WHERE id NOT IN (SELECT name_id FROM symbols UNION SELECT name_id FROM refs UNION SELECT name_id FROM exports)`,
+          ),
+          0,
+          'no sentinel row remains',
+        );
+        assert.equal((await writer.link('main', 'b.ts', H(2))).status, 'committed', 'the writer still works afterwards');
+        writer.release();
+      });
+    });
+
     it('collect on a follower, which does not hold the writer lease, throws WriterBusy', async () => {
       await withRig(driver, async (rig) => {
         const leader = await rig.open({ lease: 'acquire' });
@@ -341,3 +383,9 @@ for (const driver of ['node:sqlite', 'better-sqlite3'] as const satisfies readon
     });
   });
 }
+
+describe('test hygiene (IN-08)', () => {
+  it('no lifecycle hook is set when the last test of the file starts', () => {
+    assert.deepStrictEqual(Object.values(lifecycleTestHooks).filter((hook) => hook !== undefined), []);
+  });
+});

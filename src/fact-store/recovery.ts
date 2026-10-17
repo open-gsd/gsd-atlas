@@ -30,6 +30,11 @@ export const KEEP_QUARANTINED = 2;
 /** Test hook: how many `quick_check` runs the recovery code started in this process. */
 export const recoveryCounters = { quickChecks: 0 };
 
+/** Zero every counter. Tests call it in `afterEach`; production code never does. */
+export function resetRecoveryCounters(): void {
+  recoveryCounters.quickChecks = 0;
+}
+
 /** SQLite primary result codes for a damaged file: SQLITE_CORRUPT and SQLITE_NOTADB. */
 const SQLITE_CORRUPT = 11;
 const SQLITE_NOTADB = 26;

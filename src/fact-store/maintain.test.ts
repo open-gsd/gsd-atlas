@@ -6,27 +6,41 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { describe, it } from 'node:test';
+import { afterEach, describe, it } from 'node:test';
 import type { FileFacts, Span } from '../facts/index.ts';
 import { generatedFacts, generatedHash, generatedPath } from '../../scripts/test-helpers/store-facts.ts';
 import { openDatabase } from '../sqlite/index.ts';
 import type { DriverName } from '../sqlite/index.ts';
 import { FakeClock, makeTempDir, realPath } from '../test-kit/index.ts';
 import { UnknownWorktree, WriterBusy } from './errors.ts';
-import { lifecycleTestHooks } from './lifecycle.ts';
-import { maintainStore } from './maintain.ts';
+import { COMPACT_SLICE_LIMITS, lifecycleTestHooks, resetLifecycleTestHooks } from './lifecycle.ts';
+import { IDLE_MAINTENANCE, maintainStore } from './maintain.ts';
 import type { MaintainTasks } from './maintain.ts';
 import { openFactStore } from './open.ts';
 import type { StoreOpenOptions } from './open.ts';
 import { QUARANTINE_MARK } from './recovery.ts';
 import { STORE_FILE_NAME } from './schema.ts';
-import type { CheckResult, FactStore, MaintenanceOptions, MaintenanceResult, Resolver, StoreDeps, Writer } from './types.ts';
+import type {
+  CheckResult,
+  FactStore,
+  MaintenanceOptions,
+  MaintenanceResult,
+  Resolver,
+  StoreDeps,
+  StoreMaintainOptions,
+  Writer,
+} from './types.ts';
 
 const noResolver: Resolver = async function* () {
   // a resolver that resolves nothing
 };
 
 const PAGE = 4096;
+
+// IN-08: a hook one test set must not reach the stores of the next one, however that test ended.
+afterEach(() => {
+  resetLifecycleTestHooks();
+});
 
 interface Rig {
   readonly clock: FakeClock;
@@ -75,9 +89,7 @@ async function withRig(driver: DriverName, run: (rig: Rig) => Promise<void>): Pr
   try {
     await run(rig);
   } finally {
-    lifecycleTestHooks.onSlice = undefined;
-    lifecycleTestHooks.onVacuum = undefined;
-    lifecycleTestHooks.onTask = undefined;
+    resetLifecycleTestHooks();
     for (const store of opened) await store.close();
     tmp.cleanup();
   }
@@ -134,30 +146,139 @@ async function withFreePages(rig: Rig, store: FactStore, count: number, replaced
   assert.equal(collected.complete, true);
 }
 
+/**
+ * Seed `files` files, then edit random ones under new hashes (a seeded counter, so every run is the same). The live
+ * versions stay scattered through every table, so collecting the old ones empties few pages and leaves most of the
+ * others about half empty inside. Nothing is collected here.
+ */
+async function scatteredEdits(store: FactStore, files: number, edits: number): Promise<void> {
+  const writer = store.writer();
+  await seed(writer, files);
+  const versions = new Array<number>(files).fill(0);
+  let state = 7;
+  for (let edit = 0; edit < edits; edit += 1) {
+    state = (Math.imul(state, 1_664_525) + 1_013_904_223) >>> 0;
+    const index = state % files;
+    versions[index] = (versions[index] ?? 0) + 1;
+    const hash = generatedHash(1000 + (versions[index] ?? 0) * files + index);
+    await writer.commitFile({ worktree: 'main', path: generatedPath(index), hash, facts: { ...generatedFacts(index), contentHash: hash } });
+  }
+  writer.release();
+}
+
+/** Fraction of the file that is empty space inside b-tree pages, read through a second connection. */
+async function unusedFraction(rig: Rig): Promise<number> {
+  const unused = Number(await rig.scalar('SELECT sum(unused) AS n FROM dbstat'));
+  return unused / (Number(await rig.pragma('page_count')) * PAGE);
+}
+
+/** The size of a fresh store holding `count` live files, built beside the rig's store. */
+async function freshSize(rig: Rig, driver: DriverName, count: number, offset: number): Promise<number> {
+  const deps: StoreDeps = { resolver: noResolver, clock: rig.clock, gitHas: async () => true };
+  const fresh = await openFactStore(path.join(path.dirname(rig.dir), 'fresh'), deps, { driver, repo: 'repo', version: '9.9.9' });
+  try {
+    const writer = fresh.writer();
+    for (let index = 0; index < count; index += 1) {
+      const hash = generatedHash(offset + index);
+      await writer.commitFile({ worktree: 'main', path: generatedPath(index), hash, facts: { ...generatedFacts(index), contentHash: hash } });
+    }
+    writer.release();
+    await fresh.compact({ budgetMs: 60_000 });
+    return (await fresh.status()).sizeBytes;
+  } finally {
+    await fresh.close();
+  }
+}
+
 for (const driver of ['node:sqlite', 'better-sqlite3'] as const satisfies readonly DriverName[]) {
   describe(`compact (${driver})`, () => {
-    it('slice: free pages are returned in bounded slices, the WAL is truncated and the file shrinks', async () => {
+    it('slice limits: free pages are returned in bounded, growing slices, the WAL is truncated and the file shrinks', async () => {
       await withRig(driver, async (rig) => {
         const store = await rig.open();
         await withFreePages(rig, store, 400, 400);
         const free = Number(await rig.pragma('freelist_count'));
         const pages = Number(await rig.pragma('page_count'));
-        assert.ok(free > 64, `the setup must leave more free pages than one first slice (${free})`);
+        assert.ok(free > COMPACT_SLICE_LIMITS.firstPages, `the setup must leave more free pages than one first slice (${free})`);
         assert.ok(free * 4 > pages, 'and a large part of the file');
         const sizeBefore = (await store.status()).sizeBytes;
 
-        const slices: Array<{ pages: number; ms: number }> = [];
-        lifecycleTestHooks.onSlice = (slice) => slices.push({ pages: slice.pages, ms: slice.ms });
+        // Structure only: no wall-clock time is asserted here (the measured bound is in the gate scripts).
+        const slices: number[] = [];
+        lifecycleTestHooks.onSlice = (slice) => slices.push(slice.pages);
         const result = await store.compact({ budgetMs: 60_000 });
 
         assert.equal(result.complete, true);
-        assert.equal(result.processed, free, 'processed counts the pages returned to the file system');
-        assert.ok(slices.length >= 1);
-        for (const slice of slices) assert.ok(slice.ms < 200 * 5, `a slice took ${slice.ms} ms against the approved 200 ms`);
+        assert.equal(result.processed, free, 'the pages returned equal the free pages counted before');
+        assert.ok(slices.length > 1, `more than one slice (${slices.length})`);
+        assert.equal(slices[0], COMPACT_SLICE_LIMITS.firstPages, 'the first slice asks for the first-slice size');
+        slices.forEach((asked, index) => {
+          assert.ok(asked <= COMPACT_SLICE_LIMITS.maxPages, `slice ${index} asks for at most ${COMPACT_SLICE_LIMITS.maxPages} pages`);
+          const previous = slices[index - 1];
+          if (previous !== undefined) {
+            assert.ok(asked <= previous * COMPACT_SLICE_LIMITS.maxGrowth, `slice ${index} grows by at most ${COMPACT_SLICE_LIMITS.maxGrowth} times`);
+          }
+        });
         assert.equal(Number(await rig.pragma('freelist_count')), 0);
         assert.ok((await store.status()).sizeBytes < sizeBefore, 'the file got smaller');
         const wal = `${rig.file}-wal`;
         assert.equal(fs.existsSync(wal) ? fs.statSync(wal).size : 0, 0, 'the WAL was checkpointed and truncated');
+      });
+    });
+
+    it('checkpoint: a finished run asks for TRUNCATE with a zero busy timeout, an unfinished run for PASSIVE, and the timeout is restored', async () => {
+      await withRig(driver, async (rig) => {
+        const store = await rig.open();
+        await withFreePages(rig, store, 400, 400);
+        const seen: Array<{ mode: string; busyTimeoutMs: number; previousBusyTimeoutMs: number }> = [];
+        lifecycleTestHooks.onCheckpoint = (checkpoint) => seen.push({ ...checkpoint });
+
+        const unfinished = await store.compact({ budgetMs: 0 });
+        assert.equal(unfinished.complete, false);
+        assert.deepStrictEqual(seen.map((entry) => [entry.mode, entry.busyTimeoutMs]), [['PASSIVE', 0]]);
+
+        const finished = await store.compact({ budgetMs: 60_000 });
+        assert.equal(finished.complete, true);
+        assert.deepStrictEqual(seen.map((entry) => [entry.mode, entry.busyTimeoutMs]), [['PASSIVE', 0], ['TRUNCATE', 0]]);
+        assert.deepStrictEqual(
+          seen.map((entry) => entry.previousBusyTimeoutMs),
+          [5000, 5000],
+          'the connection had the store busy timeout before each call and has it again after the first',
+        );
+      });
+    });
+
+    it('checkpoint: the busy timeout is restored when the checkpoint step throws', async () => {
+      await withRig(driver, async (rig) => {
+        const store = await rig.open();
+        lifecycleTestHooks.onCheckpoint = () => {
+          throw new Error('checkpoint failed on purpose');
+        };
+        await assert.rejects(store.compact({ budgetMs: 1000 }), /checkpoint failed on purpose/);
+        const seen: number[] = [];
+        lifecycleTestHooks.onCheckpoint = (checkpoint) => seen.push(checkpoint.previousBusyTimeoutMs);
+        await store.compact({ budgetMs: 1000 });
+        assert.deepStrictEqual(seen, [5000], 'the throw did not leave the timeout at zero');
+      });
+    });
+
+    it('checkpoint: a reader holding a snapshot does not hold the compaction, the log drains once it ends', async () => {
+      await withRig(driver, async (rig) => {
+        const store = await rig.open();
+        await withFreePages(rig, store, 400, 400);
+        const reader = await openDatabase(rig.file, { readOnly: true, driver });
+        const wal = `${rig.file}-wal`;
+        try {
+          reader.exec('BEGIN');
+          reader.prepare('SELECT count(*) AS n FROM files').get(); // the snapshot starts here
+          const during = await store.compact({ budgetMs: 60_000 });
+          assert.equal(during.complete, true, 'the call returned instead of waiting for the reader');
+          assert.ok(fs.existsSync(wal) && fs.statSync(wal).size > 0, 'the log could not be truncated under the reader');
+        } finally {
+          reader.exec('COMMIT');
+          reader.close();
+        }
+        await store.compact({ budgetMs: 60_000 });
+        assert.equal(fs.existsSync(wal) ? fs.statSync(wal).size : 0, 0, 'with the reader gone the next run truncates it');
       });
     });
 
@@ -451,6 +572,143 @@ for (const driver of ['node:sqlite', 'better-sqlite3'] as const satisfies readon
         await assert.rejects(store.maintain(-1), RangeError);
         await assert.rejects(store.maintain(Number.NaN), RangeError);
         await assert.rejects(store.maintain(Number.POSITIVE_INFINITY), RangeError);
+        await assert.rejects(store.maintain(1, { full: 'yes' } as unknown as StoreMaintainOptions), RangeError);
+        await assert.rejects(store.maintain(1, null as unknown as StoreMaintainOptions), RangeError);
+        assert.equal((await store.maintain(1, {})).complete, true, 'an empty options object is the default upkeep');
+      });
+    });
+  });
+
+  describe(`idle policy (${driver})`, () => {
+    /** Count full VACUUMs. */
+    function countVacuums(): { count: number } {
+      const seen = { count: 0 };
+      lifecycleTestHooks.onVacuum = () => {
+        seen.count += 1;
+      };
+      return seen;
+    }
+
+    it('idle policy: fragmentation is vacuumed once on the idle request, never without it, and the second call does nothing', async () => {
+      await withRig(driver, async (rig) => {
+        const store = await rig.open();
+        await scatteredEdits(store, 300, 1500);
+        await store.maintain(60_000); // collect and compact, no request
+        assert.equal(Number(await rig.pragma('freelist_count')), 0, 'the setup leaves no free page');
+        assert.ok((await unusedFraction(rig)) > 1 / 3, 'and a file more than a third empty inside');
+        const pagesBefore = Number(await rig.pragma('page_count'));
+
+        const vacuums = countVacuums();
+        await store.maintain(60_000);
+        assert.equal(vacuums.count, 0, 'no VACUUM without the option');
+        assert.equal(Number(await rig.pragma('page_count')), pagesBefore, 'and the size is unchanged');
+
+        const idle = await store.maintain(60_000, IDLE_MAINTENANCE);
+        assert.equal(vacuums.count, 1, 'exactly one VACUUM on the idle request');
+        assert.equal(idle.complete, true);
+        assert.ok(Number(await rig.pragma('page_count')) < pagesBefore * 0.8, 'the page count dropped');
+        assert.ok((await unusedFraction(rig)) < 1 / 3, 'and the empty space inside pages is below a third');
+        assert.equal((await store.at('main').find('sym0')).data.length, 300, 'every live file is still there');
+
+        const again = await store.maintain(60_000, IDLE_MAINTENANCE);
+        assert.equal(vacuums.count, 1, 'idempotent: the second call does not vacuum');
+        assert.equal(again.processed, 0);
+      });
+    });
+
+    it('idle policy: more than a quarter of the file free ends in one VACUUM at or below the fresh-equivalent size', async () => {
+      await withRig(driver, async (rig) => {
+        const store = await rig.open();
+        await withFreePages(rig, store, 400, 400);
+        assert.ok(Number(await rig.pragma('freelist_count')) * 4 > Number(await rig.pragma('page_count')));
+        const vacuums = countVacuums();
+        const result = await store.maintain(60_000, IDLE_MAINTENANCE);
+        assert.equal(result.complete, true);
+        assert.equal(vacuums.count, 1, 'the pre-check subsumes the incremental slices');
+        assert.equal(Number(await rig.pragma('freelist_count')), 0);
+        const fresh = await freshSize(rig, driver, 400, 400);
+        assert.ok((await store.status()).sizeBytes <= fresh, `the store is at or below a fresh build (${fresh})`);
+      });
+    });
+
+    it('collect not finished: a VACUUM never runs before the retired rows are gone', async () => {
+      await withRig(driver, async (rig) => {
+        const store = await rig.open({ chunkSize: 5 });
+        await withFreePages(rig, store, 400, 400);
+        const writer = store.writer();
+        await reseed(writer, 20, 5000); // 20 more retired versions: four chunks of work for collect
+        writer.release();
+        assert.ok(Number(await rig.pragma('freelist_count')) * 4 > Number(await rig.pragma('page_count')), 'the threshold is crossed');
+
+        const vacuums = countVacuums();
+        const first = await store.maintain(0, IDLE_MAINTENANCE);
+        assert.equal(first.complete, false);
+        assert.equal(vacuums.count, 0, 'collect has not finished, so nothing is vacuumed');
+
+        const later = await store.maintain(60_000, IDLE_MAINTENANCE);
+        assert.equal(later.complete, true);
+        assert.equal(vacuums.count, 1, 'a later call that finishes collect vacuums');
+        assert.equal(Number(await rig.pragma('freelist_count')), 0);
+      });
+    });
+
+    it('second chance: free pages returned first can push the rest over the empty-space threshold in the same call', async () => {
+      await withRig(driver, async (rig) => {
+        const store = await rig.open();
+        await scatteredEdits(store, 600, 540);
+        await store.collect({ budgetMs: 60_000 });
+        const free = Number(await rig.pragma('freelist_count'));
+        const pages = Number(await rig.pragma('page_count'));
+        assert.ok(free * 4 <= pages && free * 5 > pages, `the setup leaves about 20 percent free (${free} of ${pages})`);
+        assert.ok((await unusedFraction(rig)) <= 1 / 3, 'and not yet a third empty inside');
+
+        const vacuums = countVacuums();
+        const result = await store.maintain(60_000, IDLE_MAINTENANCE);
+        assert.equal(result.complete, true);
+        assert.equal(vacuums.count, 1, 'vacuumed in the same call');
+        assert.equal(Number(await rig.pragma('freelist_count')), 0);
+        assert.ok((await unusedFraction(rig)) < 1 / 3);
+      });
+    });
+
+    it('direct compact with full keeps its meaning: a VACUUM only when the file is worth it', async () => {
+      await withRig(driver, async (rig) => {
+        const store = await rig.open();
+        await withFreePages(rig, store, 400, 20); // a little free, not worth a VACUUM
+        const vacuums = countVacuums();
+        await store.compact({ budgetMs: 60_000, full: true });
+        assert.equal(vacuums.count, 0);
+      });
+    });
+
+    it('no dbstat: the idle request vacuums after a collect that deleted files, and only then', async () => {
+      await withRig(driver, async (rig) => {
+        lifecycleTestHooks.noDbstat = true;
+        const store = await rig.open();
+        await scatteredEdits(store, 600, 540);
+        const vacuums = countVacuums();
+        const first = await store.maintain(60_000, IDLE_MAINTENANCE);
+        assert.equal(first.complete, true);
+        assert.equal(vacuums.count, 1, 'the collect deleted files in this call');
+        assert.equal(Number(await rig.pragma('freelist_count')), 0);
+
+        await store.maintain(60_000, IDLE_MAINTENANCE);
+        assert.equal(vacuums.count, 1, 'a call that deletes nothing does not vacuum');
+      });
+    });
+
+    it('no dbstat: a direct full compaction follows the free-page rule only', async () => {
+      await withRig(driver, async (rig) => {
+        lifecycleTestHooks.noDbstat = true;
+        const store = await rig.open();
+        await scatteredEdits(store, 600, 540);
+        await store.collect({ budgetMs: 60_000 });
+        const free = Number(await rig.pragma('freelist_count'));
+        assert.ok(free > 0 && free * 4 <= Number(await rig.pragma('page_count')));
+        const vacuums = countVacuums();
+        const result = await store.compact({ budgetMs: 60_000, full: true });
+        assert.equal(vacuums.count, 0);
+        assert.equal(result.processed, free);
       });
     });
   });
@@ -531,5 +789,11 @@ describe('maintainStore splits one budget between the tasks', () => {
     const result = await maintainStore(failing, clock, 100);
     assert.equal(result.complete, true);
     assert.equal(result.processed, 3 + 5 + 2);
+  });
+});
+
+describe('test hygiene (IN-08)', () => {
+  it('no lifecycle hook is set when the last test of the file starts', () => {
+    assert.deepStrictEqual(Object.values(lifecycleTestHooks).filter((hook) => hook !== undefined), []);
   });
 });

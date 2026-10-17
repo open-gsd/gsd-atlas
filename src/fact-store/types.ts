@@ -277,6 +277,21 @@ export interface MaintenanceOptions {
    * full `VACUUM` never runs, because it rewrites the whole file while it holds the writer.
    */
   readonly full?: boolean;
+  /**
+   * `compact` only, internal to `maintain`: a collect in this same call deleted files. It stands in for the
+   * in-page measurement when this SQLite build has no `dbstat` table (the full request then vacuums after churn).
+   * Not part of the public contract; callers outside the store leave it unset.
+   */
+  readonly afterChurn?: boolean;
+}
+
+/**
+ * What `maintain` is asked to do beyond the default upkeep (STO-05, D-16). A full compaction is requested for the
+ * compact step; it still vacuums only past the recorded thresholds, and only after the collect step of the same
+ * call finished.
+ */
+export interface StoreMaintainOptions {
+  readonly full?: boolean;
 }
 
 /** Outcome of a time-boxed, resumable, idempotent maintenance task. */
@@ -309,6 +324,12 @@ export interface StoreStatus {
   readonly sizeBytes: number;
   /** Whether this process holds the writer lease. */
   readonly writerLeaseHeld: boolean;
+  /**
+   * Who holds the writer lease: this process when it holds it, otherwise what the holder wrote to `lease.json`.
+   * Absent when the file is unreadable (no holder, or one that has not written yet) and when the store has no lease.
+   * Diagnostics only, to name the process in a message; never used to decide who owns the lease.
+   */
+  readonly leaseHolder?: { readonly pid: number; readonly startedAt: number; readonly version: string };
   /** Set when corruption was found, the file moved aside and the store rebuilt (A17). */
   readonly rebuiltAfterCorruption?: { readonly movedTo: string; readonly at: number };
 }
@@ -336,8 +357,11 @@ export interface FactStore {
   /** Integrity check. */
   check(): Promise<CheckResult>;
 
-  /** A thin wrapper for the daemon's idle loop. Takes the writer lease itself. */
-  maintain(budgetMs: number): Promise<MaintenanceResult>;
+  /**
+   * A thin wrapper for the daemon's idle loop. Takes the writer lease itself. `IDLE_MAINTENANCE` asks for the
+   * idle policy: a full compaction once the collect step finished and the file is past the vacuum thresholds.
+   */
+  maintain(budgetMs: number, options?: StoreMaintainOptions): Promise<MaintenanceResult>;
 
   status(): Promise<StoreStatus>;
 

@@ -10,6 +10,7 @@
  * connection, which is shared with the writer, so a commit can land between two awaits of a task; every delete
  * is therefore guarded by the state it was selected under, inside its own transaction.
  */
+import { randomUUID } from 'node:crypto';
 import type { Db } from '../sqlite/index.ts';
 import type { StoreParts } from './parts.ts';
 import { isCorruptionError, recoveryCounters } from './recovery.ts';
@@ -25,7 +26,28 @@ export const lifecycleTestHooks: {
   onVacuum?: () => void;
   /** Called as `maintain` starts each of its tasks, in order. A throw fails that task. */
   onTask?: (name: 'collect' | 'compact' | 'check') => void;
+  /** When true the store behaves as if this SQLite build had no `dbstat` table (so the fallback rule can be tested everywhere). */
+  noDbstat?: boolean;
+  /**
+   * Called just before the checkpoint a `compact` run ends with: the mode asked for, the connection's busy timeout
+   * at that moment, and the value it had when the checkpoint step began (restored afterwards). A throw fails the run.
+   */
+  onCheckpoint?: (checkpoint: {
+    readonly mode: 'TRUNCATE' | 'PASSIVE';
+    readonly busyTimeoutMs: number;
+    readonly previousBusyTimeoutMs: number;
+  }) => void;
 } = {};
+
+/**
+ * Clear every lifecycle test hook. Tests call it in `afterEach`, so a failing test cannot leak a hook into the
+ * next store. Production code never calls it.
+ */
+export function resetLifecycleTestHooks(): void {
+  for (const key of Object.keys(lifecycleTestHooks) as Array<keyof typeof lifecycleTestHooks>) {
+    delete lifecycleTestHooks[key];
+  }
+}
 
 /** Where the last budget-limited `collect` stopped, so the next call goes on behind it (see `collectRetired`). */
 interface CollectCursor {
@@ -108,9 +130,17 @@ function deleteUnusedNames(parts: StoreParts): number {
  * id above 2^53. The kit refuses to hand such a number back, so the next `run()` of any statement on this
  * connection, a `DELETE` in the writer included, would throw `IntegerOutOfRangeError`. Inserting into an
  * ordinary table sets the value to a small one again; the row is removed at once.
+ *
+ * The row goes into `names` and not into `meta`: `meta` is a WITHOUT ROWID table, and those do not move the
+ * last-insert rowid. Its name is a NUL character plus a random identifier, deleted by exact value. No fact can
+ * collide with it (a name holding a NUL is not a name an extractor produces, and the value is random besides),
+ * where the former empty-string sentinel threw a constraint error, after the rows were already deleted, when a live
+ * fact was named `''` (WR-05). Built in SQL text with `exec`: a prepared `run()` would read the very rowid this
+ * function exists to repair.
  */
 function resetLastInsertRowid(db: Db): void {
-  db.exec("INSERT INTO names (name) VALUES (''); DELETE FROM names WHERE name = ''");
+  const sentinel = `char(0) || '${randomUUID()}'`;
+  db.exec(`INSERT INTO names (name) VALUES (${sentinel}); DELETE FROM names WHERE name = ${sentinel}`);
 }
 
 /**
@@ -175,12 +205,16 @@ export async function collectRetired(parts: StoreParts, options: MaintenanceOpti
   return { complete, spentMs: clock.now() - started, processed };
 }
 
-/** The pages the first incremental-vacuum slice asks for; later slices are sized from how long this one took. */
-const FIRST_SLICE_PAGES = 64;
-
-/** The most pages one slice may ask for (64 MiB at 4 KiB pages), and the most a slice may grow from its last. */
-const MAX_SLICE_PAGES = 16_384;
-const MAX_SLICE_GROWTH = 4;
+/**
+ * How incremental-vacuum slices are sized. The first slice asks for `firstPages`; later slices are sized from how
+ * long the last one took, at most `maxGrowth` times the last and never above `maxPages` (64 MiB at 4 KiB pages).
+ * Exported so the slice test can assert the structure instead of a wall-clock time.
+ */
+export const COMPACT_SLICE_LIMITS: Readonly<{ firstPages: number; maxPages: number; maxGrowth: number }> = Object.freeze({
+  firstPages: 64,
+  maxPages: 16_384,
+  maxGrowth: 4,
+});
 
 /** What a slice is sized to take: half the pause the plan allows, so noise does not push it over. */
 const SLICE_FRACTION = 0.5;
@@ -190,12 +224,14 @@ const SLICE_FRACTION = 0.5;
  * no free page. Incremental vacuum only returns pages that are empty; scattered deletes (a heavily edited store
  * whose old versions were collected) leave pages two thirds empty that nothing returns, and measured on the
  * size gate that costs 1.34 times a fresh build. A fresh build is about 26 percent empty inside, so a third
- * leaves it alone. An internal bound of this plan, not an approved constant.
+ * leaves it alone, and that margin is the hysteresis that keeps the idle loop from vacuuming every round.
+ * This is the idle policy trigger recorded in 02-CONSTANTS.md as `compact.fullUnusedFraction`.
  */
 const FRAGMENTED_FRACTION = 1 / 3;
 
 /** Bytes of unused space inside the b-tree pages, or undefined when this SQLite build has no `dbstat` table. */
 function unusedBytes(db: Db): number | undefined {
+  if (lifecycleTestHooks.noDbstat === true) return undefined;
   try {
     const row = db.prepare('SELECT sum(unused) AS unused FROM dbstat').get();
     return row === undefined || row.unused === null ? undefined : Number(row.unused);
@@ -205,20 +241,43 @@ function unusedBytes(db: Db): number | undefined {
 }
 
 /**
- * Whether a full `VACUUM` is warranted: more than a quarter of the file is free pages (the plan's rule), or,
- * when this build can say, more than `FRAGMENTED_FRACTION` of it is empty space inside pages.
+ * Whether a full `VACUUM` is warranted: more than a quarter of the file is free pages (`compact.fullFreeFraction`,
+ * the rule of the worktree-lifecycle ADR), or, when this build can say, more than `FRAGMENTED_FRACTION` of it is
+ * empty space inside pages. Without `dbstat` the in-page space cannot be measured: `afterChurn` (a collect in this
+ * same call deleted files, set by `maintain`) then stands in for it, so the full request vacuums once per churn
+ * episode; a direct `compact({ full: true })` leaves it unset and follows the free-page rule only.
  */
-function worthVacuuming(db: Db, freePages: number): boolean {
+function worthVacuuming(db: Db, freePages: number, afterChurn: boolean): boolean {
   const total = Number(db.pragma('page_count'));
   if (freePages * 4 > total) return true;
   const unused = unusedBytes(db);
-  return unused !== undefined && unused > total * Number(db.pragma('page_size')) * FRAGMENTED_FRACTION;
+  if (unused === undefined) return afterChurn;
+  return unused > total * Number(db.pragma('page_size')) * FRAGMENTED_FRACTION;
 }
 
 /** The next slice's page count: aim for `target` ms given that `pages` took `ms`, growing by at most `MAX_SLICE_GROWTH`. */
 function nextSlicePages(pages: number, ms: number, target: number): number {
   const scaled = Math.floor((pages * target) / Math.max(ms, 0.05));
-  return Math.max(1, Math.min(scaled, pages * MAX_SLICE_GROWTH, MAX_SLICE_PAGES));
+  return Math.max(1, Math.min(scaled, pages * COMPACT_SLICE_LIMITS.maxGrowth, COMPACT_SLICE_LIMITS.maxPages));
+}
+
+/**
+ * Checkpoint the log without ever waiting for a reader (WR-04). `wal_checkpoint(TRUNCATE)` calls the connection's
+ * busy handler while a reader in another process still uses the log, and this runs synchronously on the leader's
+ * event loop, so the connection's 5 s busy timeout would freeze every request. The timeout is set to 0 for this one
+ * call (0 means do not wait, it is not a duration: `compact.checkpointBusyTimeoutMs` in 02-CONSTANTS.md) and put
+ * back afterwards, also when the call throws. A checkpoint that finds a reader reports busy instead of failing, and
+ * the log drains on a later run.
+ */
+function checkpoint(db: Db, mode: 'TRUNCATE' | 'PASSIVE'): void {
+  const previousBusyTimeoutMs = Number(db.pragma('busy_timeout'));
+  db.pragma('busy_timeout', 0);
+  try {
+    lifecycleTestHooks.onCheckpoint?.({ mode, busyTimeoutMs: Number(db.pragma('busy_timeout')), previousBusyTimeoutMs });
+    db.pragma('wal_checkpoint', mode);
+  } finally {
+    db.pragma('busy_timeout', previousBusyTimeoutMs);
+  }
 }
 
 /**
@@ -228,8 +287,9 @@ function nextSlicePages(pages: number, ms: number, target: number): number {
  * checkpoint, which truncates the log when the run finished.
  *
  * A full `VACUUM` rewrites the whole file while it holds the writer, so it runs only when the caller asks
- * (`options.full`) and the file is worth it (`worthVacuuming`); otherwise `full` changes nothing. `processed`
- * counts the pages given back.
+ * (`options.full`) and the file is worth it (`worthVacuuming`); otherwise `full` changes nothing. The decision is
+ * taken before the slices and, when they returned every free page, once more after them. `processed` counts the
+ * pages given back.
  */
 export async function compactStore(parts: StoreParts, options: MaintenanceOptions): Promise<MaintenanceResult> {
   const db = parts.writeDb;
@@ -240,16 +300,23 @@ export async function compactStore(parts: StoreParts, options: MaintenanceOption
   let processed = 0;
   let complete = true;
 
-  let free = freePages();
-  if (options.full === true && worthVacuuming(db, free)) {
+  const afterChurn = options.afterChurn === true;
+  let vacuumed = false;
+  const vacuum = (): void => {
     const before = Number(db.pragma('page_count'));
     lifecycleTestHooks.onVacuum?.();
     db.exec('VACUUM');
     processed += before - Number(db.pragma('page_count'));
+    vacuumed = true;
+  };
+
+  let free = freePages();
+  if (options.full === true && worthVacuuming(db, free, afterChurn)) {
+    vacuum();
     free = freePages();
   }
 
-  let pages = FIRST_SLICE_PAGES;
+  let pages = COMPACT_SLICE_LIMITS.firstPages;
   while (free > 0) {
     const began = performance.now();
     db.pragma('incremental_vacuum', pages);
@@ -266,11 +333,16 @@ export async function compactStore(parts: StoreParts, options: MaintenanceOption
     }
   }
 
+  // Second chance: returning the free pages made the file smaller, so the same empty space can now be more than a
+  // third of it. Decide again, once, so a single call converges (a VACUUM that already ran this call is enough).
+  if (options.full === true && !vacuumed && complete && free === 0 && worthVacuuming(db, 0, afterChurn)) {
+    vacuum();
+  }
+
   // `optimize` first: it may write planner statistics, and the checkpoint must be the last write so the log ends
-  // empty. A truncating checkpoint waits for readers, so only a finished run asks for one; an unfinished run
-  // lets the log drain.
+  // empty. Only a finished run asks for a truncating checkpoint; an unfinished run lets the log drain.
   db.pragma('optimize');
-  db.pragma('wal_checkpoint', complete ? 'TRUNCATE' : 'PASSIVE');
+  checkpoint(db, complete ? 'TRUNCATE' : 'PASSIVE');
   return { complete, spentMs: clock.now() - started, processed };
 }
 
