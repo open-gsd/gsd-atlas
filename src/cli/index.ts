@@ -48,11 +48,6 @@ const USAGE = [
   '',
 ].join('\n');
 
-function usageError(io: CliIo, message: string): number {
-  io.stderr.write(`gsd-atlas: ${message}\n${USAGE}`);
-  return EXIT_USAGE;
-}
-
 function reasonOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
@@ -60,11 +55,17 @@ function reasonOf(error: unknown): string {
 /** Control characters, C1 controls and the Unicode line and paragraph separators. */
 const isControl = (code: number): boolean => code < 0x20 || (code >= 0x7f && code <= 0x9f) || code === 0x2028 || code === 0x2029;
 
-/** A diagnostic message on one line: a stray newline must not turn one reason into several (stderr is line-oriented). */
+/** A message on one line: a stray newline must not turn one reason into several (stderr is line-oriented). */
 function oneLine(text: string): string {
   let clean = '';
   for (const char of text) clean += isControl(char.codePointAt(0) as number) ? ' ' : char;
   return clean;
+}
+
+/** A usage error: the reason (one line, it can quote what the user typed), then the usage text. */
+function usageError(io: CliIo, message: string): number {
+  io.stderr.write(`gsd-atlas: ${oneLine(message)}\n${USAGE}`);
+  return EXIT_USAGE;
 }
 
 interface RootFlags {

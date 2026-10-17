@@ -29,7 +29,6 @@ export const FLAGS = {
   mode: { type: 'string' },
   path: { type: 'string' },
   depth: { type: 'string' },
-  task: { type: 'string' },
   full: { type: 'boolean' },
   since: { type: 'string' },
   agent: { type: 'string', multiple: true },
@@ -51,6 +50,21 @@ export const ROOT_FLAGS: readonly FlagName[] = ['repo-root', 'user-dir', 'builti
 /** The flags of the code tools that choose the repository and shape the answer. */
 const SELECTION: readonly FlagName[] = ['repo', 'cwd'];
 const PAGING: readonly FlagName[] = ['budget', 'more', 'fresh', 'limit'];
+
+/**
+ * The tasks `maintain` runs, as the Host accepts them (`all` runs every other one, in this order). Kept here because an
+ * adapter imports nothing but the host-client seam; scripts/cli-e2e.test.ts checks this list against the Host's.
+ */
+export const MAINTAIN_TASKS = ['reconcile', 'resolve', 'refresh', 'collect', 'compact', 'check', 'all'] as const;
+
+/** The only tasks `--full` (a full vacuum) applies to. */
+const FULL_TASKS: ReadonlySet<string> = new Set(['compact', 'all']);
+
+/** The window of `status`: a count of 1 to 9999 and a unit of minutes, hours or days, as the Host reads it. */
+const SINCE = /^[1-9][0-9]{0,3}[mhd]$/;
+
+/** The window `status` shows when `--since` is not given. */
+const DEFAULT_SINCE = '7d';
 
 /** How a command takes its positional arguments. */
 export type Positional = 'name' | 'task' | 'none';
@@ -80,12 +94,60 @@ export const COMMANDS: readonly Command[] = [
     usage: 'gsd-atlas find <name> [--kind <kind>] [--mode exact|prefix|fuzzy|auto] [selection and paging flags]',
   },
   {
+    name: 'refs',
+    kind: 'tool',
+    tool: 'code_refs',
+    positional: 'name',
+    flags: [...SELECTION, ...PAGING, 'kind', 'path'],
+    usage: 'gsd-atlas refs <name> [--kind <kind>] [--path <file>] [selection and paging flags]',
+  },
+  {
+    name: 'context',
+    kind: 'tool',
+    tool: 'code_context',
+    positional: 'name',
+    flags: [...SELECTION, ...PAGING, 'path'],
+    usage: 'gsd-atlas context <name> [--path <file>] [selection and paging flags]',
+  },
+  {
+    name: 'impact',
+    kind: 'tool',
+    tool: 'code_impact',
+    positional: 'name',
+    flags: [...SELECTION, ...PAGING, 'path', 'depth'],
+    usage: 'gsd-atlas impact <name> [--path <file>] [--depth <hops>] [selection and paging flags]',
+  },
+  {
+    name: 'health',
+    kind: 'tool',
+    tool: 'atlas_status',
+    positional: 'none',
+    flags: [...SELECTION],
+    usage: 'gsd-atlas health [--repo <dir>] [--cwd <dir>]   (index status, the atlas_status tool)',
+  },
+  {
     name: 'build',
     kind: 'index',
     request: 'build',
     positional: 'none',
     flags: [...SELECTION],
-    usage: 'gsd-atlas build [--repo <dir>] [--cwd <dir>]',
+    usage: 'gsd-atlas build [--repo <dir>] [--cwd <dir>]   (index the repository; the only way an index is created)',
+  },
+  {
+    name: 'maintain',
+    kind: 'index',
+    request: 'maintain',
+    positional: 'task',
+    flags: [...SELECTION, 'full'],
+    usage: `gsd-atlas maintain [${MAINTAIN_TASKS.join('|')}] [--full] [--repo <dir>] [--cwd <dir>]   (exit 3 when another process holds the writer lease)`,
+  },
+  {
+    name: 'status',
+    kind: 'index',
+    request: 'status',
+    positional: 'none',
+    flags: [...SELECTION, 'since'],
+    usage: 'gsd-atlas status [--since <count>m|h|d] [--repo <dir>] [--cwd <dir>]   (local metrics panels; token figures are estimates)',
   },
   {
     name: 'init',
@@ -161,6 +223,17 @@ export function inputFromFlags(
   if (command.positional === 'name') {
     if (positionals.length !== 1) return refuse(`${command.name} needs exactly one symbol name`);
     input['name'] = positionals[0];
+  } else if (command.positional === 'task') {
+    if (positionals.length > 1) return refuse(`${command.name} takes at most one task`);
+    const task = positionals[0] ?? 'all';
+    if (!(MAINTAIN_TASKS as readonly string[]).includes(task)) {
+      return refuse(`unknown task "${task}" (expected ${MAINTAIN_TASKS.join(', ')})`);
+    }
+    if (values.full === true && !FULL_TASKS.has(task)) {
+      return refuse('--full applies only to maintain compact and maintain all');
+    }
+    input['task'] = task;
+    if (values.full === true) input['full'] = true;
   } else if (command.positional === 'none' && positionals.length > 0) {
     return refuse(`${command.name} takes no arguments`);
   }
@@ -187,6 +260,12 @@ export function inputFromFlags(
     if (text !== undefined) input[flag] = text;
   }
   if (Array.isArray(values.fresh)) input['fresh'] = [...values.fresh];
+
+  if (command.request === 'status') {
+    const since = stringOf(values.since) ?? DEFAULT_SINCE;
+    if (!SINCE.test(since)) return refuse(`--since must be a count and a unit, such as 30m, 12h or 7d, got "${since}"`);
+    input['since'] = since;
+  }
 
   if (command.kind === 'tool') return validateTool(command, input);
   return { ok: true, input };
