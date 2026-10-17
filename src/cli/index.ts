@@ -108,7 +108,9 @@ async function send(io: CliIo, request: Request): Promise<number> {
   io.stdout.write(`${JSON.stringify(envelope)}\n`);
   for (const d of envelope.diagnostics) {
     if (d.severity === 'error' || d.severity === 'warning') {
-      io.stderr.write(`gsd-atlas: ${d.severity} ${d.code}: ${oneLine(d.message)}\n`);
+      // A busy answer says when to come back; that number lives on the envelope, so the reason line repeats it.
+      const wait = d.code === 'busy' && typeof envelope.retry_after === 'number' ? ` (retry after ${String(envelope.retry_after)} ms)` : '';
+      io.stderr.write(`gsd-atlas: ${d.severity} ${d.code}: ${oneLine(d.message)}${wait}\n`);
     }
   }
   return exitCodeFor(envelope);
