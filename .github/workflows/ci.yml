@@ -123,3 +123,27 @@ jobs:
         run: node scripts/size-gate.ts
       - name: Freshness gate (pull request ceiling)
         run: node scripts/freshness-gate.ts --saves 30 --max-ms 3000
+      # Diagnostic only (plan 02-46, .planning/debug/windows-freshness.md). The three steps below run on the hosted Windows
+      # job alone, after every normal gate, and cannot fail the job: they run the freshness gate once more with the opt-in
+      # spawn trace (the gate's own bound, unchanged) so the next hosted Windows run shows the per-spawn cost, the event
+      # delay and the commit time as numbers, in the log and as an artifact. No normal step loads the trace.
+      - name: Freshness trace (Windows diagnostic)
+        if: always() && matrix.os == 'windows-latest'
+        continue-on-error: true
+        env:
+          GSD_ATLAS_TRACE_FILE: ${{ runner.temp }}/freshness-trace.log
+        run: node --import ./scripts/diagnostics/trace-spawns.mjs scripts/freshness-gate.ts --saves 30 --max-ms 3000
+      - name: Freshness trace summary
+        if: always() && matrix.os == 'windows-latest'
+        continue-on-error: true
+        env:
+          GSD_ATLAS_TRACE_FILE: ${{ runner.temp }}/freshness-trace.log
+        run: node scripts/diagnostics/trace-summary.ts "$GSD_ATLAS_TRACE_FILE"
+      - name: Freshness trace artifact
+        if: always() && matrix.os == 'windows-latest'
+        continue-on-error: true
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: freshness-trace-windows
+          path: ${{ runner.temp }}/freshness-trace.log
+          if-no-files-found: ignore

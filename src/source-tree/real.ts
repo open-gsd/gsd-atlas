@@ -4,7 +4,8 @@
  * off every repo-controlled execution path (filter drivers, fsmonitor, hooks).
  *
  * A snapshot costs four git starts however large the tree is: enumerate filter drivers, list tracked
- * files, list untracked-not-ignored files, and ONE batched `hash-object --stdin-paths` over all of them.
+ * files, list untracked-not-ignored files, and ONE batched `hash-object --stdin-paths` over all of them. The
+ * ignore check for single saved paths (`unignoredPaths`) costs one git start and hashes nothing.
  */
 import { createHash } from 'node:crypto';
 import fs from 'node:fs';
@@ -14,7 +15,7 @@ import type { CommandRunner, CommandSpec, RunContext } from '../command-runner/i
 import { diagnostic } from '../facts/index.ts';
 import type { Diagnostic } from '../facts/index.ts';
 import { SOURCE_TREE_CODES, SourceTreeError } from './types.ts';
-import { assertReadArguments, assertRevision, batchPathReason, isObjectId, unhashableReason } from './validate.ts';
+import { assertReadArguments, assertRepoRelative, assertRevision, batchPathReason, isObjectId, unhashableReason } from './validate.ts';
 import { pickRootCommit } from './identity.ts';
 import { DEFAULT_READ_TEXT_BYTES, readConfinedText } from './read-text.ts';
 import { filterSourceSet, SOURCE_PEEK_BYTES } from './source-set.ts';
@@ -133,6 +134,27 @@ export function createSourceTree(options: SourceTreeOptions): SourceTree {
     // 5. One batched hash over everything that is left.
     const files = await hashBatch(worktree, hashable, filterNames);
     return { files, diagnostics };
+  }
+
+  /**
+   * The ignore oracle (plan 02-46): ONE `ls-files -z --cached --others --exclude-standard` with no pathspec and nothing
+   * on stdin, filtered here by exact string equality against the requested names. Nothing a watcher or a repository
+   * supplied reaches git, so no name can be read as an option, a pattern or a magic pathspec. The cost is the listing
+   * of the tree once per call, without hashing a single file (the snapshot listed twice and hashed everything).
+   */
+  async function unignoredPaths(worktree: string, paths: readonly string[]): Promise<ReadonlySet<string>> {
+    assertRepoRelative(paths);
+    const asked = new Set(paths);
+    if (asked.size === 0) return new Set();
+    const listing = await gitText(
+      spec(['ls-files', '-z', '--cached', '--others', '--exclude-standard'], worktree, { maxStdoutBytes: BIG_OUTPUT_BYTES, timeoutMs: GIT_TIMEOUT_MS }),
+      'ls-files --cached --others',
+    );
+    const found = new Set<string>();
+    for (const entry of listing.split('\0')) {
+      if (entry !== '' && asked.has(entry)) found.add(entry);
+    }
+    return found;
   }
 
   /**
@@ -282,6 +304,13 @@ export function createSourceTree(options: SourceTreeOptions): SourceTree {
     } finally {
       await handle.close();
     }
+  }
+
+  /** One `check-attr` run for the paths `hashPaths` would hash (same vetting), none when nothing is left. */
+  async function pathAttributes(worktree: string, paths: readonly string[]): Promise<ReadonlyMap<string, PathAttributes>> {
+    const vetted = await vetPaths(worktree, [...new Set(paths)].sort(compareCodeUnits), []);
+    if (vetted.length === 0) return new Map();
+    return checkAttr(worktree, vetted);
   }
 
   function sourceSet(worktree: string, files: ReadonlyMap<string, string>, options: SourceSetOptions): Promise<SourceSetResult> {
@@ -520,7 +549,7 @@ export function createSourceTree(options: SourceTreeOptions): SourceTree {
     return readConfinedText(worktree, relPath, readOptions?.maxBytes ?? DEFAULT_READ_TEXT_BYTES);
   }
 
-  return { snapshot, hashPaths, sourceSet, worktrees, readText, hasObject, read, identity, resolveCommit, listTree, readMany };
+  return { snapshot, hashPaths, unignoredPaths, pathAttributes, sourceSet, worktrees, readText, hasObject, read, identity, resolveCommit, listTree, readMany };
 }
 
 /** One answer of `cat-file --batch-check`: the object's id, type and size, or `missing`/`ambiguous`. */

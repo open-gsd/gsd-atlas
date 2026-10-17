@@ -121,6 +121,15 @@ describe('decide: first-party git built-in', () => {
     for (const shape of shapes) assert.equal(decide(safeGit(...shape)).allowed, true, shape.join(' '));
   });
 
+  it('ls-files --cached is allowed (plan 02-46: the one pathspec-free listing of the ignore check)', () => {
+    // Byte for byte the argv real.ts hands to gitSpec: no pathspec, nothing after the fixed options.
+    assert.deepEqual(decide(safeGit('ls-files', '-z', '--cached', '--others', '--exclude-standard')), {
+      allowed: true,
+      via: 'builtin',
+      builtinId: 'git',
+    });
+  });
+
   it('allows worktree only in the exact read form list --porcelain -z (command-runner amendment 2026-10-16)', () => {
     assert.deepEqual(decide(safeGit('worktree', 'list', '--porcelain', '-z')), { allowed: true, via: 'builtin', builtinId: 'git' });
   });
@@ -194,6 +203,47 @@ describe('decide: git denials', () => {
       assertDenied(decide(spec));
     });
   }
+
+  it('ls-files short forms and pathspec options are denied', () => {
+    const listing = ['-z', '--cached', '--others', '--exclude-standard'];
+    const cases: Array<[string, CommandSpec]> = [
+      ['-c in place of --cached', safeGit('ls-files', '-z', '-c', '--others', '--exclude-standard')],
+      ['-o in place of --others', safeGit('ls-files', '-z', '--cached', '-o', '--exclude-standard')],
+      ['the bundled short form -co', safeGit('ls-files', '-z', '-co', '--exclude-standard')],
+      ['the bundled short form -zco', safeGit('ls-files', '-zco', '--exclude-standard')],
+      ['--pathspec-from-file=-', safeGit('ls-files', ...listing, '--pathspec-from-file=-')],
+      ['--pathspec-from-file=somefile', safeGit('ls-files', ...listing, '--pathspec-from-file=somefile')],
+      ['--pathspec-file-nul', safeGit('ls-files', ...listing, '--pathspec-file-nul')],
+      ['-- after the listing options', safeGit('ls-files', ...listing, '--', 'src/a.ts')],
+      ['-- before the listing options', safeGit('ls-files', '--', ...listing)],
+      ['a lone -- as the only argument', safeGit('ls-files', '--')],
+      ['the neighbouring option --directory', safeGit('ls-files', ...listing, '--directory')],
+      ['the neighbouring option --recurse-submodules', safeGit('ls-files', ...listing, '--recurse-submodules')],
+      ['the neighbouring option --ignored', safeGit('ls-files', ...listing, '--ignored')],
+      ['the neighbouring option --deleted', safeGit('ls-files', ...listing, '--deleted')],
+      ['the neighbouring option --error-unmatch', safeGit('ls-files', ...listing, '--error-unmatch')],
+      ['the neighbouring option --format=%(path)', safeGit('ls-files', ...listing, '--format=%(path)')],
+      ['an abbreviated long option --cache', safeGit('ls-files', '-z', '--cache', '--others', '--exclude-standard')],
+    ];
+    for (const [name, spec] of cases) assert.equal(decide(spec).allowed, false, name);
+    // The global pathspec options, both before the three required overrides and after them.
+    for (const option of ['--literal-pathspecs', '--glob-pathspecs', '--noglob-pathspecs', '--icase-pathspecs']) {
+      const lead: CommandSpec = {
+        executable: 'git',
+        args: ['-C', '/some/repo', option, ...SAFE_OVERRIDES, 'ls-files', ...listing],
+        builtinId: 'git',
+        env: { ...PINNED_ENV },
+      };
+      assert.equal(decide(lead).allowed, false, `${option} before the overrides`);
+      assert.equal(decide(safeGit(option, 'ls-files', ...listing)).allowed, false, `${option} after the overrides`);
+    }
+  });
+
+  it('--cached is an ls-files option only: hash-object, check-attr, rev-parse and cat-file deny it', () => {
+    for (const rest of [['hash-object', '--cached'], ['check-attr', '--cached', 'a.txt'], ['rev-parse', '--cached'], ['cat-file', '--cached', 'x']]) {
+      assertDenied(decide(safeGit(...rest)));
+    }
+  });
 
   it('denies a bundled short option, an abbreviated long option and an option of another subcommand with the denial diagnostic', () => {
     for (const rest of [['hash-object', '-wt', 'blob', 'x'], ['cat-file', '--textc', 'x'], ['ls-tree', '--stdin-paths']]) {

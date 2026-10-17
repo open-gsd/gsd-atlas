@@ -28,7 +28,7 @@ import type {
   TreeEntry,
   WorktreeInfo,
 } from './types.ts';
-import { assertReadArguments, assertRevision, batchPathReason, escapesWorktree, isObjectId, unhashableReason } from './validate.ts';
+import { assertReadArguments, assertRepoRelative, assertRevision, batchPathReason, escapesWorktree, isObjectId, unhashableReason } from './validate.ts';
 
 /** The one worktree the fake has when the world describes none, and the root of its fake git directory. */
 const FAKE_WORKTREE = '/fake';
@@ -138,6 +138,34 @@ export function createFakeSourceTree(world: Partial<SourceTreeWorld> = {}): Sour
         files.set(rel, blobId(content));
       }
       return Promise.resolve({ files, diagnostics });
+    },
+
+    pathAttributes(_worktree: string, paths: readonly string[]): Promise<ReadonlyMap<string, PathAttributes>> {
+      // Vets exactly as hashPaths does (name rules, then what is on disk) and answers an entry for each path it
+      // would ask git about, as the real tree's single check-attr run does.
+      const found = new Map<string, PathAttributes>();
+      for (const rel of [...new Set(paths)].sort(compareCodeUnits)) {
+        if (unhashableReason(rel) !== null || onDisk(rel) === null) continue;
+        found.set(rel, { generated: attributes[rel]?.generated === true, vendored: attributes[rel]?.vendored === true });
+      }
+      return Promise.resolve(found);
+    },
+
+    // async so that invalid arguments reject, exactly as the real tree's does.
+    async unignoredPaths(_worktree: string, paths: readonly string[]): Promise<ReadonlySet<string>> {
+      assertRepoRelative(paths);
+      const found = new Set<string>();
+      for (const rel of new Set(paths)) {
+        // Tracked paths are listed whatever the ignore rules say (and whether or not the file is still on disk, as
+        // `--cached` does); untracked ones only when they exist and no rule ignores them.
+        if (Object.hasOwn(committed, rel)) {
+          found.add(rel);
+          continue;
+        }
+        const edit = Object.hasOwn(working, rel) ? working[rel] : undefined;
+        if (typeof edit === 'string' && !isIgnored(rel)) found.add(rel);
+      }
+      return found;
     },
 
     sourceSet(_worktree: string, files: ReadonlyMap<string, string>, options: SourceSetOptions): Promise<SourceSetResult> {

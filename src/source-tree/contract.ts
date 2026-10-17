@@ -143,6 +143,11 @@ function expectedFiles(world: SourceTreeWorld): Array<[string, string]> {
   return [...out].map(([rel, content]): [string, string] => [rel, blobId(content)]).sort(byPath);
 }
 
+/** The attribute map of `paths` as the tree answers it (an entry for each regular file it asked about). */
+async function attributesFor(tree: SourceTree, worktree: string, paths: readonly string[]): Promise<Map<string, { generated: boolean; vendored: boolean }>> {
+  return new Map(await tree.pathAttributes(worktree, paths));
+}
+
 export function defineSourceTreeContract(label: string, make: MakeSourceTree): void {
   const withTree = (world: SourceTreeWorld, body: (h: SourceTreeHarness) => Promise<void>) => async (): Promise<void> => {
     const harness = await make(world);
@@ -588,6 +593,131 @@ export function defineSourceTreeContract(label: string, make: MakeSourceTree): v
         'history reads leave a repository without commits answerable: resolveCommit is null',
         withTree({ committed: {}, working: {}, ignored: [] }, async ({ tree }) => {
           assert.equal(await tree.resolveCommit('HEAD'), null);
+        }),
+      );
+    });
+
+    describe('unignoredPaths', () => {
+      const sorted = (set: ReadonlySet<string>): string[] => [...set].sort();
+
+      it(
+        'categories: tracked, edited, deleted-tracked and untracked paths are returned; ignored files, files in ignored directories, directories and missing paths are not',
+        withTree(CONTRACT_WORLD, async ({ tree, worktree }) => {
+          const asked = [
+            'a.txt',
+            'dir/b.ts',
+            'sp ace.txt',
+            'keep/deleted.txt',
+            'new.txt',
+            'deep/er/c.txt',
+            'build/out.js',
+            'secret.log',
+            'dir',
+            'deep',
+            'build',
+            'no/such.txt',
+          ];
+          const listed = await tree.unignoredPaths(worktree, asked);
+          assert.deepEqual(sorted(listed), ['a.txt', 'deep/er/c.txt', 'dir/b.ts', 'keep/deleted.txt', 'new.txt', 'sp ace.txt']);
+        }),
+      );
+
+      it(
+        'an empty list is an empty set, a duplicate is asked once, the order does not matter and a name that was not asked for is never returned',
+        withTree(CONTRACT_WORLD, async ({ tree, worktree }) => {
+          assert.equal((await tree.unignoredPaths(worktree, [])).size, 0);
+          assert.deepEqual(sorted(await tree.unignoredPaths(worktree, ['a.txt', 'a.txt', 'a.txt'])), ['a.txt']);
+          const forward = await tree.unignoredPaths(worktree, ['a.txt', 'new.txt', 'secret.log']);
+          const backward = await tree.unignoredPaths(worktree, ['secret.log', 'new.txt', 'a.txt']);
+          assert.deepEqual(sorted(forward), sorted(backward));
+          assert.deepEqual(sorted(forward), ['a.txt', 'new.txt']);
+          assert.deepEqual(sorted(await tree.unignoredPaths(worktree, ['dir/b.ts'])), ['dir/b.ts']);
+        }),
+      );
+
+      it(
+        'refused paths: an absolute path, a parent segment, NUL and an empty name reject with invalid_argument, even beside good names',
+        withTree(CONTRACT_WORLD, async ({ tree, worktree }) => {
+          for (const bad of ['../outside.ts', '/abs/path.ts', 'a/../../b.ts', 'a\0b', '']) {
+            await assert.rejects(() => tree.unignoredPaths(worktree, [bad]), { code: 'invalid_argument' }, JSON.stringify(bad));
+            await assert.rejects(() => tree.unignoredPaths(worktree, ['a.txt', bad]), { code: 'invalid_argument' }, JSON.stringify(bad));
+          }
+        }),
+      );
+    });
+
+    describe('pathAttributes', () => {
+      it(
+        'returns an entry for every vetted regular file it asked about (all-false entries included) and none for a missing path, a directory or an unhashable name',
+        withTree(SOURCE_SET_WORLD, async ({ tree, worktree }) => {
+          const attributes = await tree.pathAttributes(worktree, [
+            'src/a.ts',
+            'gen/out.ts',
+            'gen/unset.ts',
+            'third_party/v.ts',
+            'gone/deleted.ts',
+            'gen',
+            'no/such.ts',
+            'bad\nname.ts',
+            'gen/out.ts',
+          ]);
+          assert.deepEqual(
+            [...attributes].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)),
+            [
+              ['gen/out.ts', { generated: true, vendored: false }],
+              ['gen/unset.ts', { generated: false, vendored: false }],
+              ['src/a.ts', { generated: false, vendored: false }],
+              ['third_party/v.ts', { generated: false, vendored: true }],
+            ],
+          );
+        }),
+      );
+
+      it(
+        'an empty list, or a list with nothing on disk, is an empty map',
+        withTree(SOURCE_SET_WORLD, async ({ tree, worktree }) => {
+          assert.equal((await tree.pathAttributes(worktree, [])).size, 0);
+          assert.equal((await tree.pathAttributes(worktree, ['gone/deleted.ts', 'no/such.ts'])).size, 0);
+        }),
+      );
+    });
+
+    describe('sourceSet with prefetched attributes', () => {
+      const claimed = (extra: { readonly attributes: ReadonlyMap<string, { readonly generated: boolean; readonly vendored: boolean }> }) => ({
+        ...SOURCE_SET_OPTIONS,
+        ...extra,
+      });
+
+      it(
+        'uses the given map instead of asking: a path the map marks generated is dropped although git says nothing about it',
+        withTree(SOURCE_SET_WORLD, async ({ tree, worktree }) => {
+          const { files } = await tree.snapshot(worktree);
+          const all = new Map(await attributesFor(tree, worktree, [...files.keys()]));
+          all.set('src/a.ts', { generated: true, vendored: false });
+          const { files: kept, skipped } = await tree.sourceSet(worktree, files, claimed({ attributes: all }));
+          assert.ok(!kept.has('src/a.ts'));
+          assert.ok(skipped.some((d) => d.code === 'generated_skipped' && d.subject === 'src/a.ts'));
+          // The rest follows the same rules as without the map.
+          const plain = await tree.sourceSet(worktree, files, SOURCE_SET_OPTIONS);
+          assert.deepEqual([...kept.keys()], [...plain.files.keys()].filter((rel) => rel !== 'src/a.ts'));
+        }),
+      );
+
+      it(
+        'asks for a named path the map lacks, and gives the same result as without a map when the map is complete',
+        withTree(SOURCE_SET_WORLD, async ({ tree, worktree }) => {
+          const { files } = await tree.snapshot(worktree);
+          const plain = await tree.sourceSet(worktree, files, SOURCE_SET_OPTIONS);
+          const complete = await attributesFor(tree, worktree, [...files.keys()]);
+          const withMap = await tree.sourceSet(worktree, files, claimed({ attributes: complete }));
+          assert.deepEqual([...withMap.files], [...plain.files]);
+          assert.deepEqual(withMap.skipped, plain.skipped);
+
+          // A map that lacks gen/out.ts and third_party/v.ts: they are still asked for, and still dropped.
+          const partial = new Map([...complete].filter(([rel]) => rel !== 'gen/out.ts' && rel !== 'third_party/v.ts'));
+          const viaPartial = await tree.sourceSet(worktree, files, claimed({ attributes: partial }));
+          assert.deepEqual([...viaPartial.files], [...plain.files]);
+          assert.deepEqual(viaPartial.skipped, plain.skipped);
         }),
       );
     });

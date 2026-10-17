@@ -9,6 +9,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import type { TestContext } from 'node:test';
 import { allowAll, createRealRunner } from '../command-runner/index.ts';
+import type { CommandRunner } from '../command-runner/index.ts';
 import { openFactStore } from '../fact-store/index.ts';
 import type { FactStore, Reader, Resolver } from '../fact-store/index.ts';
 import type { Clock } from '../facts/index.ts';
@@ -59,10 +60,12 @@ export class SpyClock extends FakeClock {
 export interface TreeLog {
   readonly hashPaths: string[][];
   snapshots: number;
+  /** The paths of each `unignoredPaths` call: the ignore verdicts the Indexer asked for. */
+  readonly unignored: string[][];
   readonly readTexts: string[];
 }
 
-export const newLog = (): TreeLog => ({ hashPaths: [], snapshots: 0, readTexts: [] });
+export const newLog = (): TreeLog => ({ hashPaths: [], snapshots: 0, unignored: [], readTexts: [] });
 
 /** Wraps a Source Tree so a test can see which paths were hashed and read. */
 export function recordingTree(log: TreeLog): (tree: SourceTree) => SourceTree {
@@ -76,6 +79,11 @@ export function recordingTree(log: TreeLog): (tree: SourceTree) => SourceTree {
       return tree.hashPaths(worktree, paths);
     },
     sourceSet: (worktree, files, options) => tree.sourceSet(worktree, files, options),
+    pathAttributes: (worktree, paths) => tree.pathAttributes(worktree, paths),
+    unignoredPaths: (worktree, paths) => {
+      log.unignored.push([...paths]);
+      return tree.unignoredPaths(worktree, paths);
+    },
     worktrees: () => tree.worktrees(),
     readText: (worktree, relPath, options) => {
       log.readTexts.push(relPath);
@@ -173,6 +181,8 @@ export interface WorldOptions {
   readonly engine?: (real: GrammarEngine) => GrammarEngine;
   readonly governor?: (clock: Clock) => Governor;
   readonly wrapTree?: (tree: SourceTree) => SourceTree;
+  /** Wraps the runner the Source Tree starts every process through (a test that counts spawns). */
+  readonly wrapRunner?: (runner: CommandRunner) => CommandRunner;
   /** Where the language modules are looked up. Default: the toy fixture module. */
   readonly builtinDir?: string | null;
   readonly onNotice?: (notice: IndexerNotice) => void;
@@ -207,7 +217,8 @@ export async function makeWorld(t: TestContext, options: WorldOptions): Promise<
     { resolver: noResolver, clock, gitHas: () => Promise.resolve(true) },
     { repo: 'toy', version: 'test' },
   );
-  const realTree = createSourceTree({ runner: createRealRunner(), repoDir: repo.dir, envOverlay: repo.envOverlay });
+  const runner = options.wrapRunner === undefined ? createRealRunner() : options.wrapRunner(createRealRunner());
+  const realTree = createSourceTree({ runner, repoDir: repo.dir, envOverlay: repo.envOverlay });
   const tree = options.wrapTree === undefined ? realTree : options.wrapTree(realTree);
   const realEngine = createGrammarEngine();
   const engine = options.engine === undefined ? realEngine : options.engine(realEngine);

@@ -262,10 +262,24 @@ async function prepare(ctx: ProcessContext, worktree: string, sorted: readonly s
   const stamps = new Map<string, Stamp | undefined>(
     await Promise.all(candidates.map(async (rel): Promise<[string, Stamp | undefined]> => [rel, await stampOf(worktree, rel)])),
   );
+  // The attribute query needs only the paths, not their hashes, so it starts now and runs beside the clean-filter
+  // enumeration inside `hashPaths`: `config` and `check-attr` together, then `hash-object` (an edit is two spawn
+  // stages instead of three, plan 02-46). The enumeration is still done on every `hashPaths` call and never cached
+  // (T-01-50), and still precedes the hash. Errors surface in the old order: a `hashPaths` failure is reported at
+  // once and the attribute query is abandoned (its rejection is handled below, so it can never be unhandled); an
+  // attribute failure is reported only when something was hashed, as the `sourceSet` call it replaces would have.
+  const attributes = candidates.length === 0 ? undefined : ctx.tree.pathAttributes(worktree, candidates);
+  attributes?.catch(() => undefined);
   const hashed = candidates.length === 0 ? undefined : await ctx.tree.hashPaths(worktree, candidates);
   const files = hashed?.files ?? new Map<string, string>();
   const set =
-    files.size === 0 ? undefined : await ctx.tree.sourceSet(worktree, files, { extensions, maxBytes: ctx.config.maxFileBytes });
+    files.size === 0
+      ? undefined
+      : await ctx.tree.sourceSet(worktree, files, {
+          extensions,
+          maxBytes: ctx.config.maxFileBytes,
+          ...(attributes === undefined ? {} : { attributes: await attributes }),
+        });
   const survivors = set?.files ?? new Map<string, string>();
 
   const tooLarge = new Set(
