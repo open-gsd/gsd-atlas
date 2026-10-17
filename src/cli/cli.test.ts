@@ -265,6 +265,44 @@ describe('runCli build', () => {
   });
 });
 
+describe('runCli busy and lease_held', () => {
+  it('a busy reply is printed unchanged, its stderr line carries busy and retry_after, and the exit code is 3', async () => {
+    const reply: Envelope = {
+      schema: 'gsd-atlas.error/1',
+      ok: false,
+      data: null,
+      diagnostics: [d('busy', 'error', 'The host is busy. Try again soon.')],
+      retry_after: 250,
+    };
+    const h = harness(reply);
+    assert.equal(await h.run(['find', 'x']), 3);
+    assert.deepEqual(h.stdout.map((line) => JSON.parse(line)), [reply]);
+    assert.equal(h.stderr.length, 1);
+    assert.match(h.stderr[0]!, /busy/);
+    assert.match(h.stderr[0]!, /250/);
+  });
+
+  it('a lease_held reply from build exits 3 with one reason line and the envelope on stdout', async () => {
+    const reply: Envelope = {
+      schema: 'gsd-atlas.error/1',
+      ok: false,
+      data: null,
+      diagnostics: [d('lease_held', 'error', 'Another gsd-atlas process holds the writer for this repository.')],
+    };
+    const h = harness(reply);
+    assert.equal(await h.run(['build']), 3);
+    assert.deepEqual(h.stdout.map((line) => JSON.parse(line)), [reply]);
+    assert.deepEqual(h.stderr, ['gsd-atlas: error lease_held: Another gsd-atlas process holds the writer for this repository.\n']);
+  });
+
+  it('a diagnostic message with a line break stays one stderr line', async () => {
+    const h = harness({ schema: 'gsd-atlas.error/1', ok: false, data: null, diagnostics: [d('not_indexed', 'error', 'first\nsecond\r\nthird')] });
+    assert.equal(await h.run(['find', 'x']), 2);
+    assert.equal(h.stderr.length, 1);
+    assert.equal(h.stderr[0]!.split('\n').length, 2, 'one line plus the trailing newline');
+  });
+});
+
 describe('runCli usage', () => {
   it('prints the version for --version and -v', async () => {
     for (const flag of ['--version', '-v']) {

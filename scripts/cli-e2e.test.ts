@@ -216,6 +216,41 @@ describe('CLI walking skeleton: refs, context, impact, health, status and mainta
   });
 });
 
+describe('CLI with two processes on one repository (QRY-04 concurrency edge)', () => {
+  it('the process without the writer lease answers find as a follower, and its build and maintain exit 3 with lease_held', async (t) => {
+    const world = await makeWorld(t);
+    const repo = world.repo.dir;
+    const built = await world.cli(['build', '--repo', repo]);
+    assert.equal(built.code, 0, built.stderr);
+
+    const follower = world.another();
+    const cwd = path.dirname(repo);
+    const found = await runWith(follower, ['find', 'helper', '--repo', repo], cwd);
+    assert.equal(found.code, 0, found.stderr);
+    assert.ok(found.envelope.degraded?.includes('follower'), `degraded names follower, got ${JSON.stringify(found.envelope.degraded)}`);
+    assert.equal((found.envelope.data as { results: Row[] }).results[0]?.name, 'helper');
+
+    for (const argv of [['build', '--repo', repo], ['maintain', 'collect', '--repo', repo], ['maintain', '--repo', repo]]) {
+      const refused = await runWith(follower, argv, cwd);
+      assert.equal(refused.code, 3, `${argv.join(' ')}: ${refused.stderr}`);
+      assert.equal(refused.envelope.ok, false);
+      assert.equal(refused.envelope.diagnostics[0]?.code, 'lease_held');
+      assert.match(refused.stderr, /lease_held/);
+    }
+  });
+
+  it('sequential reads on the two roles return the same data; only degraded differs', async (t) => {
+    const world = await makeWorld(t);
+    const repo = world.repo.dir;
+    await world.cli(['build', '--repo', repo]);
+    const leader = await world.cli(['find', 'helper', '--repo', repo]);
+    const follower = await runWith(world.another(), ['find', 'helper', '--repo', repo], path.dirname(repo));
+    assert.equal(leader.envelope.degraded, undefined);
+    assert.deepEqual(follower.envelope.data, leader.envelope.data);
+    assert.deepEqual(follower.envelope['citations'], leader.envelope['citations']);
+  });
+});
+
 describe('CLI walking skeleton: build, then find', () => {
   it('build exits 0 with one build envelope, find then prints the definition with its citation and fenced text, and stderr stays empty', async (t) => {
     const world = await makeWorld(t);
