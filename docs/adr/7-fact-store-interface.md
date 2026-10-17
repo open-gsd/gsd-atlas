@@ -72,3 +72,13 @@ The two open questions above are answered here. The original bullets stand unedi
 
 - *Does `warm(worktree)` exist to pre-compute resolved edges?* No. The interface has no warm(worktree). Cache warming is an internal maintenance-class task of the writer-lease holder, run after the Indexer settles, and callers never request it.
 - *Is the first-call latency bound by `timeoutMs` with `degraded: ['resolver_timeout']`, or unbounded?* Bounded. `refs` and `callers` accept a `timeoutMs` option. On overrun they return the grammar-tier `INFERRED` edges with `degraded: ['resolver_timeout']`, while the computation continues and later fills the cache. The interface documents this cost: the first `refs` or `callers` per snapshot can pay resolver latency up to `timeoutMs`.
+
+## Amendment 2026-10-17: Maintenance options and lease holder
+
+Sources: FND-12; 02-VERIFICATION criterion 4 (STO-05); 02-REVIEW WR-02, WR-03 and WR-05; plans 02-30 and 02-31.
+
+Gap closure added an option to the maintenance wrapper and one diagnostic field to the status. Neither changes the fact-level seam. The decisions above stand unedited.
+
+1. **`maintain(budgetMs, options?)` (refines decision 6).** The wrapper takes an optional `StoreMaintainOptions { full?: boolean }`. The package exports a frozen `IDLE_MAINTENANCE` (`{ full: true }`), the one idle policy shared by the Tenant's idle loop and the size gate. With `full: true` the compact step may run a full VACUUM, but only after a collect that completed and only past the thresholds recorded in [11-worktree-lifecycle](11-worktree-lifecycle.md), Amendment 2026-10-17. Without options the call behaves as before. An invalid `budgetMs` is a `RangeError`. The typed methods `reconcile`, `collect`, `compact` and `check` keep their signatures; `compact({ full: true })` follows the free-page rule only.
+2. **`StoreStatus.leaseHolder` (additive, refines decision 6, `status()`).** `{ pid, startedAt, version }` of the process that holds the writer lease: the store's own when it leads, the one read from `lease.json` when it follows, and absent when the leader has released the lease or the store was opened with no lease. It is a diagnostic for messages only. Ownership is still decided solely by the lock on `lease.db` (amendment 2026-10-16 of the worktree-lifecycle ADR).
+3. **Errors (refines decision 10).** The list of structural errors does not change. A store whose database connections could not be replaced during a takeover recovery or a `check` rebuild is closed, releases its lease and raises the existing `StoreClosed` afterwards, so it never serves on connections it cannot use. No new error class exists.

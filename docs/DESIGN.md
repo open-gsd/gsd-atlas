@@ -204,7 +204,7 @@ Run by the daemon in idle time: never during a build, each run limited to 200 ms
 | **Resolve** | After re‑indexing | Re‑resolves references that point at retired or missing symbols; marks the rest `unresolved` instead of leaving them dangling. |
 | **Refresh stale** | After a module, compiler or SDK change | Re‑indexes stale facts in the background. |
 | **Collect** | Every 15 min | Deletes retired versions whose grace has expired, in small transactions. |
-| **Compact** | After Collect | `PRAGMA incremental_vacuum` (store created with `auto_vacuum=INCREMENTAL`), `PRAGMA optimize`, and a WAL checkpoint (`TRUNCATE`). A full `VACUUM` runs only when free pages exceed 25 % and the machine is idle. |
+| **Compact** | After Collect | `PRAGMA incremental_vacuum` (store created with `auto_vacuum=INCREMENTAL`), `PRAGMA optimize`, and a WAL checkpoint (`TRUNCATE`). A full `VACUUM` runs only when free pages exceed 25 % and the machine is idle (see ADR 11, Amendment 2026-10-17). |
 | **Check** | On start, then daily | `quick_check`; on failure, move the file aside and rebuild (A17). |
 | **Report** | Always | `status` shows live versus retired facts, free pages, store size against budget, last run and outcome of each task, and anything healed. |
 
@@ -225,7 +225,7 @@ Without collection the store grows with every save. With collection and compacti
 | Store size after 20,000 edits vs a fresh build of the same tree | ≤ 1.25× |
 | Retired facts as a share of the store, steady state | ≤ 10 % |
 | Free pages after Compact | ≤ 10 % |
-| Longest maintenance pause | ≤ 200 ms |
+| Longest maintenance pause | ≤ 200 ms (see ADR 11, Amendment 2026-10-17) |
 | Missed file event repaired by Reconcile | Within one Reconcile interval |
 | Deleted branch's unique facts gone | Within grace + one Collect interval |
 | `history --at <commit>` for one file in gsd‑core | ≤ 2 s |
