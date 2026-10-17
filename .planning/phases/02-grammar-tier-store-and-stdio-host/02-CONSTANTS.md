@@ -103,3 +103,56 @@ Both blocking-human checkpoints were answered by the user on 2026-10-16, each wi
 |------------|------|-----------------------|--------|
 | Task 2: proposed constants | 2026-10-16 | "approved" | Every value in the Constants table accepted unchanged; no keys changed, no rows removed. Status set to Approved. |
 | Task 3: `@modelcontextprotocol/server` 2.3.1 | 2026-10-16 | "approved" | Plan 02-23 may run `npm install --save-exact @modelcontextprotocol/server@2.3.1` (scripts disabled). Nothing was installed by plan 02-04. `@modelcontextprotocol/node` stays uninstalled in Phase 2. |
+
+## Addendum 2026-10-17 (gap closure)
+
+Addendum status: Approved (2026-10-17, by the user, relayed by the orchestrator)
+
+This addendum belongs to plan 02-29 and adds rows only. No value in the Constants table above changes. Plans 02-38, 02-39 and 02-41 carry a precondition that the line above reads `Addendum status: Approved`; if it reads Proposed they halt. Plans 02-30 and 02-37 use only the two recorded existing thresholds, which are already in code, so they do not wait.
+
+### New keys (need approval)
+
+| Key | Proposed value | Consumed by plan | Basis |
+|-----|----------------|------------------|-------|
+| `pool.loadTimeoutMs` | 30000 | 02-39 | WR-09. A grammar load (WASM instantiate plus query compile) has no deadline today and a language module can come from the repository, so one hung load occupies a parser worker forever. The value is far above a normal cold load (tens to a few hundred milliseconds on macOS; hosted Windows runners were measured 5 to 10 times slower in 02-VERIFICATION) and still bounds a hang. |
+| `pool.terminateGraceMs` | 2000 | 02-39 | IN-06. The pool's hard deadline becomes the approved `indexer.parseTimeoutMs` (5000, unchanged, the engine's cooperative cut-off) plus this grace, 7000 ms, so an ordinary slow parse ends in the engine's own `parse_timeout` and the worker, with its loaded grammars, survives; terminating the worker is only the backstop for a stuck one. |
+| `host.idleEvictMs` | 1800000 | 02-41 | WR-10. The Host closes a tenant, and a history module host, that has had no request and has none in flight for this long, which releases the repository's writer lease, three SQLite connections and the watcher. 30 minutes is three times the 10-minute idle Reconcile interval (D-13), so a session that is actually working never loses its leader. |
+| `runner.defaultTimeoutMs` | 60000 | 02-38 | WR-07. The CommandRunner applies this limit to a `run()` spec that sets no `timeoutMs`, so a git process (or any other child) started by a caller that forgot one can no longer hang for ever. The value equals the approved `git.timeoutMs`; the runner default is the very 60 s that Phase 1 held back for a human decision (01-09), which is why it is listed here and not assumed. It never applies to `stream()` (long-lived children such as an MCP server in a test have no deadline) and an explicit `timeoutMs` always wins. |
+
+### Existing thresholds recorded as the idle loop's policy (values unchanged)
+
+| Key | Value | Lives in today | Note |
+|-----|-------|----------------|------|
+| `compact.fullFreeFraction` | 0.25 (free pages times four above the page count) | `src/fact-store/lifecycle.ts` `worthVacuuming` | The rule of ADR 11 decision 5 ("free pages exceed 25 %"). |
+| `compact.fullUnusedFraction` | one third (unused bytes inside b-tree pages above a third of the file, read from `dbstat`) | `src/fact-store/lifecycle.ts` `FRAGMENTED_FRACTION` | An internal bound of plan 02-18 chosen because a fresh build is about 26 percent empty inside; the margin is the hysteresis that keeps the idle loop from vacuuming every round. |
+
+### Derived values (no free choice; in force without waiting for the reply)
+
+| Key | Value | Derivation |
+|-----|-------|------------|
+| `compact.checkpointBusyTimeoutMs` | 0 | SQLite's busy timeout of 0 means "do not wait"; WR-04 requires exactly that for the truncating checkpoint, so it is a property, not a duration. The connection's previous value is restored afterwards. |
+| `source.batchRecordAllowanceBytes` | 128 | One record of `git cat-file --batch` is `<oid> <type> <size>` plus a line feed, then the body, then one line feed: at most 64 hex characters (the SHA-256 object format, the longest), 1 space, 6 characters (`commit`, the longest type word), 1 space, 20 digits (a 64-bit size), 1 line feed and 1 trailing line feed, which is 94 bytes, rounded up to 128. Plan 02-38 sets the output cap of the object batch to the selected blob sizes plus this allowance per record. |
+| `source.batchCheckLineBytes` | computed per request | The output cap of `git cat-file --batch-check` is, for each input line, the larger of 94 bytes (a found record) and the length of the echoed spec plus 12 bytes (` missing` or ` ambiguous` plus a line feed), summed over the request. It is derived from the request itself, so it has no number to approve. |
+| `compact.afterChurnFallback` | a rule, not a number | On a SQLite build without the `dbstat` table the idle loop requests the VACUUM after any collect that deleted files, instead of past the in-page threshold it cannot measure (plan 02-30). Both drivers were checked on 2026-10-17 and both have `dbstat`, so this is a safety net. |
+
+### Approved values reused without any change
+
+- `git.timeoutMs` 60000, now applied to every Source Tree git spec (WR-07).
+- `git.hashBatchTimeoutMs` 120000, for the batched object read.
+- `gate.storeEditsRatio` 1.25, now asserted on the idle-only ratio (STO-05).
+- `maintenance.sliceMs` 200, unchanged.
+- `indexer.parseTimeoutMs` 5000, unchanged.
+
+### Exception to maintenance.sliceMs
+
+A full VACUUM is a single synchronous rewrite of the live data and cannot be sliced, so the idle loop's full compaction (STO-05, D-16) is a pause longer than 200 ms on a large store. It runs only after a completed collect, only when `compact.fullFreeFraction` or `compact.fullUnusedFraction` is crossed, and the size gate (plan 02-37) prints its measured length so the owner can judge it against a real store.
+
+### Addendum approvals
+
+The blocking-human checkpoint (plan 02-29, Task 2) was answered by the user on 2026-10-17 in the user's own session through an AskUserQuestion prompt, relayed by the orchestrator. It was not auto-approved.
+
+| Checkpoint | Date | User reply (verbatim) | Effect |
+|------------|------|-----------------------|--------|
+| Task 2: gap-closure constants addendum | 2026-10-17 | "Approve all four (Recommended)" | `pool.loadTimeoutMs` 30000, `pool.terminateGraceMs` 2000, `host.idleEvictMs` 1800000 and `runner.defaultTimeoutMs` 60000 accepted unchanged. The recorded thresholds `compact.fullFreeFraction` and `compact.fullUnusedFraction` stay as the idle policy and the full-VACUUM exception to `maintenance.sliceMs` stands, as listed in this addendum. No existing approved value changed. Status set to Approved. |
+
+Derived values (checkpoint busy timeout 0, per-record allowance 128 bytes, batch-check bound, `compact.afterChurnFallback`) are properties of the design, not choices, and were in force without a reply.
