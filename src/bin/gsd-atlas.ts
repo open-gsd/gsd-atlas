@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 /**
- * The `gsd-atlas` command: it builds the Host through the shared composition root (`compose.ts`, the one place that
- * knows the working directory, the home directory and the environment) and hands the in-process HostClient to the
- * CLI adapter, together with the real environment `init` and the relative `--repo` and `--cwd` flags need. The Host
- * is closed, and the Grammar Engine's workers with it, when the command ends.
+ * The `gsd-atlas` command: it wires the real process into `runCliMain` (`cli-main.ts`): the shared composition root
+ * (`compose.ts`, the one place that knows the working directory, the home directory and the environment) builds the
+ * Host on the first request, and the in-process HostClient goes to the CLI adapter together with the real environment
+ * `init` and the relative `--repo` and `--cwd` flags need. The Host is closed, and the Grammar Engine's workers with
+ * it, when the command ends or on the first SIGTERM or SIGINT (`shutdown.ts`).
  */
 import os from 'node:os';
 import path from 'node:path';
@@ -11,7 +12,9 @@ import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 
 import { runCli } from '../cli/index.ts';
+import { runCliMain } from './cli-main.ts';
 import { composeHost, readVersion } from './compose.ts';
+import { installShutdownHandlers } from './shutdown.ts';
 
 const cwd = process.cwd();
 
@@ -22,25 +25,22 @@ const cwd = process.cwd();
 const binFile = fileURLToPath(import.meta.url);
 const mcpEntry = path.join(path.dirname(binFile), `gsd-atlas-mcp${path.extname(binFile)}`);
 
-const composed = composeHost({ cwd, env: process.env, stderr: process.stderr });
-try {
-  process.exitCode = await runCli(process.argv.slice(2), {
-    client: composed.client,
-    version: readVersion,
-    stdout: process.stdout,
-    stderr: process.stderr,
+process.exitCode = await runCliMain({
+  argv: process.argv.slice(2),
+  compose: () => composeHost({ cwd, env: process.env, stderr: process.stderr }),
+  runCli,
+  version: readVersion,
+  stdout: process.stdout,
+  stderr: process.stderr,
+  cwd,
+  init: {
+    home: os.homedir(),
     cwd,
-    init: {
-      home: os.homedir(),
-      cwd,
-      platform: process.platform,
-      env: process.env,
-      mcp: { command: process.execPath, args: [mcpEntry] },
-    },
-  });
-} catch (error) {
-  process.stderr.write(`gsd-atlas: error internal_error: ${error instanceof Error ? error.message : String(error)}\n`);
-  process.exitCode = 2;
-} finally {
-  await composed.dispose();
-}
+    platform: process.platform,
+    env: process.env,
+    mcp: { command: process.execPath, args: [mcpEntry] },
+  },
+  installShutdown: (dispose) => {
+    installShutdownHandlers({ process, dispose, exit: (code) => process.exit(code) });
+  },
+});

@@ -229,3 +229,73 @@ describe('gsd-atlas-mcp under signals', () => {
     assertCleanStore(world.storeRoot);
   });
 });
+
+describe('gsd-atlas composes the Host lazily', () => {
+  /** A user directory whose config.json is invalid: composing prints a `gsd-atlas: warning` line, so it shows. */
+  function brokenConfig(world: World): void {
+    fs.mkdirSync(world.userDir, { recursive: true });
+    fs.writeFileSync(path.join(world.userDir, 'config.json'), '{ this is not json');
+  }
+
+  it('help does not compose: --help, --version, a usage error and init print no configuration warning', async (t) => {
+    const world = await setup(t, SMALL);
+    brokenConfig(world);
+    const home = path.join(path.dirname(world.userDir), 'home');
+    fs.mkdirSync(home, { recursive: true });
+    const env = { ...world.env, HOME: home, USERPROFILE: home };
+    const cases: ReadonlyArray<{ args: string[]; code: number }> = [
+      { args: ['--help'], code: 0 },
+      { args: ['--version'], code: 0 },
+      { args: ['--no-such-flag'], code: 1 },
+      { args: ['find'], code: 1 },
+      { args: ['init', '--dry-run', '--agent', 'claude'], code: 0 },
+    ];
+    for (const each of cases) {
+      const bin = new Bin(CLI_BIN, each.args, world.repo, env);
+      bin.end();
+      const done = await bin.finish();
+      assert.equal(done.code, each.code, `${each.args.join(' ')}: ${done.stderr}`);
+      assert.doesNotMatch(done.stderr, /gsd-atlas: warning/, `${each.args.join(' ')} must not read the user configuration`);
+    }
+  });
+
+  it('a repository command composes the Host: the configuration warning appears and a non-repository answers not_a_repo', async (t) => {
+    const world = await setup(t, SMALL);
+    brokenConfig(world);
+    const bin = new Bin(CLI_BIN, ['find', 'x'], world.outside, world.env);
+    bin.end();
+    const done = await bin.finish();
+    assert.equal(done.code, 2, done.stderr);
+    assert.match(done.stderr, /gsd-atlas: warning/, 'the Host was composed, which read the invalid configuration');
+    const envelope = JSON.parse(done.stdout) as { ok: boolean; diagnostics: Array<{ code: string }> };
+    assert.equal(envelope.ok, false);
+    assert.equal(envelope.diagnostics[0]?.code, 'not_a_repo');
+  });
+});
+
+describe('gsd-atlas under signals', () => {
+  /** Enough files that a build is still running when the signal arrives. */
+  function manyFiles(count: number): Record<string, string> {
+    const files: Record<string, string> = {};
+    for (let i = 0; i < count; i += 1) {
+      files[`src/m${String(i)}.ts`] = `export function f${String(i)}(): number {\n  return ${String(i)};\n}\n`;
+    }
+    return files;
+  }
+
+  it('SIGTERM to the CLI exits 143 after disposing, with no dirty sentinel left', { skip: SIGNAL_SKIP }, async (t) => {
+    const world = await setup(t, manyFiles(600));
+    const bin = new Bin(CLI_BIN, ['build', '--repo', world.repo], world.outside, world.env);
+    t.after(() => {
+      bin.signal('SIGKILL');
+    });
+    bin.end();
+    await pollUntil(60_000, 'the build to take the writer lease', () => filesNamed(world.storeRoot, 'lease.json').length > 0);
+    bin.signal('SIGTERM');
+    const done = await bin.finish();
+    assert.equal(done.signal, null, `the CLI handled the signal instead of dying by it: ${done.stderr}`);
+    assert.equal(done.code, 143, `the build must still be running when the signal arrives: ${done.stderr}`);
+    assert.deepEqual(filesNamed(world.storeRoot, 'lease.json'), [], 'the writer lease is released');
+    assert.deepEqual(filesNamed(world.storeRoot, 'dirty'), [], 'no dirty sentinel is left');
+  });
+});
