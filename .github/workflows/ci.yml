@@ -89,3 +89,33 @@ jobs:
           key: ${{ runner.os }}-wasi34-binaryen132
       - run: node scripts/ensure-tree-sitter.ts
       - run: npm run grammar:verify
+
+  # The measured gates of the pinned corpus (ROADMAP success criteria 1, 2 and 4) on every OS: recall, the corpus build
+  # checks, the 20,000-edit size gate and save-to-find freshness. All but the last are counts, sizes and ratios. The
+  # freshness bound is the approved pull request ceiling (hosted runners are noisy); the strict one-second p99 is nightly.yml.
+  gates:
+    name: Gates (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24.16.0"
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npm run build
+      - name: Recall on the pinned corpus
+        run: node scripts/recall.ts --corpus gsd-core
+      - name: Corpus build gates
+        run: node scripts/corpus-gates.ts
+      - name: Size gate (20,000 edits)
+        run: node scripts/size-gate.ts
+      - name: Freshness gate (pull request ceiling)
+        run: node scripts/freshness-gate.ts --saves 30 --max-ms 3000

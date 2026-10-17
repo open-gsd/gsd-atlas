@@ -154,8 +154,8 @@ for (const file of files) {
   });
 }
 
-test('ci.yml: jobs are static, test and grammar', () => {
-  assert.deepEqual([...jobs(readLines('ci.yml')).keys()].sort(), ['grammar', 'static', 'test']);
+test('ci.yml: jobs are static, test, grammar and gates', () => {
+  assert.deepEqual([...jobs(readLines('ci.yml')).keys()].sort(), ['gates', 'grammar', 'static', 'test']);
 });
 
 test('ci.yml: triggers are pull_request, push on main and ci/**, and workflow_dispatch', () => {
@@ -207,4 +207,50 @@ test('ci.yml: only the grammar job caches the tree-sitter toolchain and fetches 
 
 test('ci.yml: uses no secrets', () => {
   assert.doesNotMatch(readLines('ci.yml').join('\n'), /secrets\./);
+});
+
+// The measured gates of plan 02-26. The bounds are the approved constants of 02-CONSTANTS.md: a pull request gets the
+// looser hosted-runner ceiling (gate.freshnessPrCeilingMs), the nightly run and local runs get the ROADMAP's one second
+// (gate.freshnessNightlyP99Ms). A larger number in either workflow is a loosened gate and fails here.
+const FRESHNESS_PR_CEILING_MS = 3000;
+const FRESHNESS_NIGHTLY_P99_MS = 1000;
+
+const maxMsOf = (text: string): number[] => [...text.matchAll(/scripts\/freshness-gate\.ts[^\n]*--max-ms\s+(\d+)/g)].map((match) => Number(match[1]));
+
+test('ci.yml: the gates job runs on three operating systems at the Node floor and runs the four gates in order', () => {
+  const lines = readLines('ci.yml');
+  const gates = (jobs(lines).get('gates') ?? []).join('\n');
+  assert.match(gates, /os:\s*\[\s*ubuntu-latest\s*,\s*macos-latest\s*,\s*windows-latest\s*\]/);
+  assert.match(gates, /node-version:\s*"24\.16\.0"/);
+  assert.match(gates, /runs-on:\s*\$\{\{\s*matrix\.os\s*\}\}/);
+  const order = ['npm ci --ignore-scripts', 'npm run build', 'scripts/recall.ts --corpus gsd-core', 'scripts/corpus-gates.ts', 'scripts/size-gate.ts', 'scripts/freshness-gate.ts'];
+  let from = 0;
+  for (const needle of order) {
+    const at = gates.indexOf(needle, from);
+    assert.ok(at >= from, `${needle} is missing from the gates job or out of order`);
+    from = at + needle.length;
+  }
+  assert.ok(!/--edits\b/.test(gates), 'the size gate must run at its full 20,000 edits, not a reduced count');
+  assert.deepEqual(maxMsOf(gates), [FRESHNESS_PR_CEILING_MS]);
+});
+
+test('ci.yml: the gates job does not install, cache a toolchain or use secrets', () => {
+  const gates = (jobs(readLines('ci.yml')).get('gates') ?? []).join('\n');
+  assert.doesNotMatch(gates, /\bnpm\s+(?:install|i|add)\b/);
+  assert.ok(!gates.includes('actions/cache@') && !gates.includes('wasi') && !gates.includes('ensure-tree-sitter'));
+});
+
+test('nightly.yml: triggers on one schedule entry and workflow_dispatch, and runs the strict freshness gate and the corpus gates', () => {
+  assert.ok(files.includes('nightly.yml'), 'nightly.yml is missing');
+  const lines = readLines('nightly.yml');
+  const text = lines.join('\n');
+  assert.match(text, /^on:\s*$/m);
+  assert.match(text, /^ {2}schedule:\s*$/m);
+  assert.match(text, /^ {2}workflow_dispatch:/m);
+  assert.equal([...text.matchAll(/^\s*-\s+cron:\s*"[^"]+"\s*$/gm)].length, 1, 'exactly one cron entry');
+  assert.doesNotMatch(text, /^ {2}(?:pull_request|push):/m, 'nightly runs on a schedule and by hand only');
+  assert.match(text, /os:\s*\[\s*ubuntu-latest\s*,\s*macos-latest\s*,\s*windows-latest\s*\]/);
+  assert.match(text, /node-version:\s*"24\.16\.0"/);
+  assert.ok(text.includes('scripts/corpus-gates.ts'));
+  assert.deepEqual(maxMsOf(text), [FRESHNESS_NIGHTLY_P99_MS]);
 });
