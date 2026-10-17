@@ -10,7 +10,7 @@ import type { Governor, GovernorStatus } from '../governor/index.ts';
 import type { GrammarEngine } from '../grammar-engine/index.ts';
 import type { EventSource, Indexer, IndexerConfig, IndexerDeps, IndexerStatus } from '../indexer/index.ts';
 import type { Roots } from '../lang/index.ts';
-import type { MetricsStatus } from '../metrics/index.ts';
+import type { Metrics, MetricsStatus } from '../metrics/index.ts';
 import type { SourceTree, SourceTreeIdentity } from '../source-tree/index.ts';
 
 /** Schema of a `build` reply. */
@@ -51,8 +51,11 @@ export interface TenantDeps {
   readonly graceMs?: number;
   /** The version of this build, recorded in a new store. */
   readonly version?: string;
-  /** False: record no metrics (a noop instance). Default true. */
-  readonly metrics?: boolean;
+  /**
+   * False: record no metrics (a noop instance). An instance: record into it instead of opening `metrics.db`; the
+   * Tenant closes it with itself. Default true.
+   */
+  readonly metrics?: boolean | Metrics;
   /** Builds the event source an Indexer listens to. Absent: the Indexer is reconcile-only. */
   readonly eventSource?: () => EventSource;
   /** TEST HOOK. Builds the Indexer; production omits it. */
