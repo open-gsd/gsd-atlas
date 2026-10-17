@@ -173,8 +173,10 @@ describe('history: questions about a past commit from git alone (STO-09)', () =>
     assert.deepEqual(names(reply), ['parse']);
     assert.equal(fs.existsSync(path.join(world.repo.dir, '.git', 'gsd-atlas')), false, 'history created no store for the repository');
     assert.equal(world.manual.subscriptions(), 0);
+    // WR-01 (plan 02-41): a status question about a repository nobody built answers not_indexed and still creates nothing.
     const status = await world.ask('atlas_status', { repo: world.repo.dir });
-    assert.deepEqual((status.data as { worktrees: unknown[] }).worktrees, []);
+    assert.deepEqual(codes(status), ['not_indexed']);
+    assert.equal(fs.existsSync(path.join(world.repo.dir, '.git', 'gsd-atlas')), false);
   });
 
   it('works in a follower process while another process holds the writer lease', async (t) => {

@@ -8,7 +8,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { describe, it } from 'node:test';
 import { makeTempDir, realPath } from '../test-kit/index.ts';
-import { defaultCacheRoot, isSyncedFolderPath, resolveStoreLocation } from './location.ts';
+import { decideStoreLocation, defaultCacheRoot, findExistingStore, isSyncedFolderPath, resolveStoreLocation } from './location.ts';
 import type { ResolveStoreLocationInput } from './location.ts';
 
 const STORE_ID = '8d9153397a368aae';
@@ -251,6 +251,119 @@ describe('resolveStoreLocation', () => {
         assert.deepStrictEqual(results[0], results[1]);
         assert.equal(fs.statSync(results[0].dir).isDirectory(), true);
       }
+    });
+  });
+});
+
+/** Every file and directory below `root`, sorted, so two snapshots of a tree can be compared. */
+function listTree(root: string): string[] {
+  const out: string[] = [];
+  const walk = (dir: string): void => {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name);
+      out.push(path.relative(root, full));
+      if (entry.isDirectory()) walk(full);
+    }
+  };
+  walk(root);
+  return out.sort();
+}
+
+describe('decideStoreLocation (WR-01, plan 02-41)', () => {
+  it('gives the same location as resolveStoreLocation for every rule and creates no directory', () => {
+    withWorld((w) => {
+      const cases: Array<readonly [string, Partial<ResolveStoreLocationInput>]> = [
+        ['git common dir', {}],
+        ['non-git', { commonDir: null }],
+        ['override', { override: path.join(w.root, 'mine') }],
+        ['synced folder', { commonDir: path.join(w.root, 'Dropbox', 'proj', '.git') }],
+        ['network mount', { statfs: () => ({ type: 0x6969 }) }],
+      ];
+      for (const [label, extra] of cases) {
+        const before = listTree(w.root);
+        const decided = decideStoreLocation(w.input(extra));
+        assert.deepStrictEqual(listTree(w.root), before, `${label}: deciding creates nothing`);
+        const resolved = resolveStoreLocation(w.input(extra));
+        assert.deepStrictEqual(resolved, decided, label);
+        assert.equal(fs.statSync(resolved.dir).isDirectory(), true, `${label}: resolving still creates it`);
+      }
+    });
+  });
+
+  it('decides a store directory that is a symbolic link as the cache fallback, and never follows it', { skip: !POSIX }, () => {
+    withWorld((w) => {
+      const target = path.join(w.root, 'elsewhere');
+      fs.mkdirSync(target);
+      fs.symlinkSync(target, path.join(w.commonDir, 'gsd-atlas'), 'dir');
+      const decided = decideStoreLocation(w.input());
+      assert.deepStrictEqual(decided, { dir: path.join(w.cacheRoot, 'gsd-atlas', STORE_ID), kind: 'cache', reason: 'store_dir_is_symlink' });
+      assert.deepStrictEqual(decided, resolveStoreLocation(w.input()));
+      assert.deepStrictEqual(fs.readdirSync(target), []);
+    });
+  });
+
+  it('decides a file in the way, and a non-writable common dir, as the cache fallback without creating it', () => {
+    withWorld((w) => {
+      fs.writeFileSync(path.join(w.commonDir, 'gsd-atlas'), 'in the way');
+      const before = listTree(w.root);
+      assert.deepStrictEqual(decideStoreLocation(w.input()), {
+        dir: path.join(w.cacheRoot, 'gsd-atlas', STORE_ID),
+        kind: 'cache',
+        reason: 'not_writable',
+      });
+      assert.deepStrictEqual(listTree(w.root), before);
+    });
+  });
+
+  it('a relative override throws the same error as resolveStoreLocation', () => {
+    withWorld((w) => {
+      assert.throws(() => decideStoreLocation(w.input({ override: 'relative/place' })), /store\.dir.*absolute/);
+      assert.throws(() => findExistingStore(w.input({ override: 'relative/place' })), /store\.dir.*absolute/);
+    });
+  });
+});
+
+describe('findExistingStore (WR-01, plan 02-41)', () => {
+  it('is undefined while facts.db is absent, or is a directory, and the location once it is a regular file', () => {
+    withWorld((w) => {
+      assert.equal(findExistingStore(w.input()), undefined, 'nothing there');
+      const dir = path.join(w.commonDir, 'gsd-atlas');
+      fs.mkdirSync(dir);
+      assert.equal(findExistingStore(w.input()), undefined, 'a store directory without facts.db');
+      fs.mkdirSync(path.join(dir, 'facts.db'));
+      assert.equal(findExistingStore(w.input()), undefined, 'a directory named facts.db');
+      fs.rmdirSync(path.join(dir, 'facts.db'));
+      fs.writeFileSync(path.join(dir, 'facts.db'), 'x');
+      assert.deepStrictEqual(findExistingStore(w.input()), { dir, kind: 'git-common' });
+    });
+  });
+
+  it('creates nothing when it finds nothing', () => {
+    withWorld((w) => {
+      const before = listTree(w.root);
+      for (const extra of [{}, { commonDir: null }, { override: path.join(w.root, 'mine') }]) {
+        assert.equal(findExistingStore(w.input(extra)), undefined);
+      }
+      assert.deepStrictEqual(listTree(w.root), before);
+    });
+  });
+
+  it('finds a store in the cache directory and under the override, by the same rules the tenant uses', () => {
+    withWorld((w) => {
+      const cacheDir = path.join(w.cacheRoot, 'gsd-atlas', STORE_ID);
+      fs.mkdirSync(cacheDir, { recursive: true });
+      fs.writeFileSync(path.join(cacheDir, 'facts.db'), 'x');
+      assert.deepStrictEqual(findExistingStore(w.input({ commonDir: null })), {
+        dir: cacheDir,
+        kind: 'cache',
+        reason: 'not_a_git_repo',
+      });
+      const override = path.join(w.root, 'mine');
+      const overrideDir = path.join(override, STORE_ID);
+      fs.mkdirSync(overrideDir, { recursive: true });
+      fs.writeFileSync(path.join(overrideDir, 'facts.db'), 'x');
+      assert.deepStrictEqual(findExistingStore(w.input({ override })), { dir: overrideDir, kind: 'override' });
+      assert.equal(findExistingStore(w.input()), undefined, 'the git common dir has none');
     });
   });
 });

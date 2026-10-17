@@ -11,7 +11,8 @@
 import path from 'node:path';
 import { createRealRunner } from '../command-runner/index.ts';
 import type { CommandRunner } from '../command-runner/index.ts';
-import { SchemaTooNew } from '../fact-store/index.ts';
+import { SchemaTooNew, findExistingStore } from '../fact-store/index.ts';
+import type { ResolveStoreLocationInput } from '../fact-store/index.ts';
 import { PROTOCOL_VERSION, diagnostic, failEnvelope, systemClock } from '../facts/index.ts';
 import type { Envelope, Request } from '../facts/index.ts';
 import { createGovernor } from '../governor/index.ts';
@@ -21,7 +22,7 @@ import type { IndexerConfig, ModuleHost } from '../indexer/index.ts';
 import { ERROR_SCHEMA, errorEnvelope } from '../query/index.ts';
 import { createSourceTree } from '../source-tree/index.ts';
 import type { SourceTree } from '../source-tree/index.ts';
-import { createTenant } from '../tenant/index.ts';
+import { createTenant, notIndexedNoStore } from '../tenant/index.ts';
 import type { Tenant } from '../tenant/index.ts';
 import { HISTORY_KIND, runHistory } from './history.ts';
 import type { HistoryDeps } from './history.ts';
@@ -68,6 +69,28 @@ export function createHost(options: HostOptions): Host {
     };
   }
 
+  /**
+   * What decides where a repository's store lives. The ONE place it is built, so the tenant's store location and the
+   * Host's look at whether a store exists can never drift apart (WR-01): both read the user's `store.dir` and the
+   * Host's cache root, never anything from the repository (T-02-36).
+   */
+  const storeSettings = (): { readonly cacheRoot: string; readonly storeDir?: string } => ({
+    cacheRoot,
+    ...(config.store?.dir === undefined ? {} : { storeDir: config.store.dir }),
+  });
+
+  /** The location rules' input for `resolved`, exactly as `createTenant` builds it from the same settings. */
+  function locationInput(resolved: Resolved): ResolveStoreLocationInput {
+    const settings = storeSettings();
+    return {
+      storeId: resolved.identity.storeId,
+      commonDir: resolved.identity.commonDir,
+      repoDir: resolved.repoDir,
+      cacheRoot: settings.cacheRoot,
+      ...(settings.storeDir === undefined ? {} : { override: settings.storeDir }),
+    };
+  }
+
   function tenantFor(resolved: Resolved): Promise<Tenant> {
     const key = resolved.identity.storeId;
     const known = tenants.get(key);
@@ -81,8 +104,7 @@ export function createHost(options: HostOptions): Host {
       engine: options.engine,
       governor: getGovernor(),
       clock,
-      cacheRoot,
-      ...(config.store?.dir === undefined ? {} : { storeDir: config.store.dir }),
+      ...storeSettings(),
       ...(indexer === undefined ? {} : { indexer }),
       ...(config.gc?.graceMs === undefined ? {} : { graceMs: config.gc.graceMs }),
       ...(options.version === undefined ? {} : { version: options.version }),
@@ -143,6 +165,16 @@ export function createHost(options: HostOptions): Host {
 
     const resolved = await resolveRepository(parsed.selection, hostCwd, makeTree);
     if (resolved === null) return errorEnvelope('not_a_repo', NOT_A_REPO);
+
+    // WR-01: only `build` may create a store. Any other kind needs a tenant that is already open or a store that
+    // already holds an index; otherwise nothing is opened, created, locked or written (QRY-06).
+    if (kind !== 'build' && !tenants.has(resolved.identity.storeId)) {
+      try {
+        if (findExistingStore(locationInput(resolved)) === undefined) return notIndexedNoStore();
+      } catch (error) {
+        return tenantFailure(error);
+      }
+    }
 
     let tenant: Tenant;
     try {

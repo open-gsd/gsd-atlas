@@ -47,7 +47,11 @@ describe('Host: recording (MET-02, D-17)', () => {
 
   it('a code_find before any build is an answer with ok false', async (t) => {
     const world = await makeWorld(t);
-    const reply = await world.ask('code_find', { name: 'helper', repo: world.repo.dir });
+    assert.equal((await world.ask('build', { repo: world.repo.dir })).ok, true);
+    // A worktree the store does not index: the tenant answers not_indexed, which is an answer (the Host-level
+    // no-store answer of plan 02-41 is not recorded, since there is no store to record into).
+    const linked = await world.addWorktree('unbuilt');
+    const reply = await world.ask('code_find', { name: 'helper', repo: linked });
     assert.equal(reply.ok, false);
     const { report } = await statusOf(world);
     assert.equal(report.answers.total, 1);
