@@ -105,7 +105,7 @@ export function createHost(options: HostOptions): Host {
     const known = tenants.get(key);
     if (known !== undefined) return known;
     const indexer = indexerSettings();
-    const created = createTenant({
+    const created = (options.tenantFactory ?? createTenant)({
       tree: resolved.tree,
       identity: resolved.identity,
       repoDir: resolved.repoDir,
@@ -232,7 +232,12 @@ export function createHost(options: HostOptions): Host {
           return tenant.handle(forwarded(request, kind), resolved.worktree);
       }
     };
-    return isAdmissionOnly(kind) ? admitted(tenant.storeId, cls, run) : held(tenant.storeId, cls, run);
+    const reply = await (isAdmissionOnly(kind) ? admitted(tenant.storeId, cls, run) : held(tenant.storeId, cls, run));
+    // A tenant whose store closed itself (after a failed recovery) can only answer `store_unavailable` from now on.
+    // It is closed and forgotten so the next request retries with a fresh one; the registry holds the close back
+    // until every request still running on this tenant, this one included, has ended.
+    if (reply.diagnostics.some((entry) => entry.code === 'store_unavailable')) tenantIdle.evict(resolved.identity.storeId);
+    return reply;
   }
 
   /**

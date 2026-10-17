@@ -13,7 +13,7 @@ import { openFactStore } from '../fact-store/index.ts';
 import { PROTOCOL_VERSION } from '../facts/index.ts';
 import type { Envelope } from '../facts/index.ts';
 import { FakeClock } from '../test-kit/index.ts';
-import { notIndexedNoStore } from '../tenant/index.ts';
+import { createTenant, notIndexedNoStore, storeUnavailableEnvelope } from '../tenant/index.ts';
 import { makeWorld, storeIdOf } from './harness.test.ts';
 import type { World } from './harness.test.ts';
 
@@ -207,6 +207,61 @@ async function leaseIsFree(dir: string): Promise<boolean> {
     return (await store.status()).writerLeaseHeld;
   } finally {
     await store.close();
+  }
+}
+
+describe('Host: containment and a tenant that lost its store (IN-03, plan 02-41)', () => {
+  it('dot-dot directory name resolves: a directory called ..cache inside the worktree is a child, not a parent', async (t) => {
+    const world = await makeWorld(t);
+    assert.equal((await world.ask('build', { repo: world.repo.dir })).ok, true);
+    const sub = path.join(world.repo.dir, '..cache', 'sub');
+    fs.mkdirSync(sub, { recursive: true });
+    const found = await world.ask('code_find', { name: 'helper', cwd: sub });
+    assert.deepEqual(codes(found).filter((code) => code === 'not_a_repo'), [], 'spurious not_a_repo');
+    assert.equal(found.ok, true, JSON.stringify(found.diagnostics));
+    assert.equal((found.data as FindData).results.length, 1);
+  });
+
+  it('store_unavailable drops the tenant: the next request opens a fresh one', async (t) => {
+    const world = await makeWorld(t);
+    let created = 0;
+    let closedFirst = false;
+    const host = world.anotherHost({
+      tenantFactory: async (deps) => {
+        created += 1;
+        const real = await createTenant(deps);
+        if (created > 1) return real;
+        // The first tenant's store "closes itself after a failed recovery": every code request is answered so.
+        return {
+          ...real,
+          handle: () => Promise.resolve(storeUnavailableEnvelope()),
+          close: async () => {
+            closedFirst = true;
+            await real.close();
+          },
+        };
+      },
+    });
+    const ask = (kind: string, args: Record<string, unknown>): Promise<Envelope> =>
+      host.handle({ protocol: PROTOCOL_VERSION, kind, args });
+
+    assert.equal((await ask('build', { repo: world.repo.dir })).ok, true);
+    const broken = await ask('code_find', { name: 'helper', repo: world.repo.dir });
+    assert.deepEqual(codes(broken), ['store_unavailable']);
+    await eventuallyTrue(() => closedFirst, 'the failed tenant to be closed');
+
+    const again = await ask('code_find', { name: 'helper', repo: world.repo.dir });
+    assert.equal(again.ok, true, JSON.stringify(again.diagnostics));
+    assert.equal((again.data as FindData).results.length, 1);
+    assert.equal(created, 2, 'the second request created a new tenant');
+  });
+});
+
+async function eventuallyTrue(check: () => boolean, what: string, timeoutMs = 10000): Promise<void> {
+  const until = Date.now() + timeoutMs;
+  while (!check()) {
+    if (Date.now() > until) assert.fail(`timed out waiting for ${what}`);
+    await new Promise((resolve) => setTimeout(resolve, 15));
   }
 }
 

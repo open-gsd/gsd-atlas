@@ -8,7 +8,7 @@ import type { Governor } from '../governor/index.ts';
 import type { GrammarEngine } from '../grammar-engine/index.ts';
 import type { EventSource, Indexer, IndexerDeps, ModuleHost } from '../indexer/index.ts';
 import type { Roots } from '../lang/index.ts';
-import type { TenantTuning } from '../tenant/index.ts';
+import type { Tenant, TenantDeps, TenantTuning } from '../tenant/index.ts';
 
 /**
  * The user-level configuration (trust-boundaries ADR): it comes from `<userDir>/config.json` and the environment
@@ -65,6 +65,8 @@ export interface HostOptions {
    * Default: the approved `host.idleEvictMs` (30 minutes). A request after eviction opens it again.
    */
   readonly idleEvictMs?: number;
+  /** TEST HOOK. Builds a repository's Tenant from the dependencies the Host assembled; production omits it. */
+  readonly tenantFactory?: (deps: TenantDeps) => Promise<Tenant>;
   /** TEST HOOK. Builds the module host of a repository's `history` questions; production omits it. */
   readonly moduleHostFactory?: (repoDir: string) => ModuleHost;
   /**

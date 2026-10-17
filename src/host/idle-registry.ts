@@ -24,6 +24,11 @@ export interface IdleRegistry {
   begin(key: string): void;
   /** A piece of work for `key` is done. This is a use: the idle period restarts. */
   end(key: string): void;
+  /**
+   * The resource of `key` is no good (its store closed itself): report it now, or, when work is in flight, the moment
+   * the last piece ends, without waiting for the idle period. Never closes a resource under a request.
+   */
+  evict(key: string): void;
   /** Cancel the timer of `key` and drop its count (the resource was closed some other way). */
   forget(key: string): void;
   /** Cancel every timer. Nothing arms afterwards. Safe to call twice. */
@@ -34,6 +39,8 @@ interface Entry {
   inFlight: number;
   lastUse: number;
   cancel: (() => void) | undefined;
+  /** Reported as soon as nothing is in flight, whatever the idle period says (see `evict`). */
+  evict: boolean;
 }
 
 export function createIdleRegistry(options: IdleRegistryOptions): IdleRegistry {
@@ -64,6 +71,13 @@ export function createIdleRegistry(options: IdleRegistryOptions): IdleRegistry {
       arm(key, entry, idleMs - quiet);
       return;
     }
+    report(key);
+  }
+
+  /** Forget `key` and tell the caller it is done with. */
+  function report(key: string): void {
+    const entry = entries.get(key);
+    entry?.cancel?.();
     entries.delete(key);
     try {
       Promise.resolve(onIdle(key)).catch(() => {});
@@ -75,7 +89,7 @@ export function createIdleRegistry(options: IdleRegistryOptions): IdleRegistry {
   function entryFor(key: string): Entry {
     let entry = entries.get(key);
     if (entry === undefined) {
-      entry = { inFlight: 0, lastUse: clock.now(), cancel: undefined };
+      entry = { inFlight: 0, lastUse: clock.now(), cancel: undefined, evict: false };
       entries.set(key, entry);
     }
     return entry;
@@ -101,7 +115,17 @@ export function createIdleRegistry(options: IdleRegistryOptions): IdleRegistry {
       if (closed) return;
       const entry = entryFor(key);
       entry.inFlight = Math.max(0, entry.inFlight - 1);
+      if (entry.evict && entry.inFlight === 0) {
+        report(key);
+        return;
+      }
       touch(key);
+    },
+    evict(key) {
+      if (closed) return;
+      const entry = entryFor(key);
+      entry.evict = true;
+      if (entry.inFlight === 0) report(key);
     },
     forget(key) {
       entries.get(key)?.cancel?.();

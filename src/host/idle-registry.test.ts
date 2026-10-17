@@ -133,6 +133,38 @@ describe('idle registry', () => {
     assert.deepEqual(seen, ['a', 'b']);
   });
 
+  it('evict reports an idle key at once, and a key with work in flight when that work ends', async () => {
+    const { clock, idled, registry } = setup();
+    registry.touch('a');
+    registry.evict('a');
+    assert.deepEqual(idled, ['a'], 'nothing in flight: reported without waiting for the idle period');
+    assert.equal(clock.pending(), 0);
+
+    registry.begin('b');
+    registry.begin('b');
+    registry.evict('b');
+    assert.deepEqual(idled, ['a'], 'work in flight: not closed under it');
+    registry.end('b');
+    assert.deepEqual(idled, ['a'], 'one request is still in flight');
+    registry.end('b');
+    assert.deepEqual(idled, ['a', 'b'], 'reported when the last request ended');
+    assert.equal(clock.pending(), 0);
+    await clock.advance(IDLE * 3);
+    assert.deepEqual(idled, ['a', 'b'], 'and only once');
+  });
+
+  it('a forgotten key loses its eviction mark, and evict after close does nothing', () => {
+    const { idled, registry } = setup();
+    registry.begin('a');
+    registry.evict('a');
+    registry.forget('a');
+    registry.end('a');
+    assert.deepEqual(idled, [], 'forget dropped the mark');
+    registry.close();
+    registry.evict('b');
+    assert.deepEqual(idled, []);
+  });
+
   it('refuses an idle period that is not a positive finite number', () => {
     const clock = new FakeClock(0);
     for (const idleMs of [0, -1, Number.NaN, Number.POSITIVE_INFINITY]) {
