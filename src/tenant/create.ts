@@ -222,6 +222,7 @@ export async function createTenant(deps: TenantDeps): Promise<Tenant> {
       indexer: indexer?.status() ?? null,
       governor: governor.status(),
       metrics: metrics.status(),
+      startup: 'none', // STUB (RED commit of plan 02-28 task 2)
       ...(startError === undefined ? {} : { startError }),
     };
   }

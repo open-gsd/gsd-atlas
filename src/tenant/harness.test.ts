@@ -45,6 +45,21 @@ export async function eventually(check: () => boolean | Promise<boolean>, what: 
   }
 }
 
+/** `work`, or a failure naming `what` when it has not settled after `ms` of real time (a hang becomes a clear failure). */
+export async function within<T>(work: Promise<T>, what: string, ms = 5000): Promise<T> {
+  let timer: NodeJS.Timeout | undefined;
+  const late = new Promise<never>((_resolve, reject) => {
+    timer = setTimeout(() => {
+      reject(new Error(`${what} did not settle within ${String(ms)} ms`));
+    }, ms);
+  });
+  try {
+    return await Promise.race([work, late]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 /** A few turns of the event loop, for work that is already in flight and has nothing to wait for. */
 export async function settle(turns = 5): Promise<void> {
   for (let turn = 0; turn < turns; turn += 1) await new Promise((resolve) => setImmediate(resolve));

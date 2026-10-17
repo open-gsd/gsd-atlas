@@ -3,8 +3,7 @@
  * per-repository state: Source Tree, Fact Store (with the writer lease), Indexer, Query and Metrics. The Grammar
  * Engine, the CommandRunner and the Governor are shared across tenants and arrive as dependencies.
  */
-import type { StoreLocation } from '../fact-store/index.ts';
-import type { StoreStatus } from '../fact-store/index.ts';
+import type { StoreLocation, StoreStatus, openFactStore } from '../fact-store/index.ts';
 import type { Clock, Envelope, Request } from '../facts/index.ts';
 import type { Governor, GovernorStatus } from '../governor/index.ts';
 import type { GrammarEngine } from '../grammar-engine/index.ts';
@@ -28,6 +27,13 @@ export type MaintainTask = (typeof MAINTAIN_TASKS)[number];
 export interface TenantTuning {
   /** The time box of one store maintenance slice (collect, compact), in milliseconds. */
   readonly maintenanceSliceMs: number;
+  /** The longest the first request waits for the start-up Reconcile before it is answered `reconciling`. */
+  readonly startupReconcileDeadlineMs: number;
+  /** Quiet time (no request) before the Tenant runs one idle maintenance round. */
+  readonly idleAfterMs: number;
+  /** A follower retries the writer lease after a jittered delay between these two bounds. */
+  readonly takeoverRetryMinMs: number;
+  readonly takeoverRetryMaxMs: number;
 }
 
 export interface TenantDeps {
@@ -60,6 +66,8 @@ export interface TenantDeps {
   readonly eventSource?: () => EventSource;
   /** TEST HOOK. Builds the Indexer; production omits it. */
   readonly indexerFactory?: (deps: IndexerDeps) => Indexer;
+  /** TEST HOOK. Opens the Fact Store, so a test can reach its lease callback or wrap it; production omits it. */
+  readonly openStore?: typeof openFactStore;
   /** Shortens waits in tests. */
   readonly tuning?: Partial<TenantTuning>;
 }
@@ -97,6 +105,11 @@ export interface TenantStatus {
   readonly metrics: MetricsStatus;
   /** Why the start-up Indexer did not start, when it did not. */
   readonly startError?: string;
+  /**
+   * The start-up Reconcile: `pending` while an Indexer started for the worktrees the store already indexes has not
+   * finished (answers carry `reconciling`), `ready` once it settled, `none` when nothing was started.
+   */
+  readonly startup: 'pending' | 'ready' | 'none';
 }
 
 export interface Tenant {
