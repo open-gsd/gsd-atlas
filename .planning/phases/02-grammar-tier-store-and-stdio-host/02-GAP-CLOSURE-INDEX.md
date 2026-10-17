@@ -2,6 +2,8 @@
 
 Revision 1 (plan-checker warnings W1, W3, info I2 to I4): Phase 4 criteria 6 to 8 added to `.planning/ROADMAP.md` (the only lines edited there), every deferral states what remains unmitigated, the 02-29 addendum gained the derived values and `runner.defaultTimeoutMs`, 02-31 may make one coordinated edit in `lifecycle.ts`, ADR 13 states the by-design store writes, and 02-30 has a `dbstat` fallback rule. Plan 02-41 stays one plan (the user rejected the split).
 
+Revision 2 (after plans 02-29 to 02-42 were executed and merged): plan 02-44 added (wave 5) for four follow-ups - the flaky `health` parity case, four init quirks left by 02-35, the last private `isInside` copies, and the missing ADR amendment for the parser pool's deadlines - and the final gate plan 02-43 moved to wave 6 depending on 02-44. Plan 02-41 was not changed.
+
 Sources: 02-VERIFICATION.md (criterion 4 / STO-05, human item 5), 02-REVIEW.md (WR-01..WR-13, IN-01..IN-11), the user's decisions of this planning request, the coordinator's addendum on `src/cli/init*` (`.planning/research/MCP-HOST-CONFIGS.md`). There is no REVIEWS.md; every plan's Review Dispositions Ledger uses `Round 1 - ece310d` (the commit that wrote 02-REVIEW.md).
 
 ## Plans
@@ -22,9 +24,10 @@ Sources: 02-VERIFICATION.md (criterion 4 / STO-05, human item 5), 02-REVIEW.md (
 | 02-40 | 2 | 02-30 | tenant create.ts, messages.ts, index.ts + tests | STO-05, STO-10, STO-08, QRY-04, HST-02 | STO-05 Tenant wiring, WR-02 messages, IN-10, StoreClosed mapping |
 | 02-41 | 3 | 02-29, 02-34, 02-40 | fact-store location.ts, probe.ts, host host/route/history/defaults/idle-registry + tests, scripts/read-only-flow.test.ts (one plan, 4 tasks) | HST-02, QRY-06, STO-07, STO-08, STO-09, QRY-04 | WR-01, WR-02 (no lease for a missing, empty, older-schema or unreadable store; real-process flow), WR-10, IN-03 (route, history) |
 | 02-42 | 4 | 02-30, 02-33, 02-38, 02-40, 02-41 | docs/adr 4, 7, 9, 11, 13, README, DESIGN.md, scripts/adr.test.ts | FND-12, STO-05, QRY-06, STO-09 | Five dated ADR amendments for every changed ratified contract |
-| 02-43 | 5 | all | 02-UAT.md | STO-05, STO-10, STO-06, STO-08, HST-02, QRY-04, FND-12 | Full gate set (typecheck, lint, npm test, size gate idleRatio on both drivers, schema:check, grammar:verify, build), STO-05 re-verification, 24-finding trace, UAT items 1 and 5 |
+| 02-44 | 5 | 02-34, 02-35, 02-39, 02-40, 02-41, 02-42 | scripts/parity.test.ts + new settle helper and test, cli init-targets/init/index + tests, host route/host + index-state test, lang/module-files, scripts/corpus-gates + recall, docs/adr/5-language-modules + README + scripts/adr.test.ts (one plan, 5 tasks) | QRY-04, HST-04, HST-02, STO-07, LNG-07, FND-12 | Parity `health` flake (wait for the product's settled state, strict compare, 48-run stress), Codex editor quirks (header spellings, comment above next header, preserve user keys / refuse `url`), build hint through the Host's `index_state` (cache-directory stores), remaining `isInside` copies, `Parser pool deadlines` amendment in `language-modules` |
+| 02-43 | 6 | all incl. 02-44 | 02-UAT.md | STO-05, STO-10, STO-06, STO-08, HST-02, QRY-04, FND-12 | Full gate set (typecheck, lint, npm test, size gate idleRatio on both drivers, schema:check, grammar:verify, build), STO-05 re-verification, 24-finding trace, UAT items 1 and 5 |
 
-Same-wave plans have no file overlap (checked by script). Plans 02-38, 02-39 and 02-41 wait for the human approval in 02-29.
+Same-wave plans have no file overlap (checked by script; 02-44 is alone in wave 5). Plans 02-38, 02-39 and 02-41 wait for the human approval in 02-29.
 
 ## Decisions taken in the plans (the user asked for these to be chosen and documented)
 
@@ -66,6 +69,11 @@ Same-wave plans have no file overlap (checked by script). Plans 02-38, 02-39 and
 | IN-11 Governor frees slot on timeout | Addressed by documenting and pinning the contract; keep-slot option rejected (starvation) | 02-34 T3 |
 | STO-05 idle-only 1.396x (VERIFICATION human item 1) | Addressed | 02-30, 02-37, 02-40, 02-43 |
 | Flaky wall-clock test (VERIFICATION human item 5) | Addressed (= IN-01) | 02-30 T2 |
+| Parity `health` flake (execution finding: 3 of 16 parallel runs failed; `reconciling` or a null `lastReconcileAt` on one or both surfaces) | Addressed: compare only settled snapshots, strict otherwise; product fix only if a spurious Reconcile trigger is found | 02-44 T1 |
+| Init quirks flagged by 02-35: header spellings create a duplicate table; comment above the next header removed; user keys dropped | Addressed: recognise by parsed key, edit only `command`/`args`, preserve the rest, refuse `url` conflicts and unsafe forms | 02-44 T2 |
+| IN-04 residual: cache-directory store invisible to the init hint | Addressed through a new internal Host request kind `index_state` (the cli adapter cannot import the Fact Store) | 02-44 T3 |
+| IN-03 residual: `isInside` copies in lang/module-files, corpus-gates, recall | Addressed | 02-44 T4 |
+| Plan 02-39's pool deadlines had no ADR amendment | Addressed (`language-modules`, Parser pool deadlines) | 02-44 T5 |
 
 Not touched, as instructed: real Cursor/Codex start check (human item 2; shapes confirmed by research and applied in 02-35), `nightly.yml` first remote run (item 3), ADR editorial repairs (item 4).
 
@@ -94,3 +102,5 @@ Not touched, as instructed: real Cursor/Codex start check (human item 2; shapes 
 - 02-35 leaves one existing behaviour as is and flags it: re-running init drops extra keys a user added inside `[mcp_servers.gsd-atlas]`.
 - Three-OS evidence for the new idle ratio comes from the next hosted CI run of the unchanged `node scripts/size-gate.ts` step; 02-43 records local figures only.
 - 02-31 runs in wave 2 so its one edit in `lifecycle.ts` (`checkStore`) comes after 02-30's changes to that file.
+- 02-44 Task 1 records the trigger of the second Reconcile in each failing stress run before choosing between the test-side settle step alone and an additional Indexer fix.
+- `src/indexer/parcel-source.test.ts` failed once under load during 02-35 and passes alone; it is not planned (cause unknown, seen once).
