@@ -317,6 +317,44 @@ function hostRewrites(file: string): Buffer {
 
 describe('gsd-atlas init and a config the host changes while init runs (WR-12)', () => {
   const REASON = /^config_changed_during_init/;
+  /** Exactly the legitimate reasons a racing init can be refused with; a bare `could not write the file` is not one. */
+  const REFUSAL = /^(config_changed_during_init|config_in_use)/;
+
+  const refusingRename = (code: string) => async (): Promise<void> => {
+    throw Object.assign(new Error(`${code}: scripted rename failure`), { code });
+  };
+
+  /**
+   * What two inits racing on one file may end as: each succeeds (exit 0) or is refused with a reason that says why
+   * (exit 2), the file always parses, nothing is lost silently and nothing is left in the folder but the config and
+   * its backup.
+   */
+  function assertRaceInvariants(rig: Rig, file: string, outcomes: readonly Outcome[]): void {
+    let succeeded = 0;
+    for (const out of outcomes) {
+      const host = out.envelope().data.hosts[0]!;
+      if (host.action === 'refused') {
+        assert.match(host.reason ?? '', REFUSAL, `a refusal must say why, got: ${host.reason}`);
+        assert.equal(out.code, 2);
+      } else {
+        assert.ok(host.action === 'updated' || host.action === 'unchanged', `unexpected action ${host.action}: ${host.reason}`);
+        assert.equal(out.code, 0);
+        succeeded += 1;
+      }
+    }
+    const parsed = JSON.parse(fs.readFileSync(file, 'utf8')) as { mcpServers: Record<string, unknown>; theme: string };
+    if (succeeded > 0) {
+      assert.deepEqual(parsed.mcpServers['gsd-atlas'], CLAUDE_ENTRY);
+    } else {
+      assert.deepEqual(fs.readFileSync(file), Buffer.from(`${JSON.stringify(ORIGINAL_CONFIG, null, 2)}\n`), 'every run was refused, so the file is unchanged');
+    }
+    assert.deepEqual(parsed.mcpServers['other'], ORIGINAL_CONFIG.mcpServers.other);
+    assert.equal(parsed.theme, 'dark');
+    const listing = fs.readdirSync(rig.home);
+    assert.ok(!listing.some((name) => name.endsWith('.tmp')), 'no temp file remains');
+    assert.ok(listing.every((name) => name === '.claude.json' || name === `.claude.json${BACKUP}`), `unexpected entries: ${listing.join(', ')}`);
+    assert.ok(listing.includes('.claude.json'));
+  }
 
   it('changed between read and write: refused, the host bytes stay, no backup and no temp file', async () => {
     const rig = makeRig();
@@ -460,26 +498,51 @@ describe('gsd-atlas init and a config the host changes while init runs (WR-12)',
     const rig = makeRig();
     const file = seedClaude(rig);
 
-    const [first, second] = await Promise.all([
+    const outcomes = await Promise.all([
       rig.run(['init', '--agent', 'claude']),
       rig.run(['init', '--agent', 'claude']),
     ]);
 
-    for (const out of [first, second]) {
-      const host = out.envelope().data.hosts[0]!;
-      if (host.action === 'refused') {
-        assert.match(host.reason ?? '', REASON);
-        assert.equal(out.code, 2);
-      } else {
-        assert.ok(host.action === 'updated' || host.action === 'unchanged', host.action);
-        assert.equal(out.code, 0);
-      }
+    assertRaceInvariants(rig, file, outcomes);
+  });
+
+  it('concurrent inits with one rename refused by the operating system (scripted EPERM): the other one wins, the refusal says config_in_use', async () => {
+    const rig = makeRig();
+    const file = seedClaude(rig);
+
+    // Scripted so the order does not depend on timing: the first run is past both compares when its rename is
+    // refused, and the second run does all of its work inside that window, as a program holding the file would.
+    let second: Outcome | null = null;
+    const first = await rig.run(['init', '--agent', 'claude'], {
+      renameFile: async () => {
+        second = await rig.run(['init', '--agent', 'claude']);
+        await refusingRename('EPERM')();
+      },
+    });
+
+    assert.ok(second !== null);
+    const outcomes = [first, second as Outcome];
+    assertRaceInvariants(rig, file, outcomes);
+    const firstHost = first.envelope().data.hosts[0]!;
+    assert.equal(firstHost.action, 'refused');
+    assert.match(firstHost.reason ?? '', /^config_in_use:/);
+    assert.equal((second as Outcome).envelope().data.hosts[0]!.action, 'updated', 'the run that was not refused did its work');
+  });
+
+  it('concurrent inits with both renames refused (scripted EPERM and EBUSY): both say so and the file is byte-identical to the original', async () => {
+    const rig = makeRig();
+    const file = seedClaude(rig);
+
+    const outcomes = await Promise.all([
+      rig.run(['init', '--agent', 'claude'], { renameFile: refusingRename('EPERM') }),
+      rig.run(['init', '--agent', 'claude'], { renameFile: refusingRename('EBUSY') }),
+    ]);
+
+    assertRaceInvariants(rig, file, outcomes);
+    for (const out of outcomes) {
+      assert.equal(out.envelope().data.hosts[0]!.action, 'refused');
+      assert.match(out.envelope().data.hosts[0]!.reason ?? '', /^config_in_use:/);
     }
-    const parsed = JSON.parse(fs.readFileSync(file, 'utf8')) as { mcpServers: Record<string, unknown>; theme: string };
-    assert.deepEqual(parsed.mcpServers['gsd-atlas'], CLAUDE_ENTRY);
-    assert.deepEqual(parsed.mcpServers['other'], ORIGINAL_CONFIG.mcpServers.other);
-    assert.equal(parsed.theme, 'dark');
-    assert.deepEqual(fs.readdirSync(rig.home).sort(), ['.claude.json', `.claude.json${BACKUP}`], 'no temp file remains');
   });
 });
 
