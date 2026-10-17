@@ -8,24 +8,23 @@
  * `createFollowerFresh` is the fresh port: it validates the paths like `Indexer.ensureFresh` does, reads and parses
  * them with the same module host, source-set filter and stat-before-and-after race handling as the Indexer, and
  * returns the outcome with the overlay Reader. `createOverlayReader` is the merge: for a patched path it takes the
- * patch's facts instead of the store's (a deleted or unreadable path hides the store's facts for it).
+ * patch's facts instead of the store's (a deleted or unreadable path hides the store's facts for it), and it derives
+ * references, callers and importers from the merged facts with the store's own scoping rules.
  */
 import fs from 'node:fs';
 import path from 'node:path';
+import { candidatePaths, resolveSpecifier } from '../fact-store/index.ts';
 import type {
   CallerRecord,
-  CallersOptions,
   FactStore,
   FindOptions,
   ImporterRecord,
-  ImportersOptions,
   Reader,
   RefRecord,
-  ResolveOptions,
   SymbolRecord,
 } from '../fact-store/index.ts';
 import { symbolKey } from '../facts/index.ts';
-import type { Answer, Clock, DegradedCode, FileFacts, LocalSymbol, SymbolIdentity, Watermark } from '../facts/index.ts';
+import type { Answer, Clock, DegradedCode, FileFacts, LocalSymbol, RefKind, SymbolIdentity, Watermark } from '../facts/index.ts';
 import { DEFAULT_INDEXER_CONFIG, isRepoRelative, realRoot, staysInside } from '../indexer/index.ts';
 import type { ModuleHost } from '../indexer/index.ts';
 import type { FreshPort, FreshReport } from '../query/index.ts';
@@ -49,6 +48,15 @@ export type Patch = ReadonlyMap<string, FileFacts | null>;
 const DEFAULT_FIND_LIMIT = 50;
 const MIN_FUZZY_CHARS = 3;
 
+/** The deepest a walk goes, whatever the caller asks for: the store's own bound (T-02-34), kept equal by a test. */
+const MAX_WALK_DEPTH = 5;
+
+/** A requested hop count or depth as a whole number from 1 to `MAX_WALK_DEPTH`; absent or not a number is 1. */
+function clampDepth(requested: number | undefined): number {
+  if (requested === undefined || Number.isNaN(requested)) return 1;
+  return Math.min(MAX_WALK_DEPTH, Math.max(1, Math.floor(requested)));
+}
+
 const compareCodeUnits = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
 
 const noop = (): void => {};
@@ -57,8 +65,15 @@ const asciiLower = (value: string): string => value.replace(/[A-Z]/g, (letter) =
 
 const extractorOf = (module: string, grammarVersion: string): string => `grammar:${module}@${grammarVersion}`;
 
-/** One definition of a patched file, with the record the store would hold for it. */
+/** A path with its last extension removed: `src/a.ts` and `src/a.js` both become `src/a`. */
+function stemOf(filePath: string): string {
+  const ext = path.posix.extname(filePath);
+  return ext === '' ? filePath : filePath.slice(0, filePath.length - ext.length);
+}
+
+/** One definition of a file, with the identity and the record the store would hold for it. */
 interface Definition {
+  /** The index in `FileFacts.symbols`, which is the store's `ord`. */
   readonly ord: number;
   readonly symbol: LocalSymbol;
   readonly identity: SymbolIdentity;
@@ -103,21 +118,27 @@ function definitionsOf(facts: FileFacts, repo: string, now: number): readonly De
   return definitions;
 }
 
+/** A definition inside the merged view: its path and its index in that file's symbols. */
+interface Def {
+  readonly path: string;
+  readonly ord: number;
+  readonly symbol: LocalSymbol;
+}
+
+const defKey = (def: { readonly path: string; readonly ord: number }): string => `${def.path}\u0000${String(def.ord)}`;
+
+/** Definitions of `name` in `facts`; `topLevelOnly` keeps symbols that have no parent. */
+function definitionsNamed(facts: FileFacts, name: string, topLevelOnly: boolean): Def[] {
+  const out: Def[] = [];
+  facts.symbols.forEach((symbol, ord) => {
+    if (symbol.name === name && (!topLevelOnly || symbol.parent === undefined)) out.push({ path: facts.path, ord, symbol });
+  });
+  return out;
+}
+
 const laterOf = (a: Watermark, b: Watermark): Watermark => (b.seq > a.seq ? b : a);
 
-/** The degraded codes of `answers` plus `follower`: every answer of the overlay says it came from a follower. */
-function degradedOf(...answers: ReadonlyArray<Answer<unknown>>): readonly DegradedCode[] {
-  const codes = new Set<DegradedCode>(['follower']);
-  for (const answer of answers) for (const code of answer.degraded ?? []) codes.add(code);
-  return [...codes];
-}
-
-/** A follower's answer: the data, the later of the two watermarks and the degraded codes. */
-function answerOf<T>(data: T, watermark: Watermark, ...from: ReadonlyArray<Answer<unknown>>): Answer<T> {
-  return { data, watermark, degraded: degradedOf(...from) };
-}
-
-/** `limit` as a whole number of rows, or all of them when absent. */
+/** `limit` as a whole number of rows, or `fallback` when absent. */
 function limitOf(limit: number | undefined, fallback: number): number {
   return limit === undefined || Number.isNaN(limit) ? fallback : Math.max(0, Math.floor(limit));
 }
@@ -128,96 +149,338 @@ function nameMatches(mode: NonNullable<FindOptions['mode']>, query: string, name
   return name === query;
 }
 
+/** Order of the store's reads: path, then position. Stable, so records of one file keep the order they arrived in. */
+function bySite(a: { readonly source_path: string; readonly span: { readonly startLine: number; readonly startColumn: number } }, b: typeof a): number {
+  return compareCodeUnits(a.source_path, b.source_path) || a.span.startLine - b.span.startLine || a.span.startColumn - b.span.startColumn;
+}
+
 /**
  * The Reader of one request: `base` (the store's reader) with `patch` laid over it. The whole Reader interface is
- * implemented by merging; every record the overlay creates carries the shape of the store's records.
+ * implemented by merging, and every record the overlay creates carries the shape of the store's records:
+ *
+ * - `find`, `symbol` and `fileFacts` take the patched file's facts instead of the store's for patched paths.
+ * - `refs` drops the store's sites that sit in patched files and adds the patched files' sites that are in scope for
+ *   the target (same file, an export alias, or an import binding that resolves to the target's file and name).
+ * - `callers` and `importers` walk the merged `refs` and the merged import statements breadth first, with the
+ *   store's depth clamp and visited sets.
+ *
+ * Import specifiers resolve with the store's pure rule over the patched paths plus the candidate paths that exist in
+ * the store, each probed with `Reader.fileFacts`.
+ *
+ * Known limits, all in the direction of showing less rather than something wrong: a site in an unpatched file keeps
+ * the scoping the store computed against the store's version of a patched file's exports; a patched file's sites
+ * never carry precise-tier edges.
  */
 export function createOverlayReader(base: Reader, patch: Patch, context: OverlayContext): Reader {
   const now = context.clock.now();
-  const { repo } = context;
+  const { repo, extensions } = context;
 
-  /** The store's facts of a patched path, once: needed for the hiding rules and for the answer's watermark. */
-  const baseProbes = new Map<string, Promise<Answer<FileFacts | null>>>();
-  const probeBase = (filePath: string): Promise<Answer<FileFacts | null>> => {
-    let probe = baseProbes.get(filePath);
-    if (probe === undefined) {
-      probe = base.fileFacts(filePath);
-      baseProbes.set(filePath, probe);
+  // What the store answered during this request: the latest watermark and every degraded code, plus `follower`.
+  let watermark: Watermark | undefined;
+  const codes = new Set<DegradedCode>(['follower']);
+  const observe = <T>(answer: Answer<T>): T => {
+    watermark = watermark === undefined ? answer.watermark : laterOf(watermark, answer.watermark);
+    for (const code of answer.degraded ?? []) codes.add(code);
+    return answer.data;
+  };
+  const result = <T>(data: T): Answer<T> => ({ data, watermark: watermark ?? { seq: 0, stalePaths: [] }, degraded: [...codes] });
+
+  /** The facts of a path in the merged view, once: the patch's for a patched path, else the store's. */
+  const factsMemo = new Map<string, Promise<FileFacts | null>>();
+  const factsOf = (filePath: string): Promise<FileFacts | null> => {
+    let known = factsMemo.get(filePath);
+    if (known === undefined) {
+      known = patch.has(filePath) ? Promise.resolve(patch.get(filePath) ?? null) : base.fileFacts(filePath).then(observe);
+      factsMemo.set(filePath, known);
     }
-    return probe;
+    return known;
+  };
+  /** The store's own facts of a path (what the patch hides), for the row bound of `find` and the watermark. */
+  const storedMemo = new Map<string, Promise<FileFacts | null>>();
+  const storedFactsOf = (filePath: string): Promise<FileFacts | null> => {
+    let known = storedMemo.get(filePath);
+    if (known === undefined) {
+      known = base.fileFacts(filePath).then(observe);
+      storedMemo.set(filePath, known);
+    }
+    return known;
   };
 
-  const patchedDefinitions = (): Definition[] => {
-    const out: Definition[] = [];
-    for (const facts of patch.values()) if (facts !== null) out.push(...definitionsOf(facts, repo, now));
-    return out;
+  /** The merged view's paths a relative specifier names: the store's rule over the candidates that exist. */
+  const resolvedMemo = new Map<string, Promise<readonly string[]>>();
+  const resolveImport = (importer: string, specifier: string): Promise<readonly string[]> => {
+    const key = `${importer}\u0000${specifier}`;
+    let known = resolvedMemo.get(key);
+    if (known === undefined) {
+      known = (async () => {
+        const candidates = candidatePaths(importer, specifier, extensions);
+        const present = await Promise.all(candidates.map(async (candidate) => ((await factsOf(candidate)) === null ? null : candidate)));
+        return resolveSpecifier(importer, specifier, new Set(present.filter((candidate): candidate is string => candidate !== null)));
+      })();
+      resolvedMemo.set(key, known);
+    }
+    return known;
   };
+
+  /** The definitions a file exposes under the export name `exportName` (the store's `exportDefs`, over facts). */
+  async function exportDefs(filePath: string, exportName: string): Promise<Def[]> {
+    const facts = await factsOf(filePath);
+    if (facts === null) return [];
+    const entries = (facts.exports ?? []).filter((entry) => entry.name === exportName);
+    if (entries.length > 0) {
+      const out: Def[] = [];
+      for (const entry of entries) {
+        if (entry.from !== undefined) continue;
+        out.push(...definitionsNamed(facts, entry.local ?? entry.name, true));
+      }
+      return out;
+    }
+    if (exportName === 'default') return [];
+    return definitionsNamed(facts, exportName, true).filter((def) => def.symbol.exported !== false);
+  }
+
+  /**
+   * Every definition a site of `name` and `kind` in `facts` could point at (the store's `targetsOf`): a definition of
+   * the same name in the file, the local symbol behind an export alias of the file, and, through the file's relative
+   * imports, the definition a binding resolves to in every file the specifier can name.
+   */
+  async function targetsOf(facts: FileFacts, name: string, kind: RefKind | undefined): Promise<Map<string, Def>> {
+    const targets = new Map<string, Def>();
+    const add = (def: Def): void => {
+      targets.set(defKey(def), def);
+    };
+    facts.symbols.forEach((symbol, ord) => {
+      if (symbol.name === name) add({ path: facts.path, ord, symbol });
+    });
+    for (const entry of facts.exports ?? []) {
+      if (entry.name !== name || entry.local === undefined || entry.local === entry.name || entry.from !== undefined) continue;
+      for (const def of definitionsNamed(facts, entry.local, true)) add(def);
+    }
+    for (const imp of facts.imports) {
+      for (const binding of imp.bindings ?? []) {
+        if (binding.imported === '*') {
+          if (kind !== 'member') continue;
+          for (const candidate of await resolveImport(facts.path, imp.path)) {
+            for (const def of await exportDefs(candidate, name)) add(def);
+          }
+        } else if (binding.local === name && kind !== 'member') {
+          for (const candidate of await resolveImport(facts.path, imp.path)) {
+            for (const def of await exportDefs(candidate, binding.imported)) add(def);
+          }
+        }
+      }
+    }
+    return targets;
+  }
+
+  const targetsMemo = new Map<string, Promise<Map<string, Def>>>();
+  const targetsOfMemo = (facts: FileFacts, name: string, kind: RefKind | undefined): Promise<Map<string, Def>> => {
+    const key = `${facts.path}\u0000${name}\u0000${kind ?? ''}`;
+    let known = targetsMemo.get(key);
+    if (known === undefined) {
+      known = targetsOf(facts, name, kind);
+      targetsMemo.set(key, known);
+    }
+    return known;
+  };
+
+  /** The definition `id` names in the merged view, with its file's facts; null when it does not exist there. */
+  async function locate(id: SymbolIdentity): Promise<{ readonly facts: FileFacts; readonly definition: Definition } | null> {
+    if (id.repo !== repo) return null;
+    const facts = await factsOf(id.path);
+    if (facts === null) return null;
+    const definition = definitionsOf(facts, repo, now).find((candidate) => symbolKey(candidate.identity) === symbolKey(id));
+    return definition === undefined ? null : { facts, definition };
+  }
+
+  /** The references to `id`: the store's, minus the sites of patched files, plus the patched files' sites in scope. */
+  async function refsOf(id: SymbolIdentity, options: Parameters<Reader['refs']>[1]): Promise<RefRecord[]> {
+    const stored = observe(await base.refs(id, options)).filter((record) => !patch.has(record.source_path));
+    const located = await locate(id);
+    // A definition the patch removed or renamed has no references left; one the store alone holds keeps the store's.
+    if (located === null) return patch.has(id.path) ? [] : stored;
+    const targetKey = defKey({ path: id.path, ord: located.definition.ord });
+
+    const added: Array<{ readonly ord: number; readonly record: RefRecord }> = [];
+    for (const facts of patch.values()) {
+      if (facts === null) continue;
+      const defs = definitionsOf(facts, repo, now);
+      for (const [ord, site] of facts.refSites.entries()) {
+        const targets = await targetsOfMemo(facts, site.name, site.kind);
+        if (!targets.has(targetKey)) continue;
+        const container = site.enclosing === undefined ? undefined : defs[site.enclosing];
+        added.push({
+          ord,
+          record: {
+            source_path: facts.path,
+            span: site.span,
+            extractor: extractorOf(facts.module, facts.grammarVersion),
+            content_hash: facts.contentHash,
+            first_seen: now,
+            last_seen: now,
+            confidence: 'INFERRED',
+            debug: `ref/${encodeURIComponent(facts.path)}/${facts.contentHash}/${String(ord)}`,
+            site: { path: facts.path, span: site.span, name: site.name },
+            target: id,
+            tier: 'grammar',
+            enclosing: container === undefined ? null : container.identity,
+            ...(targets.size > 1 ? { candidates: targets.size } : {}),
+            ...(site.kind === undefined ? {} : { kind: site.kind }),
+          },
+        });
+      }
+    }
+    added.sort((a, b) => bySite(a.record, b.record) || a.ord - b.ord);
+    return [...stored, ...added.map((entry) => entry.record)].sort(bySite);
+  }
 
   return {
     async find(name, options) {
       const mode = options?.mode ?? 'exact';
       if (name === '' || (mode === 'fuzzy' && name.length < MIN_FUZZY_CHARS)) {
-        return answerOf([], (await base.find(name, options)).watermark);
+        observe(await base.find(name, options));
+        return result([]);
       }
       const wanted = limitOf(options?.limit, mode === 'exact' ? Number.POSITIVE_INFINITY : DEFAULT_FIND_LIMIT);
       // The store truncates before the merge, so it is asked for enough rows to survive dropping the patched paths'.
       let hidden = 0;
-      const probes = await Promise.all([...patch.keys()].map((filePath) => probeBase(filePath)));
-      for (const probe of probes) hidden += probe.data?.symbols.length ?? 0;
+      for (const stored of await Promise.all([...patch.keys()].map((filePath) => storedFactsOf(filePath)))) {
+        hidden += stored?.symbols.length ?? 0;
+      }
       const baseOptions: FindOptions = {
         ...(options?.mode === undefined ? {} : { mode: options.mode }),
         ...(Number.isFinite(wanted) ? { limit: wanted + hidden } : {}),
       };
-      const stored = await base.find(name, baseOptions);
-
-      const rows: SymbolRecord[] = stored.data.filter((record) => !patch.has(record.source_path));
-      for (const definition of patchedDefinitions()) {
-        if (nameMatches(mode, name, definition.symbol.name)) rows.push(definition.record);
+      const rows: SymbolRecord[] = observe(await base.find(name, baseOptions)).filter((record) => !patch.has(record.source_path));
+      for (const facts of patch.values()) {
+        if (facts === null) continue;
+        for (const definition of definitionsOf(facts, repo, now)) {
+          if (nameMatches(mode, name, definition.symbol.name)) rows.push(definition.record);
+        }
       }
-      rows.sort(
-        (a, b) =>
-          compareCodeUnits(a.source_path, b.source_path) ||
-          a.span.startLine - b.span.startLine ||
-          a.span.startColumn - b.span.startColumn,
-      );
-      return answerOf(rows.slice(0, wanted), stored.watermark, stored);
+      rows.sort(bySite);
+      return result(rows.slice(0, wanted));
     },
 
     async symbol(id) {
-      if (!patch.has(id.path)) {
-        const stored = await base.symbol(id);
-        return answerOf(stored.data, stored.watermark, stored);
-      }
-      const probe = await probeBase(id.path);
-      const facts = patch.get(id.path) ?? null;
-      const found =
-        facts === null || id.repo !== repo
-          ? null
-          : (definitionsOf(facts, repo, now).find((definition) => symbolKey(definition.identity) === symbolKey(id))?.record ?? null);
-      return answerOf(found, probe.watermark, probe);
+      if (!patch.has(id.path)) return result(observe(await base.symbol(id)));
+      await storedFactsOf(id.path); // the watermark of the answer
+      return result((await locate(id))?.definition.record ?? null);
     },
 
     async fileFacts(filePath) {
-      if (!patch.has(filePath)) {
-        const stored = await base.fileFacts(filePath);
-        return answerOf(stored.data, stored.watermark, stored);
-      }
-      const probe = await probeBase(filePath);
-      return answerOf(patch.get(filePath) ?? null, probe.watermark, probe);
+      if (!patch.has(filePath)) return result(observe(await base.fileFacts(filePath)));
+      await storedFactsOf(filePath);
+      return result(patch.get(filePath) ?? null);
     },
 
-    // Task 2 merges these; until then they read the store unchanged.
-    async refs(id: SymbolIdentity, options?: ResolveOptions) {
-      const stored = await base.refs(id, options);
-      return answerOf<readonly RefRecord[]>(stored.data, stored.watermark, stored);
+    async refs(id, options) {
+      return result(await refsOf(id, options));
     },
-    async callers(id: SymbolIdentity, options?: CallersOptions) {
-      const stored = await base.callers(id, options);
-      return answerOf<readonly CallerRecord[]>(stored.data, stored.watermark, stored);
+
+    async callers(id, options) {
+      const hops = clampDepth(options?.hops);
+      const startKey = symbolKey(id);
+      const expanded = new Set<string>();
+      const seen = new Set<string>();
+      const out: CallerRecord[] = [];
+      let frontier: SymbolIdentity[] = [id];
+      for (let hop = 1; hop <= hops && frontier.length > 0; hop += 1) {
+        const found = new Map<string, SymbolIdentity>();
+        const records: CallerRecord[] = [];
+        for (const callee of frontier) {
+          const calleeKey = symbolKey(callee);
+          if (expanded.has(calleeKey)) continue;
+          expanded.add(calleeKey);
+          for (const ref of await refsOf(callee, options)) {
+            if (ref.kind !== 'call' || ref.enclosing === undefined || ref.enclosing === null) continue;
+            const callerKey = symbolKey(ref.enclosing);
+            if (seen.has(callerKey)) continue;
+            records.push({
+              source_path: ref.source_path,
+              span: ref.span,
+              extractor: ref.extractor,
+              content_hash: ref.content_hash,
+              first_seen: ref.first_seen,
+              last_seen: ref.last_seen,
+              confidence: ref.confidence,
+              debug: ref.debug,
+              caller: ref.enclosing,
+              callee,
+              hops: hop,
+              tier: ref.tier,
+            });
+            found.set(callerKey, ref.enclosing);
+          }
+        }
+        records.sort(bySite);
+        out.push(...records);
+        // The start symbol is reported only at hop 1, where a self call is a real caller; a caller is reported once.
+        if (hop === 1) seen.add(startKey);
+        for (const key of found.keys()) seen.add(key);
+        frontier = [...found.values()];
+      }
+      return result(out);
     },
-    async importers(target: string, options?: ImportersOptions) {
-      const stored = await base.importers(target, options);
-      return answerOf<readonly ImporterRecord[]>(stored.data, stored.watermark, stored);
+
+    async importers(target, options) {
+      const depth = clampDepth(options?.depth);
+      const wanted = path.posix.normalize(target);
+      // The files `target` names in the merged view: the path itself or, written without its extension, the paths it stems.
+      const startPaths = new Set<string>();
+      for (const candidate of [wanted, ...extensions.map((extension) => wanted + extension)]) {
+        if ((await factsOf(candidate)) !== null) startPaths.add(candidate);
+      }
+      for (const [patched, facts] of patch) if (facts !== null && stemOf(patched) === wanted) startPaths.add(patched);
+
+      const seen = new Set<string>();
+      const out: ImporterRecord[] = [];
+      let frontier: readonly string[] = [...startPaths];
+      for (let hop = 1; hop <= depth && (frontier.length > 0 || hop === 1); hop += 1) {
+        const edges = new Map<string, ImporterRecord>();
+        // The store's statements that reach the frontier, except those of files the patch replaces.
+        for (const file of hop === 1 ? [wanted, ...frontier.filter((each) => each !== wanted)] : frontier) {
+          for (const record of observe(await base.importers(file, { depth: 1 }))) {
+            if (patch.has(record.importer) || seen.has(record.importer)) continue;
+            edges.set(record.debug, { ...record, hops: hop });
+          }
+        }
+        // The patched files' statements that reach it.
+        const reached = new Set(frontier);
+        for (const facts of patch.values()) {
+          if (facts === null || seen.has(facts.path)) continue;
+          for (const [ord, imp] of facts.imports.entries()) {
+            const named = await resolveImport(facts.path, imp.path);
+            if (!named.some((candidate) => reached.has(candidate))) continue;
+            edges.set(`imp/${encodeURIComponent(facts.path)}/${facts.contentHash}/${String(ord)}`, {
+              source_path: facts.path,
+              span: imp.span,
+              extractor: extractorOf(facts.module, facts.grammarVersion),
+              content_hash: facts.contentHash,
+              first_seen: now,
+              last_seen: now,
+              confidence: named.length === 1 ? 'EXTRACTED' : 'INFERRED',
+              debug: `imp/${encodeURIComponent(facts.path)}/${facts.contentHash}/${String(ord)}`,
+              importer: facts.path,
+              specifier: imp.path,
+              hops: hop,
+              ...(imp.style === undefined ? {} : { style: imp.style }),
+            });
+          }
+        }
+        const records = [...edges.values()].sort(
+          (a, b) => compareCodeUnits(a.importer, b.importer) || a.span.startLine - b.span.startLine || a.span.startColumn - b.span.startColumn,
+        );
+        out.push(...records);
+        if (hop === 1) {
+          seen.add(wanted);
+          for (const file of startPaths) seen.add(file);
+        }
+        const found = new Set(records.map((record) => record.importer));
+        for (const file of found) seen.add(file);
+        frontier = [...found];
+      }
+      return result(out.slice(0, limitOf(options?.limit, Number.POSITIVE_INFINITY)));
     },
   };
 }
@@ -273,7 +536,7 @@ export function createFollowerFresh(deps: FollowerFreshDeps): FreshPort {
 
   async function ensureFresh(worktree: string, paths: readonly string[], waitMs: number): Promise<FreshReport> {
     // The wait starts now, before anything is awaited, so a caller that advances the clock right away is counted.
-    let cancelWait: () => void = () => {};
+    let cancelWait: () => void = noop;
     const timedOut = new Promise<'timeout'>((resolve) => {
       cancelWait = deps.clock.after(waitMs, () => {
         resolve('timeout');
@@ -295,7 +558,7 @@ export function createFollowerFresh(deps: FollowerFreshDeps): FreshPort {
       if (sorted.length === 0) return { complete: true, stalePaths: [], invalid };
 
       const base = deps.store.at(worktree);
-      // `patch` and `stale` are what the work has settled so far; `closed` stops a late finisher from touching them.
+      // `patch` and `settled` are what the work has decided so far; `closed` stops a late finisher from touching them.
       const patch = new Map<string, FileFacts | null>();
       const settled = new Set<string>();
       let closed = false;
@@ -308,7 +571,7 @@ export function createFollowerFresh(deps: FollowerFreshDeps): FreshPort {
         settled.add(rel);
       };
 
-      /** One pass over `rel`s; returns those whose file changed under the read (to be read again). */
+      /** One pass over `rels`; returns those whose file changed under the read (to be read again). */
       const attempt = async (rels: readonly string[]): Promise<string[]> => {
         const claimed = new Set(deps.modules.extensions());
         const wanted = rels.filter((rel) => claimed.has(extensionOf(rel)));
@@ -376,7 +639,6 @@ export function createFollowerFresh(deps: FollowerFreshDeps): FreshPort {
         }
       })();
       // After a timeout the work carries on in the background; its failure must not become an unhandled rejection.
-      work.catch(() => {});
       await Promise.race([work.then(noop, noop), timedOut]);
       closed = true;
 

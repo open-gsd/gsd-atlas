@@ -8,6 +8,7 @@ export { defaultCacheRoot, isSyncedFolderPath, resolveStoreLocation } from './lo
 export type { CacheReason, ResolveStoreLocationInput, StoreLocation, StoreLocationKind } from './location.ts';
 export { openFactStore } from './open.ts';
 export type { OpenFactStoreOptions, StoreOpenOptions } from './open.ts';
+export { candidatePaths, resolveSpecifier } from './specifier.ts';
 export type {
   CallerRecord,
   CallersOptions,

@@ -102,3 +102,33 @@ export function resolveSpecifier(
   for (const match of index.indexFiles.get(base) ?? []) found.add(match);
   return [...found].sort();
 }
+
+/**
+ * The paths `resolveSpecifier` could match for `specifier` written in `importerPath`, when the universe of paths is
+ * not at hand and each candidate has to be probed instead (a follower's overlay asks the store about them one by
+ * one). For every extension a loaded module claims (lower-case, with the dot): the resolved path with the extension
+ * added, the resolved path itself, the directory's index file, and, when the specifier already ends in something
+ * that looks like an extension (`./b.cjs`), the stripped path with each claimed extension. Any path the rule can
+ * match is in this list, so resolving over the candidates that exist gives exactly the rule's answer. Code-unit
+ * order, no duplicates; non-relative specifiers and ones that climb above the root give an empty list.
+ */
+export function candidatePaths(importerPath: string, specifier: string, extensions: readonly string[]): readonly string[] {
+  if (!isRelativeSpecifier(specifier)) return [];
+  const joined = posix.join(posix.dirname(importerPath), specifier);
+  if (joined === '..' || joined.startsWith('../') || joined.startsWith('/')) return [];
+  let base = joined;
+  while (base.length > 1 && base.endsWith('/')) base = base.slice(0, -1);
+
+  const candidates = new Set<string>();
+  if (!namesDirectory(specifier)) {
+    candidates.add(base);
+    for (const extension of extensions) candidates.add(base + extension);
+    if (EXTENSION.test(posix.extname(base))) {
+      const bare = stem(base);
+      candidates.add(bare);
+      for (const extension of extensions) candidates.add(bare + extension);
+    }
+  }
+  for (const extension of extensions) candidates.add(posix.join(base, `index${extension}`));
+  return [...candidates].sort();
+}
