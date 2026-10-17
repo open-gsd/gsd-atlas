@@ -33,8 +33,14 @@ export interface Job {
   readonly requestId?: string;
   /**
    * Per-job time limit in milliseconds, measured from when the job starts running (not from
-   * submission). On expiry the signal passed to the function is aborted and `run` resolves
-   * `timeout`.
+   * submission). On expiry the signal passed to the function is aborted, the job's slot is
+   * released AT ONCE and `run` resolves `timeout`.
+   *
+   * Contract for callers: a job that sets `timeoutMs` MUST honour its `AbortSignal` (stop its work
+   * when it aborts), or set no timeout. The Governor cannot stop a function: one that ignores the
+   * signal keeps running after its slot was freed, outside the concurrency cap. Keeping the slot
+   * until the function settles was rejected on purpose: one hung job would hold its slot forever
+   * and starve its class. Every job the Host and the Indexer submit today sets no timeout.
    */
   readonly timeoutMs?: number;
 }
@@ -44,6 +50,10 @@ export interface Job {
  * the function never ran. `timeout` means the per-job time limit expired. `retry_after` is a
  * delay in MILLISECONDS. A function that rejects makes `run` reject with that same error; it is
  * never reported as `busy` or `timeout`.
+ *
+ * `timeout` is reported when the limit expires, not when the function stops: the slot is already
+ * free and the signal already aborted, but a function that ignores its `AbortSignal` may still be
+ * running (see {@link Job.timeoutMs}). Its eventual result or error is dropped.
  */
 export type GovernorResult<T> =
   | { readonly kind: 'ok'; readonly value: T }
@@ -87,7 +97,7 @@ export interface Governor {
   /**
    * Run `fn` under the Governor's scheduling, priority order `interactive > fresh > indexing >
    * maintenance` with FIFO inside a class. `fn` receives an `AbortSignal` that is aborted when
-   * the job times out.
+   * the job times out; `fn` must honour it when the job sets `timeoutMs` (see {@link Job.timeoutMs}).
    */
   run<T>(job: Job, fn: (signal: AbortSignal) => Promise<T>): Promise<GovernorResult<T>>;
   /**
