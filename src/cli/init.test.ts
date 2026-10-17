@@ -43,6 +43,8 @@ interface RunOptions {
   /** TEST ONLY hooks forwarded to the init environment: they run between init's read and its write. */
   readonly beforeWrite?: (file: string) => void | Promise<void>;
   readonly afterTemp?: (file: string) => void | Promise<void>;
+  /** TEST ONLY: replaces the final rename, so a test can script the error the operating system gives. */
+  readonly renameFile?: (from: string, to: string) => Promise<void>;
 }
 
 interface Rig {
@@ -122,6 +124,7 @@ function makeRig(): Rig {
                 mcp: { command: options.command ?? NODE, args: [options.entry ?? ENTRY] },
                 ...(options.beforeWrite === undefined ? {} : { beforeWrite: options.beforeWrite }),
                 ...(options.afterTemp === undefined ? {} : { afterTemp: options.afterTemp }),
+                ...(options.renameFile === undefined ? {} : { renameFile: options.renameFile }),
               },
             }),
       };
@@ -477,6 +480,70 @@ describe('gsd-atlas init and a config the host changes while init runs (WR-12)',
     assert.deepEqual(parsed.mcpServers['other'], ORIGINAL_CONFIG.mcpServers.other);
     assert.equal(parsed.theme, 'dark');
     assert.deepEqual(fs.readdirSync(rig.home).sort(), ['.claude.json', `.claude.json${BACKUP}`], 'no temp file remains');
+  });
+});
+
+describe('gsd-atlas init and a rename the operating system refuses (plan 02-45, HST-04)', () => {
+  const refusing = (code: string) => async (): Promise<void> => {
+    throw Object.assign(new Error(`${code}: scripted rename failure`), { code });
+  };
+
+  for (const code of ['EPERM', 'EBUSY', 'EACCES']) {
+    it(`rename refused is config_in_use (${code}): nothing changed, the backup stays, no temp file`, async () => {
+      const rig = makeRig();
+      const file = seedClaude(rig);
+      const original = fs.readFileSync(file);
+
+      const out = await rig.run(['init', '--agent', 'claude'], { renameFile: refusing(code) });
+
+      assert.equal(out.code, 2);
+      const envelope = out.envelope();
+      assert.equal(envelope.ok, false);
+      const host = envelope.data.hosts[0]!;
+      assert.equal(host.action, 'refused');
+      const reason = host.reason ?? '';
+      assert.match(reason, /^config_in_use:/);
+      assert.match(reason, /nothing was changed/);
+      assert.match(reason, /run init again/);
+      assert.match(reason, /another process holds/);
+      assert.match(reason, /not writable/);
+      assert.ok(reason.includes(`(${code})`), 'the errno code is named in parentheses');
+      assert.ok(!/\d+\s*(ms|milliseconds|seconds|retries|attempts)/i.test(reason), 'no time or retry count');
+      assert.ok(out.stderr.join('').includes(`refused ${file}: ${reason}`), 'stderr carries the same refusal line');
+      assert.deepEqual(fs.readFileSync(file), original, 'the config is byte-identical');
+      assert.deepEqual(fs.readdirSync(rig.home).sort(), ['.claude.json', `.claude.json${BACKUP}`], 'no temp file');
+      assert.deepEqual(fs.readFileSync(`${file}${BACKUP}`), original);
+      const parsed = JSON.parse(out.stdout[0]!) as { diagnostics: Array<{ code: string }> };
+      assert.deepEqual(parsed.diagnostics.map((d) => d.code), ['config_refused']);
+    });
+  }
+
+  it('config_in_use for a new file: Cursor with no mcp.json is refused and no file appears', async () => {
+    const rig = makeRig();
+    fs.mkdirSync(path.join(rig.home, '.cursor'));
+
+    const out = await rig.run(['init', '--agent', 'cursor'], { renameFile: refusing('EPERM') });
+
+    assert.equal(out.code, 2);
+    const host = out.envelope().data.hosts[0]!;
+    assert.equal(host.action, 'refused');
+    assert.match(host.reason ?? '', /^config_in_use:/);
+    assert.deepEqual(fs.readdirSync(path.join(rig.home, '.cursor')), [], 'no mcp.json and no temp file');
+  });
+
+  it('rename ENOSPC stays generic: not config_in_use, the temp file is removed', async () => {
+    const rig = makeRig();
+    const file = seedClaude(rig);
+    const original = fs.readFileSync(file);
+
+    const out = await rig.run(['init', '--agent', 'claude'], { renameFile: refusing('ENOSPC') });
+
+    assert.equal(out.code, 2);
+    const reason = out.envelope().data.hosts[0]!.reason ?? '';
+    assert.match(reason, /^could not write the file/);
+    assert.ok(!reason.includes('config_in_use'));
+    assert.deepEqual(fs.readFileSync(file), original);
+    assert.ok(!fs.readdirSync(rig.home).some((name) => name.endsWith('.tmp')));
   });
 });
 

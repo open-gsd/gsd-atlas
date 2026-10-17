@@ -10,6 +10,11 @@
  * right before the rename, and throws `ConfigChangedError` (and writes nothing) on a difference. The
  * window that remains is the time between the last compare and the rename, microseconds, and it cannot
  * be closed: a rename is not conditional on the content it replaces.
+ *
+ * Files in use (HST-04): the operating system can refuse the rename itself, typically on Windows when another
+ * process holds the target open (`EPERM`, `EBUSY`), or when the folder is not writable (`EACCES`). That is
+ * reported as `ConfigInUseError` (`config_in_use`), with the temp file removed and the config untouched. Nothing
+ * waits or retries: how long to wait for another program is not init's to choose, and the refusal names the remedy.
  */
 import { createHash, randomBytes } from 'node:crypto';
 import { constants } from 'node:fs';
@@ -97,6 +102,21 @@ export class ConfigChangedError extends Error {
   }
 }
 
+/** The operating system refused to replace the file (another process holds it open, or the folder is not writable); nothing was written. */
+export class ConfigInUseError extends Error {
+  readonly code = 'config_in_use';
+  readonly errno: string;
+
+  constructor(target: string, errno: string) {
+    super(`${target} could not be replaced (${errno}): another process holds it open, or its folder is not writable`);
+    this.name = 'ConfigInUseError';
+    this.errno = errno;
+  }
+}
+
+/** The error codes a rename gives when the target is held open or its folder refuses the write. */
+const IN_USE_CODES = ['EPERM', 'EBUSY', 'EACCES'];
+
 /** Re-read `target` and compare it with what init read; throws `ConfigChangedError` on any difference. */
 async function assertUnchanged(target: string, expected: ExpectedState): Promise<void> {
   let current: string | null;
@@ -142,6 +162,8 @@ export interface WriteOptions {
   readonly expected: ExpectedState;
   /** TEST ONLY: runs after the temp file is written and before the second compare. */
   readonly afterTemp?: (file: string) => void | Promise<void>;
+  /** TEST ONLY: replaces the final rename so a test can script the error the operating system gives. Production passes nothing and gets `fs.promises.rename`. */
+  readonly renameFile?: (from: string, to: string) => Promise<void>;
 }
 
 export interface WriteOutcome {
@@ -198,7 +220,14 @@ export async function writeUserFile(p: string, nextText: string, options: WriteO
     await chmod(temp, mode); // the umask may have narrowed the mode given to writeFile
     await options.afterTemp?.(target);
     await assertUnchanged(target, options.expected); // second compare, immediately before the rename
-    await rename(temp, target);
+    try {
+      await (options.renameFile ?? rename)(temp, target);
+    } catch (error) {
+      if (hasCode(error, ...IN_USE_CODES)) {
+        throw new ConfigInUseError(target, (error as Error & { code: string }).code);
+      }
+      throw error;
+    }
   } catch (error) {
     // A backup made earlier in this call stays: it is a copy of the file as init read it (the first compare
     // ran just before the copy), and removing it would race with a concurrent init that relies on it.

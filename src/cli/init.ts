@@ -11,7 +11,7 @@ import { lstat, readFile } from 'node:fs/promises';
 import path from 'node:path';
 
 import type { Diagnostic } from '../host-client/index.ts';
-import { ConfigChangedError, detectHomeFile, readUserFile, writeUserFile } from './init-files.ts';
+import { ConfigChangedError, ConfigInUseError, detectHomeFile, readUserFile, writeUserFile } from './init-files.ts';
 import type { UserFile } from './init-files.ts';
 import { TARGETS } from './init-targets.ts';
 import type { AgentId, McpLaunch, Target } from './init-targets.ts';
@@ -42,6 +42,8 @@ export interface InitEnvironment {
   readonly beforeWrite?: (file: string) => void | Promise<void>;
   /** TEST ONLY: called after the temp file is written and before the final compare and the rename. */
   readonly afterTemp?: (file: string) => void | Promise<void>;
+  /** TEST ONLY: replaces the final rename, so a test can script the error the operating system gives. */
+  readonly renameFile?: (from: string, to: string) => Promise<void>;
 }
 
 export interface InitOptions {
@@ -147,10 +149,16 @@ async function registerWith(target: Target, dryRun: boolean, env: InitEnvironmen
         bom: existing?.bom ?? false,
         expected: existing === null ? { absent: true } : { digest: existing.digest },
         ...(env.afterTemp === undefined ? {} : { afterTemp: env.afterTemp }),
+        ...(env.renameFile === undefined ? {} : { renameFile: env.renameFile }),
       });
     } catch (error) {
       if (error instanceof ConfigChangedError) {
         return refuse('config_changed_during_init: the file changed while init was running, so nothing was written; run init again');
+      }
+      if (error instanceof ConfigInUseError) {
+        return refuse(
+          `config_in_use: the config file could not be replaced because another process holds it open, or its folder is not writable (${error.errno}); nothing was changed; close the program that uses it and run init again`,
+        );
       }
       return refuse(`could not write the file: ${reasonOf(error)}`);
     }
