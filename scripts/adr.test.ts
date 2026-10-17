@@ -426,6 +426,10 @@ const AMENDED: readonly AmendedAdr[] = [
         keywords: ['cache_unavailable', 'lease', 'sqlite/'],
       },
       { title: 'Open questions resolved', keywords: ['resolver_timeout', 'timeoutMs', 'no warm'] },
+      {
+        title: 'Maintenance options and lease holder',
+        keywords: ['IDLE_MAINTENANCE', 'StoreMaintainOptions', 'leaseHolder', 'StoreClosed'],
+      },
     ],
   },
   {
@@ -466,6 +470,10 @@ const AMENDED: readonly AmendedAdr[] = [
         title: 'Writer contention and leader/follower',
         keywords: ['lease.db', 'BEGIN EXCLUSIVE', 'follower', 'exit code 3'],
       },
+      {
+        title: 'Idle full compaction and lease messages',
+        keywords: ['VACUUM', 'dbstat', 'busy timeout of 0', 'lease_held', 'not_indexed', '200 ms'],
+      },
     ],
   },
   {
@@ -486,6 +494,10 @@ const AMENDED: readonly AmendedAdr[] = [
         title: 'Open questions resolved',
         keywords: ['Indexer', 'EventSource', 'one', 'per request', 'file set'],
       },
+      {
+        title: 'Idle eviction, git timeouts and store identity',
+        keywords: ['host.idleEvictMs', 'git.timeoutMs', 'smallest', 'source_too_large', 'store_unavailable'],
+      },
     ],
   },
   {
@@ -500,6 +512,10 @@ const AMENDED: readonly AmendedAdr[] = [
     amendments: [
       { title: 'git runs repo-controlled code', keywords: GIT_HARDENING_KEYWORDS, extra: 'git-hardening' },
       { title: 'Source Tree git subcommands', keywords: ['ls-tree', 'worktree list', 'porcelain'] },
+      {
+        title: 'Git option allowlist',
+        keywords: ['--batch-check', 'exact option tokens', 'runner.defaultTimeoutMs', 'SSH_AUTH_SOCK', 'DATABASE_URL'],
+      },
     ],
   },
   {
@@ -535,6 +551,10 @@ const AMENDED: readonly AmendedAdr[] = [
       {
         title: 'Phase 2 contract changes',
         keywords: ['watermark_moved', 'exit code 3', 'repo', 'six tools'],
+      },
+      {
+        title: 'Unbuilt repositories',
+        keywords: ['not_indexed', 'atlas_status', 'lease.db', 'metrics.db', 'schema_too_new', 'gsd-atlas build'],
       },
     ],
   },
