@@ -24,6 +24,11 @@ export class FakeClock implements Clock {
     return this.current;
   }
 
+  /** How many `sleep` and `after` wake-ups are still waiting: a test asserts zero to show nothing was left armed. */
+  pending(): number {
+    return this.timers.length;
+  }
+
   sleep(ms: number): Promise<void> {
     return new Promise<void>((resolve) => {
       this.schedule(ms, resolve);

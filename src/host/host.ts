@@ -11,7 +11,8 @@
 import path from 'node:path';
 import { createRealRunner } from '../command-runner/index.ts';
 import type { CommandRunner } from '../command-runner/index.ts';
-import { SchemaTooNew } from '../fact-store/index.ts';
+import { SchemaTooNew, findExistingStore, probeStore } from '../fact-store/index.ts';
+import type { ResolveStoreLocationInput } from '../fact-store/index.ts';
 import { PROTOCOL_VERSION, diagnostic, failEnvelope, systemClock } from '../facts/index.ts';
 import type { Envelope, Request } from '../facts/index.ts';
 import { createGovernor } from '../governor/index.ts';
@@ -21,10 +22,12 @@ import type { IndexerConfig, ModuleHost } from '../indexer/index.ts';
 import { ERROR_SCHEMA, errorEnvelope } from '../query/index.ts';
 import { createSourceTree } from '../source-tree/index.ts';
 import type { SourceTree } from '../source-tree/index.ts';
-import { createTenant } from '../tenant/index.ts';
+import { createTenant, notIndexedNoStore } from '../tenant/index.ts';
 import type { Tenant } from '../tenant/index.ts';
+import { HOST_DEFAULTS } from './defaults.ts';
 import { HISTORY_KIND, runHistory } from './history.ts';
 import type { HistoryDeps } from './history.ts';
+import { createIdleRegistry } from './idle-registry.ts';
 import { LANG_KINDS, handleLang } from './lang.ts';
 import { classFor, isAdmissionOnly, isRepoKind, parseRepoArgs, resolveRepository, short } from './route.ts';
 import type { RepoArgs, RepoKind, Resolved } from './route.ts';
@@ -48,6 +51,13 @@ export function createHost(options: HostOptions): Host {
   const cacheRoot = options.cacheRoot ?? path.join(options.userDir ?? options.roots.userDir, 'cache');
   let closed = false;
 
+  // WR-10: a tenant, and a history module host, idle for the approved `host.idleEvictMs` is closed and forgotten.
+  // `closing` holds a tenant that is being closed, so a request for the same store waits for its lease to go.
+  const idleEvictMs = options.idleEvictMs ?? HOST_DEFAULTS.idleEvictMs;
+  const closing = new Map<string, Promise<void>>();
+  const tenantIdle = createIdleRegistry({ clock, idleMs: idleEvictMs, onIdle: (storeId) => closeTenant(storeId) });
+  const historyIdle = createIdleRegistry({ clock, idleMs: idleEvictMs, onIdle: (repoDir) => disposeHistoryModule(repoDir) });
+
   // The real runner and Governor are created on first use, so a Host that only serves lang kinds builds neither.
   let runner: CommandRunner | undefined = options.runner;
   let governor: Governor | undefined = options.governor;
@@ -68,12 +78,34 @@ export function createHost(options: HostOptions): Host {
     };
   }
 
+  /**
+   * What decides where a repository's store lives. The ONE place it is built, so the tenant's store location and the
+   * Host's look at whether a store exists can never drift apart (WR-01): both read the user's `store.dir` and the
+   * Host's cache root, never anything from the repository (T-02-36).
+   */
+  const storeSettings = (): { readonly cacheRoot: string; readonly storeDir?: string } => ({
+    cacheRoot,
+    ...(config.store?.dir === undefined ? {} : { storeDir: config.store.dir }),
+  });
+
+  /** The location rules' input for `resolved`, exactly as `createTenant` builds it from the same settings. */
+  function locationInput(resolved: Resolved): ResolveStoreLocationInput {
+    const settings = storeSettings();
+    return {
+      storeId: resolved.identity.storeId,
+      commonDir: resolved.identity.commonDir,
+      repoDir: resolved.repoDir,
+      cacheRoot: settings.cacheRoot,
+      ...(settings.storeDir === undefined ? {} : { override: settings.storeDir }),
+    };
+  }
+
   function tenantFor(resolved: Resolved): Promise<Tenant> {
     const key = resolved.identity.storeId;
     const known = tenants.get(key);
     if (known !== undefined) return known;
     const indexer = indexerSettings();
-    const created = createTenant({
+    const created = (options.tenantFactory ?? createTenant)({
       tree: resolved.tree,
       identity: resolved.identity,
       repoDir: resolved.repoDir,
@@ -81,8 +113,7 @@ export function createHost(options: HostOptions): Host {
       engine: options.engine,
       governor: getGovernor(),
       clock,
-      cacheRoot,
-      ...(config.store?.dir === undefined ? {} : { storeDir: config.store.dir }),
+      ...storeSettings(),
       ...(indexer === undefined ? {} : { indexer }),
       ...(config.gc?.graceMs === undefined ? {} : { graceMs: config.gc.graceMs }),
       ...(options.version === undefined ? {} : { version: options.version }),
@@ -144,6 +175,43 @@ export function createHost(options: HostOptions): Host {
     const resolved = await resolveRepository(parsed.selection, hostCwd, makeTree);
     if (resolved === null) return errorEnvelope('not_a_repo', NOT_A_REPO);
 
+    // WR-10: the request is counted as in flight BEFORE its tenant is looked up, so the idle timer can never close a
+    // tenant under it. When it ends, a repository that has no tenant (nothing was built) keeps no idle timer.
+    const key = resolved.identity.storeId;
+    tenantIdle.begin(key);
+    try {
+      return await serveRepo(request, kind, parsed, resolved);
+    } finally {
+      tenantIdle.end(key);
+      if (!tenants.has(key)) tenantIdle.forget(key);
+    }
+  }
+
+  async function serveRepo(
+    request: Request,
+    kind: RepoKind,
+    parsed: Extract<RepoArgs, { readonly ok: true }>,
+    resolved: Resolved,
+  ): Promise<Envelope> {
+    // A tenant that is being closed (idle eviction, `closeTenant`) releases its writer lease before a new one may
+    // open the same store; otherwise the new tenant would find the lease taken and start as a follower.
+    await closing.get(resolved.identity.storeId);
+
+    // WR-01: only `build` may create a store. Any other kind needs a tenant that is already open or a store that
+    // already holds an index; otherwise nothing is opened, created, locked or written (QRY-06).
+    // WR-02: a store that exists but holds nothing to read is not opened by a question either, because opening it
+    // as the leader would take the lease and make the advertised `gsd-atlas build` fail with exit 3.
+    if (kind !== 'build' && !tenants.has(resolved.identity.storeId)) {
+      try {
+        const existing = findExistingStore(locationInput(resolved));
+        if (existing === undefined) return notIndexedNoStore();
+        const state = await probeStore(existing);
+        if (state !== 'indexed' && state !== 'newer_schema') return notIndexedNoStore();
+      } catch (error) {
+        return tenantFailure(error);
+      }
+    }
+
     let tenant: Tenant;
     try {
       tenant = await tenantFor(resolved);
@@ -164,18 +232,35 @@ export function createHost(options: HostOptions): Host {
           return tenant.handle(forwarded(request, kind), resolved.worktree);
       }
     };
-    return isAdmissionOnly(kind) ? admitted(tenant.storeId, cls, run) : held(tenant.storeId, cls, run);
+    const reply = await (isAdmissionOnly(kind) ? admitted(tenant.storeId, cls, run) : held(tenant.storeId, cls, run));
+    // A tenant whose store closed itself (after a failed recovery) can only answer `store_unavailable` from now on.
+    // It is closed and forgotten so the next request retries with a fresh one; the registry holds the close back
+    // until every request still running on this tenant, this one included, has ended.
+    if (reply.diagnostics.some((entry) => entry.code === 'store_unavailable')) tenantIdle.evict(resolved.identity.storeId);
+    return reply;
   }
 
-  /** The module host of a repository's history questions, created on first use and shared by later ones. */
+  /**
+   * The module host of a repository's history questions, created on first use and shared by later ones, until it has
+   * been idle for `idleEvictMs` (WR-10), when it is disposed and the next question makes a new one.
+   */
   const historyModules = new Map<string, ModuleHost>();
   function historyModuleHost(repoDir: string): ModuleHost {
     let found = historyModules.get(repoDir);
     if (found === undefined) {
-      found = createModuleHost({ engine: options.engine, roots: { ...options.roots, repoRoot: repoDir } });
+      found =
+        options.moduleHostFactory?.(repoDir) ??
+        createModuleHost({ engine: options.engine, roots: { ...options.roots, repoRoot: repoDir } });
       historyModules.set(repoDir, found);
     }
     return found;
+  }
+
+  async function disposeHistoryModule(repoDir: string): Promise<void> {
+    const found = historyModules.get(repoDir);
+    if (found === undefined) return;
+    historyModules.delete(repoDir);
+    await found.dispose().catch(ignore);
   }
 
   /**
@@ -187,6 +272,16 @@ export function createHost(options: HostOptions): Host {
     if (!parsed.ok) return errorEnvelope('invalid_args', parsed.message);
     const resolved = await resolveRepository(parsed.selection, hostCwd, makeTree);
     if (resolved === null) return errorEnvelope('not_a_repo', NOT_A_REPO);
+    // WR-10: counted as in flight before the module host is looked up, so it is never disposed under this question.
+    historyIdle.begin(resolved.repoDir);
+    try {
+      return await serveHistory(request, resolved);
+    } finally {
+      historyIdle.end(resolved.repoDir);
+    }
+  }
+
+  function serveHistory(request: Request, resolved: Resolved): Promise<Envelope> {
     const deps: HistoryDeps = {
       tree: resolved.tree,
       modules: historyModuleHost(resolved.repoDir),
@@ -218,13 +313,22 @@ export function createHost(options: HostOptions): Host {
   }
 
   async function closeTenant(storeId: string): Promise<void> {
+    tenantIdle.forget(storeId);
     const found = tenants.get(storeId);
-    if (found === undefined) return;
+    if (found === undefined) return closing.get(storeId);
     tenants.delete(storeId);
+    const done = (async (): Promise<void> => {
+      try {
+        await (await found).close();
+      } catch {
+        // A tenant that never opened has nothing to close.
+      }
+    })();
+    closing.set(storeId, done);
     try {
-      await (await found).close();
-    } catch {
-      // A tenant that never opened has nothing to close.
+      await done;
+    } finally {
+      if (closing.get(storeId) === done) closing.delete(storeId);
     }
   }
 
@@ -244,6 +348,9 @@ export function createHost(options: HostOptions): Host {
 
     async close(): Promise<void> {
       closed = true;
+      // No idle timer may fire during shutdown (WR-10).
+      tenantIdle.close();
+      historyIdle.close();
       await Promise.all([...tenants.keys()].map((storeId) => closeTenant(storeId).catch(ignore)));
       const modules = [...historyModules.values()];
       historyModules.clear();

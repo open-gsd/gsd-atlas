@@ -6,6 +6,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
+import { isInside } from '../facts/index.ts';
 import type { JobClass } from '../governor/index.ts';
 import type { SourceTree, SourceTreeIdentity } from '../source-tree/index.ts';
 import { MAINTAIN_TASKS } from '../tenant/index.ts';
@@ -133,12 +134,6 @@ export interface Resolved {
   readonly worktree: string;
 }
 
-/** True when `candidate` is `root` or lies below it. */
-function isInside(candidate: string, root: string): boolean {
-  const rel = path.relative(root, candidate);
-  return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
-}
-
 /**
  * Turn `repo` (else `cwd`, else the Host's working directory) into a repository and a worktree: an existing
  * directory, resolved with realpath, inside a git repository whose `git worktree list` has an entry that contains
@@ -167,7 +162,7 @@ export async function resolveRepository(
     const worktrees = worktreesRun.value;
     const usable = worktrees.filter((entry) => !entry.bare);
     const containing = usable
-      .filter((entry) => isInside(dir, entry.path))
+      .filter((entry) => isInside(entry.path, dir))
       .sort((a, b) => b.path.length - a.path.length)[0];
     const main = usable[0];
     if (containing === undefined || main === undefined) return null;

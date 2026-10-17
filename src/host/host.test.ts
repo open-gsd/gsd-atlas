@@ -41,9 +41,10 @@ describe('Host: build, then find', () => {
     assert.deepEqual(codes(reply), ['not_indexed']);
     assert.match(reply.diagnostics[0]?.message ?? '', /gsd-atlas build/);
 
+    // WR-01 (plan 02-41): atlas_status for a repository with no index is not_indexed too, not an ok empty index.
     const status = await world.ask('atlas_status', { repo: world.repo.dir });
-    assert.equal(status.ok, true, JSON.stringify(status.diagnostics));
-    assert.deepEqual((status.data as { worktrees: unknown[] }).worktrees, []);
+    assert.equal(status.ok, false);
+    assert.deepEqual(codes(status), ['not_indexed']);
     assert.equal(world.manual.subscriptions(), 0, 'nothing is watched before a build (D-11)');
   });
 
@@ -52,8 +53,8 @@ describe('Host: build, then find', () => {
     const reply = await world.ask('code_find', { name: 'helper', repo: world.repo.dir }, { fresh: ['b.toy'] });
     assert.deepEqual(codes(reply), ['not_indexed']);
     const status = await world.ask('atlas_status', { repo: world.repo.dir });
-    assert.deepEqual((status.data as { worktrees: unknown[] }).worktrees, []);
-    assert.equal((status.data as { indexer: unknown }).indexer, null, 'no Indexer was even created');
+    assert.deepEqual(codes(status), ['not_indexed']);
+    assert.equal(world.manual.subscriptions(), 0, 'no Indexer was even created');
   });
 
   it('the build request is what makes find succeed; a second build parses nothing', async (t) => {
@@ -398,8 +399,10 @@ describe('Host: maintain tasks (STO-10)', () => {
       const reply = await world.ask('maintain', { repo: world.repo.dir, task });
       assert.deepEqual(codes(reply), ['not_indexed'], task);
     }
+    // WR-01 (plan 02-41): maintenance on a repository nobody built opens nothing either, so no store exists to report.
     const status = await world.ask('atlas_status', { repo: world.repo.dir });
-    assert.deepEqual((status.data as { worktrees: unknown[] }).worktrees, [], 'maintenance indexed nothing (D-11)');
+    assert.deepEqual(codes(status), ['not_indexed'], 'maintenance indexed nothing (D-11)');
+    assert.equal(fs.existsSync(path.join(world.repo.dir, '.git', 'gsd-atlas')), false);
   });
 });
 

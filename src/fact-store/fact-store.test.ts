@@ -89,9 +89,12 @@ describe('fact-store interface', () => {
       'UnknownWorktree',
       'WriterBusy',
       'candidatePaths',
+      'decideStoreLocation',
       'defaultCacheRoot',
+      'findExistingStore',
       'isSyncedFolderPath',
       'openFactStore',
+      'probeStore',
       'resolveSpecifier',
       'resolveStoreLocation',
     ]);

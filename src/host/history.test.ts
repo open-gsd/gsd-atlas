@@ -173,8 +173,40 @@ describe('history: questions about a past commit from git alone (STO-09)', () =>
     assert.deepEqual(names(reply), ['parse']);
     assert.equal(fs.existsSync(path.join(world.repo.dir, '.git', 'gsd-atlas')), false, 'history created no store for the repository');
     assert.equal(world.manual.subscriptions(), 0);
+    // WR-01 (plan 02-41): a status question about a repository nobody built answers not_indexed and still creates nothing.
     const status = await world.ask('atlas_status', { repo: world.repo.dir });
-    assert.deepEqual((status.data as { worktrees: unknown[] }).worktrees, []);
+    assert.deepEqual(codes(status), ['not_indexed']);
+    assert.equal(fs.existsSync(path.join(world.repo.dir, '.git', 'gsd-atlas')), false);
+  });
+
+  it('tmpRoot named like dot-dot is inside the repository: refused, and nothing is created there (IN-03)', async (t) => {
+    const world = await threeCommits(t);
+    const odd = path.join(world.repo.dir, '..tmp');
+    fs.mkdirSync(odd);
+    const host = world.anotherHost({ history: { tmpRoot: odd, nonce: () => 'NONCE' } });
+    const refused = await host.handle({ protocol: 1, kind: 'history', args: { repo: world.repo.dir, tool: 'find', name: 'parse', at: world.ids[0] } });
+    assert.equal(refused.ok, false);
+    assert.deepEqual(codes(refused), ['history_unavailable']);
+    assert.deepEqual(fs.readdirSync(odd), [], 'no throwaway store was created inside the repository');
+  });
+
+  it('keeps out of the real store directory and out of the store.dir override, and still works from a directory elsewhere', async (t) => {
+    const world = await threeCommits(t);
+    assert.equal((await world.ask('build', { repo: world.repo.dir })).ok, true);
+    const realStore = path.join(world.repo.dir, '.git', 'gsd-atlas');
+    const override = path.join(world.tmp.path, 'my-stores');
+    fs.mkdirSync(override);
+    const ask = (host: ReturnType<World['anotherHost']>): Promise<Envelope> =>
+      host.handle({ protocol: 1, kind: 'history', args: { repo: world.repo.dir, tool: 'find', name: 'parse', at: world.ids[0] } });
+
+    const inStore = await ask(world.anotherHost({ history: { tmpRoot: realStore, nonce: () => 'NONCE' } }));
+    assert.deepEqual(codes(inStore), ['history_unavailable'], 'inside the real store directory');
+    const inOverride = await ask(world.anotherHost({ config: { store: { dir: override } }, history: { tmpRoot: override, nonce: () => 'NONCE' } }));
+    assert.deepEqual(codes(inOverride), ['history_unavailable'], 'inside the store.dir override');
+    assert.deepEqual(fs.readdirSync(override), []);
+    const elsewhere = await ask(world.anotherHost({ config: { store: { dir: override } }, history: { tmpRoot: tmpRootOf(world), nonce: () => 'NONCE' } }));
+    assert.equal(elsewhere.ok, true, JSON.stringify(elsewhere.diagnostics));
+    assert.deepEqual(names(elsewhere), ['parse']);
   });
 
   it('works in a follower process while another process holds the writer lease', async (t) => {

@@ -9,10 +9,13 @@
  *
  * The override is a parameter (or the user's environment), never something read from the repository: nothing in
  * this module opens a file inside the working tree or the git directory, so a hostile repository cannot place
- * the store (threat T-02-36). The only filesystem calls are `lstat`, `statfs`, `access` and `mkdir`.
+ * the store (threat T-02-36). The only filesystem calls are `lstat`, `statfs`, `access` and `mkdir`, and `mkdir`
+ * runs only in `resolveStoreLocation`: `decideStoreLocation` and `findExistingStore` never touch the working tree or
+ * the git directory except to look (plan 02-41, WR-01).
  */
 import fs from 'node:fs';
 import path from 'node:path';
+import { STORE_FILE_NAME } from './schema.ts';
 
 /** Where a store lives (STO-07). */
 export type StoreLocationKind = 'git-common' | 'cache' | 'override';
@@ -26,7 +29,7 @@ export type CacheReason =
   | 'store_dir_is_symlink';
 
 export interface StoreLocation {
-  /** The store directory; it exists when `resolveStoreLocation` returns. */
+  /** The store directory; it exists when `resolveStoreLocation` returns (`decideStoreLocation` does not create it). */
   readonly dir: string;
   readonly kind: StoreLocationKind;
   /** Set when `kind` is `cache`: why the git common directory was not used. */
@@ -124,18 +127,15 @@ function entryState(target: string): 'absent' | 'directory' | 'symlink' | 'other
   }
 }
 
-/** Create `dir` (and parents) owner-only. Recursive creation tolerates a concurrent creator. */
-function create(dir: string, kind: StoreLocationKind, reason?: CacheReason): StoreLocation {
-  fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
-  return reason === undefined ? { dir, kind } : { dir, kind, reason };
-}
+const located = (dir: string, kind: StoreLocationKind, reason?: CacheReason): StoreLocation =>
+  reason === undefined ? { dir, kind } : { dir, kind, reason };
 
 /**
- * Decide where the store of `input.storeId` lives, create that directory (mode 0700, recursive, idempotent) and
- * return it. Order: override, no git, synced folder, network mount, symbolic link, not writable, else the git
- * common dir.
+ * Decide where the store of `input.storeId` lives, and create nothing (WR-01, plan 02-41): only `lstat`, `statfs`
+ * and `access` run, so a request that merely asks where a store would be cannot leave a directory behind. Order:
+ * override, no git, synced folder, network mount, symbolic link, not writable, else the git common dir.
  */
-export function resolveStoreLocation(input: ResolveStoreLocationInput): StoreLocation {
+export function decideStoreLocation(input: ResolveStoreLocationInput): StoreLocation {
   const platform = input.platform ?? process.platform;
 
   const fromEnv = input.env?.[STORE_DIR_ENV];
@@ -144,11 +144,11 @@ export function resolveStoreLocation(input: ResolveStoreLocationInput): StoreLoc
     if (!path.isAbsolute(override)) {
       throw new Error(`store.dir must be an absolute path (got ${JSON.stringify(override)})`);
     }
-    return create(path.join(override, input.storeId), 'override');
+    return located(path.join(override, input.storeId), 'override');
   }
 
   const cache = (reason: CacheReason): StoreLocation =>
-    create(path.join(input.cacheRoot, STORE_DIR_NAME, input.storeId), 'cache', reason);
+    located(path.join(input.cacheRoot, STORE_DIR_NAME, input.storeId), 'cache', reason);
 
   if (input.commonDir === null) return cache('not_a_git_repo');
   const common = path.resolve(input.repoDir, input.commonDir);
@@ -161,8 +161,34 @@ export function resolveStoreLocation(input: ResolveStoreLocationInput): StoreLoc
   if (state === 'other') return cache('not_writable'); // something that is not a directory is in the way
   try {
     fs.accessSync(state === 'directory' ? storeDir : common, fs.constants.W_OK);
-    return create(storeDir, 'git-common');
+    return located(storeDir, 'git-common');
   } catch {
     return cache('not_writable');
+  }
+}
+
+/**
+ * Decide where the store of `input.storeId` lives, create that directory (mode 0700, recursive, idempotent) and
+ * return it. The decision is `decideStoreLocation`'s.
+ */
+export function resolveStoreLocation(input: ResolveStoreLocationInput): StoreLocation {
+  const location = decideStoreLocation(input);
+  // Owner-only; recursive creation tolerates a concurrent creator.
+  fs.mkdirSync(location.dir, { recursive: true, mode: 0o700 });
+  return location;
+}
+
+/**
+ * The location of the store of `input.storeId` when that store already holds a `facts.db` (a regular file), decided
+ * by exactly the rules `resolveStoreLocation` uses, and `undefined` otherwise. It creates nothing and opens nothing:
+ * a read request uses it to learn whether anything was ever built (WR-01), and a store that does not exist is not
+ * created by asking.
+ */
+export function findExistingStore(input: ResolveStoreLocationInput): StoreLocation | undefined {
+  const location = decideStoreLocation(input);
+  try {
+    return fs.lstatSync(path.join(location.dir, STORE_FILE_NAME)).isFile() ? location : undefined;
+  } catch {
+    return undefined;
   }
 }

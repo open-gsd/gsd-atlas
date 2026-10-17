@@ -4,11 +4,13 @@
  * through this interface only. The conformance suite (`contract.ts`) is test code and is not exported.
  */
 export { SchemaTooNew, StoreClosed, UnknownWorktree, WriterBusy } from './errors.ts';
-export { defaultCacheRoot, isSyncedFolderPath, resolveStoreLocation } from './location.ts';
+export { decideStoreLocation, defaultCacheRoot, findExistingStore, isSyncedFolderPath, resolveStoreLocation } from './location.ts';
 export type { CacheReason, ResolveStoreLocationInput, StoreLocation, StoreLocationKind } from './location.ts';
 export { IDLE_MAINTENANCE } from './maintain.ts';
 export { openFactStore } from './open.ts';
 export type { OpenFactStoreOptions, StoreOpenOptions } from './open.ts';
+export { probeStore } from './probe.ts';
+export type { ProbeOptions, StoreProbe } from './probe.ts';
 export { candidatePaths, resolveSpecifier } from './specifier.ts';
 export type {
   CallerRecord,

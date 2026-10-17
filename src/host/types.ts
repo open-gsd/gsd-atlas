@@ -6,9 +6,9 @@ import type { CommandRunner, UserPermissions } from '../command-runner/index.ts'
 import type { Clock, Envelope, Request } from '../facts/index.ts';
 import type { Governor } from '../governor/index.ts';
 import type { GrammarEngine } from '../grammar-engine/index.ts';
-import type { EventSource, Indexer, IndexerDeps } from '../indexer/index.ts';
+import type { EventSource, Indexer, IndexerDeps, ModuleHost } from '../indexer/index.ts';
 import type { Roots } from '../lang/index.ts';
-import type { TenantTuning } from '../tenant/index.ts';
+import type { Tenant, TenantDeps, TenantTuning } from '../tenant/index.ts';
 
 /**
  * The user-level configuration (trust-boundaries ADR): it comes from `<userDir>/config.json` and the environment
@@ -60,6 +60,15 @@ export interface HostOptions {
   readonly indexerFactory?: (deps: IndexerDeps) => Indexer;
   /** Shortens waits in tests. */
   readonly tuning?: Partial<TenantTuning>;
+  /**
+   * How long a tenant, and a history module host, may be idle (no request, none in flight) before the Host closes it.
+   * Default: the approved `host.idleEvictMs` (30 minutes). A request after eviction opens it again.
+   */
+  readonly idleEvictMs?: number;
+  /** TEST HOOK. Builds a repository's Tenant from the dependencies the Host assembled; production omits it. */
+  readonly tenantFactory?: (deps: TenantDeps) => Promise<Tenant>;
+  /** TEST HOOK. Builds the module host of a repository's `history` questions; production omits it. */
+  readonly moduleHostFactory?: (repoDir: string) => ModuleHost;
   /**
    * TEST HOOK. Where `history` creates its throwaway store (default: the operating system's temporary directory) and
    * how many source files a whole-tree history question reads (default: the approved `history.maxFiles`).

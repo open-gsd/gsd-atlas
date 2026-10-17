@@ -18,7 +18,7 @@ import path from 'node:path';
 import { z } from 'zod';
 import { openFactStore } from '../fact-store/index.ts';
 import type { Resolver } from '../fact-store/index.ts';
-import { PROTOCOL_VERSION, diagnostic } from '../facts/index.ts';
+import { PROTOCOL_VERSION, diagnostic, isInside } from '../facts/index.ts';
 import type { Clock, Diagnostic, Envelope, Request } from '../facts/index.ts';
 import { DEFAULT_INDEXER_CONFIG } from '../indexer/index.ts';
 import type { ModuleHost } from '../indexer/index.ts';
@@ -100,12 +100,6 @@ function extensionOf(rel: string): string {
   const name = rel.slice(rel.lastIndexOf('/') + 1);
   const dot = name.lastIndexOf('.');
   return dot <= 0 ? '' : name.slice(dot).toLowerCase();
-}
-
-/** True when `candidate` is `root` or lies below it. */
-function isInside(candidate: string, root: string): boolean {
-  const rel = path.relative(root, candidate);
-  return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
 }
 
 /** The `--path` value as a tree path, or null when it is not a plain repo-relative file path. */
@@ -203,23 +197,34 @@ export async function runHistory(deps: HistoryDeps, request: Request): Promise<E
 
   // 4. The throwaway store, outside the repository and the real store; always removed.
   const base = deps.tmpRoot ?? os.tmpdir();
-  const dir = fs.mkdtempSync(path.join(base, 'gsd-atlas-history-'));
-  try {
-    const realDir = fs.realpathSync.native(dir);
-    for (const forbidden of deps.keepOut ?? []) {
+  const refused = (): Envelope =>
+    errorEnvelope(
+      'history_unavailable',
+      'The temporary directory is inside the repository or its index, so history refuses to write there. Set TMPDIR to a directory elsewhere.',
+    );
+  /** True when `candidate` (a real path) is inside the repository, its git directory or the real store. */
+  const keptOut = (candidate: string): boolean =>
+    (deps.keepOut ?? []).some((forbidden) => {
       let real: string;
       try {
         real = fs.realpathSync.native(forbidden);
       } catch {
         real = forbidden;
       }
-      if (isInside(realDir, real)) {
-        return errorEnvelope(
-          'history_unavailable',
-          'The temporary directory is inside the repository or its index, so history refuses to write there. Set TMPDIR to a directory elsewhere.',
-        );
-      }
-    }
+      return isInside(real, candidate);
+    });
+  // Refuse before anything is created: a base inside the repository gets no throwaway directory at all.
+  let realBase = path.resolve(base);
+  try {
+    realBase = fs.realpathSync.native(base);
+  } catch {
+    // a base that does not exist fails at mkdtemp below
+  }
+  if (keptOut(realBase)) return refused();
+  const dir = fs.mkdtempSync(path.join(base, 'gsd-atlas-history-'));
+  try {
+    // And again for the directory itself, after links are resolved.
+    if (keptOut(fs.realpathSync.native(dir))) return refused();
     const store = await openFactStore(
       dir,
       { resolver: noPreciseTier, clock: deps.clock, gitHas: () => Promise.resolve(true) },
