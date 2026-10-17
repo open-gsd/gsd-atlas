@@ -9,7 +9,7 @@
  */
 import path from 'node:path';
 import { UnknownWorktree } from '../fact-store/index.ts';
-import type { FindMode, SymbolRecord } from '../fact-store/index.ts';
+import type { FindMode, Reader, SymbolRecord } from '../fact-store/index.ts';
 import type { Answer, DegradedCode, Diagnostic, Envelope, Watermark } from '../facts/index.ts';
 import { diagnostic, okEnvelope } from '../facts/index.ts';
 import { createCitations, memoLineText } from './cite.ts';
@@ -30,6 +30,8 @@ export interface FreshOutcome {
   readonly diagnostics: readonly Diagnostic[];
   /** Paths the Indexer could not finish: the file on disk is newer than the facts, so its line text is not trusted. */
   readonly stalePaths: readonly string[];
+  /** The follower overlay the fresh port built for this request, when it built one (see `FreshReport.reader`). */
+  readonly reader?: Reader;
 }
 
 export interface FindContext {
@@ -37,6 +39,8 @@ export interface FindContext {
   readonly config: QueryConfig;
   readonly worktree: string;
   readonly fresh: FreshOutcome;
+  /** The one Reader every read of this request goes through: the fresh port's overlay, else the store's (query.ts). */
+  readonly reader: Reader;
   /** The nonce of this response. */
   readonly nonce: string;
   /** The hash of this query, carried by every cursor it issues. */
@@ -98,7 +102,7 @@ export async function runFind(ctx: FindContext, input: CodeFindInput): Promise<E
   const { config } = ctx;
   const reads = readsFor(input.mode ?? 'auto', input.name);
   const candidateLimit = config.maxLimit * CANDIDATE_FACTOR;
-  const reader = ctx.deps.store.at(ctx.worktree);
+  const { reader } = ctx;
 
   let answers: Answer<readonly SymbolRecord[]>[];
   try {

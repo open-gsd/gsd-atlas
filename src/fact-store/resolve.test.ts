@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { describe, it } from 'node:test';
 import { contextKey, overlaySnapshotId } from './cache.ts';
-import { resolveSpecifier } from './specifier.ts';
+import { candidatePaths, resolveSpecifier } from './specifier.ts';
 
 describe('overlaySnapshotId', () => {
   it('is the sha256 of the sorted path and hash pairs, in hex, whatever the map order', () => {
@@ -91,5 +91,68 @@ describe('resolveSpecifier', () => {
     assert.deepStrictEqual(resolveSpecifier('src/a/main.ts', '../../util', overlay), ['util.ts']);
     assert.deepStrictEqual(resolveSpecifier('src/a/main.ts', '../lib/util', overlay), ['src/lib/util.ts']);
     assert.deepStrictEqual(resolveSpecifier('main.ts', './util', overlay), ['util.ts']);
+  });
+});
+
+describe('candidatePaths', () => {
+  it('lists the resolved base, the base with each claimed extension and the directory index files, in code-unit order', () => {
+    assert.deepStrictEqual(candidatePaths('src/main.ts', './b', ['.ts', '.cts']), [
+      'src/b',
+      'src/b.cts',
+      'src/b.ts',
+      'src/b/index.cts',
+      'src/b/index.ts',
+    ]);
+  });
+
+  it('adds the extension-stripped variants for a specifier that ends in an extension', () => {
+    assert.deepStrictEqual(candidatePaths('src/a/main.ts', '../lib/x.cjs', ['.cts', '.ts']), [
+      'src/lib/x',
+      'src/lib/x.cjs',
+      'src/lib/x.cjs.cts',
+      'src/lib/x.cjs.ts',
+      'src/lib/x.cjs/index.cts',
+      'src/lib/x.cjs/index.ts',
+      'src/lib/x.cts',
+      'src/lib/x.ts',
+    ]);
+  });
+
+  it('names only the index file for a specifier that is a directory, and nothing for non-relative or escaping ones', () => {
+    assert.deepStrictEqual(candidatePaths('src/main.ts', './util/', ['.ts']), ['src/util/index.ts']);
+    assert.deepStrictEqual(candidatePaths('src/main.ts', '.', ['.ts']), ['src/index.ts']);
+    assert.deepStrictEqual(candidatePaths('src/main.ts', '..', ['.ts']), ['index.ts']);
+    for (const specifier of ['lodash', '@scope/pkg', '/abs', 'node:fs', '', '../../x']) {
+      assert.deepStrictEqual(candidatePaths('src/main.ts', specifier, ['.ts']), [], specifier);
+    }
+  });
+
+  it('has no duplicates and is sorted whatever the extensions repeat', () => {
+    const list = candidatePaths('src/main.ts', './b', ['.ts', '.ts', '.js']);
+    assert.deepStrictEqual(list, [...new Set(list)].sort());
+  });
+
+  it('contains every path the rule can match: resolving over the candidates that exist gives the rule\'s answer', () => {
+    const everything = [
+      'src/main.ts',
+      'src/b.ts',
+      'src/b.js',
+      'src/b/index.ts',
+      'src/b.cjs',
+      'src/b.cts',
+      'src/a.b.ts',
+      'src/util/index.js',
+      'src/util.ts',
+      'index.ts',
+      'src/index.ts',
+      'src/other.ts',
+    ];
+    const extensions = ['.cjs', '.cts', '.js', '.ts'];
+    const specifiers = ['./b', './b.js', './b.cjs', './a.b', './util', './util/', '.', '..', './missing', './other.ts'];
+    for (const specifier of specifiers) {
+      const universe = paths(...everything);
+      const probed = paths(...everything.filter((p) => candidatePaths('src/main.ts', specifier, extensions).includes(p)));
+      assert.deepStrictEqual(resolveSpecifier('src/main.ts', specifier, probed), resolveSpecifier('src/main.ts', specifier, universe), specifier);
+    }
   });
 });

@@ -177,7 +177,7 @@ function entriesAround(best: SymbolRecord, facts: FileFacts | null): Entry[] {
 
 export async function runContext(ctx: FindContext, input: CodeContextInput): Promise<Envelope> {
   const { config } = ctx;
-  const reader: Reader = ctx.deps.store.at(ctx.worktree);
+  const { reader } = ctx;
   try {
     const search = await findTargets(reader, ctx, input, 1 + MAX_ALTERNATIVES);
     const best = search.targets[0]?.record;

@@ -13,13 +13,14 @@ import { UnknownWorktree, WriterBusy, openFactStore, resolveStoreLocation } from
 import type { FactStore, MaintenanceResult, Resolver } from '../fact-store/index.ts';
 import { okEnvelope } from '../facts/index.ts';
 import type { Envelope, Request } from '../facts/index.ts';
-import { IndexerError, createIndexer } from '../indexer/index.ts';
-import type { BuildResult, Indexer, IndexerNotice } from '../indexer/index.ts';
+import { DEFAULT_INDEXER_CONFIG, IndexerError, createIndexer, createModuleHost } from '../indexer/index.ts';
+import type { BuildResult, Indexer, IndexerNotice, ModuleHost } from '../indexer/index.ts';
 import { createNoopMetrics, openMetrics } from '../metrics/index.ts';
 import type { Metrics } from '../metrics/index.ts';
 import { createQuery, errorEnvelope } from '../query/index.ts';
 import type { FreshPort } from '../query/index.ts';
 import { DEFAULT_TENANT_TUNING } from './defaults.ts';
+import { createFollowerFresh } from './follower-overlay.ts';
 import { createIdleMaintainer } from './idle.ts';
 import { answerEvent } from './record.ts';
 import { createStatusPort } from './status-port.ts';
@@ -191,9 +192,35 @@ export async function createTenant(deps: TenantDeps): Promise<Tenant> {
     (await store.status()).worktrees.some((entry) => entry.worktree === worktree);
 
   /**
+   * The module host of the follower overlay, made on the first `fresh` request a follower answers (a leader's
+   * Indexer has its own) and disposed with the Tenant.
+   */
+  let followerModules: ModuleHost | undefined;
+  const followerHost = (): ModuleHost => (followerModules ??= createModuleHost({ engine: deps.engine, roots }));
+  const followerModulesLazy: ModuleHost = {
+    extensions: () => followerHost().extensions(),
+    extract: (filePath, text, contentHash) => followerHost().extract(filePath, text, contentHash),
+    dispose: async () => {
+      if (followerModules !== undefined) await followerModules.dispose();
+    },
+  };
+  const indexerSettings = { ...DEFAULT_INDEXER_CONFIG, ...deps.indexer };
+  const followerFresh: FreshPort = createFollowerFresh({
+    tree,
+    modules: followerModulesLazy,
+    store,
+    clock,
+    maxRaceRetries: indexerSettings.maxRaceRetries,
+    maxFileBytes: indexerSettings.maxFileBytes,
+    // The store names its symbols after its directory unless it was told otherwise; the Tenant never tells it.
+    repo: path.basename(path.resolve(location.dir)),
+  });
+
+  /**
    * Query's read-your-writes port. A worktree nobody built is never indexed because a request named paths (D-11).
-   * A follower can not index: it answers that the paths are not done, and Query degrades the answer with
-   * `fresh_timeout` until plan 02-27 gives followers an in-memory overlay.
+   * The writer-lease holder asks its Indexer. A follower never writes: it parses the paths into an in-memory overlay
+   * for this request only (D-03). The choice is made per call, so a follower that takes the lease over starts using
+   * its Indexer with the next request.
    */
   const fresh: FreshPort = {
     async ensureFresh(worktree, paths, waitMs) {
@@ -201,7 +228,7 @@ export async function createTenant(deps: TenantDeps): Promise<Tenant> {
       if (!status.worktrees.some((entry) => entry.worktree === worktree)) {
         return { complete: true, stalePaths: [], invalid: [] };
       }
-      if (leaseLost || !status.writerLeaseHeld) return { complete: false, stalePaths: [...paths], invalid: [] };
+      if (leaseLost || !status.writerLeaseHeld) return followerFresh.ensureFresh(worktree, paths, waitMs);
       return getIndexer().ensureFresh(worktree, paths, waitMs);
     },
   };
@@ -551,6 +578,7 @@ export async function createTenant(deps: TenantDeps): Promise<Tenant> {
         await starting?.catch(ignore);
         // The start-up may have created the Indexer after the stop above looked; it is stopped now.
         if (indexer !== undefined && indexer !== running) await indexer.stop().catch(ignore);
+        await followerModulesLazy.dispose().catch(ignore);
         await metrics.close();
         await store.close();
       })();

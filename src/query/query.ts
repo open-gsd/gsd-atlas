@@ -79,6 +79,7 @@ async function freshOutcome(
               ),
             ],
       stalePaths: report.stalePaths,
+      ...(report.reader === undefined ? {} : { reader: report.reader }),
     };
   } catch {
     return FRESH_UNFINISHED;
@@ -133,7 +134,9 @@ async function prepare<I extends CommonInput>(
   }
 
   const fresh = await freshOutcome(deps, config, worktree, input.fresh);
-  return { ctx: { deps, config, worktree, fresh, nonce: (deps.nonce ?? newNonce)(), queryHash: hash, cursor }, input };
+  // The one place a request picks its Reader: a follower's overlay when the fresh port built one, else the store's.
+  const reader = fresh.reader ?? deps.store.at(worktree);
+  return { ctx: { deps, config, worktree, fresh, reader, nonce: (deps.nonce ?? newNonce)(), queryHash: hash, cursor }, input };
 }
 
 export function createQuery(deps: QueryDeps): Query {
