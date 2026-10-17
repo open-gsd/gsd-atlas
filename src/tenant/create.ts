@@ -9,7 +9,7 @@
  * while nothing was running.
  */
 import path from 'node:path';
-import { UnknownWorktree, WriterBusy, openFactStore, resolveStoreLocation } from '../fact-store/index.ts';
+import { IDLE_MAINTENANCE, UnknownWorktree, WriterBusy, openFactStore, resolveStoreLocation } from '../fact-store/index.ts';
 import type { FactStore, MaintenanceResult, Resolver } from '../fact-store/index.ts';
 import { okEnvelope } from '../facts/index.ts';
 import type { Envelope, Request } from '../facts/index.ts';
@@ -362,17 +362,22 @@ export async function createTenant(deps: TenantDeps): Promise<Tenant> {
   }
 
   /**
-   * One slice of store upkeep. The store's `maintain` takes the in-process writer slot, which a running Indexer holds;
-   * then `collect` and `compact` (which need the lease, not the slot) do the same work, and `check` closes the pass.
+   * One slice of store upkeep, with the idle policy (`IDLE_MAINTENANCE`, STO-05, D-16): the store asks for a full
+   * compaction, which vacuums only past the recorded thresholds and only after the collect step of the same call
+   * finished, so a healthy store is never vacuumed. The store's `maintain` takes the in-process writer slot, which a
+   * running Indexer holds; then `collect` and `compact` (which need the lease, not the slot) do the same work with
+   * the same policy (the full request goes with the compact step only after a collect that reported complete), and
+   * `check` closes the pass. A VACUUM that has started cannot be interrupted: it is the one documented exception to
+   * the 200 ms maintenance bound (02-CONSTANTS.md).
    */
   async function maintenanceSlice(): Promise<MaintenanceResult> {
     try {
-      return await store.maintain(tuning.maintenanceSliceMs);
+      return await store.maintain(tuning.maintenanceSliceMs, IDLE_MAINTENANCE);
     } catch (error) {
       if (!(error instanceof WriterBusy)) throw error;
     }
     const collected = await store.collect({ budgetMs: tuning.maintenanceSliceMs });
-    const compacted = await store.compact({ budgetMs: tuning.maintenanceSliceMs });
+    const compacted = await store.compact({ budgetMs: tuning.maintenanceSliceMs, ...(collected.complete ? IDLE_MAINTENANCE : {}) });
     const complete = collected.complete && compacted.complete;
     if (complete) await store.check();
     return {
@@ -385,7 +390,8 @@ export async function createTenant(deps: TenantDeps): Promise<Tenant> {
   /**
    * One idle round (STO-10): on the lease holder the store upkeep in slices until complete, then a refresh of each
    * worktree the Indexer covers; on every process the metrics rollup and the index-health gauge. It checks
-   * `shouldYield` before every step and stops quietly when a request has arrived.
+   * `shouldYield` before every step and stops quietly when a request has arrived. The full compaction the store
+   * upkeep requests when due is the one step a `shouldYield` cannot interrupt once it has started.
    */
   async function idleRound(shouldYield: () => boolean): Promise<void> {
     if (closed) return;
