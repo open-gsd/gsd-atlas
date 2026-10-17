@@ -14,11 +14,13 @@ import type { FactStore, MaintenanceResult, Resolver } from '../fact-store/index
 import { okEnvelope } from '../facts/index.ts';
 import type { Envelope, Request } from '../facts/index.ts';
 import { IndexerError, createIndexer } from '../indexer/index.ts';
-import type { BuildResult, Indexer } from '../indexer/index.ts';
+import type { BuildResult, Indexer, IndexerNotice } from '../indexer/index.ts';
 import { createNoopMetrics, openMetrics } from '../metrics/index.ts';
+import type { Metrics } from '../metrics/index.ts';
 import { createQuery, errorEnvelope } from '../query/index.ts';
 import type { FreshPort } from '../query/index.ts';
 import { DEFAULT_TENANT_TUNING } from './defaults.ts';
+import { answerEvent } from './record.ts';
 import { createStatusPort } from './status-port.ts';
 import { BUILD_SCHEMA, MAINTAIN_SCHEMA, STATUS_SCHEMA } from './types.ts';
 import type { MaintainOptions, MaintainTask, TaskReport, Tenant, TenantDeps, TenantStatus, TenantTuning } from './types.ts';
@@ -87,10 +89,32 @@ export async function createTenant(deps: TenantDeps): Promise<Tenant> {
       ...(deps.graceMs === undefined ? {} : { graceMs: deps.graceMs }),
     },
   );
-  const metrics =
+  const metrics: Metrics =
     deps.metrics === false
       ? createNoopMetrics('disabled')
-      : await openMetrics(path.join(location.dir, 'metrics.db'), { clock });
+      : typeof deps.metrics === 'object'
+        ? deps.metrics
+        : await openMetrics(path.join(location.dir, 'metrics.db'), { clock });
+
+  /**
+   * Recording never alters or delays an answer (MET-02, T-02-99): it runs after the envelope exists, and whatever it
+   * throws is dropped. Metrics itself never throws; an injected double might.
+   */
+  const recording = (work: () => void): void => {
+    try {
+      work();
+    } catch {
+      // a metrics failure is not the caller's problem
+    }
+  };
+
+  /** The Indexer's notices feed the freshness panel: how long a changed path waited before it was indexed. */
+  const onIndexerNotice = (notice: IndexerNotice): void => {
+    if (notice.kind !== 'indexed') return;
+    recording(() => {
+      metrics.record({ kind: 'freshness', lagMs: notice.lagMs });
+    });
+  };
 
   let indexer: Indexer | undefined;
   let closing: Promise<void> | undefined;
@@ -109,6 +133,7 @@ export async function createTenant(deps: TenantDeps): Promise<Tenant> {
         roots,
         governor,
         clock,
+        onNotice: onIndexerNotice,
         ...(source === undefined ? {} : { source }),
         ...(deps.indexer === undefined ? {} : { config: deps.indexer }),
       };
@@ -251,8 +276,14 @@ export async function createTenant(deps: TenantDeps): Promise<Tenant> {
     storeId: identity.storeId,
     location,
 
-    handle(request: Request, worktree: string): Promise<Envelope> {
-      return query.ask({ ...request, worktree });
+    async handle(request: Request, worktree: string): Promise<Envelope> {
+      const started = clock.now();
+      const envelope = await query.ask({ ...request, worktree });
+      recording(() => {
+        const event = answerEvent(request.kind, envelope, clock.now() - started);
+        if (event !== null) metrics.record(event);
+      });
+      return envelope;
     },
 
     async build(worktree: string): Promise<Envelope> {
@@ -286,6 +317,12 @@ export async function createTenant(deps: TenantDeps): Promise<Tenant> {
     async statusEnvelope(sinceMs: number): Promise<Envelope> {
       const until = clock.now();
       const range = { since: until - sinceMs, until };
+      // An answer served a moment ago is still in the recorder queue; write it so the report shows it.
+      try {
+        await metrics.flush();
+      } catch {
+        // the report below still answers, from what is stored
+      }
       const [report, tenant] = await Promise.all([metrics.report(range), snapshot()]);
       return okEnvelope(STATUS_SCHEMA, { range, report, tenant });
     },
