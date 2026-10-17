@@ -1,12 +1,212 @@
-import { diagnostic, failEnvelope } from '../facts/index.ts';
+/**
+ * The Host: the composition root for a process (tenant-composition ADR decision 5). It validates a request,
+ * resolves its repository to a worktree, finds or lazily creates that repository's Tenant, runs the work through
+ * the shared Governor in the request's class, and returns the Envelope. The tenant registry is function-scoped
+ * state: there are no module-level singletons, so two Hosts in one process are fully independent.
+ *
+ * A tenant is created on the first code request for its repository, never before, so `lang_list` and a tool listing
+ * pay no store-open or Reconcile cost. Tenants never see each other's requests: the registry key is the store id
+ * Source Tree derives from the repository's root commit and its real common git directory.
+ */
+import path from 'node:path';
+import { createRealRunner } from '../command-runner/index.ts';
+import type { CommandRunner } from '../command-runner/index.ts';
+import { SchemaTooNew } from '../fact-store/index.ts';
+import { PROTOCOL_VERSION, diagnostic, failEnvelope, systemClock } from '../facts/index.ts';
+import type { Envelope, Request } from '../facts/index.ts';
+import { createGovernor } from '../governor/index.ts';
+import type { Governor, JobClass } from '../governor/index.ts';
+import type { IndexerConfig } from '../indexer/index.ts';
+import { ERROR_SCHEMA, errorEnvelope } from '../query/index.ts';
+import { createSourceTree } from '../source-tree/index.ts';
+import type { SourceTree } from '../source-tree/index.ts';
+import { createTenant } from '../tenant/index.ts';
+import type { Tenant } from '../tenant/index.ts';
+import { LANG_KINDS, handleLang } from './lang.ts';
+import { classFor, isAdmissionOnly, isRepoKind, parseRepoArgs, resolveRepository, short } from './route.ts';
+import type { RepoArgs, RepoKind, Resolved } from './route.ts';
 import type { Host, HostOptions } from './types.ts';
 
-/** RED-phase stand-in: every request is refused until the Host is composed. */
-export function createHost(_options: HostOptions): Host {
+const ignore = (): void => {};
+
+const errorName = (error: unknown): string => {
+  const code = (error as { readonly code?: unknown } | null)?.code;
+  if (typeof code === 'string' && code !== '') return code;
+  return error instanceof Error ? error.name : 'Error';
+};
+
+const NOT_A_REPO = 'repo must be an existing directory inside a git repository.';
+
+export function createHost(options: HostOptions): Host {
+  const tenants = new Map<string, Promise<Tenant>>();
+  const clock = options.clock ?? systemClock;
+  const config = options.config ?? {};
+  const hostCwd = options.cwd ?? options.roots.repoRoot;
+  const cacheRoot = options.cacheRoot ?? path.join(options.userDir ?? options.roots.userDir, 'cache');
+  let closed = false;
+
+  // The real runner and Governor are created on first use, so a Host that only serves lang kinds builds neither.
+  let runner: CommandRunner | undefined = options.runner;
+  let governor: Governor | undefined = options.governor;
+  const getRunner = (): CommandRunner =>
+    (runner ??= createRealRunner(config.permissions === undefined ? {} : { user: config.permissions }));
+  const getGovernor = (): Governor => (governor ??= createGovernor({ clock }));
+
+  const makeTree = (repoDir: string): SourceTree =>
+    createSourceTree({ runner: getRunner(), repoDir, ...(options.gitEnv === undefined ? {} : { envOverlay: options.gitEnv }) });
+
+  /** The user's Indexer settings; a key they left out keeps its approved default. */
+  function indexerSettings(): Partial<IndexerConfig> | undefined {
+    const given = config.indexer;
+    if (given === undefined) return undefined;
+    return {
+      ...(given.debounceMs === undefined ? {} : { debounceMs: given.debounceMs }),
+      ...(given.maxWaitMs === undefined ? {} : { maxWaitMs: given.maxWaitMs }),
+    };
+  }
+
+  function tenantFor(resolved: Resolved): Promise<Tenant> {
+    const key = resolved.identity.storeId;
+    const known = tenants.get(key);
+    if (known !== undefined) return known;
+    const indexer = indexerSettings();
+    const created = createTenant({
+      tree: resolved.tree,
+      identity: resolved.identity,
+      repoDir: resolved.repoDir,
+      roots: options.roots,
+      engine: options.engine,
+      governor: getGovernor(),
+      clock,
+      cacheRoot,
+      ...(config.store?.dir === undefined ? {} : { storeDir: config.store.dir }),
+      ...(indexer === undefined ? {} : { indexer }),
+      ...(config.gc?.graceMs === undefined ? {} : { graceMs: config.gc.graceMs }),
+      ...(options.version === undefined ? {} : { version: options.version }),
+      ...(options.metrics === undefined ? {} : { metrics: options.metrics }),
+      ...(options.eventSource === undefined ? {} : { eventSource: options.eventSource }),
+      ...(options.indexerFactory === undefined ? {} : { indexerFactory: options.indexerFactory }),
+      ...(options.tuning === undefined ? {} : { tuning: options.tuning }),
+    });
+    tenants.set(key, created);
+    // A failed creation is forgotten, so the next request tries again; the callers see the failure themselves.
+    created.catch(() => {
+      if (tenants.get(key) === created) tenants.delete(key);
+    });
+    return created;
+  }
+
+  /** An envelope for a repository whose tenant could not be created: this repository only (T-02-68). */
+  function tenantFailure(error: unknown): Envelope {
+    if (error instanceof SchemaTooNew) {
+      return errorEnvelope('schema_too_new', 'The index of this repository was written by a newer gsd-atlas. Upgrade gsd-atlas, or remove the index.');
+    }
+    return errorEnvelope('store_unavailable', short(`The index of this repository could not be opened (${errorName(error)}).`));
+  }
+
+  const busy = (retryAfter: number): Envelope =>
+    errorEnvelope('busy', `The host is busy. Try again in ${String(retryAfter)} milliseconds.`, { retry_after: retryAfter });
+
+  /** Run `work` in a Governor slot of `cls`; a busy answer ends the request without running it (HST-03). */
+  async function held(tenant: string, cls: JobClass, work: () => Promise<Envelope>): Promise<Envelope> {
+    const outcome = await getGovernor().run({ tenant, class: cls, cost: 1 }, work);
+    if (outcome.kind === 'ok') return outcome.value;
+    if (outcome.kind === 'busy') return busy(outcome.retry_after);
+    return errorEnvelope('timeout', 'The request took too long and was stopped.');
+  }
+
+  /**
+   * Wait for a turn in the Governor class without holding the slot while the work runs. A build or a maintenance
+   * task is scheduled in pieces by the Indexer in this same class; holding a slot for the whole request as well
+   * would let a few builds starve their own pieces of slots.
+   */
+  async function admitted(tenant: string, cls: JobClass, work: () => Promise<Envelope>): Promise<Envelope> {
+    const outcome = await getGovernor().run({ tenant, class: cls, cost: 1 }, () => Promise.resolve());
+    if (outcome.kind === 'busy') return busy(outcome.retry_after);
+    if (outcome.kind === 'timeout') return errorEnvelope('timeout', 'The request took too long and was stopped.');
+    return work();
+  }
+
+  /** The request Query sees: `atlas_status` takes only `repo`, which the worktree already carries. */
+  function forwarded(request: Request, kind: RepoKind): Request {
+    if (kind !== 'atlas_status') return request;
+    const { repo: _repo, cwd: _cwd, ...rest } = (request.args ?? {}) as Record<string, unknown>;
+    return { ...request, args: rest };
+  }
+
+  async function repoRequest(request: Request, kind: RepoKind): Promise<Envelope> {
+    const parsed: RepoArgs = parseRepoArgs(kind, request.args);
+    if (!parsed.ok) return errorEnvelope('invalid_args', parsed.message);
+
+    const resolved = await resolveRepository(parsed.selection, hostCwd, makeTree);
+    if (resolved === null) return errorEnvelope('not_a_repo', NOT_A_REPO);
+
+    let tenant: Tenant;
+    try {
+      tenant = await tenantFor(resolved);
+    } catch (error) {
+      return tenantFailure(error);
+    }
+
+    const cls = classFor(kind);
+    const run = (): Promise<Envelope> => {
+      switch (kind) {
+        case 'build':
+          return tenant.build(resolved.worktree);
+        case 'maintain':
+          return tenant.maintain(parsed.task, { worktree: resolved.worktree, full: parsed.full });
+        case 'status':
+          return tenant.statusEnvelope(parsed.sinceMs);
+        default:
+          return tenant.handle(forwarded(request, kind), resolved.worktree);
+      }
+    };
+    return isAdmissionOnly(kind) ? admitted(tenant.storeId, cls, run) : held(tenant.storeId, cls, run);
+  }
+
+  async function dispatch(request: Request): Promise<Envelope> {
+    if (request.protocol !== PROTOCOL_VERSION) {
+      return errorEnvelope(
+        'unsupported_protocol',
+        `protocol ${short(String(request.protocol))} is not supported; this host speaks protocol ${String(PROTOCOL_VERSION)}`,
+      );
+    }
+    if (closed) return errorEnvelope('host_closed', 'This host was closed.');
+    if ((LANG_KINDS as readonly string[]).includes(request.kind)) {
+      return handleLang(request, { roots: options.roots, engine: options.engine });
+    }
+    if (isRepoKind(request.kind)) return repoRequest(request, request.kind);
+    return errorEnvelope('unknown_kind', `request kind ${short(JSON.stringify(request.kind))} is not known to this host`);
+  }
+
+  async function closeTenant(storeId: string): Promise<void> {
+    const found = tenants.get(storeId);
+    if (found === undefined) return;
+    tenants.delete(storeId);
+    try {
+      await (await found).close();
+    } catch {
+      // A tenant that never opened has nothing to close.
+    }
+  }
+
   return {
-    handle: () =>
-      Promise.resolve(failEnvelope('gsd-atlas.error/1', [diagnostic('unknown_kind', 'error', 'the host is not composed yet')])),
-    closeTenant: () => Promise.resolve(),
-    close: () => Promise.resolve(),
+    async handle(request: Request): Promise<Envelope> {
+      try {
+        return await dispatch(request);
+      } catch (error) {
+        // Only a bug gets here. Say so by name, without the message: it can quote paths.
+        return failEnvelope(ERROR_SCHEMA, [
+          diagnostic('internal_error', 'error', 'The request failed inside the host.', errorName(error)),
+        ]);
+      }
+    },
+
+    closeTenant,
+
+    async close(): Promise<void> {
+      closed = true;
+      await Promise.all([...tenants.keys()].map((storeId) => closeTenant(storeId).catch(ignore)));
+    },
   };
 }

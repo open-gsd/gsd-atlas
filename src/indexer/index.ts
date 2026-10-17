@@ -18,6 +18,10 @@ export type {
 } from './event-source.ts';
 export { gitDirNameOf, isInside } from './git-dir.ts';
 export { createIndexer } from './indexer.ts';
+export { createModuleHost } from './modules.ts';
+export type { ExtractOutcome, ModuleHost, ModuleHostOptions } from './modules.ts';
+export { createParcelEventSource } from './parcel-source.ts';
+export type { ParcelEventSourceOptions } from './parcel-source.ts';
 export { createCoalescingQueue } from './queue.ts';
 export type { CoalescingQueue, CoalescingQueueOptions } from './queue.ts';
 export { IndexerError } from './types.ts';

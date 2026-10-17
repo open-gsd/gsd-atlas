@@ -4,4 +4,6 @@
  * through the HostClient.
  */
 export { createHost } from './host.ts';
+export { LANG_LIST_SCHEMA, LANG_TEST_SCHEMA } from './lang.ts';
+export type { LangListData } from './lang.ts';
 export type { Host, HostOptions, UserConfig } from './types.ts';

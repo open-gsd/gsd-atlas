@@ -3,6 +3,7 @@
  * shim, hooks) reach it through the HostClient; they never import this module directly.
  */
 export { DEFAULT_QUERY_CONFIG, resolveQueryConfig } from './defaults.ts';
+export { ERROR_SCHEMA, errorEnvelope } from './envelope.ts';
 export { createQuery } from './query.ts';
 export { HEALTH_REASONS, POLICY_OFF } from './status.ts';
 export type { HealthReason, StatusSnapshot } from './status.ts';

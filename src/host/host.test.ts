@@ -41,6 +41,15 @@ describe('Host: build, then find', () => {
     assert.equal(world.manual.subscriptions(), 0, 'nothing is watched before a build (D-11)');
   });
 
+  it('fresh paths on a repository nobody built index nothing (D-11)', async (t) => {
+    const world = await makeWorld(t);
+    const reply = await world.ask('code_find', { name: 'helper', repo: world.repo.dir }, { fresh: ['b.toy'] });
+    assert.deepEqual(codes(reply), ['not_indexed']);
+    const status = await world.ask('atlas_status', { repo: world.repo.dir });
+    assert.deepEqual((status.data as { worktrees: unknown[] }).worktrees, []);
+    assert.equal((status.data as { indexer: unknown }).indexer, null, 'no Indexer was even created');
+  });
+
   it('the build request is what makes find succeed; a second build parses nothing', async (t) => {
     const world = await makeWorld(t);
     const first = await world.ask('build', { repo: world.repo.dir });
