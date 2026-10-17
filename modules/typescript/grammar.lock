@@ -20,7 +20,8 @@
     "sha256": "d24392183c75c103feafb827c9c086de00c30198e27f362cc971fbca6e91a87f",
     "platforms": {
       "linux-x64": "d24392183c75c103feafb827c9c086de00c30198e27f362cc971fbca6e91a87f",
-      "darwin-arm64": "d24392183c75c103feafb827c9c086de00c30198e27f362cc971fbca6e91a87f"
+      "darwin-arm64": "d24392183c75c103feafb827c9c086de00c30198e27f362cc971fbca6e91a87f",
+      "win32-x64": "90981e0e9b51770042747a54ff6341a71ef001951766bba5a49ab5be7bdabac0"
     }
   }
 }

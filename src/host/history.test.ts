@@ -35,13 +35,18 @@ async function eventually(check: () => boolean, what: string, timeoutMs = 10000)
   }
 }
 
-/** Every file below `dir`: relative path, size and content hash, sorted. Empty when the directory is absent. */
+/**
+ * Every file below `dir`: relative path, size and content hash, sorted. Empty when the directory is absent. The
+ * wal-index (`-shm`) is listed by name only: SQLite keeps byte-range locks inside it while a database is open, so
+ * Windows refuses to read it (EBUSY, found by plan 02-26 on Windows CI), and it is a rebuildable cache of the log.
+ */
 function fingerprint(dir: string): string[] {
   const out: string[] = [];
   const walk = (current: string): void => {
     for (const entry of fs.readdirSync(current, { withFileTypes: true })) {
       const full = path.join(current, entry.name);
       if (entry.isDirectory()) walk(full);
+      else if (entry.name.endsWith('-shm')) out.push(`${path.relative(dir, full)}:wal-index`);
       else {
         const bytes = fs.readFileSync(full);
         out.push(`${path.relative(dir, full)}:${String(bytes.length)}:${createHash('sha256').update(bytes).digest('hex')}`);

@@ -24,6 +24,16 @@ const idle = (world: World): Promise<void> =>
 
 const commonDirOf = async (world: World): Promise<string> => (await world.tree.identity()).commonDir;
 
+/**
+ * Replace the `.git` file of a linked worktree. On Windows git marks `.git` hidden, and Windows refuses to open a hidden
+ * file for writing (EPERM, found by plan 02-26 on Windows CI), so the file is removed first.
+ */
+function writeGitFile(worktree: string, text: string): void {
+  const file = path.join(worktree, '.git');
+  fs.rmSync(file, { force: true });
+  fs.writeFileSync(file, text);
+}
+
 /** A reader of a worktree the store may not know yet: the symbol names found, or null while the overlay is unknown. */
 async function namesIn(world: World, worktree: string, name: string): Promise<number | null> {
   try {
@@ -52,17 +62,17 @@ describe('git directory names: the .git of a worktree leads into the common git 
     const outside = makeTempDir();
     t.after(() => outside.cleanup());
 
-    fs.writeFileSync(path.join(linked, '.git'), `gitdir: ${outside.path}\n`);
+    writeGitFile(linked, `gitdir: ${outside.path}\n`);
     assert.equal(gitDirNameOf(linked, common), null, 'a directory outside the common git directory');
 
     fs.mkdirSync(path.join(outside.path, 'worktrees', 'fake'), { recursive: true });
-    fs.writeFileSync(path.join(linked, '.git'), `gitdir: ${path.join(outside.path, 'worktrees', 'fake')}\n`);
+    writeGitFile(linked, `gitdir: ${path.join(outside.path, 'worktrees', 'fake')}\n`);
     assert.equal(gitDirNameOf(linked, common), null, 'a look-alike worktrees directory somewhere else');
 
-    fs.writeFileSync(path.join(linked, '.git'), `gitdir: ${path.join(common, 'objects')}\n`);
+    writeGitFile(linked, `gitdir: ${path.join(common, 'objects')}\n`);
     assert.equal(gitDirNameOf(linked, common), null, 'inside the common git directory but not a worktree entry');
 
-    fs.writeFileSync(path.join(linked, '.git'), 'not a git file\n');
+    writeGitFile(linked, 'not a git file\n');
     assert.equal(gitDirNameOf(linked, common), null, 'no gitdir line');
     fs.rmSync(path.join(linked, '.git'), { force: true });
     assert.equal(gitDirNameOf(linked, common), null, 'no .git at all');
@@ -73,9 +83,9 @@ describe('git directory names: the .git of a worktree leads into the common git 
     const common = await commonDirOf(world);
     const linked = await world.addWorktree('relative');
     const name = gitDirNameOf(linked, common) as string;
-    fs.writeFileSync(path.join(linked, '.git'), `gitdir: ${path.relative(linked, path.join(common, 'worktrees', name))}\n`);
+    writeGitFile(linked, `gitdir: ${path.relative(linked, path.join(common, 'worktrees', name))}\n`);
     assert.equal(gitDirNameOf(linked, common), name);
-    fs.writeFileSync(path.join(linked, '.git'), `${'#'.repeat(10000)}\ngitdir: ${path.join(common, 'worktrees', name)}\n`);
+    writeGitFile(linked, `${'#'.repeat(10000)}\ngitdir: ${path.join(common, 'worktrees', name)}\n`);
     assert.equal(gitDirNameOf(linked, common), null, 'the gitdir line lies beyond the bytes that are read');
   });
 
@@ -196,7 +206,7 @@ describe('Indexer worktrees: every worktree is covered by one leader over one sh
     const hostile = await world.addWorktree('hostile');
     const outside = makeTempDir();
     t.after(() => outside.cleanup());
-    fs.writeFileSync(path.join(hostile, '.git'), `gitdir: ${outside.path}\n`);
+    writeGitFile(hostile, `gitdir: ${outside.path}\n`);
 
     await world.indexer.start();
 

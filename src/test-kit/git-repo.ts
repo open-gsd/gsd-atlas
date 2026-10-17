@@ -130,6 +130,11 @@ export async function createTempGitRepo(options: TempGitRepoOptions): Promise<Te
     await run(base, ['init', '--quiet', '--object-format=sha1', '--initial-branch=main', dir]);
     await git(['config', 'core.autocrlf', 'false']);
     await git(['config', 'commit.gpgsign', 'false']);
+    // A commit starts `git maintenance run --auto` in the background on a current git, which creates and removes
+    // `.git/objects/maintenance.lock` at an unpredictable moment. Tests that compare directory listings of the repository
+    // before and after the product ran (found by plan 02-26 on macOS CI) must not see that file come and go.
+    await git(['config', 'maintenance.auto', 'false']);
+    await git(['config', 'gc.auto', '0']);
 
     const repo: TempGitRepo = {
       dir,

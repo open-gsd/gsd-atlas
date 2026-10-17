@@ -19,7 +19,8 @@
     "sha256": "7ccbce5ba189363aee524c4be7f3a0bdb25b961d4c6d2472a8f3aeb526eecbfe",
     "platforms": {
       "linux-x64": "7ccbce5ba189363aee524c4be7f3a0bdb25b961d4c6d2472a8f3aeb526eecbfe",
-      "darwin-arm64": "7ccbce5ba189363aee524c4be7f3a0bdb25b961d4c6d2472a8f3aeb526eecbfe"
+      "darwin-arm64": "7ccbce5ba189363aee524c4be7f3a0bdb25b961d4c6d2472a8f3aeb526eecbfe",
+      "win32-x64": "45d6d221f16e24654ce2710bef70e7b6172e32ff7c0054e2a3d838b968f1c1e7"
     }
   }
 }

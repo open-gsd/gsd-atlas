@@ -1,0 +1,43 @@
+name: Nightly
+
+on:
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  # The strict figures that a hosted pull request runner is too noisy to judge: the ROADMAP's one second p99 for save to
+  # find (100 saves, so p99 is the 99th value, not just the largest), and the corpus build with its timings printed.
+  strict:
+    name: Strict gates (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24.16.0"
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npm run build
+      - name: Freshness gate (strict p99)
+        run: node scripts/freshness-gate.ts --saves 100 --max-ms 1000
+      - name: Corpus build gates (timings printed)
+        run: node scripts/corpus-gates.ts

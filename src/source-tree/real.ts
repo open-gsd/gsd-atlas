@@ -439,8 +439,10 @@ export function createSourceTree(options: SourceTreeOptions): SourceTree {
       try {
         return { ...w, path: fs.realpathSync.native(w.path) };
       } catch {
-        // The directory is gone (deleted checkout): keep the path git reports, and say so.
-        return { ...w, prunable: true };
+        // The directory is gone (deleted checkout): keep the path git reports, and say so. Git prints a Windows path
+        // with forward slashes (`C:/Users/x`); `normalize` gives it the separators `realpath` gives every other entry
+        // (found by plan 02-26 on Windows CI: a caller that looks the entry up by its native path found nothing).
+        return { ...w, path: path.normalize(w.path), prunable: true };
       }
     });
   }
