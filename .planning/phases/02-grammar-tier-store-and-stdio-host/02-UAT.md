@@ -3,26 +3,34 @@ status: testing
 phase: 02-grammar-tier-store-and-stdio-host
 source: [02-VERIFICATION.md]
 started: 2026-10-17T17:03:28Z
-updated: 2026-10-17T17:03:28Z
+updated: 2026-10-17T19:42:00Z
 ---
 
 ## Current Test
 
-number: 1
-name: STO-05 idle-only size policy
+number: 2
+name: Cursor and Codex init config shapes
 expected: |
-  Idle loop alone keeps the store at or below 1.25x a fresh build after 20,000 edits (measured 1.396x), or the owner records an override accepting that the bound holds only after `gsd-atlas maintain compact --full`.
-awaiting: user response
+  Each real host lists and starts the gsd-atlas MCP server from the entry init wrote; init changes nothing else
+awaiting: user response (human-only: needs real Cursor and Codex installs)
 
 ## Tests
 
 ### 1. STO-05 idle-only size policy
 expected: idleRatio <= 1.25 without an explicit full compaction, or a written override
-result: [pending]
+result: pass
+evidence: |
+  Plan 02-43 (2026-10-17), node 26.11.1, macOS arm64, base 374a62b. The gate asserts the idle-only size, measured before any explicit full compaction (scripts/size-gate.ts, 02-37), with the idle policy that the Tenant loop runs (IDLE_MAINTENANCE, 02-30, 02-40):
+  - `node scripts/size-gate.ts`: size-gate: files 300 symbols 8 edits 20000 maintain-every 200 freshBytes 655360 idleBytes 655360 idleRatio 1.0000 max 1.25 settledBytes 655360 settledRatio 1.0000 vacuums 100 longestMaintainMs 13.9 dbstat present maintainRuns 101 seconds 5.8 OK
+  - `node scripts/size-gate.ts --driver better-sqlite3`: ... idleRatio 1.0000 max 1.25 ... vacuums 100 longestMaintainMs 207.5 dbstat present maintainRuns 101 seconds 14.8 OK
+  - Edge runs: `--edits 0` exits 0 (idleRatio 1.0000, OK); `--maintain-every 0` exits 1 (idleRatio 38.2687, OVER), so the gate can still fail.
+  - Tenant level: src/tenant/idle-compaction.test.ts (a leader's idle round vacuums a fragmented store once, a healthy store is left alone, `compact` vacuums only when `full` is asked for) passes with src/fact-store/maintain.test.ts and scripts/size-gate.test.ts (75 of 75).
+  Reading adopted: the idle loop alone meets the 1.25x bound (the user's decision); no override is recorded. Previous figure for the old policy: 1.3938 at this scale. These are one-machine figures; the Linux and Windows figures come from the next hosted CI `gates` run of the unchanged `node scripts/size-gate.ts` step and are not claimed here. Plans: 02-30, 02-37, 02-40, 02-43.
 
 ### 2. Cursor and Codex init config shapes
 expected: Each real host lists and starts the gsd-atlas MCP server from the entry init wrote; init changes nothing else
 result: [pending]
+note: The documented Cursor and Codex shapes were confirmed on 2026-10-17 in `.planning/research/MCP-HOST-CONFIGS.md` and plan 02-35 applied them (Cursor `type: "stdio"`, Codex `[mcp_servers.gsd-atlas]` with `command` and `args`; plan 02-44 made the Codex editor manage only those two keys). The check that real installs start the server is still the human step.
 
 ### 3. nightly.yml first remote run
 expected: freshness-gate (100 saves, 1000 ms) and corpus-gates pass on ubuntu, macOS and Windows after the file reaches the default branch
@@ -34,14 +42,16 @@ result: [pending]
 
 ### 5. Flaky wall-clock assertion in src/fact-store/maintain.test.ts
 expected: Bound the first compaction slice in the product, or assert page counts instead of wall time
-result: [pending]
+result: pass
+evidence: |
+  Plan 02-30 (IN-01) replaced the wall-clock comparison with structural assertions over the exported `COMPACT_SLICE_LIMITS` ({ firstPages: 64, maxPages: 16384, maxGrowth: 4 }); no elapsed-milliseconds assertion remains in src/fact-store/*.test.ts. Plan 02-43 re-ran src/fact-store/maintain.test.ts on a clean tree: case "slice limits: free pages are returned in bounded, growing slices, the WAL is truncated and the file shrinks" and case "slice: a budget of zero performs one slice, reports incomplete while pages remain, and later calls finish" pass on both drivers (54 of 54 in the file; the whole suite is 2590 of 2590 with 0 failed and 0 skipped). Mutation check recorded by 02-30: a checkpoint without the zero busy timeout makes the checkpoint-mode case fail, and the structural cases fail when the option or the second evaluation is removed.
 
 ## Summary
 
 total: 5
-passed: 0
+passed: 2
 issues: 0
-pending: 5
+pending: 3
 skipped: 0
 blocked: 0
 
