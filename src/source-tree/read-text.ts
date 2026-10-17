@@ -12,6 +12,7 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
+import { isInside } from '../facts/index.ts';
 import type { ReadTextResult } from './types.ts';
 import { escapesWorktree } from './validate.ts';
 
@@ -21,9 +22,6 @@ export const DEFAULT_READ_TEXT_BYTES = 2 * 1024 * 1024;
 const O_NOFOLLOW: number = (fs.constants as Partial<Record<string, number>>)['O_NOFOLLOW'] ?? 0;
 // A BOM is data the caller decides about (Query strips it for display), so it is kept in the text.
 const decoder = new TextDecoder('utf-8', { ignoreBOM: true });
-
-const isInside = (rootReal: string, candidateReal: string): boolean =>
-  candidateReal === rootReal || candidateReal.startsWith(rootReal.endsWith(path.sep) ? rootReal : rootReal + path.sep);
 
 const isAbsent = (error: unknown): boolean => {
   const code = (error as NodeJS.ErrnoException).code;

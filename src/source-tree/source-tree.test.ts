@@ -505,6 +505,13 @@ describe('real Source Tree readText', () => {
     },
   );
 
+  it('reads a file in a directory whose name only starts with two dots (shared isInside, IN-03), and still refuses a real parent step', async (t) => {
+    const { repo, tree } = await realTree(t, { files: { '..cache/x.txt': 'cached\n', 'a.txt': 'a\n' } });
+    assert.deepEqual(await tree.readText(repo.dir, '..cache/x.txt'), { kind: 'ok', text: 'cached\n' });
+    assert.deepEqual(await tree.readText(repo.dir, '../a.txt'), { kind: 'escape' });
+    assert.deepEqual(await tree.readText(repo.dir, 'sub/../../a.txt'), { kind: 'escape' });
+  });
+
   it('starts no git', async (t) => {
     const { repo, recording, tree } = await realTree(t, { files: { 'a.txt': 'a\n' } });
     await tree.readText(repo.dir, 'a.txt');

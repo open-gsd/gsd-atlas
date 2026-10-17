@@ -15,6 +15,7 @@ import { diagnostic } from '../facts/index.ts';
 import type { Diagnostic } from '../facts/index.ts';
 import { SOURCE_TREE_CODES, SourceTreeError } from './types.ts';
 import { assertReadArguments, assertRevision, batchPathReason, isObjectId, unhashableReason } from './validate.ts';
+import { pickRootCommit } from './identity.ts';
 import { DEFAULT_READ_TEXT_BYTES, readConfinedText } from './read-text.ts';
 import { filterSourceSet, SOURCE_PEEK_BYTES } from './source-set.ts';
 import type { PathAttributes, PeekResult } from './source-set.ts';
@@ -480,7 +481,8 @@ export function createSourceTree(options: SourceTreeOptions): SourceTree {
   async function identity(): Promise<SourceTreeIdentity> {
     // An unborn branch has no HEAD: rev-list fails with 128 and the repository has no root commit yet.
     const roots = await probe(spec(['rev-list', '--max-parents=0', 'HEAD'], repoDir, { timeoutMs: GIT_TIMEOUT_MS }), 'rev-list --max-parents=0');
-    const rootCommit = roots.found ? (decoder.decode(roots.stdout).split('\n')[0] ?? '') || null : null;
+    // Several roots print in no stable order; the smallest id is the identity (WR-06, see identity.ts).
+    const rootCommit = roots.found ? pickRootCommit(decoder.decode(roots.stdout)) : null;
     const common = (
       await gitText(spec(['rev-parse', '--git-common-dir'], repoDir, { timeoutMs: GIT_TIMEOUT_MS }), 'rev-parse --git-common-dir')
     ).trim();

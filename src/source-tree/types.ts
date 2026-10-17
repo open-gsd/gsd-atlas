@@ -130,7 +130,10 @@ export interface ReadManyResult {
 
 /** Which repository this is, stable across clones' checkouts of the same history at the same git directory. */
 export interface SourceTreeIdentity {
-  /** The first root commit of HEAD's history, or null for a repository with no commits. */
+  /**
+   * The smallest object id among the root commits reachable from HEAD (the same set of roots always gives the same
+   * id, whatever order git prints them in), or null for a repository with no commits.
+   */
   readonly rootCommit: string | null;
   /** 16 hex characters of sha256(rootCommit, newline, real path of the common git directory). */
   readonly storeId: string;
