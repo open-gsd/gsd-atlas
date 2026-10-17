@@ -224,36 +224,40 @@ const settle = async (): Promise<void> => {
   for (let turn = 0; turn < 20; turn += 1) await new Promise<void>((resolve) => setImmediate(resolve));
 };
 
+/**
+ * A scripted watcher on a git directory, with or without a `worktrees/` directory in it. The platform is Linux unless a
+ * case says otherwise, whatever the host is, because the renewal of the `worktrees/` subscription depends on it.
+ */
+async function withGitWatch(
+  options: { readonly worktreesDir: boolean; readonly platform?: NodeJS.Platform },
+  body: (world: {
+    common: string;
+    worktrees: string;
+    watcher: ReturnType<typeof scriptedWatcher>;
+    seen: GitSourceEvent[];
+    stop: () => Promise<void>;
+  }) => Promise<void>,
+): Promise<void> {
+  const tmp = makeTempDir();
+  try {
+    const common = path.join(realPath(tmp.path), 'git');
+    const worktrees = path.join(common, 'worktrees');
+    fs.mkdirSync(options.worktreesDir ? worktrees : common, { recursive: true });
+    const watcher = scriptedWatcher();
+    const source = createParcelEventSource({ watcher: () => Promise.resolve(watcher.api), platform: options.platform ?? 'linux' });
+    const seen: GitSourceEvent[] = [];
+    const stop = await source.subscribeGit(common, (event) => seen.push(event));
+    await body({ common, worktrees, watcher, seen, stop });
+  } finally {
+    tmp.cleanup();
+  }
+}
+
 describe('parcel event source: a worktree directory the native watcher missed is covered by a fresh subscription (found by plan 02-26 on Linux CI)', () => {
   // Found on Linux: `git worktree add` creates `worktrees/` and `worktrees/NAME/` back to back. When inotify sees a new
   // directory it watches that directory without scanning what is already inside, so `worktrees/NAME/` is never watched
   // and its HEAD changes are never delivered (the parcel-source test below timed out on both Node versions). A
   // subscription on `worktrees/` starts from a recursive scan, so it covers the directory the first one missed.
-  async function withGitWatch(
-    options: { readonly worktreesDir: boolean },
-    body: (world: {
-      common: string;
-      worktrees: string;
-      watcher: ReturnType<typeof scriptedWatcher>;
-      seen: GitSourceEvent[];
-      stop: () => Promise<void>;
-    }) => Promise<void>,
-  ): Promise<void> {
-    const tmp = makeTempDir();
-    try {
-      const common = path.join(realPath(tmp.path), 'git');
-      const worktrees = path.join(common, 'worktrees');
-      fs.mkdirSync(options.worktreesDir ? worktrees : common, { recursive: true });
-      const watcher = scriptedWatcher();
-      const source = createParcelEventSource({ watcher: () => Promise.resolve(watcher.api) });
-      const seen: GitSourceEvent[] = [];
-      const stop = await source.subscribeGit(common, (event) => seen.push(event));
-      await body({ common, worktrees, watcher, seen, stop });
-    } finally {
-      tmp.cleanup();
-    }
-  }
-
   it('a worktrees event opens a subscription on worktrees/ that delivers a linked worktree HEAD, and the git directory subscription stays', async () => {
     await withGitWatch({ worktreesDir: true }, async ({ common, worktrees, watcher, seen, stop }) => {
       assert.deepEqual(watcher.log, ['subscribe 1']);
@@ -368,6 +372,36 @@ describe('parcel event source: a worktree directory the native watcher missed is
       watcher.deliver(common, null, eventsOf(common, 'HEAD'));
       watcher.deliver(worktrees, null, eventsOf(common, 'worktrees/w1/HEAD'));
       assert.deepEqual(seen, [{ kind: 'worktrees' }]);
+    });
+  });
+
+  it('Linux, Windows and the other platforms renew the worktrees/ subscription on a worktrees event', async () => {
+    for (const platform of ['linux', 'win32', 'freebsd'] as const) {
+      await withGitWatch({ worktreesDir: true, platform }, async ({ common, worktrees, watcher }) => {
+        watcher.deliver(common, null, eventsOf(common, 'worktrees'));
+        await settle();
+        assert.deepEqual(watcher.log, ['subscribe 1', 'subscribe 2'], platform);
+        assert.equal(watcher.subscribed[1]?.dir, worktrees, platform);
+      });
+    }
+  });
+
+  // macOS: FSEvents is recursive in the operating system, so the git directory subscription alone sees a directory created
+  // later together with its contents, and `worktrees/` (which git deletes with the last linked worktree) is never a watched
+  // root. @parcel/watcher's FSEvents backend releases a stream twice when its watched directory is deleted while it is
+  // unsubscribed (found by plan 02-26: parcel-source.test.ts died with SIGTRAP one run in six with 40 running at once).
+  it('on macOS a worktrees event opens no second subscription, and a linked worktree HEAD still arrives through the git directory one', async () => {
+    await withGitWatch({ worktreesDir: true, platform: 'darwin' }, async ({ common, watcher, seen, stop }) => {
+      for (const rel of ['worktrees', 'worktrees/w1', 'worktrees/w1/gitdir']) watcher.deliver(common, null, eventsOf(common, rel));
+      await settle();
+      assert.deepEqual(watcher.log, ['subscribe 1'], 'nothing is opened or renewed');
+
+      watcher.deliver(common, null, eventsOf(common, 'worktrees/w1/HEAD'));
+      assert.deepEqual(seen.at(-1), { kind: 'head', gitDirName: 'w1' });
+
+      await stop();
+      assert.deepEqual(watcher.log, ['subscribe 1', 'unsubscribe 1']);
+      assert.equal(watcher.live(), 0);
     });
   });
 });
@@ -517,12 +551,18 @@ describe('parcel event source over the real watcher', () => {
       runner: createRealRunner({ decide: allowAll }),
       world: { committed: { 'a.txt': 'one\n' } },
     });
-    t.after(() => repo.cleanup());
+    // The watch is stopped BEFORE the repository is deleted: on macOS, @parcel/watcher releases a stream twice when the
+    // directory it watches is deleted at about the time it is unsubscribed, and the process dies later with SIGTRAP in
+    // whatever runs next (found by plan 02-26: this test took the whole file down one run in six with 40 running at once).
+    let stopWatching: (() => Promise<void>) | undefined;
+    t.after(async () => {
+      await stopWatching?.();
+      repo.cleanup();
+    });
     const common = realPath(path.join(repo.dir, '.git'));
     const source = createParcelEventSource();
     const seen: GitSourceEvent[] = [];
-    const stop = await source.subscribeGit(common, (event) => seen.push(event));
-    t.after(() => stop());
+    stopWatching = await source.subscribeGit(common, (event) => seen.push(event));
     const has = (wanted: GitSourceEvent): boolean => seen.some((event) => JSON.stringify(event) === JSON.stringify(wanted));
 
     await repo.git(['checkout', '--quiet', '-b', 'topic']);

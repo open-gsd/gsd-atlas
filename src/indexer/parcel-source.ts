@@ -9,8 +9,13 @@
  * start (no prebuilt binary, no inotify watches left), `watchMode()` says `reconcile-only` and the Indexer keeps
  * its answers fresh through Reconcile alone.
  *
- * Two subscriptions exist: one per worktree root, and one on the common git directory. The git directory path is
- * given by the caller from Source Tree's identity; it is never read from a file of the repository (T-02-56).
+ * Two subscriptions exist: one per worktree root, and one on the common git directory (plus, where the native watcher
+ * needs it, a renewed one on that directory's `worktrees/`, see `renewsWorktrees`). The git directory path is given by
+ * the caller from Source Tree's identity; it is never read from a file of the repository (T-02-56).
+ *
+ * A watched directory must be unsubscribed BEFORE it is deleted: on macOS @parcel/watcher releases a stream twice when
+ * a directory is deleted and unsubscribed at about the same time, and the process dies later with SIGTRAP. Tests that
+ * delete a repository stop the watch first for that reason.
  */
 import { createHash } from 'node:crypto';
 import fs from 'node:fs';
@@ -50,6 +55,8 @@ export interface ParcelEventSourceOptions {
    * safe because Reconcile is authoritative.
    */
   readonly snapshotDir?: string;
+  /** The operating system the watcher runs on. Default: `process.platform`. Only `subscribeGit` looks at it. */
+  readonly platform?: NodeJS.Platform;
 }
 
 /** Ignored by the watcher in a worktree: git's own files and installed packages. */
@@ -102,6 +109,25 @@ export function createParcelEventSource(options: ParcelEventSourceOptions = {}):
     const real = realOrSelf(dir);
     return (abs) => relativeUnder(dir, abs) ?? relativeUnder(real, abs);
   };
+
+  /**
+   * Whether the git directory watch needs the extra `worktrees/` subscription of `subscribeGit`. FSEvents on macOS is
+   * recursive in the operating system and reports a directory created later together with what is put into it, so the
+   * subscription on the git directory alone sees a linked worktree's HEAD. inotify and kqueue watch directory by
+   * directory and miss it; Windows keeps the subscription it was verified with.
+   *
+   * On macOS the extra subscription is also harmful, not just redundant. `worktrees/` is a directory git deletes together
+   * with the last linked worktree, and @parcel/watcher's FSEvents backend has a native defect with a watched directory
+   * that is deleted: its callback releases the stream by itself when it is told the root is gone, while `unsubscribe()`
+   * releases the same stream from a worker thread. If the two overlap the stream is released twice and the heap is
+   * corrupted, so the process dies later with SIGTRAP, SIGSEGV or SIGBUS in code that has nothing to do with the
+   * watcher. `parcel-source.test.ts` died that way about one run in six when 40 ran at once (plan 02-26): its teardown
+   * deleted the repository, which deletes `worktrees/` (reported as removed in most runs), and then stopped the watch. The
+   * defect cannot be fixed or worked around from here (no signal says the callback is done, and a wait would need a
+   * timeout), so a watched directory must be unsubscribed BEFORE it is deleted, and the product does not open a watch
+   * on a directory that git deletes on its own where it can do without.
+   */
+  const renewsWorktrees = (options.platform ?? process.platform) !== 'darwin';
 
   const problemOf = (error: Error): 'error' | 'overflow' => (OVERFLOW.test(error.message) ? 'overflow' : 'error');
 
@@ -191,7 +217,7 @@ export function createParcelEventSource(options: ParcelEventSourceOptions = {}):
         else await next.unsubscribe();
       };
       const renew = (): void => {
-        if (!open) return;
+        if (!open || !renewsWorktrees) return;
         if (renewing !== undefined) {
           renewAgain = true;
           return;
