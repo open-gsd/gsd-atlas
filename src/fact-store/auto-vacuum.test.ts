@@ -23,17 +23,17 @@ describe('a new store file', () => {
   for (const driver of ['node:sqlite', 'better-sqlite3'] as const satisfies readonly DriverName[]) {
     it(`is created with incremental auto_vacuum in WAL mode (${driver})`, async (t) => {
       const tmp = makeTempDir();
-      t.after(() => {
-        tmp.cleanup();
-      });
       const dir = path.join(tmp.path, 'store');
       const store = await openFactStore(
         dir,
         { resolver: noResolver, clock: new FakeClock(0), gitHas: () => Promise.resolve(true) },
         { driver },
       );
+      // One hook, in this order: `t.after` hooks run in the order they were registered, and Windows cannot remove a
+      // directory that holds an open database (found by plan 02-26 on Windows CI: EPERM when the removal came first).
       t.after(async () => {
         await store.close();
+        tmp.cleanup();
       });
       const db = await openDatabase(path.join(dir, 'facts.db'), { driver, readOnly: true });
       try {

@@ -104,7 +104,9 @@ function resolveThroughExisting(target: string): string {
     rest.unshift(path.basename(existing));
     existing = parent;
   }
-  return path.join(fs.realpathSync(existing), ...rest);
+  // `native`: on Windows the runner's temp directory is spelled with an 8.3 short name (`RUNNER~1`), which only the native
+  // call expands, so the checkout path matches the one every other caller gets from `realpath` (found by plan 02-26 on Windows CI).
+  return path.join(fs.realpathSync.native(existing), ...rest);
 }
 
 function isInside(child: string, parent: string): boolean {
@@ -139,7 +141,7 @@ export async function fetchCorpus(options: FetchCorpusOptions): Promise<FetchedC
   const entry = pinnedEntry(readManifest(options.manifest), options.id);
 
   const destination = resolveThroughExisting(options.destination);
-  if (isInside(destination, fs.realpathSync(repoRoot))) {
+  if (isInside(destination, fs.realpathSync.native(repoRoot))) {
     throw new CorpusFetchError(
       'destination_inside_repo',
       `${options.destination} is inside the repository working tree (${repoRoot}); a corpus checkout must never land in a checkout`,

@@ -173,8 +173,10 @@ describe('atlas_status reports state, not benefit or content', () => {
 
     assert.equal(envelope.ok, true, JSON.stringify(envelope.diagnostics));
     const serialized = JSON.stringify(envelope.data);
-    assert.equal(serialized.includes(h.dir), true, 'the repository root is the one path it names');
-    const withoutRoot = serialized.replaceAll(h.dir, '<root>');
+    // As JSON writes it: a Windows path has its backslashes doubled (found by plan 02-26 on Windows CI).
+    const rootAsJson = JSON.stringify(h.dir).slice(1, -1);
+    assert.equal(serialized.includes(rootAsJson), true, 'the repository root is the one path it names');
+    const withoutRoot = serialized.replaceAll(rootAsJson, '<root>');
     for (const word of ['tokens', 'saved', 'avoided', 'calls']) assert.equal(withoutRoot.includes(word), false, word);
     for (const leak of ['hiddenSourceMarker', 'secret', 'failed.ts', 'old-store', '.ts']) assert.equal(withoutRoot.includes(leak), false, leak);
     assert.equal(withoutRoot.includes('/'), false, 'no path other than the repository root appears');

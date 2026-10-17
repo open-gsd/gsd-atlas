@@ -67,7 +67,8 @@ export const SOURCE_SET_WORLD: SourceTreeWorld = {
     'bin/blob.ts': 'MZ\0\0binary payload\n',
     'lfs/pointer.ts': `version https://git-lfs.github.com/spec/v1\noid sha256:${'a'.repeat(64)}\nsize 12345\n`,
     'big/huge.ts': `${'y'.repeat(20000)}\n`,
-    'late/nul.ts': `${'x'.repeat(9000)}\0\n`,
+    // Not named `nul.ts`: NUL is a reserved device name on Windows, where git cannot add such a file (found by plan 02-26).
+    'late/nulbyte.ts': `${'x'.repeat(9000)}\0\n`,
     'gone/deleted.ts': 'export const gone = 1;\n',
   },
   working: {
@@ -325,7 +326,7 @@ export function defineSourceTreeContract(label: string, make: MakeSourceTree): v
         withTree(SOURCE_SET_WORLD, async ({ tree, worktree }) => {
           const { files, skipped } = await run(tree, worktree);
           for (const dropped of ['bin/blob.ts', 'lfs/pointer.ts', 'big/huge.ts']) assert.ok(!files.has(dropped), dropped);
-          assert.ok(files.has('late/nul.ts'), 'only the first 8 KB is inspected for NUL');
+          assert.ok(files.has('late/nulbyte.ts'), 'only the first 8 KB is inspected for NUL');
           assert.deepEqual(
             coded(skipped).filter((c) => /^(binary|lfs_pointer|source_too_large)/.test(c)),
             ['binary_skipped:bin/blob.ts', 'lfs_pointer_skipped:lfs/pointer.ts', 'source_too_large:big/huge.ts'],
@@ -340,7 +341,7 @@ export function defineSourceTreeContract(label: string, make: MakeSourceTree): v
           const second = await run(tree, worktree);
           const expectedKeep = [
             'gen/unset.ts',
-            'late/nul.ts',
+            'late/nulbyte.ts',
             'lib/b.cjs',
             'src/Upper.TS',
             'src/a.ts',

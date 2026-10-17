@@ -432,10 +432,12 @@ describe('Host: status panels', () => {
 describe('Host: tenant isolation (T-02-68)', () => {
   it('a repository whose store cannot open gets its own error while the other tenant keeps answering', async (t) => {
     const stores = makeTempDir();
+    const world = await makeWorld(t, { host: { config: { store: { dir: stores.path } } } });
+    // Registered after the world's hook on purpose: `t.after` hooks run in registration order, and the stores directory
+    // holds the open databases of the world's Host, which Windows will not let go of until the Host is closed.
     t.after(() => {
       stores.cleanup();
     });
-    const world = await makeWorld(t, { host: { config: { store: { dir: stores.path } } } });
     const other = await createTempGitRepo({ runner: setupRunner, world: { committed: { 'b.toy': 'fn betaOnly {\n}\n' } } });
     t.after(() => {
       other.cleanup();
@@ -573,10 +575,11 @@ describe('Host: configuration reaches the tenant (T-02-67)', () => {
 
   it('config.store.dir places the store at that directory plus the store id', async (t) => {
     const stores = makeTempDir();
+    const world = await makeWorld(t, { host: { config: { store: { dir: stores.path } } } });
+    // After the world's hook, which closes the Host and so the databases in this directory (see the isolation test).
     t.after(() => {
       stores.cleanup();
     });
-    const world = await makeWorld(t, { host: { config: { store: { dir: stores.path } } } });
     await built(world);
     const panel = await world.ask('status', { repo: world.repo.dir });
     const location = (panel.data as { tenant: { location: { kind: string; dir: string } } }).tenant.location;

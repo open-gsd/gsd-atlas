@@ -275,21 +275,38 @@ describe('follower overlay: the fresh port', () => {
     const hold = new Promise<void>((resolve) => {
       release = resolve;
     });
+    // The clock moves only once the parse is the thing still outstanding, and the test waits for the abandoned parse to
+    // finish before it ends. Without both, the hashing git process of a slow Windows runner was still running in the
+    // repository when the test removed it (EPERM, found by plan 02-26 on Windows CI).
+    let reached: () => void = () => {};
+    const extractReached = new Promise<void>((resolve) => {
+      reached = resolve;
+    });
+    let finished: () => void = () => {};
+    const extractFinished = new Promise<void>((resolve) => {
+      finished = resolve;
+    });
     const slow: ModuleHost = {
       extensions: () => d.modules.extensions(),
       extract: async (rel, text, hash) => {
+        reached();
         await hold;
-        return d.modules.extract(rel, text, hash);
+        try {
+          return await d.modules.extract(rel, text, hash);
+        } finally {
+          finished();
+        }
       },
       dispose: () => Promise.resolve(),
     };
     const clock: Clock = fake;
 
     const pending = d.port({ modules: slow, clock }).ensureFresh(world.repo.dir, ['a.toy'], 2000);
-    await new Promise((resolve) => setImmediate(resolve));
+    await extractReached;
     await fake.advance(2000);
     const outcome = await pending;
     release();
+    await extractFinished;
     await new Promise((resolve) => setTimeout(resolve, 50));
 
     assert.equal(outcome.complete, false);
