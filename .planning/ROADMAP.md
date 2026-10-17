@@ -90,7 +90,7 @@ Plans:
   5. Agents and developers get one answer surface: `code_find`, `code_refs`, `code_context` and `code_impact` return ranked, cited results (inline matched line text, `budget_tokens`, `more` cursor, server-side output ceiling) in the full envelope; the CLI and MCP return identical JSON for the same request; injection text in a doc comment returns fenced in `untrusted_text`; `atlas_status` and `lang_list` report freshness, health, policy mode and tiers; the default MCP profile is about 6 tools; the stateless stdio server survives a restart between two tool calls; a two-tenant smoke test passes; `busy` with `retry_after` appears under saturation; `gsd-atlas init` registers MCP at user scope only; and `gsd-atlas status` shows metrics panels with no source text, paths, symbols or prompts, a metrics write failure never blocking an answer.
   6. The four ADRs scheduled for this phase (worktree-lifecycle, query-and-policy, mcp-contract, value-dashboard) are ratified, and the two Phase 1 research-gap amendments D-16 assigned here are applied as dated sections: writer contention and leader/follower in worktree-lifecycle, and metrics migrations in value-dashboard (FND-12).
 
-**Plans:** 27/28 plans executed
+**Plans:** 28/28 plans executed
 
 Plans:
 **Wave 1**
@@ -135,7 +135,7 @@ Plans:
 - [x] 02-27-PLAN.md — Follower per-request in-memory overlay of `fresh` paths (STO-08, IDX-04)
 
 **Wave 8** *(blocked on Wave 7 completion)*
-- [ ] 02-26-PLAN.md — Measured corpus gates, freshness gate and a green three-OS CI run (LNG-02, LNG-05, STO-05, STO-06, IDX-01)
+- [x] 02-26-PLAN.md — Measured corpus gates, freshness gate and a green three-OS CI run (LNG-02, LNG-05, STO-05, STO-06, IDX-01)
 
 ### Phase 3: TypeScript Module and MVP Eval
 
@@ -271,7 +271,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Foundations and Walking Skeleton | 20/20 | Complete    | 2026-10-16 |
-| 2. Grammar Tier, Store and stdio Host | 27/28 | In Progress | - |
+| 2. Grammar Tier, Store and stdio Host | 28/28 | In Progress | - |
 | 3. TypeScript Module and MVP Eval | 0/TBD | Not started | - |
 | 4. Host Hardening | 0/TBD | Not started | - |
 | 5. Swift Module | 0/TBD | Not started | - |
