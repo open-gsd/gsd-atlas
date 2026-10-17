@@ -3,16 +3,16 @@ gsd_state_version: "1.0"
 current_phase: 02
 current_phase_name: Grammar Tier, Store and stdio Host
 status: executing
-stopped_at: Completed 02-22-PLAN.md
-last_updated: "2026-10-17T00:25:53.449Z"
+stopped_at: Completed 02-23-PLAN.md
+last_updated: "2026-10-17T01:02:17.192Z"
 last_activity: 2026-10-17
-last_activity_desc: Completed 02-22 CLI tool commands, exit codes and bin wiring
-state_head: c000e43cceab7c63905f5de032a1461805ca9d2f
+last_activity_desc: Completed 02-23 stateless stdio MCP server
+state_head: 9c3ffe3cbd30d8a906aab5b74773403fbf45ca1d
 progress:
   total_phases: 9
   completed_phases: 1
   total_plans: 48
-  completed_plans: 42
+  completed_plans: 43
   percent: 11
 ---
 
@@ -28,9 +28,9 @@ See: .planning/PROJECT.md (updated 2026-10-15)
 ## Current Position
 
 Phase: 02 (Grammar Tier, Store and stdio Host) — EXECUTING
-Plan: 22 of 28 complete (plans 02-01 to 02-22 complete; they ran out of order, next is the lowest-numbered incomplete plan, 02-23)
+Plan: 23 of 28 complete (plans 02-01 to 02-23 complete; they ran out of order, next is the lowest-numbered incomplete plan, 02-24)
 Status: Ready to execute
-Last activity: 2026-10-17 — Completed 02-22 (CLI tool commands find, refs, context, impact, health, build, maintain, status; exit codes 0 to 3; bin supplies io.init and io.cwd; CLI-layer walking skeleton; src/cli, src/bin/gsd-atlas.ts, scripts/cli-e2e.test.ts)
+Last activity: 2026-10-17 — Completed 02-23 (stateless stdio MCP server on @modelcontextprotocol/server 2.3.1: six shared read-only tools, stdout guard, lazy Host, restart and EOF tests, installed-package session; Indexer late-subscription fix; src/mcp-shim, src/bin/gsd-atlas-mcp.ts, scripts/mcp-stdio.test.ts)
 
 Progress: [█░░░░░░░░░] 11%
 
@@ -46,7 +46,7 @@ Progress: [█░░░░░░░░░] 11%
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 01 | 20 | - | - |
-| 02 | 22 of 28 | - | - |
+| 02 | 23 of 28 | - | - |
 
 **Recent Trend:**
 - Last 5 plans: -
@@ -79,6 +79,7 @@ Progress: [█░░░░░░░░░] 11%
 | Phase 02 P19 | 16 min | 3 tasks | 19 files |
 | Phase 02 P20 | 18 min | 3 tasks | 27 files |
 | Phase 02 P22 | 11 min | 3 tasks | 9 files |
+| Phase 02 P23 | 33 min | 3 tasks | 13 files |
 
 ## Accumulated Context
 
@@ -158,6 +159,11 @@ Recent decisions affecting current work:
 - [Phase 02]: [02-22] exitCodeFor precedence is usage (invalid_args, module_not_found), then lease_held or busy, then any other failure, then ok; maintain takes its task only as a positional (default all) and --full only with compact or all — A busy or lease_held diagnostic must win over other errors in the same envelope so scripts can retry; the plan's flag list named task as a positional, so no --task flag exists
 - [Phase 02]: [02-22] The CLI prints the Host envelope untouched (status included): overflow:true with the largest finite edge and tokens.label estimate reach scripts as the Metrics report carries them; stderr reasons are one sanitized line per diagnostic and busy repeats retry_after — QRY-04 prohibition: no change or filtering of the envelope between the Host and the printed JSON; MET-02 honesty about overflow and estimates
 - [Phase 02]: [02-22] gsd-atlas status shows zero counts until plan 02-28 wires Metrics.record (no production caller yet); health returns the atlas_status envelope and carries no metrics panels — Observed after build and find: answers.total 0, recording true; the display, schema and estimate labels are complete, the producers belong to 02-28
+- [Phase 02]: [02-23] The MCP bin imports the shim index first and the shim index imports the stdout guard first, instead of the bin importing the guard file: lint D-12 forbids a deep import across modules and module evaluation order keeps the guard the first code that runs
+- [Phase 02]: [02-23] runMcpShim waits for every Host call it started before it returns at end of input, with no timeout: the bin disposes the Host right after, and a call still building a tenant would leak watchers (a new wall-clock number needs approval in 02-CONSTANTS.md)
+- [Phase 02]: [02-23] The Host is composed on the first tool call (lazy HostClient in the bin), so initialize and tools/list touch no store, watcher, grammar or user directory; importing the guard patches the importing process, so only a child process may load it in tests
+- [Phase 02]: [02-23] Indexer cover, watchGitDir and attach close a subscription that finishes opening after stop() and open none once stopped: stop() had nothing to close while subscribe was pending, so a native watcher kept the process alive after a quick end of input (found by the MCP EOF tests)
+- [Phase 02]: [02-23] SDK 2.3.1 serveStdio accepts a custom transport and aborts requests in flight at stdin end; the end of input is observed by subclassing StdioServerTransport.close; host-client re-exports the Host, so shim startup still loads the Host module graph (A27 thin relay is a Phase 4 concern)
 
 ### Pending Todos
 
@@ -184,6 +190,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-10-17T00:25:53.386Z
-Stopped at: Completed 02-22-PLAN.md
+Last session: 2026-10-17T01:02:17.133Z
+Stopped at: Completed 02-23-PLAN.md
 Resume file: None

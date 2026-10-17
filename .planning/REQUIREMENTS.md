@@ -62,7 +62,7 @@ Scope is the full PRD 1.0 (M0-M6), with M4 split into SDK facts, agent integrati
 - [x] **QRY-03**: `atlas_status` and `lang_list` report freshness, health, policy mode and active tiers
 - [ ] **QRY-04**: The CLI and MCP tools return identical JSON for the same request; the CLI uses JSON on stdout, reasons on stderr and exit codes 0/1/2/3
 - [ ] **QRY-05**: Repo- and package-derived text is fenced with a random nonce and every derived field is normalized; injection text in a doc comment returns fenced
-- [ ] **QRY-06**: The default MCP tool profile is about 6 tools; the rest are opt-in or deferred
+- [x] **QRY-06**: The default MCP tool profile is about 6 tools; the rest are opt-in or deferred
 - [ ] **QRY-07**: `explain` reports why atlas said something (extractor, tier, grammar version, resolution context, overlay)
 
 ### Host and Transport (HST)
@@ -233,7 +233,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | QRY-03 | Phase 2 | Complete |
 | QRY-04 | Phase 2 | Pending |
 | QRY-05 | Phase 2 | Pending |
-| QRY-06 | Phase 2 | Pending |
+| QRY-06 | Phase 2 | Complete |
 | QRY-07 | Phase 3 | Pending |
 | HST-01 | Phase 2 | Complete |
 | HST-02 | Phase 2 | Pending |
