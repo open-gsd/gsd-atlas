@@ -198,7 +198,14 @@ export class McpProcess {
   /** End input and wait for the exit, as the clean shutdown path. */
   async shutdown(): Promise<CommandResult> {
     this.endInput();
-    return within(EXIT_CEILING_MS, 'the server to exit after end of input', this.exit());
+    try {
+      return await within(EXIT_CEILING_MS, 'the server to exit after end of input', this.exit());
+    } catch (error) {
+      // A hung server: kill it so its own stderr can say where it was, and report that with the failure.
+      this.kill();
+      const killed = await this.exit();
+      throw new Error(`${error instanceof Error ? error.message : String(error)}; stderr: ${Buffer.from(killed.stderr).toString('utf8').trim()}`);
+    }
   }
 }
 
@@ -302,12 +309,165 @@ describe('gsd-atlas-mcp over stdio: the default profile and a first tool call', 
     await server.shutdown();
   });
 
-  it('closing stdin ends the process with exit code 0', async (t) => {
+  it('EOF: closing stdin after initialize ends the process with exit code 0', async (t) => {
     const fixture = await makeFixture(t);
     const server = fixture.start();
     await server.handshake();
     const exit = await server.shutdown();
     assert.equal(exit.exitCode, 0, Buffer.from(exit.stderr).toString('utf8'));
     assert.equal(exit.signal, null);
+  });
+});
+
+const NOISE_CHILD = path.resolve(import.meta.dirname, 'test-helpers', 'stdout-noise-child.ts');
+const FRAME = '{"jsonrpc":"2.0","method":"frame"}\n';
+
+/** Every stdout line of a finished or running server must be one JSON-RPC 2.0 message object. */
+function assertFramed(server: McpProcess): void {
+  assert.ok(server.lines.length > 0, 'the server printed at least one frame');
+  for (const line of server.lines) {
+    let parsed: unknown;
+    assert.doesNotThrow(() => {
+      parsed = JSON.parse(line);
+    }, `a stdout line is not JSON: ${JSON.stringify(line)}`);
+    assert.equal(typeof parsed, 'object', `a stdout line is not an object: ${JSON.stringify(line)}`);
+    assert.equal((parsed as RpcMessage).jsonrpc, '2.0', `a stdout line is not JSON-RPC 2.0: ${JSON.stringify(line)}`);
+  }
+}
+
+describe('stdout hygiene (T-02-79, research Pitfall 8)', () => {
+  for (const mode of ['once', 'twice', 'reload']) {
+    it(`framing: with the guard loaded (${mode}), direct writes and console output reach stderr, and the protocol stream reaches stdout`, async () => {
+      const result = await runner.run({ executable: process.execPath, args: [NOISE_CHILD, mode], cwd: import.meta.dirname });
+      assert.equal(result.spawnError, undefined);
+      const stdout = Buffer.from(result.stdout).toString('utf8');
+      const stderr = Buffer.from(result.stderr).toString('utf8');
+      assert.equal(result.exitCode, 0, stderr);
+      assert.equal(stdout, FRAME, 'stdout holds the protocol frame and nothing else');
+      assert.match(stderr, /noise-direct/);
+      assert.match(stderr, /noise-console/);
+    });
+  }
+
+  it('framing: every line the real server prints is a JSON-RPC message', async (t) => {
+    const fixture = await makeFixture(t);
+    const server = fixture.start();
+    await server.handshake();
+    await server.listTools();
+    await server.callTool('code_find', { name: 'load', repo: fixture.repo.dir });
+    await server.callTool('code_find', { name: 'x', repo: fixture.outside });
+    await server.shutdown();
+    assertFramed(server);
+    assert.equal(server.lines.length, server.messages.length, 'no line failed to parse');
+  });
+
+  it('trace-warnings: with NODE_OPTIONS adding --trace-warnings the framing still holds', async (t) => {
+    const fixture = await makeFixture(t);
+    const server = fixture.start(fixture.outside, { NODE_OPTIONS: '--trace-warnings --pending-deprecation' });
+    await server.handshake();
+    await server.listTools();
+    await server.callTool('code_find', { name: 'load', repo: fixture.repo.dir });
+    const exit = await server.shutdown();
+    assert.equal(exit.exitCode, 0, Buffer.from(exit.stderr).toString('utf8'));
+    assertFramed(server);
+  });
+});
+
+/** Every path under `dir`, relative, sorted: a listing that notices anything created or removed. */
+function listing(dir: string): string[] {
+  return fs.existsSync(dir) ? fs.readdirSync(dir, { recursive: true }).map(String).sort() : [];
+}
+
+describe('stdout hygiene: source layout', () => {
+  const srcDir = path.resolve(import.meta.dirname, '..', 'src');
+  const firstImport = (file: string): string | undefined => /^import\b[^;]*;/m.exec(fs.readFileSync(file, 'utf8'))?.[0];
+
+  it('the bin\'s first import is the MCP shim, whose first import is the stdout guard (it runs before any other module code)', () => {
+    assert.match(firstImport(path.join(srcDir, 'bin', 'gsd-atlas-mcp.ts')) ?? '', /from '\.\.\/mcp-shim\/index\.ts'/);
+    assert.match(firstImport(path.join(srcDir, 'mcp-shim', 'index.ts')) ?? '', /from '\.\/stdout-guard\.ts'/);
+  });
+
+  it('the guard assigns process.stdout.write and contains no console token', () => {
+    const guard = fs.readFileSync(path.join(srcDir, 'mcp-shim', 'stdout-guard.ts'), 'utf8');
+    assert.match(guard, /\.write = /);
+    assert.doesNotMatch(guard, /console/);
+  });
+});
+
+describe('startup does no heavy work and side effects', () => {
+  it('lazy start: initialize and tools/list are answered with an unwritable user directory and home, in a directory that is not a repository, creating nothing', async (t) => {
+    const fixture = await makeFixture(t, { build: false });
+    // A regular file stands where the directories would be: they cannot be created or read on any platform.
+    const blocker = path.join(fixture.tmp.path, 'blocker');
+    fs.writeFileSync(blocker, 'a file, not a directory\n');
+    const blockedHome = path.join(blocker, 'home');
+    const env = {
+      HOME: blockedHome,
+      USERPROFILE: blockedHome,
+      XDG_CONFIG_HOME: path.join(blocker, 'config'),
+      XDG_CACHE_HOME: path.join(blocker, 'cache'),
+      GSD_ATLAS_USER_DIR: path.join(blocker, 'user'),
+    };
+    const watched = [fixture.outside, fixture.tmp.path, fixture.repo.dir];
+    const before = watched.map(listing);
+    const server = fixture.start(fixture.outside, env);
+    const init = await server.handshake();
+    assert.equal((init.result as { serverInfo: { name: string } }).serverInfo.name, 'gsd-atlas');
+    const tools = await server.listTools();
+    assert.equal(tools.length, 6);
+    const exit = await server.shutdown();
+    assert.equal(exit.exitCode, 0, Buffer.from(exit.stderr).toString('utf8'));
+    assert.deepEqual(watched.map(listing), before, 'initialize and tools/list created nothing');
+    assert.ok(!fs.existsSync(path.join(fixture.repo.dir, '.git', 'gsd-atlas')), 'no store was created inside the repository');
+  });
+
+  it('EOF: a stdin closed before any byte exits 0 with empty stdout', async (t) => {
+    const fixture = await makeFixture(t, { build: false });
+    const server = fixture.start();
+    server.endInput();
+    const exit = await within(EXIT_CEILING_MS, 'the server to exit', server.exit());
+    assert.equal(exit.exitCode, 0, Buffer.from(exit.stderr).toString('utf8'));
+    assert.deepEqual(server.lines, []);
+  });
+});
+
+describe('errors stay inside the protocol', () => {
+  it('not_a_repo: a repo that is not a repository gives the not_a_repo envelope as an error result, and the server keeps answering', async (t) => {
+    const fixture = await makeFixture(t, { build: false });
+    const server = fixture.start();
+    await server.handshake();
+    const call = await server.callTool('code_find', { name: 'x', repo: fixture.outside });
+    assert.equal(call.result.isError, true);
+    assert.equal(call.envelope.ok, false);
+    assert.equal(call.envelope.diagnostics[0]?.code, 'not_a_repo');
+    assert.equal((await server.listTools()).length, 6, 'the server keeps running');
+    const exit = await server.shutdown();
+    assert.equal(exit.exitCode, 0, Buffer.from(exit.stderr).toString('utf8'));
+  });
+
+  it('invalid arguments: an unknown property and a missing name are refused by the schema, and the server keeps answering', async (t) => {
+    const fixture = await makeFixture(t);
+    const server = fixture.start();
+    await server.handshake();
+    for (const args of [{ name: 'load', surprise: true, repo: fixture.repo.dir }, { repo: fixture.repo.dir }]) {
+      const reply = await server.request('tools/call', { name: 'code_find', arguments: args });
+      const refused = reply.error !== undefined || (reply.result as { isError?: boolean } | undefined)?.isError === true;
+      assert.ok(refused, `expected a refusal for ${JSON.stringify(args)}, got ${JSON.stringify(reply)}`);
+    }
+    const ok = await server.callTool('code_find', { name: 'load', repo: fixture.repo.dir });
+    assert.equal(ok.envelope.ok, true);
+    await server.shutdown();
+  });
+
+  it('a call to an unknown tool is refused, not served', async (t) => {
+    const fixture = await makeFixture(t, { build: false });
+    const server = fixture.start();
+    await server.handshake();
+    for (const name of ['build', 'maintain', 'lang_test']) {
+      const reply = await server.request('tools/call', { name, arguments: { repo: fixture.repo.dir } });
+      const refused = reply.error !== undefined || (reply.result as { isError?: boolean } | undefined)?.isError === true;
+      assert.ok(refused, `${name} is not an MCP tool, got ${JSON.stringify(reply)}`);
+    }
+    await server.shutdown();
   });
 });
