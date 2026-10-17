@@ -592,6 +592,55 @@ export function defineSourceTreeContract(label: string, make: MakeSourceTree): v
       );
     });
 
+    describe('unignoredPaths', () => {
+      const sorted = (set: ReadonlySet<string>): string[] => [...set].sort();
+
+      it(
+        'categories: tracked, edited, deleted-tracked and untracked paths are returned; ignored files, files in ignored directories, directories and missing paths are not',
+        withTree(CONTRACT_WORLD, async ({ tree, worktree }) => {
+          const asked = [
+            'a.txt',
+            'dir/b.ts',
+            'sp ace.txt',
+            'keep/deleted.txt',
+            'new.txt',
+            'deep/er/c.txt',
+            'build/out.js',
+            'secret.log',
+            'dir',
+            'deep',
+            'build',
+            'no/such.txt',
+          ];
+          const listed = await tree.unignoredPaths(worktree, asked);
+          assert.deepEqual(sorted(listed), ['a.txt', 'deep/er/c.txt', 'dir/b.ts', 'keep/deleted.txt', 'new.txt', 'sp ace.txt']);
+        }),
+      );
+
+      it(
+        'an empty list is an empty set, a duplicate is asked once, the order does not matter and a name that was not asked for is never returned',
+        withTree(CONTRACT_WORLD, async ({ tree, worktree }) => {
+          assert.equal((await tree.unignoredPaths(worktree, [])).size, 0);
+          assert.deepEqual(sorted(await tree.unignoredPaths(worktree, ['a.txt', 'a.txt', 'a.txt'])), ['a.txt']);
+          const forward = await tree.unignoredPaths(worktree, ['a.txt', 'new.txt', 'secret.log']);
+          const backward = await tree.unignoredPaths(worktree, ['secret.log', 'new.txt', 'a.txt']);
+          assert.deepEqual(sorted(forward), sorted(backward));
+          assert.deepEqual(sorted(forward), ['a.txt', 'new.txt']);
+          assert.deepEqual(sorted(await tree.unignoredPaths(worktree, ['dir/b.ts'])), ['dir/b.ts']);
+        }),
+      );
+
+      it(
+        'refused paths: an absolute path, a parent segment, NUL and an empty name reject with invalid_argument, even beside good names',
+        withTree(CONTRACT_WORLD, async ({ tree, worktree }) => {
+          for (const bad of ['../outside.ts', '/abs/path.ts', 'a/../../b.ts', 'a\0b', '']) {
+            await assert.rejects(() => tree.unignoredPaths(worktree, [bad]), { code: 'invalid_argument' }, JSON.stringify(bad));
+            await assert.rejects(() => tree.unignoredPaths(worktree, ['a.txt', bad]), { code: 'invalid_argument' }, JSON.stringify(bad));
+          }
+        }),
+      );
+    });
+
     describe('worktrees', () => {
       it(
         'lists the main worktree of a one-worktree repository on its short branch name, attached, with its HEAD',

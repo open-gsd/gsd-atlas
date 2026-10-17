@@ -27,6 +27,18 @@ export function escapesWorktree(rel: string): boolean {
   return rel.split(/[\\/]/).includes('..');
 }
 
+/**
+ * Rejects, before any git run, a path that is not a plain repo-relative one (see {@link escapesWorktree}) with
+ * `invalid_argument`. The real tree and the fake both run it in `unignoredPaths`, so the refusal agrees.
+ */
+export function assertRepoRelative(paths: readonly string[]): void {
+  for (const rel of paths) {
+    if (escapesWorktree(rel)) {
+      throw new SourceTreeError('invalid_argument', `a path must be repo-relative, with no NUL, no .. segment and not empty: ${JSON.stringify(rel.slice(0, 80))}`);
+    }
+  }
+}
+
 /** A git object id: lowercase hex, 40 characters (SHA-1) or 64 (SHA-256). Never assume 40. */
 const OBJECT_ID = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
 

@@ -53,10 +53,17 @@ const GIT_FILTER_KEY = /^filter\.[^=\s]+\.(clean|smudge|process|required)$/;
  * listing the builder tests exercise). They are written out by value: the gate does not import the builder.
  * A Map of Sets, so a subcommand named `constructor` cannot resolve to an inherited member.
  *
+ * Each token is an exact member. The short forms stay denied on purpose: `ls-files -c` and `-o` are the short
+ * spellings of `--cached` and `--others`, and a `-c` after the subcommand must never read like the global
+ * `-c key=value` config override. No pathspec option is allowed anywhere (`--`, `--pathspec-from-file`,
+ * `--pathspec-file-nul`, and the global `--literal-pathspecs` family are all outside every set): the ignore check
+ * sends git no name at all, it runs one fixed `ls-files -z --cached --others --exclude-standard` and filters the
+ * listing in process (plan 02-46). `git ls-files` has no `--pathspec-from-file` in any case.
+ *
  * Adding an option here is a reviewed change; the command-runner ADR amendment records the sets.
  */
 const GIT_ALLOWED_OPTIONS: ReadonlyMap<string, ReadonlySet<string>> = new Map([
-  ['ls-files', new Set(['-z', '-s', '--others', '--exclude-standard'])],
+  ['ls-files', new Set(['-z', '-s', '--others', '--exclude-standard', '--cached'])],
   ['ls-tree', new Set(['-r', '-z', '--full-tree', '--name-only'])],
   ['hash-object', new Set(['--stdin-paths'])],
   ['cat-file', new Set(['-e', '--batch', '--batch-check'])],

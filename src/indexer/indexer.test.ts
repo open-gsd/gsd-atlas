@@ -49,10 +49,12 @@ class SpyClock extends FakeClock {
 interface TreeLog {
   readonly hashPaths: string[][];
   snapshots: number;
+  /** The paths of each `unignoredPaths` call: the ignore verdicts the Indexer asked for. */
+  readonly unignored: string[][];
   readonly readTexts: string[];
 }
 
-const newLog = (): TreeLog => ({ hashPaths: [], snapshots: 0, readTexts: [] });
+const newLog = (): TreeLog => ({ hashPaths: [], snapshots: 0, unignored: [], readTexts: [] });
 
 /** Wraps a Source Tree so a test can see which paths were hashed and read. */
 function recordingTree(log: TreeLog): (tree: SourceTree) => SourceTree {
@@ -66,6 +68,10 @@ function recordingTree(log: TreeLog): (tree: SourceTree) => SourceTree {
       return tree.hashPaths(worktree, paths);
     },
     sourceSet: (worktree, files, options) => tree.sourceSet(worktree, files, options),
+    unignoredPaths: (worktree, paths) => {
+      log.unignored.push([...paths]);
+      return tree.unignoredPaths(worktree, paths);
+    },
     worktrees: () => tree.worktrees(),
     readText: (worktree, path, options) => {
       log.readTexts.push(path);
@@ -355,6 +361,7 @@ describe('Indexer events: the coalescing queue and the event source', () => {
     log.hashPaths.length = 0;
     log.readTexts.length = 0;
     const snapshotsAfterBuild = log.snapshots;
+    log.unignored.length = 0;
 
     world.repo.write('skip.toy', 'fn Secret {\n}\nfn Another {\n}\n');
     world.repo.write('b.toy', 'fn helper {\n}\nfn marker {\n}\n');
@@ -365,16 +372,18 @@ describe('Indexer events: the coalescing queue and the event source', () => {
 
     assert.deepEqual(log.hashPaths, [['b.toy']], 'hashPaths hashes what it is asked, so the ignored path is dropped before it');
     assert.ok(!log.readTexts.includes('skip.toy'));
-    assert.equal(log.snapshots, snapshotsAfterBuild + 1, 'one snapshot decided that the unknown path is ignored');
+    assert.equal(log.snapshots, snapshotsAfterBuild, 'the ignore check never takes a snapshot (plan 02-46)');
+    assert.deepEqual(log.unignored, [['skip.toy']], 'one listing decided that the unknown path is ignored');
     assert.equal((await world.reader.find('Secret')).data.length, 0);
 
-    // The verdict is remembered: the same ignored path costs no second snapshot.
+    // The verdict is remembered: the same ignored path costs no second listing.
     manual.emit(world.dir, 'skip.toy');
     manual.emit(world.dir, 'c.toy');
     await world.clock.advance(debounceMs);
     await eventually(async () => log.hashPaths.length === 2, 'the second batch to be hashed');
     assert.deepEqual(log.hashPaths[1], ['c.toy']);
-    assert.equal(log.snapshots, snapshotsAfterBuild + 1);
+    assert.equal(log.snapshots, snapshotsAfterBuild);
+    assert.deepEqual(log.unignored, [['skip.toy']], 'the remembered verdicts answered the second batch');
   });
 
   it('events arriving in reverse path order are hashed in code-unit path order', async (t) => {

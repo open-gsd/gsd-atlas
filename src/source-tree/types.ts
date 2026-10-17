@@ -165,6 +165,18 @@ export interface SourceTree {
    */
   hashPaths(worktree: string, paths: readonly string[]): Promise<HashPathsResult>;
   /**
+   * The subset of `paths` (repo-relative POSIX), by exact name, that git lists as tracked or as untracked and not
+   * ignored: the one thing the Indexer needs to know before it hashes a watcher path (T-02-14). The real tree runs
+   * ONE `git ls-files -z --cached --others --exclude-standard` with no pathspec and nothing on stdin, and filters
+   * the listing in process by string equality, so no name a repository or a watcher supplied ever reaches git (a
+   * name can never be read as an option, a pattern or a magic pathspec). It says nothing about whether the file
+   * exists or what kind it is: a gitlink is named by the listing, and so is a nested repository (as `dir/`, which
+   * no file is named), so the caller tests that the path is a regular file. At most one git run, none for an empty
+   * list. A path that is not repo-relative (absolute, a `..` segment, NUL, empty) rejects with `invalid_argument`
+   * before git starts. A failed listing rejects with `git_failed`.
+   */
+  unignoredPaths(worktree: string, paths: readonly string[]): Promise<ReadonlySet<string>>;
+  /**
    * The files of `files` (a snapshot or hashPaths result, so never an ignored one) that are source (LNG-05): a
    * claimed extension, not `linguist-generated` or `linguist-vendored`, not binary, not a Git LFS pointer and
    * not over `options.maxBytes`. One batched `check-attr` run at most; no git at all when nothing is left to ask.

@@ -2,8 +2,11 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { describe, it } from 'node:test';
+import { createSourceTree } from '../source-tree/index.ts';
 import { createTempGitRepo } from '../test-kit/index.ts';
+import type { TempGitRepo } from '../test-kit/index.ts';
 import { allowAll, createRealRunner, gitSpec } from './index.ts';
+import type { CommandResult, CommandRunner, CommandSpec } from './index.ts';
 
 const decoder = new TextDecoder();
 
@@ -53,5 +56,91 @@ describe('production git rule: option allowlist against a real repository (WR-11
     assert.equal(result.denied, undefined, 'cat-file --batch-check must be allowed');
     assert.equal(result.ok, true, decoder.decode(result.stderr));
     assert.match(decoder.decode(result.stdout).trim(), /^[0-9a-f]{40,64} commit [0-9]+$/);
+  });
+});
+
+/**
+ * A repository holding every kind of entry the ignore check meets: a tracked file, an untracked file, an ignored
+ * file, a gitlink (registered through the index, so no network and no `git submodule` command) over a directory
+ * that also holds a file, and an untracked nested repository.
+ */
+async function listingRepo(t: { after(fn: () => void): void }): Promise<TempGitRepo> {
+  const repo = await createTempGitRepo({
+    runner: setupRunner,
+    world: { committed: { 'tracked.ts': 'export const tracked = 1;\n' }, ignored: ['ignored.log'] },
+  });
+  t.after(() => repo.cleanup());
+  repo.write('untracked.ts', 'export const untracked = 1;\n');
+  repo.write('ignored.log', 'ignored\n');
+  repo.write('vendor/sub/inner.ts', 'export const inner = 1;\n');
+  const head = (await repo.git(['rev-parse', 'HEAD'])).trim();
+  await repo.git(['update-index', '--add', '--cacheinfo', `160000,${head},vendor/sub`]);
+  const init = await setupRunner.run({ executable: 'git', args: ['init', '--quiet', 'nested'], cwd: repo.dir, env: repo.envOverlay });
+  assert.equal(init.ok, true, decoder.decode(init.stderr));
+  return repo;
+}
+
+interface CapturedRun {
+  readonly spec: CommandSpec;
+  readonly result: CommandResult;
+}
+
+/** A runner that forwards to `inner` and remembers each spec with the result it got. */
+function capturing(inner: CommandRunner): CommandRunner & { readonly runs: CapturedRun[] } {
+  const runs: CapturedRun[] = [];
+  return {
+    runs,
+    run: async (spec, ctx) => {
+      const result = await inner.run(spec, ctx);
+      runs.push({ spec, result });
+      return result;
+    },
+    stream: (spec, ctx) => inner.stream(spec, ctx),
+  };
+}
+
+const names = (stdout: Uint8Array): string[] => decoder.decode(stdout).split('\0').filter((entry) => entry !== '').sort();
+
+describe('production git rule: the ls-files shapes of Source Tree against the installed git (plan 02-46)', () => {
+  it('the ignore check listing runs under the production rule on installed git', async (t) => {
+    const repo = await listingRepo(t);
+    const version = await setupRunner.run({ executable: 'git', args: ['--version'] });
+    t.diagnostic(decoder.decode(version.stdout).trim());
+
+    // The exact spec real.ts builds for the listing: the fixed options, no pathspec, nothing on stdin.
+    const spec = gitSpec(['ls-files', '-z', '--cached', '--others', '--exclude-standard'], { worktree: repo.dir, env: repo.envOverlay });
+    const result = await createRealRunner().run(spec);
+    assert.equal(result.denied, undefined, 'the production rule must accept the listing');
+    assert.equal(result.exitCode, 0, `installed git rejected the listing (129 means an unknown option): ${decoder.decode(result.stderr)}`);
+    // A nested repository is one `dir/` entry, the gitlink is its own path, the file inside the gitlink directory is
+    // not listed, and the ignored file is absent.
+    assert.deepEqual(names(result.stdout), ['nested/', 'tracked.ts', 'untracked.ts', 'vendor/sub']);
+  });
+
+  it('every ls-files shape Source Tree sends is accepted by installed git', async (t) => {
+    const repo = await listingRepo(t);
+    const production = capturing(createRealRunner());
+    const tree = createSourceTree({ runner: production, repoDir: repo.dir, envOverlay: repo.envOverlay });
+
+    // Source Tree throws git_failed on any non-zero exit, so these calls are themselves the probe.
+    await tree.snapshot(repo.dir);
+    const listed = await tree.unignoredPaths(repo.dir, ['tracked.ts', 'untracked.ts', 'ignored.log']);
+    assert.deepEqual([...listed].sort(), ['tracked.ts', 'untracked.ts']);
+
+    const shapes = new Map<string, number | null>();
+    for (const { spec, result } of production.runs) {
+      const at = spec.args.indexOf('ls-files');
+      if (at === -1) continue;
+      assert.equal(result.denied, undefined, spec.args.join(' '));
+      shapes.set(spec.args.slice(at).join(' '), result.exitCode);
+    }
+    assert.deepEqual(
+      [...shapes].sort(([a], [b]) => (a < b ? -1 : 1)),
+      [
+        ['ls-files -z --cached --others --exclude-standard', 0],
+        ['ls-files -z --others --exclude-standard', 0],
+        ['ls-files -z -s', 0],
+      ],
+    );
   });
 });
