@@ -5,7 +5,8 @@
  * in the CI gate job), and prove the gate can fail: the old idle policy and no maintenance both exceed the bound.
  */
 import assert from 'node:assert/strict';
-import { describe, it } from 'node:test';
+import { afterEach, describe, it } from 'node:test';
+import { lifecycleTestHooks, resetLifecycleTestHooks } from '../src/fact-store/lifecycle.ts';
 import { runCli, runSizeGate } from './size-gate.ts';
 
 /** The approved `gate.storeEditsRatio` of 02-CONSTANTS.md. */
@@ -19,6 +20,8 @@ const MAX_RATIO = 1.25;
 const SCALE = { files: 150, symbolsPerFile: 8, edits: 1500, maxRatio: MAX_RATIO, maintainEvery: 100 } as const;
 
 describe('size gate', () => {
+  afterEach(() => resetLifecycleTestHooks());
+
   it('idle policy passes: the idle-only size is within 1.25 times a fresh build', async () => {
     const result = await runSizeGate(SCALE);
     assert.ok(result.freshBytes > 0);
@@ -62,6 +65,38 @@ describe('size gate', () => {
     assert.equal(result.ok, true);
   });
 
+  it('reports the vacuums of the idle loop: at least one under the idle policy, none under the old policy', async () => {
+    const idle = await runSizeGate(SCALE);
+    assert.ok(idle.vacuums >= 1, `the idle policy ran ${idle.vacuums} vacuums`);
+    const old = await runSizeGate({ ...SCALE, idle: {} });
+    assert.equal(old.vacuums, 0);
+  });
+
+  it('reports the longest single maintain call in wall-clock milliseconds, without asserting it', async () => {
+    const result = await runSizeGate({ files: 30, symbolsPerFile: 6, edits: 120, maxRatio: MAX_RATIO, maintainEvery: 40 });
+    assert.ok(Number.isFinite(result.longestMaintainMs) && result.longestMaintainMs >= 0, `longestMaintainMs was ${result.longestMaintainMs}`);
+    // The figure is wall clock and never decides `ok`: an absurd limit on it cannot exist, and the sizes stay deterministic.
+    assert.equal(result.ok, true);
+  });
+
+  it('leaves no lifecycle hook behind, also when the run throws', async () => {
+    await runSizeGate({ files: 20, symbolsPerFile: 4, edits: 40, maxRatio: MAX_RATIO, maintainEvery: 20 });
+    assert.deepEqual(Object.keys(lifecycleTestHooks), []);
+    await assert.rejects(runSizeGate({ files: 0 }), /--files/);
+    assert.deepEqual(Object.keys(lifecycleTestHooks), []);
+  });
+
+  it('names the in-page rule it used: dbstat present here, absent when forced, and the bound holds on the fallback rule too', async () => {
+    const normal = await runSizeGate(SCALE);
+    assert.equal(normal.dbstat, 'present');
+    lifecycleTestHooks.noDbstat = true;
+    const forced = await runSizeGate(SCALE);
+    assert.equal(forced.dbstat, 'absent');
+    assert.ok(forced.ratio <= MAX_RATIO, `the fallback rule gave ${forced.ratio.toFixed(3)}`);
+    assert.equal(forced.ok, true);
+    assert.deepEqual(Object.keys(lifecycleTestHooks), []);
+  });
+
   it('deterministic: two runs of the same options give the same sizes', async () => {
     const options = { files: 60, symbolsPerFile: 6, edits: 300, maxRatio: MAX_RATIO, maintainEvery: 100 };
     const first = await runSizeGate(options);
@@ -81,6 +116,9 @@ describe('size gate', () => {
     assert.match(output, /idleRatio \d+\.\d+/);
     assert.match(output, /settledBytes \d+/);
     assert.match(output, /settledRatio \d+\.\d+/);
+    assert.match(output, /vacuums \d+/);
+    assert.match(output, /longestMaintainMs \d+(\.\d+)?/);
+    assert.match(output, /dbstat (present|absent)/);
     assert.match(output, /\bOK\b/);
   });
 
