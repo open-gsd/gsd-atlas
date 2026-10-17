@@ -8,6 +8,8 @@ export { createFollowerFresh, createOverlayReader } from './follower-overlay.ts'
 export type { FollowerFreshDeps, OverlayContext, Patch } from './follower-overlay.ts';
 export { createIdleMaintainer } from './idle.ts';
 export type { IdleMaintainer, IdleMaintainerOptions } from './idle.ts';
+export { leaseHeldEnvelope, notIndexedEnvelope, notIndexedNoStore, storeUnavailableEnvelope } from './messages.ts';
+export type { LeaseHolderName } from './messages.ts';
 export { answerEvent } from './record.ts';
 export { BUILD_SCHEMA, MAINTAIN_SCHEMA, MAINTAIN_TASKS, STATUS_SCHEMA } from './types.ts';
 export type {
