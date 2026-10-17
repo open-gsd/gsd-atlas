@@ -54,6 +54,23 @@ jobs:
         with:
           node-version: ${{ matrix.node }}
           cache: npm
+      # Hosted Windows only (.planning/debug/windows-freshness.md): real-time malware scanning scans every process start and
+      # every file write, and this suite does both thousands of times. The runner is a throwaway VM that only runs our tests, so
+      # scanning is switched off, with path and process exclusions as the fallback when Tamper Protection refuses. It cannot
+      # fail the job, and the status is printed so the log shows what took effect.
+      - name: Turn off real-time scanning (Windows only)
+        if: runner.os == 'Windows'
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Continue'
+          Get-MpComputerStatus | Select-Object RealTimeProtectionEnabled, IsTamperProtected, AntivirusEnabled | Format-List
+          try { Set-MpPreference -DisableRealtimeMonitoring $true } catch { Write-Host "Disabling real-time monitoring was refused: $($_.Exception.Message)" }
+          foreach ($path in @($env:RUNNER_TEMP, $env:TEMP, $env:GITHUB_WORKSPACE, "$env:ProgramFiles\Git", "$env:ProgramFiles\nodejs", $env:RUNNER_TOOL_CACHE)) {
+            if ($path) { try { Add-MpPreference -ExclusionPath $path } catch { Write-Host "Exclusion refused for $path" } }
+          }
+          try { Add-MpPreference -ExclusionProcess 'node.exe', 'git.exe' } catch { Write-Host "Process exclusion refused" }
+          Get-MpComputerStatus | Select-Object RealTimeProtectionEnabled | Format-List
       - name: Print toolchain versions
         run: |
           node --version
@@ -80,6 +97,23 @@ jobs:
         with:
           node-version: "24.16.0"
           cache: npm
+      # Hosted Windows only (.planning/debug/windows-freshness.md): real-time malware scanning scans every process start and
+      # every file write, and this suite does both thousands of times. The runner is a throwaway VM that only runs our tests, so
+      # scanning is switched off, with path and process exclusions as the fallback when Tamper Protection refuses. It cannot
+      # fail the job, and the status is printed so the log shows what took effect.
+      - name: Turn off real-time scanning (Windows only)
+        if: runner.os == 'Windows'
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Continue'
+          Get-MpComputerStatus | Select-Object RealTimeProtectionEnabled, IsTamperProtected, AntivirusEnabled | Format-List
+          try { Set-MpPreference -DisableRealtimeMonitoring $true } catch { Write-Host "Disabling real-time monitoring was refused: $($_.Exception.Message)" }
+          foreach ($path in @($env:RUNNER_TEMP, $env:TEMP, $env:GITHUB_WORKSPACE, "$env:ProgramFiles\Git", "$env:ProgramFiles\nodejs", $env:RUNNER_TOOL_CACHE)) {
+            if ($path) { try { Add-MpPreference -ExclusionPath $path } catch { Write-Host "Exclusion refused for $path" } }
+          }
+          try { Add-MpPreference -ExclusionProcess 'node.exe', 'git.exe' } catch { Write-Host "Process exclusion refused" }
+          Get-MpComputerStatus | Select-Object RealTimeProtectionEnabled | Format-List
       - run: npm ci --ignore-scripts
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
@@ -113,6 +147,23 @@ jobs:
         with:
           node-version: "24.16.0"
           cache: npm
+      # Hosted Windows only (.planning/debug/windows-freshness.md): real-time malware scanning scans every process start and
+      # every file write, and this suite does both thousands of times. The runner is a throwaway VM that only runs our tests, so
+      # scanning is switched off, with path and process exclusions as the fallback when Tamper Protection refuses. It cannot
+      # fail the job, and the status is printed so the log shows what took effect.
+      - name: Turn off real-time scanning (Windows only)
+        if: runner.os == 'Windows'
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Continue'
+          Get-MpComputerStatus | Select-Object RealTimeProtectionEnabled, IsTamperProtected, AntivirusEnabled | Format-List
+          try { Set-MpPreference -DisableRealtimeMonitoring $true } catch { Write-Host "Disabling real-time monitoring was refused: $($_.Exception.Message)" }
+          foreach ($path in @($env:RUNNER_TEMP, $env:TEMP, $env:GITHUB_WORKSPACE, "$env:ProgramFiles\Git", "$env:ProgramFiles\nodejs", $env:RUNNER_TOOL_CACHE)) {
+            if ($path) { try { Add-MpPreference -ExclusionPath $path } catch { Write-Host "Exclusion refused for $path" } }
+          }
+          try { Add-MpPreference -ExclusionProcess 'node.exe', 'git.exe' } catch { Write-Host "Process exclusion refused" }
+          Get-MpComputerStatus | Select-Object RealTimeProtectionEnabled | Format-List
       - run: npm ci --ignore-scripts
       - run: npm run build
       - name: Recall on the pinned corpus

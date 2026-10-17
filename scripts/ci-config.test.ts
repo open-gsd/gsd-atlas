@@ -348,3 +348,22 @@ test('ci.yml: diagnostic upload is pinned', () => {
   assert.match(text, /^\s*path:\s*\$\{\{\s*runner\.temp\s*\}\}\/freshness-trace\.log\s*$/m);
   assert.doesNotMatch(text, /retention-days|timeout-minutes/, 'no retention or timeout setting is added');
 });
+
+test('ci.yml turns off real-time scanning on hosted Windows only, before the slow steps, and the step cannot fail a job', () => {
+  const lines = readLines('ci.yml');
+  for (const name of ['test', 'grammar', 'gates']) {
+    const body = jobs(lines).get(name);
+    assert.ok(body !== undefined, `ci.yml has a ${name} job`);
+    const at = body.findIndex((l) => l.includes('name: Turn off real-time scanning (Windows only)'));
+    assert.ok(at >= 0, `${name}: the real-time scanning step exists`);
+    const step = stepAround(body, at).join('\n');
+    assert.match(step, /if: runner\.os == 'Windows'/, `${name}: Windows only`);
+    assert.match(step, /continue-on-error: true/, `${name}: cannot fail the job`);
+    assert.match(step, /shell: pwsh/, `${name}: PowerShell`);
+    assert.match(step, /Set-MpPreference -DisableRealtimeMonitoring \$true/, `${name}: disables real-time monitoring`);
+    assert.match(step, /Add-MpPreference -ExclusionPath/, `${name}: path exclusions as the fallback`);
+    assert.match(step, /Add-MpPreference -ExclusionProcess 'node\.exe', 'git\.exe'/, `${name}: process exclusions`);
+    const install = body.findIndex((l) => /npm ci --ignore-scripts/.test(l));
+    assert.ok(at < install, `${name}: the step runs before npm ci`);
+  }
+});
