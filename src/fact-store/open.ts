@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { loadDriver, openDatabase, selfTest } from '../sqlite/index.ts';
 import type { Db, DriverModule, DriverName } from '../sqlite/index.ts';
-import { SchemaTooNew } from './errors.ts';
+import { SchemaTooNew, StoreClosed } from './errors.ts';
 import { createLease, startTakeover } from './lease.ts';
 import type { Lease } from './lease.ts';
 import type { LifecycleSettings, StoreParts } from './parts.ts';
@@ -70,6 +70,13 @@ export interface StoreOpenOptions extends OpenFactStoreOptions {
   readonly onLeaseChange?: (held: boolean) => void;
   /** TEST ONLY. The schema version written into a new store, so tests can make one that is newer or older than this build. */
   readonly schemaVersion?: number;
+  /**
+   * TEST ONLY. Called before each open that happens while the store's connections are being replaced (a takeover
+   * that finds a damaged store, or the rebuild `check` starts): stage `replace` before the fresh store is created
+   * (the damaged file is already moved aside by then), stage `restore` before the old files are reopened after a
+   * failure. A throw simulates that open failing; a returned promise holds the recovery at that point.
+   */
+  readonly beforeReplaceOpen?: (stage: 'replace' | 'restore') => void | Promise<void>;
 }
 
 function hasTables(db: Db): boolean {
@@ -214,8 +221,31 @@ function removeStoreFiles(file: string): void {
   for (const suffix of ['', '-wal', '-shm']) fs.rmSync(`${file}${suffix}`, { force: true });
 }
 
+/** Where a damaged store file was moved aside, and when. */
+interface MovedAside {
+  readonly movedTo: string;
+  readonly at: number;
+}
+
+/** What the replacement of the connections tells the open routine it runs (see `replaceConnections`). */
+interface Replacing {
+  /** The damaged file has been moved aside. */
+  readonly onMoved: (moved: MovedAside) => void;
+  /** Called just before the fresh store is created. Throws when the store was closed meanwhile or the test hook fails. */
+  readonly beforeRecreate: () => Promise<void>;
+}
+
+/** Close `db`, ignoring a failure: the caller is already on a failure path and has nothing better to do with it. */
+function closeQuietly(db: Db): void {
+  try {
+    db.close();
+  } catch {
+    // already closed or unusable; either way it holds nothing
+  }
+}
+
 /** Write the rebuild notes into a fresh store's `meta` (see `REBUILD_PENDING_META`). */
-function noteRebuild(db: Db, moved: { readonly movedTo: string; readonly at: number } | undefined): void {
+function noteRebuild(db: Db, moved: MovedAside | undefined): void {
   db.transaction(() => {
     const put = db.prepare('INSERT OR REPLACE INTO meta (name, value) VALUES (?, ?)');
     put.run(REBUILD_PENDING_META, '1');
@@ -231,22 +261,34 @@ function noteRebuild(db: Db, moved: { readonly movedTo: string; readonly at: num
  * right first: a damaged store is moved aside (the newest two moved-aside files are kept) and an older one is
  * deleted, then a fresh store is created and marked as rebuilding.
  */
-async function openWithRecovery(env: OpenEnv, deps: StoreDeps): Promise<{ conns: Connections; fuzzyTrigram: boolean }> {
+async function openWithRecovery(
+  env: OpenEnv,
+  deps: StoreDeps,
+  replacing?: Replacing,
+): Promise<{ conns: Connections; fuzzyTrigram: boolean }> {
   let attempt = await attemptOpen(env, true);
   if (attempt.kind === 'ready') return attempt;
 
-  let moved: { readonly movedTo: string; readonly at: number } | undefined;
+  let moved: MovedAside | undefined;
   if (attempt.kind === 'corrupt') {
     const { movedTo } = quarantine(env.dir, deps.clock);
     pruneQuarantine(env.dir, KEEP_QUARANTINED);
     moved = { movedTo, at: deps.clock.now() };
+    replacing?.onMoved(moved);
   } else {
     removeStoreFiles(env.file);
     clearDirty(env.dir);
   }
+  await replacing?.beforeRecreate();
   attempt = await attemptOpen(env, true);
   if (attempt.kind !== 'ready') throw new Error('the fact store could not be recreated after it was moved aside');
-  noteRebuild(attempt.conns.writeDb, moved);
+  try {
+    noteRebuild(attempt.conns.writeDb, moved);
+  } catch (error) {
+    closeQuietly(attempt.conns.readDb);
+    closeQuietly(attempt.conns.writeDb);
+    throw error;
+  }
   return attempt;
 }
 
@@ -359,9 +401,105 @@ export async function openFactStore(
     degradedNow: processDegraded(lifecycle, () => conns.readDb),
   };
 
+  // Whether this process has told its owner that it holds the writer lease (so giving it up must be told as well).
+  let leadershipReported = lease?.held ?? false;
+
+  /**
+   * Called before the fresh store is created (and before the old files are reopened after a failure): the test hook,
+   * then the check that a `close()` that arrived meanwhile wins.
+   */
+  const stage = async (which: 'replace' | 'restore'): Promise<void> => {
+    await options.beforeReplaceOpen?.(which);
+    if (parts.state.closed) throw new StoreClosed();
+  };
+
+  /**
+   * The store could not be put right and could not be restored either: close it for good, as `close()` does, and give
+   * the writer lease up, so no process is left leading with dead handles (WR-03). Every later call throws `StoreClosed`.
+   */
+  const closeAfterFailedRecovery = async (): Promise<void> => {
+    if (parts.state.closed) return;
+    parts.state.closed = true;
+    parts.state.writerTaken = false;
+    lifecycle.stopTakeover?.();
+    lifecycle.dirty?.flush();
+    closeQuietly(conns.readDb);
+    closeQuietly(conns.writeDb);
+    if (lease !== undefined) {
+      await lease.release();
+      if (leadershipReported) {
+        leadershipReported = false;
+        options.onLeaseChange?.(false);
+      }
+    }
+  };
+
+  /** Reopen the files the replacement started from. Resolves with the connections, or undefined when that failed too. */
+  const restoreConnections = async (moved: MovedAside | undefined): Promise<Connections | undefined> => {
+    let restored: Connections | undefined;
+    try {
+      await stage('restore');
+      // Not an authority open: it must not run the sentinel check on the file that just failed to be replaced.
+      const attempt = await attemptOpen(env, false);
+      if (attempt.kind !== 'ready') return undefined;
+      restored = attempt.conns;
+      // The corrupt file that was already moved aside stays moved aside: the restored store says it is rebuilding.
+      if (moved !== undefined) noteRebuild(restored.writeDb, moved);
+      return restored;
+    } catch {
+      if (restored !== undefined) {
+        closeQuietly(restored.readDb);
+        closeQuietly(restored.writeDb);
+      }
+      return undefined;
+    }
+  };
+
+  /**
+   * Replace the store's connections with those `open` makes (WR-03). The old connections are closed first, because
+   * a database file can not be moved aside while a connection holds it open (Windows). When `open` fails, the old
+   * files are reopened; when that fails too, or a `close()` arrived meanwhile, the store ends closed. After any
+   * failure the store is therefore usable or closed, never left on dead handles. The error of `open` is rethrown.
+   * The writer gives way meanwhile.
+   */
+  const replaceConnections = async (open: (replacing: Replacing) => Promise<Connections>): Promise<void> => {
+    lifecycle.recovering = true;
+    try {
+      closeQuietly(conns.readDb);
+      closeQuietly(conns.writeDb);
+      let moved: MovedAside | undefined;
+      let replaced: Connections;
+      try {
+        replaced = await open({ onMoved: (found) => (moved = found), beforeRecreate: () => stage('replace') });
+      } catch (error) {
+        if (parts.state.closed) throw error; // a close() that arrived meanwhile wins
+        const restored = await restoreConnections(moved);
+        if (restored === undefined) {
+          await closeAfterFailedRecovery();
+        } else {
+          conns.writeDb = restored.writeDb;
+          conns.readDb = restored.readDb;
+          parts.snapshotIds.clear();
+        }
+        throw error;
+      }
+      if (parts.state.closed) {
+        closeQuietly(replaced.readDb);
+        closeQuietly(replaced.writeDb);
+        throw new StoreClosed();
+      }
+      conns.writeDb = replaced.writeDb;
+      conns.readDb = replaced.readDb;
+      parts.snapshotIds.clear(); // a rebuilt store counts its sequence numbers from zero again
+    } finally {
+      lifecycle.recovering = false;
+    }
+  };
+
   /**
    * This follower just became the leader. If the leader before it died mid-batch it left the sentinel: check the
-   * store now, and when the check fails move it aside and rebuild it in place.
+   * store now, and when the check fails move it aside and rebuild it in place. Rejects when the store could not be
+   * put right; the caller then does not claim leadership.
    */
   const recoverAfterTakeover = async (): Promise<void> => {
     if (!isDirty(dir)) return;
@@ -369,58 +507,75 @@ export async function openFactStore(
       clearDirty(dir);
       return;
     }
-    lifecycle.recovering = true;
-    try {
-      conns.readDb.close();
-      conns.writeDb.close();
-      const replaced = await openWithRecovery(env, deps);
-      conns.writeDb = replaced.conns.writeDb;
-      conns.readDb = replaced.conns.readDb;
-      parts.snapshotIds.clear(); // a rebuilt store counts its sequence numbers from zero again
-    } finally {
-      lifecycle.recovering = false;
-    }
+    await replaceConnections(async (replacing) => (await openWithRecovery(env, deps, replacing)).conns);
   };
 
   /**
    * `check` found the open store damaged (plan 02-18): close it, move its files aside (the newest two moved-aside
    * files are kept), create a fresh store and mark it as rebuilding, exactly as the open path does for a damaged
-   * file, and swap the new connections in place. The writer gives way meanwhile.
+   * file, and swap the new connections in place. When that fails the store is restored or closed (see
+   * `replaceConnections`) and this rejects with an error that starts `rebuild failed:`.
    */
   lifecycle.rebuild = async (): Promise<void> => {
-    lifecycle.recovering = true;
     try {
-      conns.readDb.close();
-      conns.writeDb.close();
-      const { movedTo } = quarantine(dir, deps.clock);
-      pruneQuarantine(dir, KEEP_QUARANTINED);
-      const attempt = await attemptOpen(env, true);
-      if (attempt.kind !== 'ready') throw new Error('the fact store could not be recreated after it was moved aside');
-      noteRebuild(attempt.conns.writeDb, { movedTo, at: deps.clock.now() });
-      conns.writeDb = attempt.conns.writeDb;
-      conns.readDb = attempt.conns.readDb;
-      parts.snapshotIds.clear(); // a rebuilt store counts its sequence numbers from zero again
-    } finally {
-      lifecycle.recovering = false;
+      await replaceConnections(async (replacing) => {
+        const { movedTo } = quarantine(dir, deps.clock);
+        pruneQuarantine(dir, KEEP_QUARANTINED);
+        const moved: MovedAside = { movedTo, at: deps.clock.now() };
+        replacing.onMoved(moved);
+        await replacing.beforeRecreate();
+        const attempt = await attemptOpen(env, true);
+        if (attempt.kind !== 'ready') throw new Error('the fact store could not be recreated after it was moved aside');
+        try {
+          noteRebuild(attempt.conns.writeDb, moved);
+        } catch (error) {
+          closeQuietly(attempt.conns.readDb);
+          closeQuietly(attempt.conns.writeDb);
+          throw error;
+        }
+        return attempt.conns;
+      });
+    } catch (error) {
+      throw new Error(`rebuild failed: ${error instanceof Error ? error.message : String(error)}`, { cause: error });
     }
   };
 
-  if (lease !== undefined && !lease.held) {
-    const range = options.takeover ?? {
-      retryMinMs: DEFAULT_LEASE_RETRY_MIN_MS,
-      retryMaxMs: DEFAULT_LEASE_RETRY_MAX_MS,
-    };
-    lifecycle.stopTakeover = startTakeover(lease, deps.clock, range, () => {
-      void (async () => {
-        if (parts.state.closed) return;
-        try {
-          await recoverAfterTakeover();
-        } catch {
-          // The store could not be put right. It keeps serving what it can, and the next open will say what is wrong.
-        }
-        if (!parts.state.closed) options.onLeaseChange?.(true);
-      })();
+  const takeoverRange = options.takeover ?? {
+    retryMinMs: DEFAULT_LEASE_RETRY_MIN_MS,
+    retryMaxMs: DEFAULT_LEASE_RETRY_MAX_MS,
+  };
+
+  /** The follower won the lease: put a damaged store right, then report leadership, or give the lease back and try again. */
+  const onTakeover = async (held: Lease): Promise<void> => {
+    if (parts.state.closed) return;
+    try {
+      await recoverAfterTakeover();
+    } catch {
+      // The store could not be put right (it is restored, or closed). A process that can not write is no leader:
+      // give the lease back and try again later, so another process, or this one on the next try, takes over.
+      if (parts.state.closed) return;
+      try {
+        await held.release();
+      } catch {
+        // the lease connection is gone either way
+      }
+      armTakeover();
+      return;
+    }
+    if (!parts.state.closed) {
+      leadershipReported = true;
+      options.onLeaseChange?.(true);
+    }
+  };
+
+  /** Start (or start again, after a failed takeover) the follower's jittered retries of the writer lease. */
+  function armTakeover(): void {
+    if (lease === undefined || parts.state.closed) return;
+    lifecycle.stopTakeover = startTakeover(lease, deps.clock, takeoverRange, () => {
+      void onTakeover(lease);
     });
   }
+
+  if (lease !== undefined && !lease.held) armTakeover();
   return createStore(parts, lifecycle);
 }

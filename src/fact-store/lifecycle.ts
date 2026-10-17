@@ -371,7 +371,13 @@ export async function checkStore(parts: StoreParts, rebuild: (() => Promise<void
   const problems = quickCheckProblems(parts.writeDb);
   if (problems.length === 0) return { ok: true, problems: [] };
   if (rebuild !== undefined) {
-    await rebuild();
+    try {
+      await rebuild();
+    } catch (error) {
+      // WR-03: the rebuild failed; the opener has already restored the store or closed it. Say so in the answer
+      // instead of rejecting out of the maintenance request.
+      problems.push(error instanceof Error ? error.message : `rebuild failed: ${String(error)}`);
+    }
     cursors.delete(parts); // the position described the file that was just moved aside
   }
   return { ok: false, problems };
