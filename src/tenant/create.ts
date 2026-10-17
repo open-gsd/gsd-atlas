@@ -9,7 +9,7 @@
  * while nothing was running.
  */
 import path from 'node:path';
-import { UnknownWorktree, WriterBusy, openFactStore, resolveStoreLocation } from '../fact-store/index.ts';
+import { IDLE_MAINTENANCE, StoreClosed, UnknownWorktree, WriterBusy, openFactStore, resolveStoreLocation } from '../fact-store/index.ts';
 import type { FactStore, MaintenanceResult, Resolver } from '../fact-store/index.ts';
 import { okEnvelope } from '../facts/index.ts';
 import type { Envelope, Request } from '../facts/index.ts';
@@ -23,6 +23,8 @@ import { DEFAULT_TENANT_TUNING } from './defaults.ts';
 import { createFollowerFresh } from './follower-overlay.ts';
 import { createIdleMaintainer } from './idle.ts';
 import { answerEvent } from './record.ts';
+import { leaseHeldEnvelope, notIndexedEnvelope, storeUnavailableEnvelope } from './messages.ts';
+import type { LeaseHolderName } from './messages.ts';
 import { createStatusPort } from './status-port.ts';
 import { BUILD_SCHEMA, MAINTAIN_SCHEMA, STATUS_SCHEMA } from './types.ts';
 import type { MaintainOptions, MaintainTask, TaskReport, Tenant, TenantDeps, TenantStatus, TenantTuning } from './types.ts';
@@ -110,12 +112,31 @@ export async function createTenant(deps: TenantDeps): Promise<Tenant> {
     },
   );
   storeOpened();
-  const metrics: Metrics =
-    deps.metrics === false
-      ? createNoopMetrics('disabled')
-      : typeof deps.metrics === 'object'
-        ? deps.metrics
-        : await openMetrics(path.join(location.dir, 'metrics.db'), { clock });
+
+  // IN-10: from here on a throw must not leave the store, and with it the writer lease, held by an object nobody
+  // references. `abandon` closes what was opened so far and rethrows the original error.
+  let openedMetrics: Metrics | undefined;
+  let followerModules: ModuleHost | undefined;
+  async function abandon(error: unknown): Promise<never> {
+    closed = true;
+    await followerModules?.dispose().catch(ignore);
+    await openedMetrics?.close().catch(ignore);
+    await store.close().catch(ignore);
+    throw error;
+  }
+
+  let metrics: Metrics;
+  try {
+    metrics =
+      deps.metrics === false
+        ? createNoopMetrics('disabled')
+        : typeof deps.metrics === 'object'
+          ? deps.metrics
+          : await openMetrics(path.join(location.dir, 'metrics.db'), { clock });
+    openedMetrics = metrics;
+  } catch (error) {
+    return abandon(error);
+  }
 
   /**
    * Recording never alters or delays an answer (MET-02, T-02-99): it runs after the envelope exists, and whatever it
@@ -163,17 +184,24 @@ export async function createTenant(deps: TenantDeps): Promise<Tenant> {
     return indexer;
   }
 
-  const leaseHeld = (): Envelope =>
-    errorEnvelope(
-      'lease_held',
-      'Another gsd-atlas process holds the writer for this repository, so this process cannot index or run maintenance. Use that process, or stop it first.',
-    );
+  /** Who holds the writer lease, when the store can say (`lease.json`); never throws. */
+  const holderName = async (): Promise<LeaseHolderName | undefined> => {
+    try {
+      const holder = (await store.status()).leaseHolder;
+      return holder === undefined ? undefined : { pid: holder.pid, version: holder.version };
+    } catch {
+      return undefined;
+    }
+  };
 
-  const notIndexed = (): Envelope =>
-    errorEnvelope('not_indexed', 'This repository has not been indexed yet. Run "gsd-atlas build" in it, then ask again.');
+  const leaseHeld = async (): Promise<Envelope> => leaseHeldEnvelope(await holderName());
+
+  /** The store exists but this worktree was never built (WR-02): names the process that holds the writer, if known. */
+  const notIndexed = async (): Promise<Envelope> => notIndexedEnvelope(await holderName());
 
   /** An error that ends a request as an envelope; anything else is a bug and goes on. */
-  function failure(error: unknown): Envelope {
+  async function failure(error: unknown): Promise<Envelope> {
+    if (error instanceof StoreClosed) return storeUnavailableEnvelope();
     if (error instanceof WriterBusy) return leaseHeld();
     if (error instanceof UnknownWorktree) return notIndexed();
     if (error instanceof IndexerError) {
@@ -192,10 +220,9 @@ export async function createTenant(deps: TenantDeps): Promise<Tenant> {
     (await store.status()).worktrees.some((entry) => entry.worktree === worktree);
 
   /**
-   * The module host of the follower overlay, made on the first `fresh` request a follower answers (a leader's
-   * Indexer has its own) and disposed with the Tenant.
+   * The module host of the follower overlay (`followerModules`, declared above so a failed construction can dispose
+   * it), made on the first `fresh` request a follower answers (a leader's Indexer has its own) and disposed with the Tenant.
    */
-  let followerModules: ModuleHost | undefined;
   const followerHost = (): ModuleHost => (followerModules ??= createModuleHost({ engine: deps.engine, roots }));
   const followerModulesLazy: ModuleHost = {
     extensions: () => followerHost().extensions(),
@@ -204,17 +231,22 @@ export async function createTenant(deps: TenantDeps): Promise<Tenant> {
       if (followerModules !== undefined) await followerModules.dispose();
     },
   };
-  const indexerSettings = { ...DEFAULT_INDEXER_CONFIG, ...deps.indexer };
-  const followerFresh: FreshPort = createFollowerFresh({
-    tree,
-    modules: followerModulesLazy,
-    store,
-    clock,
-    maxRaceRetries: indexerSettings.maxRaceRetries,
-    maxFileBytes: indexerSettings.maxFileBytes,
-    // The store names its symbols after its directory unless it was told otherwise; the Tenant never tells it.
-    repo: path.basename(path.resolve(location.dir)),
-  });
+  let followerFresh: FreshPort;
+  try {
+    const indexerSettings = { ...DEFAULT_INDEXER_CONFIG, ...deps.indexer };
+    followerFresh = createFollowerFresh({
+      tree,
+      modules: followerModulesLazy,
+      store,
+      clock,
+      maxRaceRetries: indexerSettings.maxRaceRetries,
+      maxFileBytes: indexerSettings.maxFileBytes,
+      // The store names its symbols after its directory unless it was told otherwise; the Tenant never tells it.
+      repo: path.basename(path.resolve(location.dir)),
+    });
+  } catch (error) {
+    return abandon(error);
+  }
 
   /**
    * Query's read-your-writes port. A worktree nobody built is never indexed because a request named paths (D-11).
@@ -233,13 +265,18 @@ export async function createTenant(deps: TenantDeps): Promise<Tenant> {
     },
   };
 
-  const query = createQuery({
-    store,
-    text: tree,
-    fresh,
-    status: createStatusPort({ store, indexer: () => indexer, governor, roots }),
-    clock,
-  });
+  let query: ReturnType<typeof createQuery>;
+  try {
+    query = createQuery({
+      store,
+      text: tree,
+      fresh,
+      status: createStatusPort({ store, indexer: () => indexer, governor, roots }),
+      clock,
+    });
+  } catch (error) {
+    return abandon(error);
+  }
 
   // The start-up Reconcile (D-02). While an Indexer started for the worktrees the store already indexes has not
   // finished, `starting` is set: the first request waits for it, but only up to the approved deadline, and every
@@ -362,17 +399,22 @@ export async function createTenant(deps: TenantDeps): Promise<Tenant> {
   }
 
   /**
-   * One slice of store upkeep. The store's `maintain` takes the in-process writer slot, which a running Indexer holds;
-   * then `collect` and `compact` (which need the lease, not the slot) do the same work, and `check` closes the pass.
+   * One slice of store upkeep, with the idle policy (`IDLE_MAINTENANCE`, STO-05, D-16): the store asks for a full
+   * compaction, which vacuums only past the recorded thresholds and only after the collect step of the same call
+   * finished, so a healthy store is never vacuumed. The store's `maintain` takes the in-process writer slot, which a
+   * running Indexer holds; then `collect` and `compact` (which need the lease, not the slot) do the same work with
+   * the same policy (the full request goes with the compact step only after a collect that reported complete), and
+   * `check` closes the pass. A VACUUM that has started cannot be interrupted: it is the one documented exception to
+   * the 200 ms maintenance bound (02-CONSTANTS.md).
    */
   async function maintenanceSlice(): Promise<MaintenanceResult> {
     try {
-      return await store.maintain(tuning.maintenanceSliceMs);
+      return await store.maintain(tuning.maintenanceSliceMs, IDLE_MAINTENANCE);
     } catch (error) {
       if (!(error instanceof WriterBusy)) throw error;
     }
     const collected = await store.collect({ budgetMs: tuning.maintenanceSliceMs });
-    const compacted = await store.compact({ budgetMs: tuning.maintenanceSliceMs });
+    const compacted = await store.compact({ budgetMs: tuning.maintenanceSliceMs, ...(collected.complete ? IDLE_MAINTENANCE : {}) });
     const complete = collected.complete && compacted.complete;
     if (complete) await store.check();
     return {
@@ -385,7 +427,8 @@ export async function createTenant(deps: TenantDeps): Promise<Tenant> {
   /**
    * One idle round (STO-10): on the lease holder the store upkeep in slices until complete, then a refresh of each
    * worktree the Indexer covers; on every process the metrics rollup and the index-health gauge. It checks
-   * `shouldYield` before every step and stops quietly when a request has arrived.
+   * `shouldYield` before every step and stops quietly when a request has arrived. The full compaction the store
+   * upkeep requests when due is the one step a `shouldYield` cannot interrupt once it has started.
    */
   async function idleRound(shouldYield: () => boolean): Promise<void> {
     if (closed) return;
@@ -428,7 +471,12 @@ export async function createTenant(deps: TenantDeps): Promise<Tenant> {
     },
   });
 
-  const opening = await store.status();
+  let opening: Awaited<ReturnType<FactStore['status']>>;
+  try {
+    opening = await store.status();
+  } catch (error) {
+    return abandon(error);
+  }
   // A follower starts nothing: no Indexer, no watcher. It starts one when it takes over (`applyLease`).
   if (opening.writerLeaseHeld) beginIndexing(opening.worktrees.map((entry) => entry.worktree));
 
@@ -502,7 +550,17 @@ export async function createTenant(deps: TenantDeps): Promise<Tenant> {
       const started = clock.now();
       idle.touch();
       await startupGate();
-      const answered = await query.ask({ ...request, worktree });
+      let answered: Envelope;
+      try {
+        answered = await query.ask({ ...request, worktree });
+      } catch (error) {
+        // The store closed itself (a failed recovery, plan 02-31): an answer, not an internal error.
+        if (error instanceof StoreClosed) {
+          idle.touch();
+          return storeUnavailableEnvelope();
+        }
+        throw error;
+      }
       // Until the start-up Reconcile settles, an answer may lag the working tree: say so (D-02).
       const envelope =
         answered.ok && starting !== undefined && !(answered.degraded ?? []).includes('reconciling')
@@ -519,7 +577,7 @@ export async function createTenant(deps: TenantDeps): Promise<Tenant> {
     async build(worktree: string): Promise<Envelope> {
       idle.touch();
       try {
-        if (!(await isLeader())) return leaseHeld();
+        if (!(await isLeader())) return await leaseHeld();
         const ix = getIndexer();
         const result = await ix.build(worktree);
         await ix.attach(worktree);
@@ -538,8 +596,8 @@ export async function createTenant(deps: TenantDeps): Promise<Tenant> {
       idle.touch();
       try {
         // Only `resolve` (a no-op while no precise tier is active) needs neither the writer nor an overlay.
-        if (tasks.some((each) => each !== 'resolve') && !(await isLeader())) return leaseHeld();
-        if (tasks.some((each) => WORKTREE_TASKS.has(each)) && !(await isIndexed(options.worktree))) return notIndexed();
+        if (tasks.some((each) => each !== 'resolve') && !(await isLeader())) return await leaseHeld();
+        if (tasks.some((each) => WORKTREE_TASKS.has(each)) && !(await isIndexed(options.worktree))) return await notIndexed();
         const reports: Partial<Record<SingleTask, TaskReport>> = {};
         for (const each of tasks) reports[each] = await runTask(each, options);
         return okEnvelope(MAINTAIN_SCHEMA, { tasks: reports });
@@ -561,8 +619,13 @@ export async function createTenant(deps: TenantDeps): Promise<Tenant> {
       } catch {
         // the report below still answers, from what is stored
       }
-      const [report, tenant] = await Promise.all([metrics.report(range), snapshot()]);
-      return okEnvelope(STATUS_SCHEMA, { range, report, tenant });
+      try {
+        const [report, tenant] = await Promise.all([metrics.report(range), snapshot()]);
+        return okEnvelope(STATUS_SCHEMA, { range, report, tenant });
+      } catch (error) {
+        if (error instanceof StoreClosed) return storeUnavailableEnvelope();
+        throw error;
+      }
     },
 
     close(): Promise<void> {
