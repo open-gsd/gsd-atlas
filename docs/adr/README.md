@@ -77,6 +77,7 @@ Dated amendment sections appended to Accepted ADRs, one line per amendment. The 
 - Amendment 2026-10-17: mcp-contract - Unbuilt repositories (gap closure, plans 02-30 to 02-41)
 - Amendment 2026-10-17: command-runner - Git option allowlist (gap closure, plans 02-30 to 02-41)
 - Amendment 2026-10-17: tenant-composition - Idle eviction, git timeouts and store identity (gap closure, plans 02-30 to 02-41)
+- Amendment 2026-10-17: language-modules - Parser pool deadlines (gap closure, plan 02-39)
 
 ## Ratification schedule
 The two ADRs that remain Proposed, and the phase whose first plan ratifies each (from the ROADMAP schedule). The four Phase 2 ADRs were ratified on 2026-10-16 with their amendments (see the Ratification log). Ratifying means: open the issue, rename `draft-<slug>.md` to `<issue#>-<slug>.md`, move Proposed to Accepted, and apply the listed amendments as dated sections.
