@@ -25,11 +25,23 @@ export const POOL_DEFAULTS = {
   /** pool.recycleAfterFiles: a worker is replaced after this many completed runs (LNG-07). */
   recycleAfterRuns: 2000,
   /**
-   * indexer.parseTimeoutMs: the hard per-run deadline of the pool, and the parse cut-off handed to every
-   * engine. At equal values the pool deadline normally fires first (the worker is then terminated and the
-   * grammar reloaded lazily); both end in `parse_timeout`.
+   * indexer.parseTimeoutMs (02-CONSTANTS.md, Approved 2026-10-16, unchanged): the cooperative parse cut-off
+   * handed to every engine. The engine cancels a slow parse itself with `parse_timeout`, and the worker with
+   * its loaded grammars survives.
    */
-  runTimeoutMs: 5000,
+  parseTimeoutMs: 5000,
+  /**
+   * pool.terminateGraceMs: how long past the parse cut-off the pool waits before it terminates a worker
+   * (IN-06). 02-CONSTANTS.md, "Addendum 2026-10-17 (gap closure)", Addendum status: Approved (2026-10-17).
+   */
+  terminateGraceMs: 2000,
+  /**
+   * The pool's hard per-run deadline: parseTimeoutMs plus terminateGraceMs, 7000. Terminating the worker is
+   * the backstop for a stuck parse (the grammar is then reloaded lazily); an ordinary slow parse ends at the
+   * engine's own cut-off first. A caller that sets only `runTimeoutMs` keeps the older meaning: the cut-off
+   * follows it.
+   */
+  runTimeoutMs: 7000,
   /**
    * pool.loadTimeoutMs: the deadline of one grammar load (WASM instantiate plus query compile) in a worker.
    * 02-CONSTANTS.md, "Addendum 2026-10-17 (gap closure)", Addendum status: Approved (2026-10-17). A load
@@ -49,11 +61,14 @@ export interface PoolOptions {
   readonly size?: number;
   /** Replace a worker after this many completed runs, an integer of at least 1. */
   readonly recycleAfterRuns?: number;
-  /** Hard per-run deadline in milliseconds, finite and above 0. The worker is terminated when it passes. */
+  /**
+   * Hard per-run deadline in milliseconds, finite and above 0. The worker is terminated when it passes.
+   * Default: the parse cut-off plus the terminate grace. Set alone, it is also the engine's cut-off.
+   */
   readonly runTimeoutMs?: number;
   /** Hard deadline of one grammar load in milliseconds, finite and above 0. The worker is terminated when it passes. */
   readonly loadTimeoutMs?: number;
-  /** Limits of the engine inside each worker. Defaults: the shared match limit and the run deadline. */
+  /** Limits of the engine inside each worker. Defaults: the shared match limit and the approved parse cut-off. */
   readonly engineOptions?: GrammarEngineOptions;
   /** Test-only: a different worker entry file, or a function of the 1-based spawn count that names one. */
   readonly workerUrl?: URL | ((spawnCount: number) => URL);
@@ -61,7 +76,19 @@ export interface PoolOptions {
   readonly availableParallelism?: () => number;
 }
 
+/** The effective deadlines of a pool, in milliseconds. */
+export interface PoolLimits {
+  /** The engine's cooperative parse cut-off inside each worker. */
+  readonly parseTimeoutMs: number;
+  /** The pool's hard per-run deadline; a worker still running at this point is terminated. */
+  readonly runTimeoutMs: number;
+  /** The pool's deadline for one grammar load. */
+  readonly loadTimeoutMs: number;
+}
+
 export interface PoolStatus {
+  /** The effective deadlines (defaults, or the options the pool was created with). */
+  readonly limits: PoolLimits;
   /** Live worker threads. */
   readonly workers: number;
   /** Workers occupied by a load or run right now. */
@@ -112,6 +139,13 @@ function defaultSize(cpus: number): number {
 function checkPositiveInteger(name: string, value: number): void {
   if (!Number.isInteger(value) || value < 1) {
     throw new RangeError(`${name} must be an integer of at least 1, got ${String(value)}`);
+  }
+}
+
+/** A timeout option, when given, must be finite and above 0. */
+function checkPositiveFinite(name: string, value: number | undefined): void {
+  if (value !== undefined && (!Number.isFinite(value) || value <= 0)) {
+    throw new RangeError(`${name} must be a finite number above 0, got ${String(value)}`);
   }
 }
 
@@ -176,22 +210,25 @@ export function createPooledGrammarEngine(options: PoolOptions = {}): GrammarEng
   const cpus = (options.availableParallelism ?? (() => os.availableParallelism()))();
   const size = options.size ?? defaultSize(cpus);
   const recycleAfterRuns = options.recycleAfterRuns ?? POOL_DEFAULTS.recycleAfterRuns;
-  const runTimeoutMs = options.runTimeoutMs ?? POOL_DEFAULTS.runTimeoutMs;
   checkPositiveInteger('size', size);
   checkPositiveInteger('recycleAfterRuns', recycleAfterRuns);
-  if (!Number.isFinite(runTimeoutMs) || runTimeoutMs <= 0) {
-    throw new RangeError(`runTimeoutMs must be a finite number above 0, got ${String(runTimeoutMs)}`);
-  }
+  // The cut-off and the deadline (IN-06): an option set alone decides the other; with neither set the engine
+  // cancels at the approved cut-off and the pool terminates one grace later.
+  const runOption = options.runTimeoutMs;
+  const parseOption = options.engineOptions?.parseTimeoutMs;
+  checkPositiveFinite('runTimeoutMs', runOption);
+  checkPositiveFinite('parseTimeoutMs', parseOption);
+  const parseTimeoutMs = parseOption ?? runOption ?? POOL_DEFAULTS.parseTimeoutMs;
+  const runTimeoutMs = runOption ?? parseTimeoutMs + POOL_DEFAULTS.terminateGraceMs;
   const loadTimeoutMs = options.loadTimeoutMs ?? POOL_DEFAULTS.loadTimeoutMs;
-  if (!Number.isFinite(loadTimeoutMs) || loadTimeoutMs <= 0) {
-    throw new RangeError(`loadTimeoutMs must be a finite number above 0, got ${String(loadTimeoutMs)}`);
-  }
+  checkPositiveFinite('loadTimeoutMs', loadTimeoutMs);
+  const limits: PoolLimits = { parseTimeoutMs, runTimeoutMs, loadTimeoutMs };
   const workerUrl = options.workerUrl ?? resolveWorkerUrl();
   let spawnCount = 0;
   const start: WorkerStartData = {
     engineOptions: {
       matchLimit: options.engineOptions?.matchLimit ?? POOL_DEFAULTS.matchLimit,
-      parseTimeoutMs: options.engineOptions?.parseTimeoutMs ?? runTimeoutMs,
+      parseTimeoutMs,
     },
   };
 
@@ -524,6 +561,7 @@ export function createPooledGrammarEngine(options: PoolOptions = {}): GrammarEng
     dispose: disposeEngine,
     poolStatus(): PoolStatus {
       return {
+        limits,
         workers: slots.filter((slot) => slot.worker !== undefined).length,
         busy: slots.filter((slot) => slot.busy).length,
         queued: queue.length,

@@ -19,6 +19,9 @@ const SPIN_WORKER = new URL('./__fixtures__/spin-worker.ts', import.meta.url);
 /** A worker that accepts every request and answers none: a grammar load that never finishes. */
 const SILENT_WORKER = new URL('./__fixtures__/silent-worker.ts', import.meta.url);
 
+/** A worker that reports its start data as the name of the grammar it "loads". */
+const ECHO_START_WORKER = new URL('./__fixtures__/echo-start-worker.ts', import.meta.url);
+
 function isLoadError(code: string, messagePattern?: RegExp) {
   return (error: unknown): boolean =>
     error instanceof GrammarLoadError &&
@@ -467,6 +470,81 @@ describe('pool load deadline (WR-09)', () => {
   it('rejects an invalid load deadline with a RangeError', () => {
     for (const loadTimeoutMs of [0, -1, Number.NaN, Number.POSITIVE_INFINITY]) {
       assert.throws(() => createPooledGrammarEngine({ loadTimeoutMs }), RangeError, String(loadTimeoutMs));
+    }
+  });
+});
+
+describe('pool limits: the engine cut-off fires before the pool deadline (IN-06)', () => {
+  /** The `engineOptions` the pool handed to its worker, read back through the echo fixture. */
+  async function handedToWorker(options: Parameters<typeof createPooledGrammarEngine>[0]) {
+    const scenarios = await loadToyScenarios();
+    const pool = createPooledGrammarEngine({ size: 1, ...options, workerUrl: ECHO_START_WORKER });
+    try {
+      const grammar = await pool.load(scenarios.input);
+      const start = JSON.parse(grammar.name) as { engineOptions: { parseTimeoutMs: number } };
+      return { limits: pool.poolStatus().limits, parseTimeoutMs: start.engineOptions.parseTimeoutMs };
+    } finally {
+      await pool.dispose();
+    }
+  }
+
+  it('default limits: cut-off 5000, pool deadline 7000, load deadline from the approved addendum', async () => {
+    const seen = await handedToWorker({});
+    assert.deepEqual(seen.limits, { parseTimeoutMs: 5000, runTimeoutMs: 7000, loadTimeoutMs: 30000 });
+    assert.equal(seen.parseTimeoutMs, 5000, 'the engine inside the worker cuts off at the cut-off, not at the deadline');
+    assert.equal(POOL_DEFAULTS.parseTimeoutMs, 5000);
+    assert.equal(POOL_DEFAULTS.terminateGraceMs, 2000);
+    assert.equal(POOL_DEFAULTS.runTimeoutMs, POOL_DEFAULTS.parseTimeoutMs + POOL_DEFAULTS.terminateGraceMs);
+  });
+
+  it('only runTimeoutMs: the engine cut-off follows it, as before', async () => {
+    const seen = await handedToWorker({ runTimeoutMs: 80 });
+    assert.equal(seen.limits.runTimeoutMs, 80);
+    assert.equal(seen.limits.parseTimeoutMs, 80);
+    assert.equal(seen.parseTimeoutMs, 80);
+  });
+
+  it('only parseTimeoutMs: the pool deadline is that value plus the terminate grace', async () => {
+    const seen = await handedToWorker({ engineOptions: { parseTimeoutMs: 100 } });
+    assert.equal(seen.limits.parseTimeoutMs, 100);
+    assert.equal(seen.limits.runTimeoutMs, 100 + POOL_DEFAULTS.terminateGraceMs);
+    assert.equal(seen.parseTimeoutMs, 100);
+  });
+
+  it('both set: both are used as given', async () => {
+    const seen = await handedToWorker({ runTimeoutMs: 300, engineOptions: { parseTimeoutMs: 90 } });
+    assert.equal(seen.limits.runTimeoutMs, 300);
+    assert.equal(seen.limits.parseTimeoutMs, 90);
+    assert.equal(seen.parseTimeoutMs, 90);
+  });
+
+  it('rejects an invalid cut-off with a RangeError at construction', () => {
+    for (const parseTimeoutMs of [0, -5, Number.NaN, Number.POSITIVE_INFINITY]) {
+      assert.throws(
+        () => createPooledGrammarEngine({ engineOptions: { parseTimeoutMs } }),
+        RangeError,
+        String(parseTimeoutMs),
+      );
+    }
+  });
+
+  it('a parse over the cut-off ends in parse_timeout and the worker survives with its grammar', async () => {
+    const scenarios = await loadToyScenarios();
+    const huge = 'fn a {\n  helper();\n}\n'.repeat(80000);
+    // The cut-off is far below the deadline (1 ms against 2001 ms), so the engine always wins the race.
+    const pool = createPooledGrammarEngine({ size: 1, engineOptions: { parseTimeoutMs: 1 } });
+    try {
+      const grammar = await pool.load(scenarios.input);
+      await assert.rejects(grammar.run(huge), isRunError('parse_timeout'));
+      const after = pool.poolStatus();
+      assert.equal(after.timedOut, 0, 'the pool did not have to kill the worker');
+      assert.equal(after.crashed, 0);
+      assert.equal(after.recycled, 0);
+      assert.equal(after.workers, 1, 'the worker with its loaded grammar is still there');
+      assert.deepStrictEqual(await grammar.run(scenarios.sources.basic), scenarios.expected.get(scenarios.sources.basic));
+      assert.equal(pool.poolStatus().workers, 1);
+    } finally {
+      await pool.dispose();
     }
   });
 });
