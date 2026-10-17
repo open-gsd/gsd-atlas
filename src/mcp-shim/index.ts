@@ -43,14 +43,31 @@ class ObservedTransport extends StdioServerTransport {
 
 const oneLine = (error: unknown): string => (error instanceof Error ? error.message : String(error)).replace(/\s+/g, ' ').slice(0, 300);
 
-/** Serve MCP over the given streams until input ends. Resolves with the exit code: 0 at end of input, 2 on a start-up failure. */
+/**
+ * Serve MCP over the given streams until input ends. Resolves with the exit code: 0 at end of input, 2 on a start-up
+ * failure. It resolves only after every Host call it started has finished, so the caller can close the Host without
+ * a call still building a tenant behind its back (a request that arrives in the same chunk as the end of input).
+ * A call whose client has gone is finished and its answer dropped; the Host bounds each call itself.
+ */
 export async function runMcpShim(io: McpShimIo): Promise<number> {
   const transport = new ObservedTransport(io.stdin, io.stdout);
   const report = (error: unknown): void => {
     io.stderr.write(`gsd-atlas-mcp: warning host_error: ${oneLine(error)}\n`);
   };
+  const inFlight = new Set<Promise<unknown>>();
+  const client: HostClient = {
+    handle(request) {
+      const work = (async () => io.client.handle(request))();
+      inFlight.add(work);
+      const done = (): void => {
+        inFlight.delete(work);
+      };
+      work.then(done, done);
+      return work;
+    },
+  };
   try {
-    const handle = serveStdio(() => buildMcpServer(io.client, { version: io.version, onError: report }), {
+    const handle = serveStdio(() => buildMcpServer(client, { version: io.version, onError: report }), {
       transport,
       onerror: (error) => {
         io.stderr.write(`gsd-atlas-mcp: warning protocol_error: ${oneLine(error)}\n`);
@@ -58,6 +75,7 @@ export async function runMcpShim(io: McpShimIo): Promise<number> {
     });
     await transport.closed;
     await handle.close();
+    while (inFlight.size > 0) await Promise.allSettled([...inFlight]);
     return 0;
   } catch (error) {
     io.stderr.write(`gsd-atlas-mcp: error internal_error: ${oneLine(error)}\n`);
