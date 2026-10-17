@@ -703,6 +703,84 @@ describe('gsd-atlas init for Codex', () => {
       assert.deepEqual(fs.readdirSync(path.dirname(file)), ['config.toml']);
     });
   }
+
+  describe('block end is the next real table header', () => {
+    const head = ['model = "o3"', ''];
+    const tail = ['[next]', 'key = 1', ''];
+
+    async function replaced(oldBlock: readonly string[]): Promise<{ out: Outcome; text: string }> {
+      const rig = makeRig();
+      const file = seed(rig, '.codex/config.toml', [...head, '[mcp_servers.gsd-atlas]', ...oldBlock, ...tail].join('\n'));
+      const out = await rig.run(['init', '--agent', 'codex']);
+      return { out, text: fs.readFileSync(file, 'utf8') };
+    }
+
+    const expected = [...head, ...table(), '', ...tail].join('\n');
+
+    it('multi-line array in our table whose continuation lines start with [', async () => {
+      const { out, text } = await replaced(['command = "/old/node"', 'args = ["/old/entry.js"]', 'notes = [', '  [1, 2],', '  [3]', ']', '']);
+      assert.equal(out.code, 0);
+      assert.equal(text, expected);
+    });
+
+    it('multi-line basic string in our table with a line [not a table]', async () => {
+      const { out, text } = await replaced(['command = "/old/node"', 'doc = """', '[not a table]', '"""', 'args = ["/old/entry.js"]', '']);
+      assert.equal(out.code, 0);
+      assert.equal(text, expected);
+    });
+
+    it('multi-line literal string in our table with a line [not a table]', async () => {
+      const { out, text } = await replaced(['command = "/old/node"', "doc = '''", '[not a table]', "'''", 'args = ["/old/entry.js"]', '']);
+      assert.equal(out.code, 0);
+      assert.equal(text, expected);
+    });
+
+    it('a string line equal to our header in another table is not our table: the block is appended and the string is untouched', async () => {
+      const rig = makeRig();
+      const before = ['[other]', 'text = """', '[mcp_servers.gsd-atlas]', 'command = "x"', '"""', ''].join('\n');
+      const file = seed(rig, '.codex/config.toml', before);
+
+      const out = await rig.run(['init', '--agent', 'codex']);
+
+      assert.equal(out.code, 0);
+      assert.equal(out.envelope().data.hosts[0]!.action, 'updated');
+      assert.equal(fs.readFileSync(file, 'utf8'), `${before}\n${table().join('\n')}\n`);
+    });
+
+    it('a line that is just [ inside a multi-line array of another table is not refused', async () => {
+      const rig = makeRig();
+      const before = ['[other]', 'list = [', '[', '  1,', '],', ']', ''].join('\n');
+      const file = seed(rig, '.codex/config.toml', before);
+
+      const out = await rig.run(['init', '--agent', 'codex']);
+
+      assert.equal(out.code, 0);
+      assert.equal(out.envelope().data.hosts[0]!.action, 'updated');
+      assert.equal(fs.readFileSync(file, 'utf8'), `${before}\n${table().join('\n')}\n`);
+    });
+
+    it('a real unclosed header at depth zero is still refused with its line number', async () => {
+      const rig = makeRig();
+      const bytes = Buffer.from('list = [\n[1],\n]\n[broken\nkey = 1\n');
+      const file = seed(rig, '.codex/config.toml', bytes);
+
+      const out = await rig.run(['init', '--agent', 'codex']);
+
+      assert.equal(out.code, 2);
+      assert.match(out.envelope().data.hosts[0]!.reason ?? '', /line 4/);
+      assert.deepEqual(fs.readFileSync(file), bytes);
+    });
+
+    it('CRLF files keep CRLF and the bytes outside the block are identical', async () => {
+      const rig = makeRig();
+      const lines = [...head, '[mcp_servers.gsd-atlas]', 'command = "/old"', 'notes = [', '  [1],', ']', '', ...tail];
+      const file = seed(rig, '.codex/config.toml', lines.join('\r\n'));
+
+      await rig.run(['init', '--agent', 'codex']);
+
+      assert.equal(fs.readFileSync(file, 'utf8'), [...head, ...table(), '', ...tail].join('\r\n'));
+    });
+  });
 });
 
 describe('gsd-atlas init host detection and the agent filter', () => {

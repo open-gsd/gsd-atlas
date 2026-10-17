@@ -180,10 +180,91 @@ function tomlString(value: string): string {
   return `${out}"`;
 }
 
+/** The index just past the run of `quote` characters that starts at `from` (at most 5 count: 3 close, 2 are content). */
+function quoteRunEnd(line: string, from: number, quote: string): number {
+  let end = from;
+  while (end < line.length && end - from < 5 && line[end] === quote) {
+    end += 1;
+  }
+  return end;
+}
+
+/** The index just past the closing `quote` of a single-line string that opens at `from`; the line end when unterminated. */
+function singleLineStringEnd(line: string, from: number, quote: string): number {
+  for (let index = from + 1; index < line.length; index += 1) {
+    if (quote === '"' && line[index] === '\\') {
+      index += 1; // an escaped character, including an escaped quote
+    } else if (line[index] === quote) {
+      return index + 1;
+    }
+  }
+  return line.length;
+}
+
+type TomlString = 'none' | 'basic' | 'literal';
+
+/**
+ * The zero-based indexes of the lines of `lines` that are real TOML table headers (`[a]` and `[[a]]`).
+ * A small line scan, not a TOML parser: it carries across lines whether a multi-line basic string
+ * (three double quotes) or a multi-line literal string (three single quotes) is open and how deeply
+ * arrays and inline tables are nested, and inside a line it skips single-line strings and comments. A
+ * line is a header only when, outside any string and at depth zero, its first non-blank character is
+ * `[`. A header line is consumed whole: its brackets never count toward the depth. Exported for tests.
+ */
+export function tomlHeaderLines(lines: readonly string[]): ReadonlySet<number> {
+  const headers = new Set<number>();
+  let open: TomlString = 'none';
+  let depth = 0;
+  for (const [number, line] of lines.entries()) {
+    if (open === 'none' && depth === 0 && line.trimStart().startsWith('[')) {
+      headers.add(number);
+      continue;
+    }
+    let index = 0;
+    while (index < line.length) {
+      if (open !== 'none') {
+        const quote = open === 'basic' ? '"' : "'";
+        const char = line[index];
+        if (open === 'basic' && char === '\\') {
+          index += 2;
+        } else if (char === quote && line.startsWith(quote.repeat(3), index)) {
+          index = quoteRunEnd(line, index, quote);
+          open = 'none';
+        } else {
+          index += 1;
+        }
+        continue;
+      }
+      const char = line[index]!;
+      if (char === '#') {
+        break;
+      }
+      if (char === '"' || char === "'") {
+        if (line.startsWith(char.repeat(3), index)) {
+          open = char === '"' ? 'basic' : 'literal';
+          index += 3;
+        } else {
+          index = singleLineStringEnd(line, index, char);
+        }
+      } else {
+        if (char === '[' || char === '{') {
+          depth += 1;
+        } else if ((char === ']' || char === '}') && depth > 0) {
+          depth -= 1;
+        }
+        index += 1;
+      }
+    }
+  }
+  return headers;
+}
+
 /**
  * Put the `[mcp_servers.gsd-atlas]` table into a Codex config by text edit (no TOML parser is a
  * dependency). A new table is appended after a blank line. An existing one is replaced from its header
- * to the next line that starts with `[` (blank lines before that line stay); every other byte is kept.
+ * to the next real table header (see `tomlHeaderLines`; blank lines before that header stay), so a
+ * line that merely starts with `[` inside a multi-line array or string neither ends nor blocks the
+ * replacement; every other byte is kept.
  */
 function renderCodex(existing: UserFile | null, launch: McpLaunch): RenderResult {
   const eol: Eol = existing?.eol ?? '\n';
@@ -196,9 +277,10 @@ function renderCodex(existing: UserFile | null, launch: McpLaunch): RenderResult
     return refused('the file contains a NUL byte');
   }
   const lines = text.split('\n'); // a CR stays attached to its line, so untouched lines keep their endings
-  for (const [index, line] of lines.entries()) {
-    const trimmed = line.trimStart();
-    if (trimmed.startsWith('[') && !trimmed.includes(']')) {
+  const headers = tomlHeaderLines(lines);
+  for (const index of headers) {
+    const line = lines[index]!;
+    if (!line.includes(']')) {
       return refused(`line ${index + 1} starts a table header without a closing bracket`);
     }
     if (CODEX_QUOTED_HEADER.test(line)) {
@@ -206,7 +288,7 @@ function renderCodex(existing: UserFile | null, launch: McpLaunch): RenderResult
     }
   }
 
-  const start = lines.findIndex((line) => line.trim() === CODEX_HEADER);
+  const start = lines.findIndex((line, index) => headers.has(index) && line.trim() === CODEX_HEADER);
   if (start === -1) {
     let base = text;
     if (base.length > 0) {
@@ -220,7 +302,7 @@ function renderCodex(existing: UserFile | null, launch: McpLaunch): RenderResult
     return { kind: 'ok', text: `${base}${block.join(eol)}${eol}`, changed: true };
   }
 
-  let end = lines.findIndex((line, index) => index > start && line.trimStart().startsWith('['));
+  let end = lines.findIndex((_line, index) => index > start && headers.has(index));
   if (end === -1) {
     end = lines.length;
   }
