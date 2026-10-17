@@ -33,6 +33,8 @@
     "grammar:budget": "node scripts/grammar-budget.ts",
     "recall": "node scripts/recall.ts",
     "recall:corpus": "node scripts/recall.ts --corpus gsd-core",
+    "size-gate": "node scripts/size-gate.ts",
+    "gates:corpus": "node scripts/corpus-gates.ts",
     "prepack": "npm run build"
   },
   "dependencies": {
