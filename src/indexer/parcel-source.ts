@@ -163,34 +163,73 @@ export function createParcelEventSource(options: ParcelEventSourceOptions = {}):
       const api = await load();
       const relative = relativeTo(commonDir);
       let open = true;
+
+      /**
+       * A worktree appeared. The native watcher can miss it (found by plan 02-26 on Linux CI): `git worktree add` makes
+       * `worktrees/` and `worktrees/NAME/` back to back, inotify reports the first and can miss the second, and a
+       * directory nobody watches never reports its HEAD again. A new subscription starts from a scan of what exists, so it
+       * covers the directory the old one missed. The new one is opened BEFORE the old one is dropped, so no event falls
+       * in between; a duplicate event is harmless because every event only means "look again". Renewals do not queue up:
+       * events that arrive during one cost a single further renewal.
+       */
+      let renewing: Promise<void> | undefined;
+      let renewAgain = false;
+      const renew = (): void => {
+        if (!open) return;
+        if (renewing !== undefined) {
+          renewAgain = true;
+          return;
+        }
+        renewing = (async () => {
+          do {
+            renewAgain = false;
+            try {
+              const next = await api.subscribe(commonDir, onEvents, { ignore: GIT_IGNORE });
+              if (!open) {
+                await next.unsubscribe();
+                return;
+              }
+              const previous = subscription;
+              subscription = next;
+              await previous.unsubscribe();
+            } catch {
+              // The old subscription still serves; say that the watch is in doubt so the Indexer reconciles.
+              if (open) guarded(handler, { kind: 'problem', problem: 'error' });
+            }
+          } while (renewAgain && open);
+        })().finally(() => {
+          renewing = undefined;
+        });
+      };
+
+      const onEvents = (error: Error | null, events: readonly WatcherEvent[]): void => {
+        if (!open) return;
+        if (error !== null) {
+          guarded(handler, { kind: 'problem', problem: problemOf(error) });
+          return;
+        }
+        const delivered = new Set<string>();
+        for (const event of events) {
+          const mapped = gitEventOf(relative(event.path));
+          if (mapped === null) continue;
+          const key = JSON.stringify(mapped);
+          if (delivered.has(key)) continue;
+          delivered.add(key);
+          guarded(handler, mapped);
+        }
+        if (delivered.has(JSON.stringify({ kind: 'worktrees' }))) renew();
+      };
+
       let subscription: WatcherSubscription;
       try {
-        subscription = await api.subscribe(
-          commonDir,
-          (error, events) => {
-            if (!open) return;
-            if (error !== null) {
-              guarded(handler, { kind: 'problem', problem: problemOf(error) });
-              return;
-            }
-            const delivered = new Set<string>();
-            for (const event of events) {
-              const mapped = gitEventOf(relative(event.path));
-              if (mapped === null) continue;
-              const key = JSON.stringify(mapped);
-              if (delivered.has(key)) continue;
-              delivered.add(key);
-              guarded(handler, mapped);
-            }
-          },
-          { ignore: GIT_IGNORE },
-        );
+        subscription = await api.subscribe(commonDir, onEvents, { ignore: GIT_IGNORE });
       } catch (error) {
         mode = 'reconcile-only';
         throw error;
       }
       return async () => {
         open = false;
+        await renewing;
         await subscription.unsubscribe();
       };
     },

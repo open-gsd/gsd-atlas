@@ -16,30 +16,49 @@ function scriptedWatcher(): {
   readonly subscribed: Array<{ readonly dir: string; readonly options: WatcherOptions | undefined }>;
   readonly unsubscribed: string[];
   readonly snapshots: string[];
+  /** Every subscribe and unsubscribe, in order: `subscribe N` and `unsubscribe N`, N counting the subscriptions from 1. */
+  readonly log: string[];
+  /** How many subscriptions are live right now. */
+  live(): number;
   deliver(dir: string, error: Error | null, events: readonly WatcherEvent[]): void;
   failSubscribe: Error | undefined;
+  /** While set, `subscribe` waits for it before it registers; the failure of a held subscribe is still `failSubscribe`. */
+  hold: Promise<void> | undefined;
   eventsSince: readonly WatcherEvent[];
 } {
-  const callbacks = new Map<string, (error: Error | null, events: readonly WatcherEvent[]) => unknown>();
+  // One entry object per subscription, so two subscriptions that share a callback function stay two subscriptions.
+  type Entry = { readonly fn: (error: Error | null, events: readonly WatcherEvent[]) => unknown };
+  const callbacks = new Map<string, Set<Entry>>();
   const state = {
     subscribed: [] as Array<{ readonly dir: string; readonly options: WatcherOptions | undefined }>,
     unsubscribed: [] as string[],
     snapshots: [] as string[],
+    log: [] as string[],
     failSubscribe: undefined as Error | undefined,
+    hold: undefined as Promise<void> | undefined,
     eventsSince: [] as readonly WatcherEvent[],
   };
+  let counter = 0;
   const api: WatcherApi = {
-    subscribe: (dir, fn, options) => {
-      if (state.failSubscribe !== undefined) return Promise.reject(state.failSubscribe);
+    subscribe: async (dir, fn, options) => {
+      if (state.hold !== undefined) await state.hold;
+      if (state.failSubscribe !== undefined) throw state.failSubscribe;
       state.subscribed.push({ dir, options });
-      callbacks.set(dir, fn);
-      return Promise.resolve({
+      counter += 1;
+      const number = counter;
+      state.log.push(`subscribe ${String(number)}`);
+      const live = callbacks.get(dir) ?? new Set<Entry>();
+      const entry: Entry = { fn };
+      live.add(entry);
+      callbacks.set(dir, live);
+      return {
         unsubscribe: () => {
-          callbacks.delete(dir);
+          live.delete(entry);
           state.unsubscribed.push(dir);
+          state.log.push(`unsubscribe ${String(number)}`);
           return Promise.resolve();
         },
-      });
+      };
     },
     writeSnapshot: (dir, snapshot) => {
       state.snapshots.push(`${dir} -> ${snapshot}`);
@@ -59,11 +78,21 @@ function scriptedWatcher(): {
     get snapshots() {
       return state.snapshots;
     },
+    get log() {
+      return state.log;
+    },
+    live: () => [...callbacks.values()].reduce((total, set) => total + set.size, 0),
     get failSubscribe() {
       return state.failSubscribe;
     },
     set failSubscribe(value) {
       state.failSubscribe = value;
+    },
+    get hold() {
+      return state.hold;
+    },
+    set hold(value) {
+      state.hold = value;
     },
     get eventsSince() {
       return state.eventsSince;
@@ -72,7 +101,7 @@ function scriptedWatcher(): {
       state.eventsSince = value;
     },
     deliver: (dir, error, events) => {
-      callbacks.get(dir)?.(error, events);
+      for (const entry of [...(callbacks.get(dir) ?? [])]) entry.fn(error, events);
     },
   };
 }
@@ -187,6 +216,107 @@ describe('parcel event source over a scripted watcher: what is delivered and wha
     } finally {
       tmp.cleanup();
     }
+  });
+});
+
+/** Let the promises a renewal chains on run to their end. */
+const settle = async (): Promise<void> => {
+  for (let turn = 0; turn < 20; turn += 1) await new Promise<void>((resolve) => setImmediate(resolve));
+};
+
+describe('parcel event source: the git watch is renewed when a worktree appears (found by plan 02-26 on Linux CI)', () => {
+  // Found on Linux: when `git worktree add` creates `worktrees/` and `worktrees/NAME/` back to back, inotify can report the
+  // first and miss the second, so the new directory is never watched and its HEAD changes are never delivered. A new
+  // subscription starts from a scan of what exists, so it covers the directory the old one missed.
+  async function withGitWatch(
+    body: (world: { common: string; watcher: ReturnType<typeof scriptedWatcher>; seen: GitSourceEvent[]; stop: () => Promise<void> }) => Promise<void>,
+  ): Promise<void> {
+    const tmp = makeTempDir();
+    try {
+      const common = path.join(realPath(tmp.path), 'git');
+      fs.mkdirSync(common);
+      const watcher = scriptedWatcher();
+      const source = createParcelEventSource({ watcher: () => Promise.resolve(watcher.api) });
+      const seen: GitSourceEvent[] = [];
+      const stop = await source.subscribeGit(common, (event) => seen.push(event));
+      await body({ common, watcher, seen, stop });
+    } finally {
+      tmp.cleanup();
+    }
+  }
+
+  it('subscribes again after a worktrees event and only then drops the old subscription, so no event falls in between', async () => {
+    await withGitWatch(async ({ common, watcher, seen, stop }) => {
+      assert.deepEqual(watcher.log, ['subscribe 1']);
+      watcher.deliver(common, null, eventsOf(common, 'worktrees'));
+      assert.deepEqual(seen, [{ kind: 'worktrees' }]);
+      await settle();
+      assert.deepEqual(watcher.log, ['subscribe 1', 'subscribe 2', 'unsubscribe 1']);
+      assert.equal(watcher.live(), 1);
+
+      // The renewed subscription delivers; the first no longer does.
+      watcher.deliver(common, null, eventsOf(common, 'worktrees/w1/HEAD'));
+      assert.deepEqual(seen, [{ kind: 'worktrees' }, { kind: 'head', gitDirName: 'w1' }]);
+
+      await stop();
+      assert.equal(watcher.live(), 0, 'stop drops the renewed subscription too');
+      assert.deepEqual(watcher.log, ['subscribe 1', 'subscribe 2', 'unsubscribe 1', 'unsubscribe 2']);
+      watcher.deliver(common, null, eventsOf(common, 'HEAD'));
+      assert.equal(seen.length, 2, 'nothing is delivered after stop');
+    });
+  });
+
+  it('a HEAD change alone does not renew the watch, and worktrees events that arrive during a renewal cost one more renewal, not one each', async () => {
+    await withGitWatch(async ({ common, watcher }) => {
+      watcher.deliver(common, null, eventsOf(common, 'HEAD'));
+      await settle();
+      assert.deepEqual(watcher.log, ['subscribe 1'], 'a head event does not renew');
+
+      let release: () => void = () => {};
+      watcher.hold = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      for (let batch = 0; batch < 5; batch += 1) watcher.deliver(common, null, eventsOf(common, 'worktrees'));
+      await settle();
+      assert.deepEqual(watcher.log, ['subscribe 1'], 'the first renewal is waiting for the watcher');
+      watcher.hold = undefined;
+      release();
+      await settle();
+      assert.deepEqual(watcher.log, ['subscribe 1', 'subscribe 2', 'unsubscribe 1', 'subscribe 3', 'unsubscribe 2']);
+      assert.equal(watcher.live(), 1);
+    });
+  });
+
+  it('a renewal that fails is reported as a problem so the Indexer reconciles, and the old subscription keeps serving', async () => {
+    await withGitWatch(async ({ common, watcher, seen }) => {
+      watcher.failSubscribe = new Error('no inotify watches left');
+      watcher.deliver(common, null, eventsOf(common, 'worktrees'));
+      await settle();
+      assert.deepEqual(seen, [{ kind: 'worktrees' }, { kind: 'problem', problem: 'error' }]);
+      assert.equal(watcher.live(), 1);
+      watcher.failSubscribe = undefined;
+      watcher.deliver(common, null, eventsOf(common, 'HEAD'));
+      assert.deepEqual(seen.at(-1), { kind: 'head', gitDirName: '' });
+    });
+  });
+
+  it('stop while a renewal is waiting leaves no subscription open and no event delivered afterwards', async () => {
+    await withGitWatch(async ({ common, watcher, seen, stop }) => {
+      let release: () => void = () => {};
+      watcher.hold = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      watcher.deliver(common, null, eventsOf(common, 'worktrees'));
+      await settle();
+      const stopping = stop();
+      watcher.hold = undefined;
+      release();
+      await stopping;
+      await settle();
+      assert.equal(watcher.live(), 0);
+      watcher.deliver(common, null, eventsOf(common, 'HEAD'));
+      assert.deepEqual(seen, [{ kind: 'worktrees' }]);
+    });
   });
 });
 
