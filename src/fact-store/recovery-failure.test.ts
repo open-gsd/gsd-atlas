@@ -301,3 +301,102 @@ describe('takeover recovery and close', () => {
     });
   });
 });
+
+/**
+ * A store directory whose `refs` root page is overwritten: the store still opens (neither the open nor `status`
+ * reads that page), and only a `check` can find the damage.
+ */
+async function damagedStoreDir(rig: Rig, driver: DriverName): Promise<void> {
+  const first = await rig.open({ lease: 'acquire' });
+  await seed(first, 30);
+  await first.close(); // the last connection folds the log into the main file
+  const probe = await openDatabase(rig.file, { readOnly: true, driver });
+  let root: number;
+  try {
+    root = Number(probe.prepare("SELECT rootpage AS n FROM sqlite_master WHERE name = 'refs'").get()?.n);
+  } finally {
+    probe.close();
+  }
+  assert.ok(root > 1);
+  overwrite(rig.file, (root - 1) * PAGE, PAGE);
+}
+
+for (const driver of ['node:sqlite', 'better-sqlite3'] as const) {
+  describe(`check whose rebuild fails (${driver})`, () => {
+    it('check rebuild fails: the problems end with a rebuild failed line, and the restored store is usable', async () => {
+      await withRig(driver, async (rig) => {
+        await damagedStoreDir(rig, driver);
+        const failing = new Set<Stage>(['replace']);
+        const injected = injector(failing);
+        const changes: boolean[] = [];
+        const store = await rig.open({
+          lease: 'acquire',
+          beforeReplaceOpen: injected.hook,
+          onLeaseChange: (held) => changes.push(held),
+        });
+
+        const result = await store.check(); // resolves: it does not reject out of the maintenance request
+        assert.equal(result.ok, false);
+        assert.ok(result.problems.length >= 2, 'the quick_check lines and the rebuild line');
+        const last = result.problems[result.problems.length - 1] ?? '';
+        assert.match(last, /^rebuild failed:/);
+        assert.match(last, /injected failure at replace/);
+        assert.deepStrictEqual(injected.calls, ['replace', 'restore']);
+
+        // The store is usable: valid connections, still the leader, the moved-aside file kept.
+        const status = await store.status();
+        assert.equal(status.writerLeaseHeld, true);
+        assert.ok(status.rebuiltAfterCorruption !== undefined);
+        assert.equal(fs.existsSync(status.rebuiltAfterCorruption.movedTo), true);
+        assert.equal(quarantined(rig.dir).length, 1);
+        assert.deepStrictEqual(changes, []);
+        await assert.rejects(store.at('main').find('sym0'), UnknownWorktree);
+
+        const writer = store.writer();
+        await writer.commitFile({ worktree: 'main', path: generatedPath(0), hash: generatedHash(0), facts: generatedFacts(0) });
+        const found = await store.at('main').find('sym0');
+        assert.equal(found.degraded?.includes('rebuilding'), true, 'the restored store carries the rebuilding note');
+        writer.release();
+        assert.deepStrictEqual(await store.check(), { ok: true, problems: [] }, 'a later check on the restored store is ok');
+      });
+    });
+
+    it('check rebuild and restore fail: check still resolves, the store is closed and the lease is free', async () => {
+      await withRig(driver, async (rig) => {
+        await damagedStoreDir(rig, driver);
+        const injected = injector(new Set<Stage>(['replace', 'restore']));
+        const changes: boolean[] = [];
+        const store = await rig.open({
+          lease: 'acquire',
+          beforeReplaceOpen: injected.hook,
+          onLeaseChange: (held) => changes.push(held),
+        });
+
+        const result = await store.check();
+        assert.equal(result.ok, false);
+        assert.match(result.problems[result.problems.length - 1] ?? '', /^rebuild failed:/);
+        assert.deepStrictEqual(injected.calls, ['replace', 'restore']);
+
+        await assert.rejects(store.status(), StoreClosed);
+        assert.throws(() => store.writer(), StoreClosed);
+        await assert.rejects(store.check(), StoreClosed);
+        assert.deepStrictEqual(changes, [false], 'the leader that had reported leadership gives it up');
+
+        const other = await rig.open({ lease: 'acquire' });
+        assert.equal((await other.status()).writerLeaseHeld, true, 'the lease is free');
+      });
+    });
+  });
+}
+
+describe('check on a healthy store', () => {
+  it('is unchanged: ok, no problems, and the rebuild hook is never reached', async () => {
+    await withRig('node:sqlite', async (rig) => {
+      const injected = injector(new Set<Stage>(['replace', 'restore']));
+      const store = await rig.open({ lease: 'acquire', beforeReplaceOpen: injected.hook });
+      await seed(store, 3);
+      assert.deepStrictEqual(await store.check(), { ok: true, problems: [] });
+      assert.deepStrictEqual(injected.calls, []);
+    });
+  });
+});
