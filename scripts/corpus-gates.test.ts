@@ -274,4 +274,16 @@ describe('the command line', () => {
     );
     assert.equal(fs.existsSync(inside), false);
   });
+
+  it('a work area beside the repository whose name shares the repository name as a prefix is not inside it (shared isInside)', async () => {
+    const sibling = `${path.resolve(import.meta.dirname, '..')}-sibling-work`;
+    try {
+      await assert.rejects(
+        runCorpusGates({ corpus: 'demo', tmpRoot: sibling, fetch: () => Promise.reject(new Error('stop after the containment check')) }),
+        (error: unknown) => error instanceof Error && /stop after the containment check/.test(error.message) && !/inside the repository/.test(error.message),
+      );
+    } finally {
+      fs.rmSync(sibling, { recursive: true, force: true });
+    }
+  });
 });

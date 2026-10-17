@@ -10,7 +10,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { diagnostic } from '../facts/index.ts';
+import { diagnostic, isInside } from '../facts/index.ts';
 import type { Diagnostic } from '../facts/index.ts';
 import { GRAMMAR_LIMITS } from '../grammar-engine/index.ts';
 import type { GrammarInput } from '../grammar-engine/index.ts';
@@ -49,10 +49,6 @@ const ROLES: Readonly<Record<FileRole, RoleSpec>> = {
 };
 
 type ConfinedRead = { readonly ok: true; readonly bytes: Buffer } | { readonly ok: false; readonly diagnostic: Diagnostic };
-
-function isInside(rootReal: string, candidateReal: string): boolean {
-  return candidateReal === rootReal || candidateReal.startsWith(rootReal.endsWith(path.sep) ? rootReal : rootReal + path.sep);
-}
 
 function reasonOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error);

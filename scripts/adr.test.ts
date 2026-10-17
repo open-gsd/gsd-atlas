@@ -402,6 +402,10 @@ const AMENDED: readonly AmendedAdr[] = [
     amendments: [
       { title: 'ProjectModel seam', keywords: ['ProjectModel', 'compiler-free', 'built-in', 'A44', 'project.model'] },
       { title: 'Parse-error budget unit', keywords: ['bytes inside', 'parseBudget'], extra: 'parse-budget' },
+      {
+        title: 'Parser pool deadlines',
+        keywords: ['pool.loadTimeoutMs', '30,000', 'pool.terminateGraceMs', '7,000', 'parse_timeout', 'engine_init_failed'],
+      },
     ],
   },
   {

@@ -17,6 +17,7 @@ import { runCli } from '../src/cli/index.ts';
 import { allowAll, createRealRunner } from '../src/command-runner/index.ts';
 import { createTempGitRepo, makeTempDir } from '../src/test-kit/index.ts';
 import type { TempDir, TempGitRepo } from '../src/test-kit/index.ts';
+import { withFixture } from './test-helpers/fixture-repo.ts';
 
 const toyModule = path.resolve(import.meta.dirname, '..', 'test', 'fixtures', 'modules', 'toy');
 const setupRunner = createRealRunner({ decide: allowAll });
@@ -248,6 +249,30 @@ describe('CLI with two processes on one repository (QRY-04 concurrency edge)', (
     assert.equal(leader.envelope.degraded, undefined);
     assert.deepEqual(follower.envelope.data, leader.envelope.data);
     assert.deepEqual(follower.envelope['citations'], leader.envelope['citations']);
+  });
+});
+
+describe('init and the build hint with the real binaries (plan 02-44, IN-04)', () => {
+  it('init sees a store under store.dir: no hint after a build into GSD_ATLAS_STORE_DIR, and the hint exactly once before', async () => {
+    await withFixture('ts-three-files', async (fixture) => {
+      const storeDir = path.join(fixture.tmp.path, 'elsewhere');
+      fs.mkdirSync(path.join(fixture.env['HOME'] as string, '.codex'), { recursive: true });
+      const env = { GSD_ATLAS_STORE_DIR: storeDir };
+      const hintLines = (stderr: string): string[] => stderr.split('\n').filter((line) => line.includes('gsd-atlas build'));
+
+      const before = await fixture.cli(['init', '--agent', 'codex'], { cwd: fixture.dir, env });
+      assert.equal(before.code, 0, before.stderr);
+      assert.equal(hintLines(before.stderr).length, 1, `an unbuilt repository gets the hint once: ${before.stderr}`);
+
+      const built = await fixture.cli(['build', '--repo', fixture.dir], { env });
+      assert.equal(built.code, 0, built.stderr);
+      assert.equal(fs.existsSync(path.join(fixture.dir, '.git', 'gsd-atlas')), false, 'the store is under store.dir, not beside the git directory');
+      assert.equal(fs.existsSync(storeDir), true);
+
+      const after = await fixture.cli(['init', '--agent', 'codex'], { cwd: fixture.dir, env });
+      assert.equal(after.code, 0, after.stderr);
+      assert.deepEqual(hintLines(after.stderr), [], `a built repository, wherever its store lives, gets no hint: ${after.stderr}`);
+    });
   });
 });
 

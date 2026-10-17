@@ -7,7 +7,7 @@ import type { TestContext } from 'node:test';
 
 import { makeTempDir } from '../test-kit/index.ts';
 import type { TempDir } from '../test-kit/index.ts';
-import { readModuleInputs } from './module-files.ts';
+import { readModuleFile, readModuleInputs } from './module-files.ts';
 import type { ReadModuleInputsResult } from './module-files.ts';
 
 const toyDir = path.resolve(import.meta.dirname, '..', '..', 'test', 'fixtures', 'modules', 'toy');
@@ -115,6 +115,34 @@ describe('readModuleInputs: confinement', () => {
       return;
     }
     assert.equal(readModuleInputs(moduleDir).ok, true);
+  });
+
+  // The containment test is the shared `isInside` (IN-03, plan 02-44). These cases pin the behaviour across the
+  // replacement of the private copy; they pass before and after.
+  it('dot-dot directory name: a directory called ..assets inside the folder is a child, not a parent', () => {
+    const { moduleDir } = copyToy();
+    fs.mkdirSync(path.join(moduleDir, '..assets'));
+    fs.writeFileSync(path.join(moduleDir, '..assets', 'sample.toy'), 'fn main {\n}\n');
+    const read = readModuleFile(moduleDir, path.join('..assets', 'sample.toy'), 'fixture');
+    assert.equal(read.ok, true, JSON.stringify(read));
+    if (read.ok) assert.equal(read.bytes.toString('utf8'), 'fn main {\n}\n');
+  });
+
+  it('a link inside the folder that points out of it is path_escape, and so is the folder itself', (t: TestContext) => {
+    const { root, moduleDir } = copyToy();
+    const outside = path.join(root, 'outside.toy');
+    fs.writeFileSync(outside, 'fn leak {\n}\n');
+    if (!trySymlink(outside, path.join(moduleDir, 'leak.toy'), 'file')) {
+      t.skip('this OS refused to create a symlink');
+      return;
+    }
+    const leaked = readModuleFile(moduleDir, 'leak.toy', 'fixture');
+    assert.equal(leaked.ok, false);
+    if (!leaked.ok) assert.equal(leaked.diagnostic.code, 'path_escape');
+
+    const folder = readModuleFile(moduleDir, '.', 'fixture');
+    assert.equal(folder.ok, false);
+    if (!folder.ok) assert.equal(folder.diagnostic.code, 'path_escape');
   });
 });
 

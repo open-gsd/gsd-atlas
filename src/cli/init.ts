@@ -18,6 +18,12 @@ import type { AgentId, McpLaunch, Target } from './init-targets.ts';
 
 export const INIT_SCHEMA = 'gsd-atlas.init/1';
 
+/** The Host's answer about the repository around the working directory (see `indexState` below). */
+export type IndexState =
+  | { readonly kind: 'indexed' }
+  | { readonly kind: 'not_indexed'; readonly repo: string }
+  | { readonly kind: 'unknown' };
+
 /** Everything init needs from the outside world. `env` is carried for the bin and not read by init yet. */
 export interface InitEnvironment {
   readonly home: string;
@@ -26,6 +32,12 @@ export interface InitEnvironment {
   readonly env: Readonly<Record<string, string | undefined>>;
   /** The launch command to register: the node executable and the absolute path of the gsd-atlas-mcp entry. */
   readonly mcp: McpLaunch;
+  /**
+   * Asks the Host whether the repository around `cwd` has an index. Supplied by the CLI from its HostClient; init
+   * never launches a program, and it calls this only when it registered something, it is not a dry run and a `.git`
+   * entry exists above the working directory. Absent: the file-system probe alone decides.
+   */
+  readonly indexState?: (cwd: string) => Promise<IndexState>;
   /** TEST ONLY: called with the config file path just before it is written (never on a dry run). */
   readonly beforeWrite?: (file: string) => void | Promise<void>;
   /** TEST ONLY: called after the temp file is written and before the final compare and the rename. */
@@ -157,12 +169,10 @@ async function commonGitDir(gitDir: string): Promise<string> {
 }
 
 /**
- * The repository root when `cwd` is inside a git repository whose common git directory has no
- * `gsd-atlas` folder, else null. Found by looking for a `.git` entry upwards, without running git. A
- * store kept in the cache directory (synced folder, network mount, `store.dir`) is invisible here, so
- * a repository returned here may still be indexed; the hint is worded not to claim otherwise.
+ * The working tree root and git directory of the repository `cwd` is inside, found by looking for a `.git` entry
+ * upwards, without running git. Null when there is none, or the entry is a file that does not point at a git directory.
  */
-async function repoWithoutIndex(cwd: string): Promise<string | null> {
+async function findRepository(cwd: string): Promise<{ readonly dir: string; readonly gitDir: string } | null> {
   let dir = cwd;
   for (;;) {
     const dotGit = path.join(dir, '.git');
@@ -181,11 +191,7 @@ async function repoWithoutIndex(cwd: string): Promise<string | null> {
         const pointer = /^gitdir:\s*(.+?)\s*$/m.exec(await readFile(dotGit, 'utf8').catch(() => ''));
         gitDir = pointer?.[1] === undefined ? null : path.resolve(dir, pointer[1]);
       }
-      if (gitDir === null) {
-        return null;
-      }
-      const common = await commonGitDir(gitDir);
-      return (await detectHomeFile(path.join(common, 'gsd-atlas'))) === 'missing' ? dir : null;
+      return gitDir === null ? null : { dir, gitDir };
     }
     const parent = path.dirname(dir);
     if (parent === dir) {
@@ -193,6 +199,40 @@ async function repoWithoutIndex(cwd: string): Promise<string | null> {
     }
     dir = parent;
   }
+}
+
+/** What the Host said about the working directory's repository; `unknown` for an error, a rejected call or any reply init does not understand. */
+async function hostIndexState(indexState: (cwd: string) => Promise<IndexState>, cwd: string): Promise<IndexState> {
+  try {
+    return await indexState(cwd);
+  } catch {
+    return { kind: 'unknown' };
+  }
+}
+
+/**
+ * The repository root to name in the `gsd-atlas build` hint, or null when no hint is due. Nothing is asked unless a
+ * `.git` entry exists above `cwd`. The Host decides when it can (it applies the same store-location rules as every
+ * read request, so a store kept in the cache directory, a synced folder or `store.dir` is seen). When there is no
+ * `indexState` function, or the Host cannot answer, the common git directory is probed for a `gsd-atlas` folder,
+ * which cannot see those other locations; the hint is worded not to claim the repository has no index.
+ */
+async function repoWithoutIndex(env: InitEnvironment): Promise<string | null> {
+  const found = await findRepository(env.cwd);
+  if (found === null) {
+    return null;
+  }
+  if (env.indexState !== undefined) {
+    const state = await hostIndexState(env.indexState, env.cwd);
+    if (state.kind === 'indexed') {
+      return null;
+    }
+    if (state.kind === 'not_indexed') {
+      return state.repo;
+    }
+  }
+  const common = await commonGitDir(found.gitDir);
+  return (await detectHomeFile(path.join(common, 'gsd-atlas'))) === 'missing' ? found.dir : null;
 }
 
 export async function runInit(options: InitOptions, env: InitEnvironment): Promise<InitResult> {
@@ -234,7 +274,7 @@ export async function runInit(options: InitOptions, env: InitEnvironment): Promi
   }
   const registered = hosts.some((host) => host.action === 'created' || host.action === 'updated' || host.action === 'unchanged');
   if (registered && !refused && !options.dryRun) {
-    const repo = await repoWithoutIndex(env.cwd);
+    const repo = await repoWithoutIndex(env);
     if (repo !== null) {
       stderrLines.push(`gsd-atlas: to index ${repo}, run \`gsd-atlas build\` inside it`);
     }

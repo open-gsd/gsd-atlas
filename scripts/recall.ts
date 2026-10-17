@@ -5,6 +5,7 @@ import path from 'node:path';
 import { parseArgs } from 'node:util';
 import { pathToFileURL } from 'node:url';
 
+import { isInside } from '../src/facts/index.ts';
 import type { FileFacts } from '../src/facts/index.ts';
 import { GRAMMAR_LIMITS, createGrammarEngine, extractFileFacts } from '../src/grammar-engine/index.ts';
 import type { GrammarEngine, GrammarInput, LoadedGrammar, QueryKind } from '../src/grammar-engine/index.ts';
@@ -399,10 +400,6 @@ function listFiles(root: string): string[] {
   return found;
 }
 
-function isInside(child: string, parent: string): boolean {
-  return child === parent || child.startsWith(parent.endsWith(path.sep) ? parent : parent + path.sep);
-}
-
 /** Windows keeps files locked briefly after a child exits, hence the retries. */
 function removeTree(directory: string): void {
   fs.rmSync(directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
@@ -563,7 +560,7 @@ async function measureCorpusRun(
 ): Promise<ModuleReport[]> {
   const tmpRoot = path.resolve(options.tmpRoot ?? os.tmpdir());
   const realRepo = fs.realpathSync(repoRoot);
-  if (isInside(path.join(fs.realpathSync(tmpRoot)), realRepo)) {
+  if (isInside(realRepo, fs.realpathSync(tmpRoot))) {
     throw new Error(`${tmpRoot} is inside the repository (${repoRoot}); a corpus checkout must never land in a checkout`);
   }
   const destination = fs.mkdtempSync(path.join(tmpRoot, 'gsd-atlas-recall-'));

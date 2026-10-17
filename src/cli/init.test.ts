@@ -38,6 +38,8 @@ interface RunOptions {
   readonly platform?: NodeJS.Platform;
   /** False simulates a build whose bin supplies no io.init. */
   readonly withInit?: boolean;
+  /** The host client init is given (see {@link scriptedClient}). */
+  readonly client?: HostClient;
   /** TEST ONLY hooks forwarded to the init environment: they run between init's read and its write. */
   readonly beforeWrite?: (file: string) => void | Promise<void>;
   readonly afterTemp?: (file: string) => void | Promise<void>;
@@ -57,12 +59,38 @@ afterEach(() => {
   }
 });
 
-/** The host must never be contacted by init: it only edits files. */
+/**
+ * The default client: init edits files and contacts the host only for the `no index yet` hint, so a test that does not
+ * script that question gets a rejected call, which init answers with the file-system probe.
+ */
 const client: HostClient = {
   async handle(): Promise<Envelope> {
     throw new Error('init must not contact the host');
   },
 };
+
+/** A client double that records every request and answers the `index_state` question as scripted. */
+function scriptedClient(answer: (cwd: unknown) => Envelope | Error): { readonly client: HostClient; readonly requests: Array<{ kind: string; args: unknown }> } {
+  const requests: Array<{ kind: string; args: unknown }> = [];
+  return {
+    requests,
+    client: {
+      async handle(request): Promise<Envelope> {
+        requests.push({ kind: request.kind, args: request.args });
+        const reply = answer((request.args as { cwd?: unknown } | undefined)?.cwd);
+        if (reply instanceof Error) throw reply;
+        return reply;
+      },
+    },
+  };
+}
+
+const indexStateReply = (repo: string, indexed: boolean): Envelope => ({
+  schema: 'gsd-atlas.index-state/1',
+  ok: true,
+  data: { repo, indexed },
+  diagnostics: [],
+});
 
 function makeRig(): Rig {
   const tmp = makeTempDir();
@@ -79,7 +107,7 @@ function makeRig(): Rig {
       const stdout: string[] = [];
       const stderr: string[] = [];
       const io = {
-        client,
+        client: options.client ?? client,
         version: () => '9.9.9',
         stdout: { write: (text: string) => stdout.push(text) },
         stderr: { write: (text: string) => stderr.push(text) },
@@ -586,6 +614,114 @@ describe('gsd-atlas init and the working directory', () => {
   });
 });
 
+describe('gsd-atlas init and the build hint through the Host (plan 02-44, IN-04)', () => {
+  const buildLines = (out: Outcome): string[] => out.stderr.join('').split('\n').filter((line) => line.includes('gsd-atlas build'));
+
+  it('indexed: when the Host says the repository has an index there is no hint, even if the git directory holds no gsd-atlas folder (a store in the cache directory)', async () => {
+    const rig = makeRig();
+    seedClaude(rig);
+    fs.mkdirSync(path.join(rig.cwd, '.git'));
+    const host = scriptedClient(() => indexStateReply(rig.cwd, true));
+
+    const out = await rig.run(['init', '--agent', 'claude'], { client: host.client });
+
+    assert.equal(out.code, 0);
+    assert.deepEqual(buildLines(out), []);
+    assert.deepEqual(host.requests, [{ kind: 'index_state', args: { cwd: rig.cwd } }], 'one question, about the working directory');
+  });
+
+  it('not indexed: the hint names the repository root the Host reported', async () => {
+    const rig = makeRig();
+    seedClaude(rig);
+    fs.mkdirSync(path.join(rig.cwd, '.git'));
+    const root = path.join(rig.cwd, 'host-root');
+    const host = scriptedClient(() => indexStateReply(root, false));
+
+    const out = await rig.run(['init', '--agent', 'claude'], { client: host.client });
+
+    assert.deepEqual(buildLines(out), [`gsd-atlas: to index ${root}, run \`gsd-atlas build\` inside it`]);
+  });
+
+  const unusable: ReadonlyArray<{ title: string; reply: Envelope | Error }> = [
+    { title: 'an error envelope', reply: { schema: 'gsd-atlas.error/1', ok: false, data: null, diagnostics: [{ code: 'not_a_repo', severity: 'error', message: 'x' }] } },
+    { title: 'a rejected call', reply: new Error('host exploded') },
+    { title: 'an unexpected reply', reply: { schema: 'gsd-atlas.something-else/1', ok: true, data: { indexed: 'maybe' }, diagnostics: [] } },
+    { title: 'a reply without data', reply: { schema: 'gsd-atlas.index-state/1', ok: true, data: null, diagnostics: [] } },
+  ];
+  for (const { title, reply } of unusable) {
+    it(`${title}: the file-system probe decides, as it did before`, async () => {
+      const without = makeRig();
+      seedClaude(without);
+      fs.mkdirSync(path.join(without.cwd, '.git'));
+      const hint = await without.run(['init', '--agent', 'claude'], { client: scriptedClient(() => reply).client });
+      assert.deepEqual(buildLines(hint), [`gsd-atlas: to index ${without.cwd}, run \`gsd-atlas build\` inside it`]);
+
+      const withFolder = makeRig();
+      seedClaude(withFolder);
+      fs.mkdirSync(path.join(withFolder.cwd, '.git', 'gsd-atlas'), { recursive: true });
+      const quiet = await withFolder.run(['init', '--agent', 'claude'], { client: scriptedClient(() => reply).client });
+      assert.deepEqual(buildLines(quiet), []);
+    });
+  }
+
+  it('the linked worktree probe still decides when the Host cannot answer', async () => {
+    const rig = makeRig();
+    seedClaude(rig);
+    const base = path.dirname(rig.cwd);
+    const common = path.join(base, 'main', '.git');
+    const gitDir = path.join(common, 'worktrees', 'wt1');
+    const worktree = path.join(base, 'wt');
+    fs.mkdirSync(path.join(common, 'gsd-atlas'), { recursive: true });
+    fs.mkdirSync(gitDir, { recursive: true });
+    fs.mkdirSync(worktree);
+    fs.writeFileSync(path.join(worktree, '.git'), `gitdir: ${gitDir}\n`);
+    fs.writeFileSync(path.join(gitDir, 'commondir'), '../..\n');
+
+    const out = await rig.run(['init', '--agent', 'claude'], { cwd: worktree, client: scriptedClient(() => new Error('down')).client });
+
+    assert.deepEqual(buildLines(out), []);
+  });
+
+  it('no call is made on a dry run, after a refusal, when nothing was registered, or when no .git entry exists above the working directory', async () => {
+    const cases: ReadonlyArray<{ title: string; setup: (rig: Rig) => void; argv: string[] }> = [
+      { title: 'dry run', setup: (rig) => { seedClaude(rig); fs.mkdirSync(path.join(rig.cwd, '.git')); }, argv: ['init', '--agent', 'claude', '--dry-run'] },
+      { title: 'refusal', setup: (rig) => { seedClaude(rig, '{ not json'); fs.mkdirSync(path.join(rig.cwd, '.git')); }, argv: ['init', '--agent', 'claude'] },
+      { title: 'nothing registered', setup: (rig) => { fs.mkdirSync(path.join(rig.cwd, '.git')); }, argv: ['init', '--agent', 'claude'] },
+      { title: 'not a repository', setup: (rig) => { seedClaude(rig); }, argv: ['init', '--agent', 'claude'] },
+      { title: 'help', setup: (rig) => { fs.mkdirSync(path.join(rig.cwd, '.git')); }, argv: ['--help'] },
+      { title: 'a usage error', setup: (rig) => { fs.mkdirSync(path.join(rig.cwd, '.git')); }, argv: ['init', '--agent', 'nobody'] },
+    ];
+    for (const { title, setup, argv } of cases) {
+      const rig = makeRig();
+      setup(rig);
+      const host = scriptedClient(() => indexStateReply(rig.cwd, false));
+      await rig.run(argv, { client: host.client });
+      assert.deepEqual(host.requests, [], `${title}: the Host was not contacted`);
+    }
+  });
+
+  it('two inits and a question at once: each asks the Host once and none blocks the other', async () => {
+    const first = makeRig();
+    const second = makeRig();
+    for (const rig of [first, second]) {
+      seedClaude(rig);
+      fs.mkdirSync(path.join(rig.cwd, '.git'));
+    }
+    const hostOne = scriptedClient(() => indexStateReply(first.cwd, false));
+    const hostTwo = scriptedClient(() => indexStateReply(second.cwd, true));
+
+    const [one, two] = await Promise.all([
+      first.run(['init', '--agent', 'claude'], { client: hostOne.client }),
+      second.run(['init', '--agent', 'claude'], { client: hostTwo.client }),
+    ]);
+
+    assert.equal(buildLines(one).length, 1);
+    assert.equal(buildLines(two).length, 0);
+    assert.equal(hostOne.requests.length, 1);
+    assert.equal(hostTwo.requests.length, 1);
+  });
+});
+
 describe('gsd-atlas init and restarts', () => {
   const agents = ['claude', 'cursor', 'codex'] as const;
 
@@ -822,7 +958,6 @@ describe('gsd-atlas init for Codex', () => {
   const refusals: ReadonlyArray<{ title: string; bytes: Buffer }> = [
     { title: 'a NUL byte', bytes: Buffer.from('model = "o3"\0\n') },
     { title: 'a table header without a closing bracket', bytes: Buffer.from('model = "o3"\n[mcp_servers.other\ncommand = "x"\n') },
-    { title: 'the table written with a quoted key', bytes: Buffer.from('[mcp_servers."gsd-atlas"]\ncommand = "x"\n') },
   ];
   for (const { title, bytes } of refusals) {
     it(`refused: ${title} is refused untouched with exit 2`, async () => {
@@ -847,24 +982,27 @@ describe('gsd-atlas init for Codex', () => {
       return { out, text: fs.readFileSync(file, 'utf8') };
     }
 
-    const expected = [...head, ...table(), '', ...tail].join('\n');
+    // The table is edited, not replaced (plan 02-44): only the command and args statements change, so a key of the
+    // user's, here a multi-line `notes` or `doc`, stays where it is and still does not end the table early.
+    const [headerLine, commandLine, argsLine] = table() as [string, string, string];
+    const expectedWith = (...kept: string[]): string => [...head, headerLine, commandLine, argsLine, ...kept, '', ...tail].join('\n');
 
     it('multi-line array in our table whose continuation lines start with [', async () => {
       const { out, text } = await replaced(['command = "/old/node"', 'args = ["/old/entry.js"]', 'notes = [', '  [1, 2],', '  [3]', ']', '']);
       assert.equal(out.code, 0);
-      assert.equal(text, expected);
+      assert.equal(text, expectedWith('notes = [', '  [1, 2],', '  [3]', ']'));
     });
 
     it('multi-line basic string in our table with a line [not a table]', async () => {
       const { out, text } = await replaced(['command = "/old/node"', 'doc = """', '[not a table]', '"""', 'args = ["/old/entry.js"]', '']);
       assert.equal(out.code, 0);
-      assert.equal(text, expected);
+      assert.equal(text, [...head, headerLine, commandLine, 'doc = """', '[not a table]', '"""', argsLine, '', ...tail].join('\n'));
     });
 
     it('multi-line literal string in our table with a line [not a table]', async () => {
       const { out, text } = await replaced(['command = "/old/node"', "doc = '''", '[not a table]', "'''", 'args = ["/old/entry.js"]', '']);
       assert.equal(out.code, 0);
-      assert.equal(text, expected);
+      assert.equal(text, [...head, headerLine, commandLine, "doc = '''", '[not a table]', "'''", argsLine, '', ...tail].join('\n'));
     });
 
     it('a string line equal to our header in another table is not our table: the block is appended and the string is untouched', async () => {
@@ -910,7 +1048,208 @@ describe('gsd-atlas init for Codex', () => {
 
       await rig.run(['init', '--agent', 'codex']);
 
-      assert.equal(fs.readFileSync(file, 'utf8'), [...head, ...table(), '', ...tail].join('\r\n'));
+      // `args` was missing, so it is inserted directly after `command`; `notes` and the blank line stay.
+      assert.equal(fs.readFileSync(file, 'utf8'), [...head, ...table(), 'notes = [', '  [1],', ']', '', ...tail].join('\r\n'));
+    });
+  });
+
+  describe('every spelling of our table is our table, and only command and args are managed (plan 02-44)', () => {
+    const stale = ['command = "/old/node"', 'args = ["/old/entry.js"]'];
+    const [, commandLine, argsLine] = table() as [string, string, string];
+    const countOf = (text: string, pattern: RegExp): number => text.match(pattern)?.length ?? 0;
+
+    const spellings: ReadonlyArray<{ title: string; header: string }> = [
+      { title: 'header with a comment', header: '[mcp_servers.gsd-atlas] # note' },
+      { title: 'header with spaces', header: '[ mcp_servers.gsd-atlas ]' },
+      { title: 'header with spaces around the dot', header: '[mcp_servers . gsd-atlas]' },
+      { title: 'quoted key header', header: '[mcp_servers."gsd-atlas"]' },
+      { title: 'quoted key header (literal string)', header: "[mcp_servers.'gsd-atlas']" },
+    ];
+    for (const { title, header } of spellings) {
+      it(`${title}: ${header} is updated in place, no second table is appended, the header line is kept and a second run is unchanged`, async () => {
+        const rig = makeRig();
+        const before = ['model = "o3"', '', header, ...stale, '', '[next]', 'k = 1', ''].join('\n');
+        const file = seed(rig, '.codex/config.toml', before);
+
+        const first = await rig.run(['init', '--agent', 'codex']);
+
+        assert.equal(first.code, 0);
+        assert.equal(first.envelope().data.hosts[0]!.action, 'updated');
+        const after = fs.readFileSync(file, 'utf8');
+        assert.equal(after, ['model = "o3"', '', header, commandLine, argsLine, '', '[next]', 'k = 1', ''].join('\n'));
+        assert.equal(countOf(after, /^\s*\[[^\]]*mcp_servers[^\]]*\]/gm), 1, 'one table for the server');
+
+        const second = await rig.run(['init', '--agent', 'codex']);
+        assert.equal(second.envelope().data.hosts[0]!.action, 'unchanged');
+        assert.equal(fs.readFileSync(file, 'utf8'), after);
+      });
+    }
+
+    const unsafe: ReadonlyArray<{ title: string; lines: string[]; line: number }> = [
+      { title: 'inline table is refused', lines: ['model = "o3"', '[mcp_servers]', 'gsd-atlas = { command = "x" }', ''], line: 3 },
+      { title: 'inline table with a quoted key is refused', lines: ['[mcp_servers]', '"gsd-atlas" = { command = "x" }', ''], line: 2 },
+      { title: 'dotted keys are refused', lines: ['model = "o3"', 'mcp_servers.gsd-atlas.command = "x"', ''], line: 2 },
+      { title: 'dotted keys under mcp_servers are refused', lines: ['[mcp_servers]', 'gsd-atlas.command = "x"', ''], line: 2 },
+      { title: 'mcp_servers as an inline table is refused', lines: ['mcp_servers = { other = { command = "o" } }', ''], line: 1 },
+      { title: 'a table defined twice is refused', lines: ['[mcp_servers.gsd-atlas]', 'command = "a"', '', '[ mcp_servers.gsd-atlas ]', 'args = []', ''], line: 4 },
+      { title: 'an array of tables is refused', lines: ['[[mcp_servers.gsd-atlas]]', 'command = "a"', ''], line: 1 },
+    ];
+    for (const { title, lines, line } of unsafe) {
+      it(`${title}: refused with line ${String(line)} and "edit it by hand", the file is untouched`, async () => {
+        const rig = makeRig();
+        const bytes = Buffer.from(lines.join('\n'));
+        const file = seed(rig, '.codex/config.toml', bytes);
+
+        const out = await rig.run(['init', '--agent', 'codex']);
+
+        assert.equal(out.code, 2);
+        const host = out.envelope().data.hosts[0]!;
+        assert.equal(host.action, 'refused');
+        assert.match(host.reason ?? '', new RegExp(`line ${String(line)}\\b`));
+        assert.match(host.reason ?? '', /edit it by hand/);
+        assert.deepEqual(fs.readFileSync(file), bytes);
+        assert.deepEqual(fs.readdirSync(path.dirname(file)), ['config.toml']);
+      });
+    }
+
+    it('comment above the next header: the comment lines directly above a header, with no blank line, stay in place', async () => {
+      const rig = makeRig();
+      const file = seed(rig, '.codex/config.toml', ['[mcp_servers.gsd-atlas]', ...stale, '# about next', '# and more', '[next]', 'k = 1', ''].join('\n'));
+
+      await rig.run(['init', '--agent', 'codex']);
+
+      assert.equal(fs.readFileSync(file, 'utf8'), ['[mcp_servers.gsd-atlas]', commandLine, argsLine, '# about next', '# and more', '[next]', 'k = 1', ''].join('\n'));
+    });
+
+    it('user keys are preserved: keys, comments, blank lines and sub-tables stay byte for byte and in order, only command and args change', async () => {
+      const rig = makeRig();
+      const before = [
+        'model = "o3"',
+        '',
+        '[mcp_servers.gsd-atlas]',
+        'startup_timeout_sec = 30',
+        'command = "/old/node"',
+        'env = { A = "1" }',
+        '# tuned by hand',
+        '',
+        'args = ["/old/entry.js", "--x"]',
+        'tool_timeout_sec = 90',
+        '',
+        '[mcp_servers.gsd-atlas.env]',
+        'B = "2"',
+        '',
+      ];
+      const file = seed(rig, '.codex/config.toml', before.join('\n'));
+
+      const out = await rig.run(['init', '--agent', 'codex']);
+
+      assert.equal(out.code, 0);
+      const expected = [...before];
+      expected[4] = commandLine;
+      expected[8] = argsLine;
+      assert.equal(fs.readFileSync(file, 'utf8'), expected.join('\n'));
+    });
+
+    it('multi-line args replaced whole: the array, its inner comment and its closing bracket become one current line', async () => {
+      const rig = makeRig();
+      const file = seed(
+        rig,
+        '.codex/config.toml',
+        ['[mcp_servers.gsd-atlas]', 'command = "/old/node"', 'args = [', '  "/old/entry.js", # inner', '  "--x",', ']', 'after = 1', '[next]', ''].join('\n'),
+      );
+
+      await rig.run(['init', '--agent', 'codex']);
+
+      assert.equal(fs.readFileSync(file, 'utf8'), ['[mcp_servers.gsd-atlas]', commandLine, argsLine, 'after = 1', '[next]', ''].join('\n'));
+    });
+
+    const shapes: ReadonlyArray<{ title: string; text: string; expected: string }> = [
+      { title: 'an empty table', text: '[mcp_servers.gsd-atlas]\n\n[next]\nk = 1\n', expected: `[mcp_servers.gsd-atlas]\n${commandLine}\n${argsLine}\n\n[next]\nk = 1\n` },
+      { title: 'a table with only args', text: `[mcp_servers.gsd-atlas]\nargs = ["/old"]\n`, expected: `[mcp_servers.gsd-atlas]\n${commandLine}\n${argsLine}\n` },
+      { title: 'a table with command after args', text: `[mcp_servers.gsd-atlas]\nargs = ["/old"]\ncommand = "/old/node"\n`, expected: `[mcp_servers.gsd-atlas]\n${argsLine}\n${commandLine}\n` },
+      { title: 'a table with only command', text: `[mcp_servers.gsd-atlas]\ncommand = "/old/node"\nenv = { A = "1" }\n`, expected: `[mcp_servers.gsd-atlas]\n${commandLine}\n${argsLine}\nenv = { A = "1" }\n` },
+      { title: 'a table last in the file with no final newline', text: 'model = "o3"\n[mcp_servers.gsd-atlas]\ncommand = "/old/node"', expected: `model = "o3"\n[mcp_servers.gsd-atlas]\n${commandLine}\n${argsLine}` },
+      { title: 'a header that is the whole file with no final newline', text: '[mcp_servers.gsd-atlas]', expected: `[mcp_servers.gsd-atlas]\n${commandLine}\n${argsLine}` },
+      { title: 'a file that is only the table', text: `[mcp_servers.gsd-atlas]\n${stale.join('\n')}\n`, expected: `[mcp_servers.gsd-atlas]\n${commandLine}\n${argsLine}\n` },
+    ];
+    for (const { title, text, expected } of shapes) {
+      it(`${title} ends with exactly one command and one args`, async () => {
+        const rig = makeRig();
+        const file = seed(rig, '.codex/config.toml', text);
+
+        const out = await rig.run(['init', '--agent', 'codex']);
+
+        assert.equal(out.code, 0, out.stderr.join(''));
+        const after = fs.readFileSync(file, 'utf8');
+        assert.equal(after, expected);
+        assert.equal(countOf(after, /^command = /gm), 1);
+        assert.equal(countOf(after, /^args = /gm), 1);
+        assert.equal((await rig.run(['init', '--agent', 'codex'])).envelope().data.hosts[0]!.action, 'unchanged');
+      });
+    }
+
+    it('url conflict is refused: Codex rejects a server with both a command and a url, the message names the line, the file is untouched', async () => {
+      const rig = makeRig();
+      const bytes = Buffer.from(['[mcp_servers.gsd-atlas]', 'url = "https://example.test/mcp"', ''].join('\n'));
+      const file = seed(rig, '.codex/config.toml', bytes);
+
+      const out = await rig.run(['init', '--agent', 'codex']);
+
+      assert.equal(out.code, 2);
+      const reason = out.envelope().data.hosts[0]!.reason ?? '';
+      assert.match(reason, /line 2\b/);
+      assert.match(reason, /url/);
+      assert.match(reason, /edit it by hand/);
+      assert.deepEqual(fs.readFileSync(file), bytes);
+    });
+
+    const repeated: ReadonlyArray<{ title: string; lines: string[]; line: number }> = [
+      { title: 'command written twice', lines: ['[mcp_servers.gsd-atlas]', 'command = "a"', 'command = "b"', ''], line: 3 },
+      { title: 'args written twice', lines: ['[mcp_servers.gsd-atlas]', 'args = []', 'args = ["x"]', ''], line: 3 },
+      { title: 'args written as a dotted key', lines: ['[mcp_servers.gsd-atlas]', 'args.0 = "x"', ''], line: 2 },
+      { title: 'command written as a dotted key', lines: ['[mcp_servers.gsd-atlas]', 'command.path = "x"', ''], line: 2 },
+    ];
+    for (const { title, lines, line } of repeated) {
+      it(`${title} is refused naming line ${String(line)}`, async () => {
+        const rig = makeRig();
+        const bytes = Buffer.from(lines.join('\n'));
+        const file = seed(rig, '.codex/config.toml', bytes);
+
+        const out = await rig.run(['init', '--agent', 'codex']);
+
+        assert.equal(out.code, 2);
+        assert.match(out.envelope().data.hosts[0]!.reason ?? '', new RegExp(`line ${String(line)}\\b`));
+        assert.deepEqual(fs.readFileSync(file), bytes);
+      });
+    }
+
+    it('crlf insertions: every inserted or replaced line ends with CRLF, no bare LF appears, and a LF file gains no CR', async () => {
+      const crlf = makeRig();
+      const crlfFile = seed(crlf, '.codex/config.toml', ['model = "o3"', '[mcp_servers.gsd-atlas]', 'startup_timeout_sec = 30', '# tail', '[next]', 'k = 1', ''].join('\r\n'));
+      await crlf.run(['init', '--agent', 'codex']);
+      const crlfText = fs.readFileSync(crlfFile, 'utf8');
+      assert.equal(crlfText, ['model = "o3"', '[mcp_servers.gsd-atlas]', commandLine, argsLine, 'startup_timeout_sec = 30', '# tail', '[next]', 'k = 1', ''].join('\r\n'));
+      assert.ok(!/(?<!\r)\n/.test(crlfText), 'no bare LF');
+
+      const crlfNoFinal = makeRig();
+      const noFinalFile = seed(crlfNoFinal, '.codex/config.toml', ['x = 1', '[mcp_servers.gsd-atlas]'].join('\r\n'));
+      await crlfNoFinal.run(['init', '--agent', 'codex']);
+      assert.equal(fs.readFileSync(noFinalFile, 'utf8'), ['x = 1', '[mcp_servers.gsd-atlas]', commandLine, argsLine].join('\r\n'));
+
+      const lf = makeRig();
+      const lfFile = seed(lf, '.codex/config.toml', ['[mcp_servers.gsd-atlas]', 'startup_timeout_sec = 30', ''].join('\n'));
+      await lf.run(['init', '--agent', 'codex']);
+      assert.ok(!fs.readFileSync(lfFile, 'utf8').includes('\r'));
+    });
+
+    it('an unrelated table is never touched, and a table named like ours under another parent is not ours', async () => {
+      const rig = makeRig();
+      const before = ['[other.gsd-atlas]', 'command = "keep"', '', '[mcp_servers.gsd-atlas-extra]', 'command = "keep too"', ''].join('\n');
+      const file = seed(rig, '.codex/config.toml', before);
+
+      await rig.run(['init', '--agent', 'codex']);
+
+      assert.equal(fs.readFileSync(file, 'utf8'), `${before}\n${table().join('\n')}\n`);
     });
   });
 });
