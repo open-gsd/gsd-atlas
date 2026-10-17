@@ -27,11 +27,14 @@ export const CLI_BIN = path.resolve(import.meta.dirname, '..', '..', 'src', 'bin
 /** The fixed token a masked nonce becomes. */
 export const NONCE_TOKEN = 'NONCE';
 
-/** a defines parse; b imports it and calls it inside load; c imports load and calls it inside main. */
+/**
+ * a defines parse; b imports it and calls it inside load; c imports load and calls it inside main. c also defines
+ * parseLine, which shares the prefix `parse` so a prefix search has more than one page's worth of answers.
+ */
 export const THREE_FILES: Readonly<Record<string, string>> = {
   'a.ts': 'export function parse(input: string): number {\n  return input.length;\n}\n',
   'b.ts': "import { parse } from './a';\nexport function load(): number {\n  return parse('x');\n}\n",
-  'c.ts': "import { load } from './b';\nexport function main(): number {\n  return load();\n}\n",
+  'c.ts': "import { load } from './b';\nexport function main(): number {\n  return load();\n}\nexport function parseLine(): number {\n  return 2;\n}\n",
 };
 
 /** The sentence aimed at an agent, and the forged fence marker, as they appear in the injection fixture. */
