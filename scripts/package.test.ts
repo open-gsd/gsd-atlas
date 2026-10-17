@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 
 import { allowAll, createRealRunner } from '../src/command-runner/index.ts';
 import { makeTempDir } from '../src/test-kit/index.ts';
+import { McpProcess, stderrOf } from './test-helpers/mcp-process.ts';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const distDir = path.join(root, 'dist');
@@ -166,16 +167,19 @@ test('built dist/bin/gsd-atlas.js starts with a shebang and prints the same vers
   assert.match(fromDist.stdout, /^gsd-atlas \d+\.\d+\.\d+\n$/);
 });
 
-test('gsd-atlas-mcp exits 1 and its stderr says the MCP server arrives in Phase 2', () => {
+test('gsd-atlas-mcp run from source with stdin closed exits 0 and prints nothing on stdout', () => {
   const result = runNode([path.join('src', 'bin', 'gsd-atlas-mcp.ts')]);
-  assert.equal(result.status, 1);
-  assert.match(result.stderr, /Phase 2/);
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.stdout, '');
 });
 
 test('build output is production-only: no contract, test or test-kit code in dist/', () => {
   ensureBuild();
   const files = walk(distDir);
   assert.ok(files.length > 0, 'dist/ must not be empty');
+  for (const required of ['bin/gsd-atlas-mcp.js', 'mcp-shim/stdout-guard.js']) {
+    assert.ok(existsSync(path.join(distDir, ...required.split('/'))), `dist/${required} must exist after the build`);
+  }
   for (const file of files) {
     const rel = path.relative(distDir, file).split(path.sep);
     const base = rel[rel.length - 1] as string;
@@ -304,7 +308,7 @@ test('pack contents', async () => {
   for (const [name, target] of Object.entries(pkg.bin ?? {})) {
     assert.ok(has(target), `bin ${name} points at ${target}, which is not in the tarball`);
   }
-  for (const dir of ['lang', 'grammar-engine', 'cli']) {
+  for (const dir of ['lang', 'grammar-engine', 'cli', 'mcp-shim']) {
     assert.ok(
       files.some((file) => file.startsWith(`dist/${dir}/`) && file.endsWith('.js')),
       `tarball must contain compiled dist/${dir}/ modules`,
@@ -344,7 +348,7 @@ test('installed tarball runs the bins', async () => {
   const bin = path.join(installed, 'dist', 'bin', 'gsd-atlas.js');
   const mcpBin = path.join(installed, 'dist', 'bin', 'gsd-atlas-mcp.js');
   assert.ok(existsSync(bin) && existsSync(mcpBin), 'both bin targets exist in the installed package');
-  for (const dependency of ['web-tree-sitter', 'zod']) {
+  for (const dependency of ['web-tree-sitter', 'zod', '@parcel/watcher', '@modelcontextprotocol/server']) {
     assert.ok(
       existsSync(path.join(prefix, 'node_modules', dependency, 'package.json')),
       `${dependency} must be installed from the tarball's own dependencies`,
@@ -413,9 +417,34 @@ test('installed tarball runs the bins', async () => {
   assert.equal(report.data.fixtures.length, 4, 'the toy module has four fixtures');
   assert.ok(report.data.fixtures.every((fixture) => fixture.ok), 'every toy fixture matches its golden');
 
-  const mcp = await runChild(process.execPath, [mcpBin], prefix);
-  assert.equal(mcp.exitCode, 1);
-  assert.match(mcp.stderr, /Phase 2/);
+  // The two runtime dependencies the MCP server needs resolve, and load, from the installed tree.
+  const loaded = await runChild(
+    process.execPath,
+    ['--input-type=module', '-e', "await import('@parcel/watcher'); await import('@modelcontextprotocol/server'); await import('@modelcontextprotocol/server/stdio');"],
+    installed,
+  );
+  assert.equal(loaded.exitCode, 0, `@parcel/watcher and @modelcontextprotocol/server must load from the installed tree:\n${loaded.stderr}`);
+
+  // The installed MCP bin serves a real stdio session: initialize, then tools/list with the six tools, and it
+  // exits 0 when input ends. It does so with an empty user directory and no repository.
+  const server = new McpProcess(mcpBin, prefix, { GSD_ATLAS_USER_DIR: empty('empty user for mcp') });
+  try {
+    const init = await server.handshake();
+    assert.equal((init.result as { serverInfo: { name: string } }).serverInfo.name, 'gsd-atlas');
+    const tools = await server.listTools();
+    assert.deepEqual(
+      tools.map((tool) => tool.name).sort(),
+      ['atlas_status', 'code_context', 'code_find', 'code_impact', 'code_refs', 'lang_list'],
+      'the installed bin lists exactly six tools',
+    );
+    assert.ok(tools.every((tool) => tool.annotations?.readOnlyHint === true));
+    const exit = await server.shutdown();
+    assert.equal(exit.exitCode, 0, stderrOf(exit));
+    for (const line of server.lines) assert.doesNotThrow(() => JSON.parse(line), `stdout carries only JSON: ${line}`);
+  } finally {
+    server.kill();
+    await server.exit();
+  }
 });
 
 test('README npm scripts exist', () => {

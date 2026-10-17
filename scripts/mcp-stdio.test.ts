@@ -4,7 +4,8 @@
  * Every stdout line the server prints is parsed as JSON; a stray write would fail the framing assertions.
  *
  * It lives under scripts because it composes the whole stack, which the adapter lint forbids inside src/mcp-shim.
- * Latencies are never asserted to the millisecond: the ceilings below only turn a hung child into a failed test.
+ * Latencies are never asserted to the millisecond: the ceilings (in test-helpers/mcp-process.ts) only turn a hung
+ * child into a failed test, because hosted runners are noisy.
  */
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -14,200 +15,21 @@ import type { TestContext } from 'node:test';
 
 import { composeHost } from '../src/bin/compose.ts';
 import { allowAll, createRealRunner } from '../src/command-runner/index.ts';
-import type { CommandResult, CommandStream } from '../src/command-runner/index.ts';
 import { PROTOCOL_VERSION, TOOL_NAMES } from '../src/host-client/index.ts';
 import { createTempGitRepo, makeTempDir } from '../src/test-kit/index.ts';
 import type { TempDir, TempGitRepo } from '../src/test-kit/index.ts';
-import { lineReader, within } from './test-helpers/child-lines.ts';
+import { within } from './test-helpers/child-lines.ts';
+import { EXIT_CEILING_MS, McpProcess, stderrOf } from './test-helpers/mcp-process.ts';
+import type { Envelope, RpcMessage } from './test-helpers/mcp-process.ts';
 
 const BIN = path.resolve(import.meta.dirname, '..', 'src', 'bin', 'gsd-atlas-mcp.ts');
 const runner = createRealRunner({ decide: allowAll });
-
-/** Ceilings only: a hung child fails the test instead of the run. They are not performance assertions. */
-const REPLY_CEILING_MS = 90_000;
-const EXIT_CEILING_MS = 60_000;
 
 const FILES: Readonly<Record<string, string>> = {
   'a.ts': 'export function load(): number {\n  return 1;\n}\n',
   'b.ts': "import { load } from './a';\nexport function run(): number {\n  return load();\n}\n",
   'c.ts': "import { run } from './b';\nexport function main(): number {\n  return run();\n}\n",
 };
-
-/** An async queue of stdin chunks: the child's stdin stays open until `end()`. */
-class StdinQueue implements AsyncIterable<string> {
-  private readonly items: string[] = [];
-  private waiting: ((result: IteratorResult<string>) => void) | undefined;
-  private ended = false;
-
-  push(text: string): void {
-    const waiting = this.waiting;
-    if (waiting === undefined) {
-      this.items.push(text);
-      return;
-    }
-    this.waiting = undefined;
-    waiting({ value: text, done: false });
-  }
-
-  end(): void {
-    this.ended = true;
-    const waiting = this.waiting;
-    this.waiting = undefined;
-    waiting?.({ value: undefined, done: true });
-  }
-
-  [Symbol.asyncIterator](): AsyncIterator<string> {
-    return {
-      next: (): Promise<IteratorResult<string>> => {
-        const item = this.items.shift();
-        if (item !== undefined) return Promise.resolve({ value: item, done: false });
-        if (this.ended) return Promise.resolve({ value: undefined, done: true });
-        return new Promise((resolve) => {
-          this.waiting = resolve;
-        });
-      },
-    };
-  }
-}
-
-export interface RpcMessage {
-  readonly jsonrpc?: unknown;
-  readonly id?: number;
-  readonly method?: string;
-  readonly result?: Record<string, unknown>;
-  readonly error?: { readonly code: number; readonly message: string };
-  readonly [key: string]: unknown;
-}
-
-export interface Envelope {
-  readonly schema: string;
-  readonly ok: boolean;
-  readonly data: unknown;
-  readonly diagnostics: ReadonlyArray<{ readonly code: string; readonly severity: string; readonly message: string }>;
-  readonly degraded?: readonly string[];
-  readonly [key: string]: unknown;
-}
-
-interface ToolResult {
-  readonly content: ReadonlyArray<{ readonly type: string; readonly text: string }>;
-  readonly isError?: boolean;
-}
-
-export interface ToolCall {
-  readonly reply: RpcMessage;
-  readonly result: ToolResult;
-  readonly envelope: Envelope;
-}
-
-/** A test-side JSON-RPC client over the server's stdin and stdout. */
-export class McpProcess {
-  readonly stdin = new StdinQueue();
-  /** Every stdout line, in order, exactly as printed (without the newline). */
-  readonly lines: string[] = [];
-  readonly messages: RpcMessage[] = [];
-  private nextId = 1;
-  private readonly waiters = new Map<number, (message: RpcMessage) => void>();
-  private readonly stream: CommandStream;
-  private readonly pumped: Promise<void>;
-  private ended: Promise<CommandResult> | undefined;
-
-  constructor(cwd: string, env: Readonly<Record<string, string>>) {
-    this.stream = runner.stream({ executable: process.execPath, args: [BIN], cwd, env, stdin: this.stdin });
-    const reader = lineReader(this.stream.stdout);
-    this.pumped = (async () => {
-      for (;;) {
-        const line = await reader.next();
-        if (line === undefined) return;
-        this.lines.push(line);
-        let message: RpcMessage | undefined;
-        try {
-          message = JSON.parse(line) as RpcMessage;
-        } catch {
-          message = undefined;
-        }
-        if (message === undefined) continue;
-        this.messages.push(message);
-        if (typeof message.id === 'number') this.waiters.get(message.id)?.(message);
-      }
-    })();
-  }
-
-  /** The process's final result: waits for stdout to be read to its end first. */
-  exit(): Promise<CommandResult> {
-    this.ended ??= (async () => {
-      const result = await this.stream.result;
-      await this.pumped;
-      return result;
-    })();
-    return this.ended;
-  }
-
-  send(message: Record<string, unknown>): void {
-    this.stdin.push(`${JSON.stringify({ jsonrpc: '2.0', ...message })}\n`);
-  }
-
-  async request(method: string, params: Record<string, unknown> = {}): Promise<RpcMessage> {
-    const id = this.nextId++;
-    const reply = new Promise<RpcMessage>((resolve) => {
-      this.waiters.set(id, resolve);
-    });
-    const gone = this.exit().then((result) => assert.fail(`the server exited (code ${String(result.exitCode)}) before answering ${method}: ${Buffer.from(result.stderr).toString('utf8').trim()}`));
-    this.send({ id, method, params });
-    return within(REPLY_CEILING_MS, `the reply to ${method}`, Promise.race([reply, gone]));
-  }
-
-  notify(method: string, params: Record<string, unknown> = {}): void {
-    this.send({ method, params });
-  }
-
-  /** `initialize` (2025-06-18, empty capabilities) and the `initialized` notification. */
-  async handshake(): Promise<RpcMessage> {
-    const init = await this.request('initialize', {
-      protocolVersion: '2025-06-18',
-      capabilities: {},
-      clientInfo: { name: 'mcp-stdio-test', version: '0.0.0' },
-    });
-    this.notify('notifications/initialized');
-    return init;
-  }
-
-  async listTools(): Promise<Array<{ name: string; annotations?: { readOnlyHint?: boolean } }>> {
-    const listed = await this.request('tools/list');
-    return (listed.result as { tools: Array<{ name: string; annotations?: { readOnlyHint?: boolean } }> }).tools;
-  }
-
-  async callTool(name: string, args: Record<string, unknown>): Promise<ToolCall> {
-    const reply = await this.request('tools/call', { name, arguments: args });
-    const result = reply.result as unknown as ToolResult;
-    assert.ok(result !== undefined, `tools/call ${name} returned no result: ${JSON.stringify(reply)}`);
-    assert.equal(result.content.length, 1, 'one text content item');
-    assert.equal(result.content[0]?.type, 'text');
-    return { reply, result, envelope: JSON.parse(result.content[0]?.text ?? '') as Envelope };
-  }
-
-  /** Close the child's stdin: the server's signal to finish. */
-  endInput(): void {
-    this.stdin.end();
-  }
-
-  /** SIGKILL, as a crash or a host that gives up. */
-  kill(): void {
-    this.stream.kill();
-  }
-
-  /** End input and wait for the exit, as the clean shutdown path. */
-  async shutdown(): Promise<CommandResult> {
-    this.endInput();
-    try {
-      return await within(EXIT_CEILING_MS, 'the server to exit after end of input', this.exit());
-    } catch (error) {
-      // A hung server: kill it so its own stderr can say where it was, and report that with the failure.
-      this.kill();
-      const killed = await this.exit();
-      throw new Error(`${error instanceof Error ? error.message : String(error)}; stderr: ${Buffer.from(killed.stderr).toString('utf8').trim()}`);
-    }
-  }
-}
 
 export interface Fixture {
   readonly repo: TempGitRepo;
@@ -262,7 +84,7 @@ export async function makeFixture(t: TestContext, options: FixtureOptions = {}):
     env,
     outside,
     start(cwd = outside, extraEnv = {}) {
-      const child = new McpProcess(cwd, { ...env, ...extraEnv });
+      const child = new McpProcess(BIN, cwd, { ...env, ...extraEnv });
       started.push(child);
       return child;
     },
@@ -288,7 +110,7 @@ describe('gsd-atlas-mcp over stdio: the default profile and a first tool call', 
     assert.deepEqual(tools.map((tool) => tool.name).sort(), [...TOOL_NAMES].sort());
     assert.ok(tools.every((tool) => tool.annotations?.readOnlyHint === true));
     const exit = await server.shutdown();
-    assert.equal(exit.exitCode, 0, Buffer.from(exit.stderr).toString('utf8'));
+    assert.equal(exit.exitCode, 0, stderrOf(exit));
   });
 
   it('tools/call code_find answers the definition from the built index, as one envelope in one text item', async (t) => {
@@ -314,7 +136,7 @@ describe('gsd-atlas-mcp over stdio: the default profile and a first tool call', 
     const server = fixture.start();
     await server.handshake();
     const exit = await server.shutdown();
-    assert.equal(exit.exitCode, 0, Buffer.from(exit.stderr).toString('utf8'));
+    assert.equal(exit.exitCode, 0, stderrOf(exit));
     assert.equal(exit.signal, null);
   });
 });
@@ -341,7 +163,7 @@ describe('stdout hygiene (T-02-79, research Pitfall 8)', () => {
       const result = await runner.run({ executable: process.execPath, args: [NOISE_CHILD, mode], cwd: import.meta.dirname });
       assert.equal(result.spawnError, undefined);
       const stdout = Buffer.from(result.stdout).toString('utf8');
-      const stderr = Buffer.from(result.stderr).toString('utf8');
+      const stderr = stderrOf(result);
       assert.equal(result.exitCode, 0, stderr);
       assert.equal(stdout, FRAME, 'stdout holds the protocol frame and nothing else');
       assert.match(stderr, /noise-direct/);
@@ -368,21 +190,16 @@ describe('stdout hygiene (T-02-79, research Pitfall 8)', () => {
     await server.listTools();
     await server.callTool('code_find', { name: 'load', repo: fixture.repo.dir });
     const exit = await server.shutdown();
-    assert.equal(exit.exitCode, 0, Buffer.from(exit.stderr).toString('utf8'));
+    assert.equal(exit.exitCode, 0, stderrOf(exit));
     assertFramed(server);
   });
 });
-
-/** Every path under `dir`, relative, sorted: a listing that notices anything created or removed. */
-function listing(dir: string): string[] {
-  return fs.existsSync(dir) ? fs.readdirSync(dir, { recursive: true }).map(String).sort() : [];
-}
 
 describe('stdout hygiene: source layout', () => {
   const srcDir = path.resolve(import.meta.dirname, '..', 'src');
   const firstImport = (file: string): string | undefined => /^import\b[^;]*;/m.exec(fs.readFileSync(file, 'utf8'))?.[0];
 
-  it('the bin\'s first import is the MCP shim, whose first import is the stdout guard (it runs before any other module code)', () => {
+  it("the bin's first import is the MCP shim, whose first import is the stdout guard (it runs before any other module code)", () => {
     assert.match(firstImport(path.join(srcDir, 'bin', 'gsd-atlas-mcp.ts')) ?? '', /from '\.\.\/mcp-shim\/index\.ts'/);
     assert.match(firstImport(path.join(srcDir, 'mcp-shim', 'index.ts')) ?? '', /from '\.\/stdout-guard\.ts'/);
   });
@@ -393,6 +210,11 @@ describe('stdout hygiene: source layout', () => {
     assert.doesNotMatch(guard, /console/);
   });
 });
+
+/** Every path under `dir`, relative, sorted: a listing that notices anything created or removed. */
+function listing(dir: string): string[] {
+  return fs.existsSync(dir) ? fs.readdirSync(dir, { recursive: true }).map(String).sort() : [];
+}
 
 describe('startup does no heavy work and side effects', () => {
   it('lazy start: initialize and tools/list are answered with an unwritable user directory and home, in a directory that is not a repository, creating nothing', async (t) => {
@@ -416,7 +238,7 @@ describe('startup does no heavy work and side effects', () => {
     const tools = await server.listTools();
     assert.equal(tools.length, 6);
     const exit = await server.shutdown();
-    assert.equal(exit.exitCode, 0, Buffer.from(exit.stderr).toString('utf8'));
+    assert.equal(exit.exitCode, 0, stderrOf(exit));
     assert.deepEqual(watched.map(listing), before, 'initialize and tools/list created nothing');
     assert.ok(!fs.existsSync(path.join(fixture.repo.dir, '.git', 'gsd-atlas')), 'no store was created inside the repository');
   });
@@ -426,7 +248,7 @@ describe('startup does no heavy work and side effects', () => {
     const server = fixture.start();
     server.endInput();
     const exit = await within(EXIT_CEILING_MS, 'the server to exit', server.exit());
-    assert.equal(exit.exitCode, 0, Buffer.from(exit.stderr).toString('utf8'));
+    assert.equal(exit.exitCode, 0, stderrOf(exit));
     assert.deepEqual(server.lines, []);
   });
 });
@@ -442,7 +264,7 @@ describe('errors stay inside the protocol', () => {
     assert.equal(call.envelope.diagnostics[0]?.code, 'not_a_repo');
     assert.equal((await server.listTools()).length, 6, 'the server keeps running');
     const exit = await server.shutdown();
-    assert.equal(exit.exitCode, 0, Buffer.from(exit.stderr).toString('utf8'));
+    assert.equal(exit.exitCode, 0, stderrOf(exit));
   });
 
   it('invalid arguments: an unknown property and a missing name are refused by the schema, and the server keeps answering', async (t) => {
@@ -469,5 +291,149 @@ describe('errors stay inside the protocol', () => {
       assert.ok(refused, `${name} is not an MCP tool, got ${JSON.stringify(reply)}`);
     }
     await server.shutdown();
+  });
+});
+
+/** The fenced entries of an envelope with its per-response nonce masked, so two answers to one question compare equal. */
+function fencedEntries(envelope: Envelope): Array<{ ref: string; text: string }> {
+  const fenced = envelope['untrusted_text'] as { nonce: string; entries: Array<{ ref: string; text: string }> } | undefined;
+  assert.ok(fenced !== undefined && fenced.nonce !== '', 'the answer carries fenced text with a nonce');
+  return fenced.entries.map((entry) => ({ ref: entry.ref, text: entry.text.replaceAll(fenced.nonce, 'NONCE') }));
+}
+
+/** Ask code_find until `accept` approves the answer, or fail after a generous wall-clock bound (no latency is asserted). */
+async function findEventually(
+  server: McpProcess,
+  args: Record<string, unknown>,
+  accept: (envelope: Envelope) => boolean,
+  what: string,
+): Promise<Envelope> {
+  const deadline = Date.now() + 45_000;
+  for (;;) {
+    const call = await server.callTool('code_find', args);
+    if (accept(call.envelope)) return call.envelope;
+    if (Date.now() > deadline) assert.fail(`${what}; the last answer was ${JSON.stringify(call.envelope)}`);
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, 100);
+    });
+  }
+}
+
+describe('restart between calls (HST-01): the store and the start-up Reconcile persist the truth', () => {
+  it('restart: after the first process is SIGKILLed, a new process answers the next call identically', async (t) => {
+    const fixture = await makeFixture(t);
+    const args = { name: 'load', repo: fixture.repo.dir };
+
+    const first = fixture.start();
+    await first.handshake();
+    const before = await first.callTool('code_find', args);
+    assert.equal(before.envelope.ok, true);
+    assert.equal(findRows(before.envelope)[0]?.path, 'a.ts');
+    first.kill();
+    await first.exit();
+
+    const second = fixture.start();
+    await second.handshake();
+    const after = await second.callTool('code_find', args);
+    assert.equal(after.envelope.ok, true, JSON.stringify(after.envelope.diagnostics));
+    // The first call after a restart may report a degraded state, but it returns the same facts.
+    // Same definitions, positions and citations; the fence nonce is per response, so it is masked in the fenced text.
+    assert.deepEqual(after.envelope.data, before.envelope.data);
+    assert.deepEqual(after.envelope['citations'], before.envelope['citations']);
+    assert.deepEqual(fencedEntries(after.envelope), fencedEntries(before.envelope));
+    const exit = await second.shutdown();
+    assert.equal(exit.exitCode, 0, stderrOf(exit));
+  });
+
+  it('restart: a clean shutdown immediately after a call, then a new process, answers the same', async (t) => {
+    const fixture = await makeFixture(t);
+    const args = { name: 'run', repo: fixture.repo.dir };
+    const first = fixture.start();
+    await first.handshake();
+    const before = await first.callTool('code_find', args);
+    const closed = await first.shutdown();
+    assert.equal(closed.exitCode, 0, stderrOf(closed));
+
+    const second = fixture.start();
+    await second.handshake();
+    const after = await second.callTool('code_find', args);
+    assert.deepEqual(after.envelope.data, before.envelope.data);
+    assert.deepEqual(after.envelope['citations'], before.envelope['citations']);
+    await second.shutdown();
+  });
+
+  it('edit while stopped: a file changed while no server was running is reflected by the next process', async (t) => {
+    const fixture = await makeFixture(t);
+    const first = fixture.start();
+    await first.handshake();
+    const before = await first.callTool('code_find', { name: 'extra', repo: fixture.repo.dir });
+    assert.deepEqual(findRows(before.envelope), [], 'extra does not exist yet');
+    first.kill();
+    await first.exit();
+
+    fixture.repo.write('a.ts', 'export function load(): number {\n  return 1;\n}\nexport function extra(): number {\n  return 2;\n}\n');
+
+    const second = fixture.start();
+    await second.handshake();
+    // Read your own writes: naming the changed path makes the answer fresh at once.
+    const named = await second.callTool('code_find', { name: 'extra', repo: fixture.repo.dir, fresh: ['a.ts'] });
+    assert.equal(named.envelope.ok, true, JSON.stringify(named.envelope.diagnostics));
+    assert.equal(findRows(named.envelope)[0]?.path, 'a.ts');
+    assert.equal(findRows(named.envelope)[0]?.line, 4);
+    await second.shutdown();
+
+    // Without naming the path, the start-up Reconcile finds the change: the answer may be degraded while it runs.
+    const third = fixture.start();
+    await third.handshake();
+    const found = await findEventually(
+      third,
+      { name: 'extra', repo: fixture.repo.dir },
+      (envelope) => envelope.ok && findRows(envelope).some((row) => row.path === 'a.ts'),
+      'the start-up Reconcile never reflected the edit',
+    );
+    assert.equal(findRows(found)[0]?.line, 4);
+    await third.shutdown();
+  });
+
+  it('kill during call: a call racing a SIGKILL of the server fails for the client, and a new process answers the retry', async (t) => {
+    const fixture = await makeFixture(t);
+    const args = { name: 'load', repo: fixture.repo.dir };
+    const first = fixture.start();
+    await first.handshake();
+    const racing = first.request('tools/call', { name: 'code_find', arguments: args });
+    first.kill();
+    await assert.rejects(racing, /exited|before answering/, 'the call that raced the kill does not get an answer');
+    await first.exit();
+    for (const line of first.lines) assert.doesNotThrow(() => JSON.parse(line), 'a killed server leaves no torn frame on stdout');
+
+    const second = fixture.start();
+    await second.handshake();
+    const retry = await second.callTool('code_find', args);
+    assert.equal(retry.envelope.ok, true);
+    assert.equal(findRows(retry.envelope)[0]?.path, 'a.ts');
+    await second.shutdown();
+  });
+
+  it('EOF in the same chunk as a request: the process ends without hanging, leaves only whole frames, and a new process succeeds', async (t) => {
+    const fixture = await makeFixture(t);
+    const args = { name: 'load', repo: fixture.repo.dir };
+    const first = fixture.start();
+    const ids = [first.takeId(), first.takeId()];
+    first.sendTogether([
+      { id: ids[0], method: 'initialize', params: { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 't', version: '0' } } },
+      { method: 'notifications/initialized' },
+      { id: ids[1], method: 'tools/call', params: { name: 'code_find', arguments: args } },
+    ]);
+    // A server may answer none, some or all of these before it sees the end of input; it must not hang or tear a frame.
+    const exit = await first.shutdown();
+    assert.equal(exit.exitCode, 0, stderrOf(exit));
+    for (const line of first.lines) assert.doesNotThrow(() => JSON.parse(line), `a whole frame: ${line}`);
+
+    const second = fixture.start();
+    await second.handshake();
+    const retry = await second.callTool('code_find', args);
+    assert.equal(retry.envelope.ok, true);
+    assert.equal(findRows(retry.envelope)[0]?.name, 'load');
+    await second.shutdown();
   });
 });
