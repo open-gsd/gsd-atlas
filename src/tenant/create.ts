@@ -80,15 +80,34 @@ export async function createTenant(deps: TenantDeps): Promise<Tenant> {
     ...(deps.storeDir === undefined ? {} : { override: deps.storeDir }),
   });
 
-  const store: FactStore = await openFactStore(
+  // Lease changes arrive through `onLeaseChange` and are applied one at a time, once the store exists (see below).
+  let closed = false;
+  let leaseLost = false;
+  let leaseWork: Promise<void> = Promise.resolve();
+  let storeOpened: () => void = () => {};
+  const storeReady = new Promise<void>((resolve) => {
+    storeOpened = resolve;
+  });
+  const onLeaseChange = (held: boolean): void => {
+    if (closed) return;
+    leaseWork = leaseWork
+      .then(() => storeReady)
+      .then(() => applyLease(held))
+      .catch(ignore);
+  };
+
+  const store: FactStore = await (deps.openStore ?? openFactStore)(
     location.dir,
     { resolver: noPreciseTier, clock, gitHas: (hash) => tree.hasObject(hash) },
     {
       lease: 'acquire',
+      takeover: { retryMinMs: tuning.takeoverRetryMinMs, retryMaxMs: tuning.takeoverRetryMaxMs },
+      onLeaseChange,
       ...(deps.version === undefined ? {} : { version: deps.version }),
       ...(deps.graceMs === undefined ? {} : { graceMs: deps.graceMs }),
     },
   );
+  storeOpened();
   const metrics: Metrics =
     deps.metrics === false
       ? createNoopMetrics('disabled')
@@ -120,9 +139,9 @@ export async function createTenant(deps: TenantDeps): Promise<Tenant> {
   let closing: Promise<void> | undefined;
   let startError: string | undefined;
 
-  /** The Indexer of this tenant, created on first need. */
+  /** The Indexer of this tenant, created on first need. Never after close, never without the writer lease (STO-08). */
   function getIndexer(): Indexer {
-    if (closing !== undefined) throw new IndexerError('stopped', 'the tenant was closed');
+    if (closed || closing !== undefined) throw new IndexerError('stopped', 'the tenant was closed');
     if (indexer === undefined) {
       const source = deps.eventSource?.();
       const indexerDeps = {
@@ -164,7 +183,7 @@ export async function createTenant(deps: TenantDeps): Promise<Tenant> {
   }
 
   /** True when this process holds the writer lease: the only process that indexes or runs maintenance (STO-08). */
-  const isLeader = async (): Promise<boolean> => (await store.status()).writerLeaseHeld;
+  const isLeader = async (): Promise<boolean> => !leaseLost && (await store.status()).writerLeaseHeld;
 
   /** True when the store has an overlay for `worktree`, that is, somebody built it. */
   const isIndexed = async (worktree: string): Promise<boolean> =>
@@ -181,7 +200,7 @@ export async function createTenant(deps: TenantDeps): Promise<Tenant> {
       if (!status.worktrees.some((entry) => entry.worktree === worktree)) {
         return { complete: true, stalePaths: [], invalid: [] };
       }
-      if (!status.writerLeaseHeld) return { complete: false, stalePaths: [...paths], invalid: [] };
+      if (leaseLost || !status.writerLeaseHeld) return { complete: false, stalePaths: [...paths], invalid: [] };
       return getIndexer().ensureFresh(worktree, paths, waitMs);
     },
   };
@@ -194,35 +213,93 @@ export async function createTenant(deps: TenantDeps): Promise<Tenant> {
     clock,
   });
 
-  // Start watching the worktrees the store already indexes. Never waited for: a request is served from the store
-  // meanwhile, and the start-up Reconcile repairs it.
-  let starting: Promise<void> = Promise.resolve();
-  const opening = await store.status();
-  const indexed = opening.worktrees.map((entry) => entry.worktree);
-  // A follower starts nothing: no Indexer, no watcher. Taking over when the leader goes away is plan 02-28.
-  if (opening.writerLeaseHeld && indexed.length > 0) {
-    starting = (async () => {
-      try {
-        const listed = new Set((await tree.worktrees()).filter((entry) => !entry.bare).map((entry) => entry.path));
-        const targets = indexed.filter((worktree) => listed.has(worktree));
-        if (targets.length > 0 && closing === undefined) await getIndexer().start({ worktrees: targets });
-      } catch (error) {
-        startError = codeOf(error);
-      }
+  // The start-up Reconcile (D-02). While an Indexer started for the worktrees the store already indexes has not
+  // finished, `starting` is set: the first request waits for it, but only up to the approved deadline, and every
+  // answer says `reconciling` until it settles. `starting` never rejects; a failure becomes `startError`.
+  let starting: Promise<void> | undefined;
+  let startAttempted = false;
+  let gate: Promise<void> | undefined;
+  let cancelGate: (() => void) | undefined;
+
+  /**
+   * Start the Indexer for `indexed`, the worktrees the store already indexes (the ones git still lists). Only a
+   * writer-lease holder calls this (STO-08), and never twice at once.
+   */
+  function beginIndexing(indexed: readonly string[]): void {
+    if (closed || starting !== undefined || indexed.length === 0) return;
+    startError = undefined;
+    const work = (async () => {
+      const listed = new Set((await tree.worktrees()).filter((entry) => !entry.bare).map((entry) => entry.path));
+      const targets = indexed.filter((worktree) => listed.has(worktree));
+      if (targets.length === 0 || closed) return;
+      startAttempted = true;
+      await getIndexer().start({ worktrees: targets });
     })();
+    const mine: Promise<void> = work
+      .catch((error: unknown) => {
+        startError = codeOf(error);
+      })
+      .then(() => {
+        if (starting === mine) starting = undefined;
+        cancelGate?.();
+        gate = undefined;
+      });
+    starting = mine;
   }
+
+  /**
+   * Wait for the start-up to settle or for the approved deadline, whichever comes first. The deadline timer is
+   * cancelled when start finishes first, and by `close()`. Requests that arrive meanwhile share the one wait; once the
+   * deadline has passed a later request does not wait again.
+   */
+  function startupGate(): Promise<void> {
+    if (starting === undefined) return Promise.resolve();
+    gate ??= new Promise<void>((resolve) => {
+      const cancel = clock.after(tuning.startupReconcileDeadlineMs, () => {
+        cancelGate = undefined;
+        resolve();
+      });
+      cancelGate = () => {
+        cancelGate = undefined;
+        gate = undefined;
+        cancel();
+        resolve();
+      };
+    });
+    return gate;
+  }
+
+  /** Gaining the lease (a follower took over): start indexing what the store indexes, once. */
+  async function applyLease(held: boolean): Promise<void> {
+    if (closed) return;
+    if (held) {
+      leaseLost = false;
+      if (indexer !== undefined || starting !== undefined) return;
+      beginIndexing((await store.status()).worktrees.map((entry) => entry.worktree));
+      return;
+    }
+    // Lost: no Indexer, watcher or writer task may outlive the lease. Behave as a follower from here on.
+    leaseLost = true;
+    const running = indexer;
+    indexer = undefined;
+    if (running !== undefined) await running.stop().catch(ignore);
+  }
+
+  const opening = await store.status();
+  // A follower starts nothing: no Indexer, no watcher. It starts one when it takes over (`applyLease`).
+  if (opening.writerLeaseHeld) beginIndexing(opening.worktrees.map((entry) => entry.worktree));
 
   async function snapshot(): Promise<TenantStatus> {
     const storeStatus = await store.status();
     return {
       storeId: identity.storeId,
       location,
-      leader: storeStatus.writerLeaseHeld,
+      leader: !leaseLost && storeStatus.writerLeaseHeld,
       store: storeStatus,
       indexer: indexer?.status() ?? null,
       governor: governor.status(),
       metrics: metrics.status(),
-      startup: 'none', // STUB (RED commit of plan 02-28 task 2)
+      startup: starting !== undefined ? 'pending' : startAttempted ? 'ready' : 'none',
       ...(startError === undefined ? {} : { startError }),
     };
   }
@@ -279,7 +356,13 @@ export async function createTenant(deps: TenantDeps): Promise<Tenant> {
 
     async handle(request: Request, worktree: string): Promise<Envelope> {
       const started = clock.now();
-      const envelope = await query.ask({ ...request, worktree });
+      await startupGate();
+      const answered = await query.ask({ ...request, worktree });
+      // Until the start-up Reconcile settles, an answer may lag the working tree: say so (D-02).
+      const envelope =
+        answered.ok && starting !== undefined && !(answered.degraded ?? []).includes('reconciling')
+          ? { ...answered, degraded: [...(answered.degraded ?? []), 'reconciling' as const] }
+          : answered;
       recording(() => {
         const event = answerEvent(request.kind, envelope, clock.now() - started);
         if (event !== null) metrics.record(event);
@@ -329,10 +412,14 @@ export async function createTenant(deps: TenantDeps): Promise<Tenant> {
     },
 
     close(): Promise<void> {
+      // First thing: nothing may start in a closing Tenant, whatever lease change or start-up is still in flight.
+      closed = true;
       closing ??= (async () => {
+        cancelGate?.();
+        await leaseWork.catch(ignore);
         const running = indexer;
         if (running !== undefined) await running.stop().catch(ignore);
-        await starting.catch(ignore);
+        await starting?.catch(ignore);
         // The start-up may have created the Indexer after the stop above looked; it is stopped now.
         if (indexer !== undefined && indexer !== running) await indexer.stop().catch(ignore);
         await metrics.close();
