@@ -3,6 +3,8 @@ import path from 'node:path';
 import { describe, it } from 'node:test';
 import type { TestContext } from 'node:test';
 import { allowAll, createRealRunner } from '../command-runner/index.ts';
+import { openFactStore } from '../fact-store/index.ts';
+import type { Resolver } from '../fact-store/index.ts';
 import { PROTOCOL_VERSION, systemClock } from '../facts/index.ts';
 import { createGovernor } from '../governor/index.ts';
 import { createGrammarEngine } from '../grammar-engine/index.ts';
@@ -18,6 +20,11 @@ const toyModules = path.resolve(import.meta.dirname, '..', '..', 'test', 'fixtur
 
 /** Setup commands (init, add, commit) are not in the production allowlist, so setup uses the allow-all rule. */
 const setupRunner = createRealRunner({ decide: allowAll });
+
+/** A store without a precise resolver: it resolves nothing. */
+const noPreciseTier: Resolver = async function* () {
+  // resolves nothing
+};
 
 const THREE_FILES: Readonly<Record<string, string>> = {
   'a.toy': 'fn main {\n  boot();\n}\nfn boot {\n}\n',
@@ -118,5 +125,52 @@ describe('createTenant', () => {
     await first.close();
     const third = await open();
     assert.equal((await third.status()).leader, true);
+  });
+});
+
+interface TaskData {
+  readonly tasks: Record<string, { complete: boolean; processed: number }>;
+}
+
+describe('Tenant.maintain', () => {
+  it('refresh re-extracts the files a grammar upgrade marked stale, through Indexer.refresh', async (t) => {
+    const { repo, open } = await setup(t);
+    const first = await open();
+    await first.build(repo.dir);
+    await first.close();
+
+    // Another process upgrades the toy grammar: every toy file is now stale.
+    const store = await openFactStore(
+      first.location.dir,
+      { resolver: noPreciseTier, clock: systemClock, gitHas: () => Promise.resolve(true) },
+      { lease: 'acquire' },
+    );
+    const writer = store.writer();
+    assert.equal(await writer.markStale({ module: 'toy', grammarVersion: 'upgraded' }), 3);
+    writer.release();
+    await store.close();
+
+    const second = await open();
+    const stale = await second.handle(find('helper', repo.dir), repo.dir);
+    assert.deepEqual(stale.watermark?.stalePaths, ['a.toy', 'b.toy', 'c.toy']);
+    assert.ok(stale.degraded?.includes('stale'));
+
+    const refreshed = await second.maintain('refresh', { worktree: repo.dir });
+    assert.equal(refreshed.ok, true, JSON.stringify(refreshed.diagnostics));
+    assert.equal((refreshed.data as TaskData).tasks['refresh']?.processed, 3);
+    const clean = await second.handle(find('helper', repo.dir), repo.dir);
+    assert.deepEqual(clean.watermark?.stalePaths, []);
+    assert.equal(clean.degraded?.includes('stale') ?? false, false);
+  });
+
+  it('collect, compact and check run while the Indexer holds the writer, in slices of the approved size', async (t) => {
+    const { repo, open } = await setup(t);
+    const tenant = await open({ tuning: { maintenanceSliceMs: 5 } });
+    await tenant.build(repo.dir);
+    for (const task of ['collect', 'compact', 'check'] as const) {
+      const reply = await tenant.maintain(task, { worktree: repo.dir });
+      assert.equal(reply.ok, true, `${task}: ${JSON.stringify(reply.diagnostics)}`);
+      assert.equal((reply.data as TaskData).tasks[task]?.complete, true, task);
+    }
   });
 });

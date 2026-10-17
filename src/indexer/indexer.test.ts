@@ -760,3 +760,46 @@ describe('Indexer ensureFresh, the hash and parse race, failures and status', ()
     assert.equal(world.indexer.status().queued, 1, 'an event waiting for its debounce window is queued');
   });
 });
+
+describe('Indexer.refresh: a forced re-extract of stale files (STO-10)', () => {
+  it('re-extracts the files a grammar upgrade marked stale and clears them from the watermark', async (t) => {
+    const world = await makeWorld(t, { files: THREE_FILES });
+    await world.indexer.build(world.dir);
+    await world.indexer.stop();
+    const writer = world.store.writer();
+    assert.equal(await writer.markStale({ module: 'toy', grammarVersion: 'upgraded' }), 3);
+    writer.release();
+    assert.deepEqual((await world.reader.find('helper')).watermark.stalePaths, ['a.toy', 'b.toy', 'c.toy']);
+
+    const next = world.another();
+    assert.deepEqual(await next.refresh(world.dir), { processed: 3 });
+    const after = await world.reader.find('helper');
+    assert.deepEqual(after.watermark.stalePaths, []);
+    assert.equal(after.degraded?.includes('stale') ?? false, false);
+    assert.equal(after.data.length, 1);
+  });
+
+  it('a stale file that left the disk leaves the overlay, and refresh with nothing stale processes nothing', async (t) => {
+    const world = await makeWorld(t, { files: THREE_FILES });
+    await world.indexer.build(world.dir);
+    assert.deepEqual(await world.indexer.refresh(world.dir), { processed: 0 });
+
+    await world.indexer.stop();
+    const writer = world.store.writer();
+    await writer.markStale({ module: 'toy', grammarVersion: 'upgraded' });
+    writer.release();
+    world.repo.remove('c.toy');
+    const next = world.another();
+    assert.deepEqual(await next.refresh(world.dir), { processed: 3 });
+    assert.deepEqual((await world.reader.find('helper')).watermark.stalePaths, []);
+    assert.equal((await world.reader.fileFacts('c.toy')).data, null);
+  });
+
+  it('refuses a directory that is not a worktree of the repository', async (t) => {
+    const world = await makeWorld(t, { files: THREE_FILES });
+    await assert.rejects(
+      world.indexer.refresh(path.join(world.dir, 'nowhere')),
+      (error: unknown) => error instanceof IndexerError && error.code === 'unknown_worktree',
+    );
+  });
+});

@@ -127,6 +127,12 @@ export interface ReconcileOutcome {
   readonly durationMs: number;
 }
 
+/** What one {@link Indexer.refresh} did. */
+export interface RefreshOutcome {
+  /** Paths that were extracted again, attached to known facts, or removed because they left the disk. */
+  readonly processed: number;
+}
+
 /** The last completed Reconcile of any worktree. */
 export interface LastReconcile {
   /** `Clock.now()` when it finished. */
@@ -191,6 +197,13 @@ export interface Indexer {
    * worktree. Requests for one worktree that arrive while a run is in progress share it.
    */
   reconcile(worktree?: string): Promise<ReconcileOutcome>;
+  /**
+   * Re-extract every file the worktree's watermark lists as stale or pending (a grammar upgrade, a collected
+   * version): each is read and parsed again even though the store already holds facts under its hash, which is
+   * the one thing Reconcile does not do. `processed` counts the paths that were re-extracted or removed.
+   * Throws `IndexerError` (`unknown_worktree`, `lease_held`, `stopped`).
+   */
+  refresh(worktree: string): Promise<RefreshOutcome>;
   status(): IndexerStatus;
   /** Cancel timers, finish the work in progress, release the writer slot. Safe to call twice. */
   stop(): Promise<void>;

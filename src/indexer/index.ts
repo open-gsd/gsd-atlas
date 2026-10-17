@@ -37,6 +37,7 @@ export type {
   IndexerStatus,
   LastReconcile,
   ReconcileOutcome,
+  RefreshOutcome,
   StartOptions,
   WatchProblemRecord,
 } from './types.ts';

@@ -3,8 +3,13 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { describe, it } from 'node:test';
 import type { Envelope } from '../facts/index.ts';
-import { makeTempDir } from '../test-kit/index.ts';
-import { makeWorld, storeIdOf, toyModules, writeFiles } from './harness.test.ts';
+import { systemClock } from '../facts/index.ts';
+import { createGovernor } from '../governor/index.ts';
+import type { Governor, Job } from '../governor/index.ts';
+import { createIndexer, createManualEventSource } from '../indexer/index.ts';
+import type { Indexer, IndexerDeps } from '../indexer/index.ts';
+import { createTempGitRepo, makeTempDir } from '../test-kit/index.ts';
+import { makeWorld, setupRunner, storeIdOf, toyModules, writeFiles } from './harness.test.ts';
 import type { World } from './harness.test.ts';
 
 const codes = (reply: Envelope): string[] => reply.diagnostics.map((d) => d.code);
@@ -205,5 +210,241 @@ describe('Host: lang kinds', () => {
     assert.equal((reply.data as { modules: Array<{ source: string }> }).modules[0]?.source, 'repo');
     const bad = await world.ask('lang_list', { repo: 'relative/dir' });
     assert.deepEqual(codes(bad), ['invalid_args']);
+  });
+});
+
+interface Spy {
+  readonly governor: Governor;
+  /** Every job the Host or an Indexer asked the Governor to run, in order. */
+  readonly jobs: Job[];
+  /** The jobs whose function started. */
+  readonly started: Job[];
+  /** The most jobs the real Governor reported running when a job started. */
+  readonly maxRunning: () => number;
+}
+
+/** A Governor that records every job and holds the interactive ones at the start until `hold` settles. */
+function spyGovernor(real: Governor, hold?: Promise<void>): Spy {
+  const jobs: Job[] = [];
+  const started: Job[] = [];
+  let maxRunning = 0;
+  const governor: Governor = {
+    run: (job, fn) => {
+      jobs.push(job);
+      return real.run(job, async (signal) => {
+        started.push(job);
+        maxRunning = Math.max(maxRunning, real.status().running);
+        if (job.class === 'interactive') await hold;
+        return fn(signal);
+      });
+    },
+    lease: (key, estimatedBytes, onEvict) => real.lease(key, estimatedBytes, onEvict),
+    status: () => real.status(),
+  };
+  return { governor, jobs, started, maxRunning: () => maxRunning };
+}
+
+describe('Host: busy and Governor classes (HST-03)', () => {
+  it('fifty simultaneous code requests give a mix of ok and busy answers, never an exception, never more running than the concurrency', async (t) => {
+    let release: () => void = () => {};
+    const hold = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const spy = spyGovernor(createGovernor({ clock: systemClock, concurrency: 1, maxQueue: { interactive: 2 } }), hold);
+    const world = await makeWorld(t, { governor: spy.governor });
+    await built(world);
+
+    const replies: Envelope[] = [];
+    const settled = Promise.allSettled(
+      Array.from({ length: 50 }, async () => {
+        const reply = await world.ask('code_find', { name: 'helper', repo: world.repo.dir });
+        replies.push(reply);
+        return reply;
+      }),
+    );
+    const busy = (): Envelope[] => replies.filter((reply) => reply.diagnostics[0]?.code === 'busy');
+    await eventually(() => busy().length === 47, 'the 47 requests beyond one running and two queued to be answered busy');
+    release();
+    const results = await settled;
+
+    assert.ok(results.every((result) => result.status === 'fulfilled'), 'no request rejects');
+    assert.equal(replies.filter((reply) => reply.ok).length, 3, 'one ran and two waited for its slot');
+    for (const reply of busy()) {
+      assert.equal(reply.ok, false);
+      assert.equal(reply.data, null);
+      assert.ok(Number.isInteger(reply.retry_after) && (reply.retry_after ?? 0) > 0, `retry_after ${String(reply.retry_after)}`);
+    }
+    const interactive = spy.started.filter((job) => job.class === 'interactive');
+    assert.equal(interactive.length, 3, 'a request answered busy never ran');
+    assert.ok(spy.maxRunning() <= 1, 'never more running than the concurrency');
+  });
+
+  it('places build in the indexing class, maintain in the maintenance class and code tools in the interactive class', async (t) => {
+    const spy = spyGovernor(createGovernor({ clock: systemClock }));
+    const world = await makeWorld(t, { governor: spy.governor });
+    await world.ask('build', { repo: world.repo.dir });
+    assert.equal(spy.jobs[0]?.class, 'indexing');
+    spy.jobs.length = 0;
+    const kept = await world.ask('maintain', { repo: world.repo.dir, task: 'collect' });
+    assert.equal(kept.ok, true, JSON.stringify(kept.diagnostics));
+    assert.deepEqual(
+      spy.jobs.map((job) => job.class),
+      ['maintenance'],
+    );
+    spy.jobs.length = 0;
+    await world.ask('code_find', { name: 'helper', repo: world.repo.dir });
+    await world.ask('atlas_status', { repo: world.repo.dir });
+    assert.deepEqual(
+      spy.jobs.map((job) => job.class),
+      ['interactive', 'interactive'],
+    );
+  });
+});
+
+describe('Host: follower and lease_held (STO-08)', () => {
+  it('a second Host on the same repository reads, starts no Indexer and no watcher, and answers build and maintain with lease_held', async (t) => {
+    const world = await makeWorld(t);
+    await built(world);
+    const followerManual = createManualEventSource();
+    let indexers = 0;
+    const follower = world.anotherHost({
+      eventSource: () => followerManual.source,
+      indexerFactory: (deps: IndexerDeps): Indexer => {
+        indexers += 1;
+        return createIndexer(deps);
+      },
+    });
+    const ask = (kind: string, args: unknown, fresh?: readonly string[]): Promise<Envelope> =>
+      follower.handle({ protocol: 1, kind, args, ...(fresh === undefined ? {} : { fresh }) });
+    const repo = world.repo.dir;
+
+    const found = await ask('code_find', { name: 'helper', repo });
+    assert.equal(found.ok, true, JSON.stringify(found.diagnostics));
+    assert.equal((found.data as FindData).results.length, 1);
+    assert.ok(found.degraded?.includes('follower'), 'a follower says so in every answer');
+
+    for (const [kind, args] of [
+      ['build', { repo }],
+      ['maintain', { repo, task: 'collect' }],
+      ['maintain', { repo, task: 'all' }],
+    ] as const) {
+      const reply = await ask(kind, args);
+      assert.deepEqual(codes(reply), ['lease_held'], `${kind} ${JSON.stringify(args)}`);
+    }
+    const resolve = await ask('maintain', { repo, task: 'resolve' });
+    assert.equal(resolve.ok, true, 'a task that needs no writer still runs');
+
+    const fresh = await ask('code_find', { name: 'helper', repo }, ['b.toy']);
+    assert.equal(fresh.ok, true, JSON.stringify(fresh.diagnostics));
+    assert.ok(fresh.degraded?.includes('fresh_timeout'), 'fresh paths are not completed until the overlay of plan 02-27');
+
+    const status = await ask('atlas_status', { repo });
+    const data = status.data as { store: { writerLeaseHeld: boolean }; indexer: unknown };
+    assert.equal(data.store.writerLeaseHeld, false);
+    assert.equal(data.indexer, null);
+    assert.equal(indexers, 0, 'no Indexer was created');
+    assert.equal(followerManual.subscriptions(), 0);
+    assert.deepEqual(followerManual.gitSubscriptions(), []);
+  });
+});
+
+interface TaskData {
+  readonly tasks: Record<string, { complete: boolean; spentMs: number; processed: number; note?: string; ok?: boolean }>;
+}
+
+describe('Host: maintain tasks (STO-10)', () => {
+  it('maintain runs reconcile, refresh, collect, compact and check and reports complete, spentMs and processed for each', async (t) => {
+    const world = await makeWorld(t);
+    await built(world);
+    for (const task of ['reconcile', 'refresh', 'collect', 'compact', 'check']) {
+      const reply = await world.ask('maintain', { repo: world.repo.dir, task });
+      assert.equal(reply.schema, 'gsd-atlas.maintain/1');
+      assert.equal(reply.ok, true, `${task}: ${JSON.stringify(reply.diagnostics)}`);
+      const report = (reply.data as TaskData).tasks[task];
+      assert.equal(report?.complete, true, task);
+      assert.equal(typeof report?.spentMs, 'number', task);
+      assert.equal(typeof report?.processed, 'number', task);
+    }
+  });
+
+  it('maintain resolve is a no-op while no precise tier is active, and all runs every task in order', async (t) => {
+    const world = await makeWorld(t);
+    await built(world);
+    const resolve = await world.ask('maintain', { repo: world.repo.dir, task: 'resolve' });
+    const report = (resolve.data as TaskData).tasks['resolve'];
+    assert.equal(report?.processed, 0);
+    assert.match(report?.note ?? '', /no precise tier is active/);
+
+    const all = await world.ask('maintain', { repo: world.repo.dir });
+    assert.equal(all.ok, true, JSON.stringify(all.diagnostics));
+    assert.deepEqual(Object.keys((all.data as TaskData).tasks), ['reconcile', 'resolve', 'refresh', 'collect', 'compact', 'check']);
+    assert.equal((all.data as TaskData).tasks['check']?.ok, true);
+  });
+
+  it('maintain refuses an unknown task with invalid_args and a repository nobody built with not_indexed', async (t) => {
+    const world = await makeWorld(t);
+    const unknown = await world.ask('maintain', { repo: world.repo.dir, task: 'frobnicate' });
+    assert.deepEqual(codes(unknown), ['invalid_args']);
+    for (const task of ['reconcile', 'refresh']) {
+      const reply = await world.ask('maintain', { repo: world.repo.dir, task });
+      assert.deepEqual(codes(reply), ['not_indexed'], task);
+    }
+    const status = await world.ask('atlas_status', { repo: world.repo.dir });
+    assert.deepEqual((status.data as { worktrees: unknown[] }).worktrees, [], 'maintenance indexed nothing (D-11)');
+  });
+});
+
+describe('Host: status panels', () => {
+  it('status returns the Metrics report and the status snapshot for a window; a window it cannot read is invalid_args', async (t) => {
+    const world = await makeWorld(t);
+    await built(world);
+    const reply = await world.ask('status', { repo: world.repo.dir, since: '30m' });
+    assert.equal(reply.schema, 'gsd-atlas.status/1');
+    assert.equal(reply.ok, true, JSON.stringify(reply.diagnostics));
+    const data = reply.data as {
+      range: { since: number; until: number };
+      report: { answers: { total: number } };
+      tenant: { leader: boolean; location: { kind: string } };
+    };
+    assert.equal(data.range.until - data.range.since, 30 * 60_000);
+    assert.equal(typeof data.report.answers.total, 'number');
+    assert.equal(data.tenant.leader, true);
+    assert.equal(data.tenant.location.kind, 'git-common');
+
+    const weekly = await world.ask('status', { repo: world.repo.dir });
+    const week = (weekly.data as { range: { since: number; until: number } }).range;
+    assert.equal(week.until - week.since, 7 * 86_400_000, 'the default window is 7 days');
+    for (const since of ['soon', '0d', '7', '-3d']) {
+      assert.deepEqual(codes(await world.ask('status', { repo: world.repo.dir, since })), ['invalid_args'], since);
+    }
+  });
+});
+
+describe('Host: tenant isolation (T-02-68)', () => {
+  it('a repository whose store cannot open gets its own error while the other tenant keeps answering', async (t) => {
+    const stores = makeTempDir();
+    t.after(() => {
+      stores.cleanup();
+    });
+    const world = await makeWorld(t, { host: { config: { store: { dir: stores.path } } } });
+    const other = await createTempGitRepo({ runner: setupRunner, world: { committed: { 'b.toy': 'fn betaOnly {\n}\n' } } });
+    t.after(() => {
+      other.cleanup();
+    });
+    const otherId = await storeIdOf(other);
+    fs.writeFileSync(path.join(stores.path, otherId), 'a file where the store directory should be');
+
+    await built(world);
+    const broken = await world.ask('build', { repo: other.dir });
+    assert.equal(broken.ok, false);
+    assert.deepEqual(codes(broken), ['store_unavailable']);
+    const stillServing = await world.ask('code_find', { name: 'helper', repo: world.repo.dir });
+    assert.equal(stillServing.ok, true, JSON.stringify(stillServing.diagnostics));
+    assert.equal((stillServing.data as FindData).results.length, 1);
+
+    fs.rmSync(path.join(stores.path, otherId));
+    const recovered = await world.ask('build', { repo: other.dir });
+    assert.equal(recovered.ok, true, 'a failed creation is forgotten, so the next request tries again');
+    await world.host.closeTenant(otherId);
   });
 });

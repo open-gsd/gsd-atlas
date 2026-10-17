@@ -613,6 +613,9 @@ export function createIndexer(deps: IndexerDeps): Indexer {
       }
     },
 
+    // RED-phase stand-in: nothing is re-extracted until the GREEN commit.
+    refresh: () => Promise.resolve({ processed: 0 }),
+
     status,
 
     stop(): Promise<void> {
