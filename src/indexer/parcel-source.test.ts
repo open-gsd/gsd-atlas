@@ -396,7 +396,6 @@ const arrived = (check: () => boolean, what: string): Promise<void> => eventuall
 describe('parcel event source over the real watcher', () => {
   it('delivers a change for a created, modified, renamed-over and deleted file, never for .git or node_modules, and stops on unsubscribe', async (t) => {
     const tmp = makeTempDir();
-    t.after(() => tmp.cleanup());
     const root = realPath(tmp.path);
     fs.mkdirSync(path.join(root, 'src'), { recursive: true });
     fs.mkdirSync(path.join(root, '.git', 'objects'), { recursive: true });
@@ -404,11 +403,32 @@ describe('parcel event source over the real watcher', () => {
     const source = createParcelEventSource();
     assert.equal(source.watchMode(), 'native');
     const seen: SourceEvent[] = [];
-    const stop = await source.subscribe(root, (event) => seen.push(event));
+    const subscribed = await source.subscribe(root, (event) => seen.push(event));
+    // A failed assertion must still release the native watcher: on Windows a watcher that is left running holds the
+    // directory and keeps the test process alive until the job times out (found by plan 02-26 on Windows CI).
+    let stopped = false;
+    const stop = async (): Promise<void> => {
+      if (stopped) return;
+      stopped = true;
+      await subscribed();
+    };
+    t.after(async () => {
+      await stop();
+      tmp.cleanup();
+    });
     const paths = (): string[] => seen.flatMap((event) => (event.kind === 'change' ? [event.path] : []));
     const reset = (): void => {
       seen.length = 0;
     };
+
+    // Events are an accelerator, not a promise about the instant `subscribe` resolves: on Windows CI the first write after
+    // it was sometimes never reported. Write a probe until the watcher has reported one, then start the real sequence.
+    let probes = 0;
+    await arrived(() => {
+      fs.writeFileSync(path.join(root, 'src', 'probe.ts'), `export const probe = ${String((probes += 1))};\n`);
+      return paths().includes('src/probe.ts');
+    }, 'the watcher to report a probe file');
+    reset();
 
     fs.writeFileSync(path.join(root, 'src', 'a.ts'), 'export const a = 1;\n');
     await arrived(() => paths().includes('src/a.ts'), 'a created file');
