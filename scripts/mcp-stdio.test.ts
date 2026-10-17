@@ -19,7 +19,9 @@ import { PROTOCOL_VERSION, TOOL_NAMES } from '../src/host-client/index.ts';
 import { createTempGitRepo, makeTempDir } from '../src/test-kit/index.ts';
 import type { TempDir, TempGitRepo } from '../src/test-kit/index.ts';
 import { within } from './test-helpers/child-lines.ts';
-import { EXIT_CEILING_MS, McpProcess, stderrOf } from './test-helpers/mcp-process.ts';
+import { startMcp } from './test-helpers/mcp-client.ts';
+import type { McpClient } from './test-helpers/mcp-client.ts';
+import { EXIT_CEILING_MS, stderrOf } from './test-helpers/mcp-process.ts';
 import type { Envelope, RpcMessage } from './test-helpers/mcp-process.ts';
 
 const BIN = path.resolve(import.meta.dirname, '..', 'src', 'bin', 'gsd-atlas-mcp.ts');
@@ -38,7 +40,7 @@ export interface Fixture {
   readonly env: Readonly<Record<string, string>>;
   /** A directory that is not a repository, used as the server's working directory. */
   readonly outside: string;
-  start(cwd?: string, extraEnv?: Readonly<Record<string, string>>): McpProcess;
+  start(cwd?: string, extraEnv?: Readonly<Record<string, string>>): McpClient;
 }
 
 function sink(): { write(text: string): boolean } {
@@ -60,7 +62,7 @@ export async function makeFixture(t: TestContext, options: FixtureOptions = {}):
   const env: Record<string, string> = { ...repo.envOverlay, GSD_ATLAS_USER_DIR: userDir };
   const outside = path.join(tmp.path, 'outside');
   fs.mkdirSync(outside);
-  const started: McpProcess[] = [];
+  const started: McpClient[] = [];
   t.after(async () => {
     for (const each of started) {
       each.kill();
@@ -84,7 +86,7 @@ export async function makeFixture(t: TestContext, options: FixtureOptions = {}):
     env,
     outside,
     start(cwd = outside, extraEnv = {}) {
-      const child = new McpProcess(BIN, cwd, { ...env, ...extraEnv });
+      const child = startMcp({ bin: BIN, cwd, env: { ...env, ...extraEnv } });
       started.push(child);
       return child;
     },
@@ -145,7 +147,7 @@ const NOISE_CHILD = path.resolve(import.meta.dirname, 'test-helpers', 'stdout-no
 const FRAME = '{"jsonrpc":"2.0","method":"frame"}\n';
 
 /** Every stdout line of a finished or running server must be one JSON-RPC 2.0 message object. */
-function assertFramed(server: McpProcess): void {
+function assertFramed(server: McpClient): void {
   assert.ok(server.lines.length > 0, 'the server printed at least one frame');
   for (const line of server.lines) {
     let parsed: unknown;
@@ -303,7 +305,7 @@ function fencedEntries(envelope: Envelope): Array<{ ref: string; text: string }>
 
 /** Ask code_find until `accept` approves the answer, or fail after a generous wall-clock bound (no latency is asserted). */
 async function findEventually(
-  server: McpProcess,
+  server: McpClient,
   args: Record<string, unknown>,
   accept: (envelope: Envelope) => boolean,
   what: string,
