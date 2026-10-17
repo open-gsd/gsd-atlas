@@ -38,6 +38,9 @@ interface RunOptions {
   readonly platform?: NodeJS.Platform;
   /** False simulates a build whose bin supplies no io.init. */
   readonly withInit?: boolean;
+  /** TEST ONLY hooks forwarded to the init environment: they run between init's read and its write. */
+  readonly beforeWrite?: (file: string) => void | Promise<void>;
+  readonly afterTemp?: (file: string) => void | Promise<void>;
 }
 
 interface Rig {
@@ -89,6 +92,8 @@ function makeRig(): Rig {
                 platform: options.platform ?? process.platform,
                 env: {},
                 mcp: { command: options.command ?? NODE, args: [options.entry ?? ENTRY] },
+                ...(options.beforeWrite === undefined ? {} : { beforeWrite: options.beforeWrite }),
+                ...(options.afterTemp === undefined ? {} : { afterTemp: options.afterTemp }),
               },
             }),
       };
@@ -260,6 +265,188 @@ describe('gsd-atlas init for Claude Code', () => {
     assert.deepEqual(JSON.parse(fs.readFileSync(real, 'utf8')).mcpServers['gsd-atlas'], CLAUDE_ENTRY);
     assert.ok(fs.existsSync(`${real}${BACKUP}`), 'the backup sits beside the real file');
     assert.deepEqual(fs.readdirSync(dotfiles).sort(), ['claude.json', `claude.json${BACKUP}`]);
+  });
+});
+
+/**
+ * What a host does when it saves its own file while init runs: different bytes, the same size and the
+ * same modification time, so only a compare of the content can notice.
+ */
+function hostRewrites(file: string): Buffer {
+  const before = fs.statSync(file);
+  const bytes = Buffer.from(fs.readFileSync(file));
+  const at = bytes.indexOf('dark');
+  assert.ok(at >= 0, 'the seeded file contains "dark"');
+  bytes.write('dusk', at);
+  fs.writeFileSync(file, bytes);
+  fs.utimesSync(file, before.atime, before.mtime);
+  assert.equal(fs.statSync(file).size, before.size);
+  return bytes;
+}
+
+describe('gsd-atlas init and a config the host changes while init runs (WR-12)', () => {
+  const REASON = /^config_changed_during_init/;
+
+  it('changed between read and write: refused, the host bytes stay, no backup and no temp file', async () => {
+    const rig = makeRig();
+    const file = seedClaude(rig);
+    let hostBytes: Buffer | null = null;
+
+    const out = await rig.run(['init', '--agent', 'claude'], {
+      beforeWrite: (target) => {
+        hostBytes = hostRewrites(target);
+      },
+    });
+
+    assert.equal(out.code, 2);
+    const host = out.envelope().data.hosts[0]!;
+    assert.equal(host.action, 'refused');
+    assert.match(host.reason ?? '', REASON);
+    assert.ok(hostBytes !== null);
+    assert.deepEqual(fs.readFileSync(file), hostBytes, 'the file holds the host bytes');
+    assert.deepEqual(fs.readdirSync(rig.home), ['.claude.json'], 'no backup and no temp file');
+  });
+
+  it('changed after temp: refused, the temp file and the backup are removed, the host bytes stay', async () => {
+    const rig = makeRig();
+    const file = seedClaude(rig);
+    let hostBytes: Buffer | null = null;
+
+    const out = await rig.run(['init', '--agent', 'claude'], {
+      afterTemp: (target) => {
+        hostBytes = hostRewrites(target);
+      },
+    });
+
+    assert.equal(out.code, 2);
+    const host = out.envelope().data.hosts[0]!;
+    assert.equal(host.action, 'refused');
+    assert.match(host.reason ?? '', REASON);
+    assert.match(out.stderr.join(''), /config_changed_during_init/);
+    assert.ok(hostBytes !== null);
+    assert.deepEqual(fs.readFileSync(file), hostBytes);
+    assert.deepEqual(fs.readdirSync(rig.home), ['.claude.json'], 'no backup and no temp file');
+  });
+
+  it('new file raced: a file that appears after init saw none is not overwritten', async () => {
+    const rig = makeRig();
+    fs.mkdirSync(path.join(rig.home, '.cursor'));
+    const file = path.join(rig.home, '.cursor', 'mcp.json');
+    const hostText = '{"mcpServers":{"theirs":{"command":"t"}}}\n';
+
+    const out = await rig.run(['init', '--agent', 'cursor'], {
+      beforeWrite: (target) => {
+        fs.writeFileSync(target, hostText);
+      },
+    });
+
+    assert.equal(out.code, 2);
+    const host = out.envelope().data.hosts[0]!;
+    assert.equal(host.action, 'refused');
+    assert.match(host.reason ?? '', REASON);
+    assert.equal(fs.readFileSync(file, 'utf8'), hostText);
+    assert.deepEqual(fs.readdirSync(path.dirname(file)), ['mcp.json']);
+  });
+
+  it('an existing file that the host deleted is not recreated by init', async () => {
+    const rig = makeRig();
+    const file = seedClaude(rig);
+
+    const out = await rig.run(['init', '--agent', 'claude'], {
+      beforeWrite: (target) => {
+        fs.rmSync(target);
+      },
+    });
+
+    assert.equal(out.code, 2);
+    assert.match(out.envelope().data.hosts[0]!.reason ?? '', REASON);
+    assert.ok(!fs.existsSync(file));
+    assert.deepEqual(fs.readdirSync(rig.home), []);
+  });
+
+  it('a dry run never calls the hooks and checks nothing', async () => {
+    const rig = makeRig();
+    const file = seedClaude(rig);
+    const original = fs.readFileSync(file);
+    let calls = 0;
+
+    const out = await rig.run(['init', '--agent', 'claude', '--dry-run'], {
+      beforeWrite: () => {
+        calls += 1;
+      },
+      afterTemp: () => {
+        calls += 1;
+      },
+    });
+
+    assert.equal(out.code, 0);
+    assert.equal(calls, 0);
+    assert.deepEqual(fs.readFileSync(file), original);
+  });
+
+  it('two inits racing: the second to reach its compare sees the first rename and refuses, the file is the first result', async () => {
+    const rig = makeRig();
+    const file = seedClaude(rig);
+    let inner: Outcome | null = null;
+
+    const outer = await rig.run(['init', '--agent', 'claude'], {
+      beforeWrite: async () => {
+        inner = await rig.run(['init', '--agent', 'claude'], { command: '/opt/other/node' });
+      },
+    });
+
+    assert.ok(inner !== null);
+    assert.equal((inner as Outcome).code, 0);
+    assert.equal(outer.code, 2);
+    assert.match(outer.envelope().data.hosts[0]!.reason ?? '', REASON);
+    const parsed = JSON.parse(fs.readFileSync(file, 'utf8')) as { mcpServers: Record<string, unknown> };
+    assert.deepEqual(parsed.mcpServers['gsd-atlas'], { type: 'stdio', command: '/opt/other/node', args: [ENTRY] });
+    assert.deepEqual(fs.readdirSync(rig.home).sort(), ['.claude.json', `.claude.json${BACKUP}`]);
+  });
+
+  it('a normal write still goes through with the hooks present, BOM kept', async () => {
+    const rig = makeRig();
+    const file = seedClaude(rig, Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from('{}\n')]));
+    let calls = 0;
+
+    const out = await rig.run(['init', '--agent', 'claude'], {
+      beforeWrite: () => {
+        calls += 1;
+      },
+      afterTemp: () => {
+        calls += 1;
+      },
+    });
+
+    assert.equal(out.code, 0);
+    assert.equal(calls, 2, 'both hooks ran once');
+    assert.deepEqual([...fs.readFileSync(file).subarray(0, 3)], [0xef, 0xbb, 0xbf]);
+  });
+
+  it('concurrent inits: the file always parses with one gsd-atlas entry and no result is a silent loss', async () => {
+    const rig = makeRig();
+    const file = seedClaude(rig);
+
+    const [first, second] = await Promise.all([
+      rig.run(['init', '--agent', 'claude']),
+      rig.run(['init', '--agent', 'claude']),
+    ]);
+
+    for (const out of [first, second]) {
+      const host = out.envelope().data.hosts[0]!;
+      if (host.action === 'refused') {
+        assert.match(host.reason ?? '', REASON);
+        assert.equal(out.code, 2);
+      } else {
+        assert.ok(host.action === 'updated' || host.action === 'unchanged', host.action);
+        assert.equal(out.code, 0);
+      }
+    }
+    const parsed = JSON.parse(fs.readFileSync(file, 'utf8')) as { mcpServers: Record<string, unknown>; theme: string };
+    assert.deepEqual(parsed.mcpServers['gsd-atlas'], CLAUDE_ENTRY);
+    assert.deepEqual(parsed.mcpServers['other'], ORIGINAL_CONFIG.mcpServers.other);
+    assert.equal(parsed.theme, 'dark');
+    assert.deepEqual(fs.readdirSync(rig.home).sort(), ['.claude.json', `.claude.json${BACKUP}`], 'no temp file remains');
   });
 });
 

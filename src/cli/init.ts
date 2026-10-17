@@ -11,7 +11,7 @@ import { lstat, readFile } from 'node:fs/promises';
 import path from 'node:path';
 
 import type { Diagnostic } from '../host-client/index.ts';
-import { detectHomeFile, readUserFile, writeUserFile } from './init-files.ts';
+import { ConfigChangedError, detectHomeFile, readUserFile, writeUserFile } from './init-files.ts';
 import type { UserFile } from './init-files.ts';
 import { TARGETS } from './init-targets.ts';
 import type { AgentId, McpLaunch, Target } from './init-targets.ts';
@@ -26,6 +26,10 @@ export interface InitEnvironment {
   readonly env: Readonly<Record<string, string | undefined>>;
   /** The launch command to register: the node executable and the absolute path of the gsd-atlas-mcp entry. */
   readonly mcp: McpLaunch;
+  /** TEST ONLY: called with the config file path just before it is written (never on a dry run). */
+  readonly beforeWrite?: (file: string) => void | Promise<void>;
+  /** TEST ONLY: called after the temp file is written and before the final compare and the rename. */
+  readonly afterTemp?: (file: string) => void | Promise<void>;
 }
 
 export interface InitOptions {
@@ -126,8 +130,16 @@ async function registerWith(target: Target, dryRun: boolean, env: InitEnvironmen
   }
   if (!dryRun) {
     try {
-      await writeUserFile(file, rendered.text, { bom: existing?.bom ?? false });
+      await env.beforeWrite?.(file);
+      await writeUserFile(file, rendered.text, {
+        bom: existing?.bom ?? false,
+        expected: existing === null ? { absent: true } : { digest: existing.digest },
+        ...(env.afterTemp === undefined ? {} : { afterTemp: env.afterTemp }),
+      });
     } catch (error) {
+      if (error instanceof ConfigChangedError) {
+        return refuse('config_changed_during_init: the file changed while init was running, so nothing was written; run init again');
+      }
       return refuse(`could not write the file: ${reasonOf(error)}`);
     }
   }
