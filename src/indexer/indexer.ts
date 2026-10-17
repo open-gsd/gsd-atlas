@@ -1,4 +1,4 @@
-import { WriterBusy } from '../fact-store/index.ts';
+import { UnknownWorktree, WriterBusy } from '../fact-store/index.ts';
 import type { Writer } from '../fact-store/index.ts';
 import type { WorktreeInfo } from '../source-tree/index.ts';
 import { runBuild } from './build.ts';
@@ -25,9 +25,17 @@ import type {
   IndexerStatus,
   LastReconcile,
   ReconcileOutcome,
+  RefreshOutcome,
   StartOptions,
   WatchProblemRecord,
 } from './types.ts';
+
+/**
+ * How many stale paths one refresh hands to batch processing at a time. Like the Reconcile chunk it is not a
+ * timeout, a queue bound or a gate threshold, so it has no row in 02-CONSTANTS.md: it only bounds how much one
+ * Governor submission holds.
+ */
+const REFRESH_CHUNK = 256;
 
 const finiteAtLeast0 = (value: number): boolean => Number.isFinite(value) && value >= 0;
 const integerAtLeast0 = (value: number): boolean => Number.isInteger(value) && value >= 0;
@@ -613,8 +621,41 @@ export function createIndexer(deps: IndexerDeps): Indexer {
       }
     },
 
-    // RED-phase stand-in: nothing is re-extracted until the GREEN commit.
-    refresh: () => Promise.resolve({ processed: 0 }),
+    refresh(worktree: string): Promise<RefreshOutcome> {
+      return track(
+        (async () => {
+          assertRunning();
+          await resolveWorktree(worktree, false);
+          let stale: readonly string[];
+          try {
+            // Any path does: the watermark of every read lists the paths whose facts are stale or still pending.
+            stale = (await deps.store.at(worktree).fileFacts('')).watermark.stalePaths;
+          } catch (error) {
+            if (error instanceof UnknownWorktree) {
+              throw new IndexerError('unknown_worktree', `${worktree} has not been built, so it has nothing to refresh`);
+            }
+            throw error;
+          }
+          if (stale.length === 0) return { processed: 0 };
+
+          const refreshing = takeWriter();
+          const startedAt = deps.clock.now();
+          let processed = 0;
+          for (let from = 0; from < stale.length; from += REFRESH_CHUNK) {
+            const results = await processBatch(ctx, refreshing, worktree, stale.slice(from, from + REFRESH_CHUNK), {
+              job: { cls: 'maintenance' },
+              force: true,
+              onResult: (result) => {
+                noteCommitted(worktree, result);
+              },
+            });
+            account(worktree, results, new Map(), startedAt);
+            processed += results.filter((result) => result.outcome !== 'failed' && result.outcome !== 'skipped').length;
+          }
+          return { processed };
+        })(),
+      );
+    },
 
     status,
 

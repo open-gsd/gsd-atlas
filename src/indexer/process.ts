@@ -208,12 +208,17 @@ async function indexPath(
   rel: string,
   hash: string,
   stamp: Stamp | undefined,
+  force: boolean,
 ): Promise<Attempt> {
   // Inside the path lock: if the file changed since it was hashed, that hash may already be out of date.
   if (!sameStamp(stamp, await stampOf(worktree, rel))) return raced(rel);
 
-  const attached = await writer.link(worktree, rel, hash);
-  if (attached.status !== 'rejected') return { path: rel, outcome: 'linked', hash };
+  // A forced pass (refresh) skips the shortcut: the facts the store holds under this hash are exactly the ones
+  // that are stale, and attaching them again would leave them so.
+  if (!force) {
+    const attached = await writer.link(worktree, rel, hash);
+    if (attached.status !== 'rejected') return { path: rel, outcome: 'linked', hash };
+  }
 
   const read = await ctx.tree.readText(worktree, rel, { maxBytes: ctx.config.maxFileBytes });
   if (read.kind === 'too_large') return failed(rel, SOURCE_TREE_CODES.sourceTooLarge);
@@ -273,6 +278,11 @@ async function prepare(ctx: ProcessContext, worktree: string, sorted: readonly s
 
 export interface BatchOptions {
   readonly job: JobSpec;
+  /**
+   * Read, parse and commit every path even when the store already holds facts under its hash (a grammar upgrade
+   * marked them stale). Without it a known hash is attached with `Writer.link`, which keeps the stale facts.
+   */
+  readonly force?: boolean;
   /** Told as each path reaches its final result (not for an attempt that raced and will be retried). */
   readonly onResult?: (result: PathResult) => void;
 }
@@ -338,7 +348,11 @@ async function attemptBatch(
     units.push({
       first: same[0] as string,
       run: async () => {
-        for (const rel of same) await guarded(rel, () => indexPath(ctx, writer, worktree, rel, hash, prepared.stamps.get(rel)));
+        // Forced: only the first path of a hash is extracted again; its commit refreshes the facts all of them share.
+        for (const [at, rel] of same.entries()) {
+          const force = options.force === true && at === 0;
+          await guarded(rel, () => indexPath(ctx, writer, worktree, rel, hash, prepared.stamps.get(rel), force));
+        }
       },
     });
   }

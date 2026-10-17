@@ -9,8 +9,8 @@
  * while nothing was running.
  */
 import path from 'node:path';
-import { openFactStore, resolveStoreLocation } from '../fact-store/index.ts';
-import type { FactStore, Resolver } from '../fact-store/index.ts';
+import { UnknownWorktree, WriterBusy, openFactStore, resolveStoreLocation } from '../fact-store/index.ts';
+import type { FactStore, MaintenanceResult, Resolver } from '../fact-store/index.ts';
 import { okEnvelope } from '../facts/index.ts';
 import type { Envelope, Request } from '../facts/index.ts';
 import { IndexerError, createIndexer } from '../indexer/index.ts';
@@ -20,8 +20,22 @@ import { createQuery, errorEnvelope } from '../query/index.ts';
 import type { FreshPort } from '../query/index.ts';
 import { DEFAULT_TENANT_TUNING } from './defaults.ts';
 import { createStatusPort } from './status-port.ts';
-import { BUILD_SCHEMA, STATUS_SCHEMA } from './types.ts';
-import type { MaintainOptions, MaintainTask, Tenant, TenantDeps, TenantStatus, TenantTuning } from './types.ts';
+import { BUILD_SCHEMA, MAINTAIN_SCHEMA, STATUS_SCHEMA } from './types.ts';
+import type { MaintainOptions, MaintainTask, TaskReport, Tenant, TenantDeps, TenantStatus, TenantTuning } from './types.ts';
+
+/** The tasks `all` runs, in this order. */
+const ALL_TASKS = ['reconcile', 'resolve', 'refresh', 'collect', 'compact', 'check'] as const;
+type SingleTask = (typeof ALL_TASKS)[number];
+
+/** The tasks that work on one worktree's overlay, so the worktree must have been built. */
+const WORKTREE_TASKS: ReadonlySet<SingleTask> = new Set<SingleTask>(['reconcile', 'refresh']);
+
+/**
+ * The most slices one store task is run in before it is reported incomplete. A task that reports complete ends at
+ * once; this only stops one that never does. Not a timeout, a queue bound or a gate threshold, so it has no row in
+ * 02-CONSTANTS.md.
+ */
+const MAX_SLICES = 10_000;
 
 /** Phase 2 has no precise tier: the store's resolver resolves nothing, and every edge stays grammar-tier. */
 const noPreciseTier: Resolver = async function* () {
@@ -109,8 +123,13 @@ export async function createTenant(deps: TenantDeps): Promise<Tenant> {
       'Another gsd-atlas process holds the writer for this repository, so this process cannot index or run maintenance. Use that process, or stop it first.',
     );
 
+  const notIndexed = (): Envelope =>
+    errorEnvelope('not_indexed', 'This repository has not been indexed yet. Run "gsd-atlas build" in it, then ask again.');
+
   /** An error that ends a request as an envelope; anything else is a bug and goes on. */
   function failure(error: unknown): Envelope {
+    if (error instanceof WriterBusy) return leaseHeld();
+    if (error instanceof UnknownWorktree) return notIndexed();
     if (error instanceof IndexerError) {
       if (error.code === 'lease_held') return leaseHeld();
       if (error.code === 'unknown_worktree') return errorEnvelope('unknown_worktree', 'That directory is not a worktree of the repository.');
@@ -119,13 +138,25 @@ export async function createTenant(deps: TenantDeps): Promise<Tenant> {
     throw error;
   }
 
-  /** Query's read-your-writes port. A worktree nobody built is never indexed because a request named paths (D-11). */
+  /** True when this process holds the writer lease: the only process that indexes or runs maintenance (STO-08). */
+  const isLeader = async (): Promise<boolean> => (await store.status()).writerLeaseHeld;
+
+  /** True when the store has an overlay for `worktree`, that is, somebody built it. */
+  const isIndexed = async (worktree: string): Promise<boolean> =>
+    (await store.status()).worktrees.some((entry) => entry.worktree === worktree);
+
+  /**
+   * Query's read-your-writes port. A worktree nobody built is never indexed because a request named paths (D-11).
+   * A follower can not index: it answers that the paths are not done, and Query degrades the answer with
+   * `fresh_timeout` until plan 02-27 gives followers an in-memory overlay.
+   */
   const fresh: FreshPort = {
     async ensureFresh(worktree, paths, waitMs) {
       const status = await store.status();
       if (!status.worktrees.some((entry) => entry.worktree === worktree)) {
         return { complete: true, stalePaths: [], invalid: [] };
       }
+      if (!status.writerLeaseHeld) return { complete: false, stalePaths: [...paths], invalid: [] };
       return getIndexer().ensureFresh(worktree, paths, waitMs);
     },
   };
@@ -141,8 +172,10 @@ export async function createTenant(deps: TenantDeps): Promise<Tenant> {
   // Start watching the worktrees the store already indexes. Never waited for: a request is served from the store
   // meanwhile, and the start-up Reconcile repairs it.
   let starting: Promise<void> = Promise.resolve();
-  const indexed = (await store.status()).worktrees.map((entry) => entry.worktree);
-  if (indexed.length > 0) {
+  const opening = await store.status();
+  const indexed = opening.worktrees.map((entry) => entry.worktree);
+  // A follower starts nothing: no Indexer, no watcher. Taking over when the leader goes away is plan 02-28.
+  if (opening.writerLeaseHeld && indexed.length > 0) {
     starting = (async () => {
       try {
         const listed = new Set((await tree.worktrees()).filter((entry) => !entry.bare).map((entry) => entry.path));
@@ -168,6 +201,52 @@ export async function createTenant(deps: TenantDeps): Promise<Tenant> {
     };
   }
 
+  /**
+   * A store task run in time-boxed slices (the approved `maintenance.sliceMs`) until it reports complete. Each call
+   * is resumable and idempotent, so a task that did not finish is simply called again.
+   */
+  async function sliced(call: (budgetMs: number) => Promise<MaintenanceResult>): Promise<TaskReport> {
+    let processed = 0;
+    let spentMs = 0;
+    for (let slice = 0; slice < MAX_SLICES; slice += 1) {
+      const result = await call(tuning.maintenanceSliceMs);
+      processed += result.processed;
+      spentMs += result.spentMs;
+      if (result.complete) return { complete: true, spentMs, processed };
+    }
+    return { complete: false, spentMs, processed };
+  }
+
+  /**
+   * One maintenance task. `collect`, `compact` and `check` call the store directly: they need write authority (the
+   * lease) but not the in-process writer slot, which the Indexer holds, so they run while it indexes. The store's own
+   * `maintain` wrapper takes that slot and would answer `WriterBusy` here.
+   */
+  async function runTask(task: SingleTask, options: MaintainOptions): Promise<TaskReport> {
+    const started = clock.now();
+    const took = (): number => Math.max(0, clock.now() - started);
+    switch (task) {
+      case 'reconcile': {
+        const outcome = await getIndexer().reconcile(options.worktree);
+        return { complete: true, spentMs: outcome.durationMs, processed: outcome.changed };
+      }
+      case 'resolve':
+        return { complete: true, spentMs: 0, processed: 0, note: 'no precise tier is active' };
+      case 'refresh': {
+        const { processed } = await getIndexer().refresh(options.worktree);
+        return { complete: true, spentMs: took(), processed };
+      }
+      case 'collect':
+        return sliced((budgetMs) => store.collect({ budgetMs }));
+      case 'compact':
+        return sliced((budgetMs) => store.compact({ budgetMs, ...(options.full === true ? { full: true } : {}) }));
+      case 'check': {
+        const result = await store.check();
+        return { complete: true, spentMs: took(), processed: result.problems.length, ok: result.ok };
+      }
+    }
+  }
+
   return {
     storeId: identity.storeId,
     location,
@@ -178,6 +257,7 @@ export async function createTenant(deps: TenantDeps): Promise<Tenant> {
 
     async build(worktree: string): Promise<Envelope> {
       try {
+        if (!(await isLeader())) return leaseHeld();
         const ix = getIndexer();
         const result = await ix.build(worktree);
         await ix.attach(worktree);
@@ -187,10 +267,18 @@ export async function createTenant(deps: TenantDeps): Promise<Tenant> {
       }
     },
 
-    maintain(task: MaintainTask, _options: MaintainOptions): Promise<Envelope> {
-      return Promise.resolve(
-        errorEnvelope('maintain_unavailable', `maintenance task ${task} is not available from this tenant yet`),
-      );
+    async maintain(task: MaintainTask, options: MaintainOptions): Promise<Envelope> {
+      const tasks: readonly SingleTask[] = task === 'all' ? ALL_TASKS : [task];
+      try {
+        // Only `resolve` (a no-op while no precise tier is active) needs neither the writer nor an overlay.
+        if (tasks.some((each) => each !== 'resolve') && !(await isLeader())) return leaseHeld();
+        if (tasks.some((each) => WORKTREE_TASKS.has(each)) && !(await isIndexed(options.worktree))) return notIndexed();
+        const reports: Partial<Record<SingleTask, TaskReport>> = {};
+        for (const each of tasks) reports[each] = await runTask(each, options);
+        return okEnvelope(MAINTAIN_SCHEMA, { tasks: reports });
+      } catch (error) {
+        return failure(error);
+      }
     },
 
     status: snapshot,
