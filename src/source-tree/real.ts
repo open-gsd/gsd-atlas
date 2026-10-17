@@ -81,7 +81,7 @@ export function createSourceTree(options: SourceTreeOptions): SourceTree {
     };
 
     // 1. Every configured filter driver, so the hash call can neutralise each of them.
-    const filterNames = await listFilterNames(runner, worktree, ctx, env);
+    const filterNames = await listFilterNames(runner, worktree, ctx, env, GIT_TIMEOUT_MS);
 
     // 2. Tracked entries: "<mode> <hash> <stage>\t<path>" separated by NUL. The index hash is not used:
     //    the working-tree content is what gets hashed, so an edited file is reported as edited.
@@ -204,7 +204,7 @@ export function createSourceTree(options: SourceTreeOptions): SourceTree {
     const hashable = await vetPaths(worktree, [...new Set(paths)].sort(compareCodeUnits), diagnostics);
     if (hashable.length === 0) return { files: new Map(), diagnostics };
     // Filter drivers are enumerated on every call, never cached, so a driver added since the last call is neutralised.
-    const filterNames = await listFilterNames(runner, worktree, ctx, env);
+    const filterNames = await listFilterNames(runner, worktree, ctx, env, GIT_TIMEOUT_MS);
     return { files: await hashBatch(worktree, hashable, filterNames), diagnostics };
   }
 
@@ -287,7 +287,7 @@ export function createSourceTree(options: SourceTreeOptions): SourceTree {
   async function probe(s: CommandSpec, label: string): Promise<{ stdout: Uint8Array; found: boolean }> {
     const result = await runner.run(s, ctx);
     if (result.denied !== undefined || result.spawnError !== undefined || result.timedOut || result.truncated) {
-      const why = result.denied?.message ?? result.spawnError?.message ?? 'timed out or output exceeded its cap';
+      const why = result.denied?.message ?? result.spawnError?.message ?? (result.timedOut ? 'timed out' : 'output exceeded its cap');
       throw new SourceTreeError('git_failed', `git ${label} failed: ${why}`);
     }
     return { stdout: result.stdout, found: result.exitCode === 0 };
@@ -295,14 +295,14 @@ export function createSourceTree(options: SourceTreeOptions): SourceTree {
 
   async function hasObject(hash: string): Promise<boolean> {
     if (!isObjectId(hash)) return false;
-    const { found } = await probe(spec(['cat-file', '-e', hash], repoDir), 'cat-file -e');
+    const { found } = await probe(spec(['cat-file', '-e', hash], repoDir, { timeoutMs: GIT_TIMEOUT_MS }), 'cat-file -e');
     return found;
   }
 
   async function read(commit: string, relPath: string): Promise<Uint8Array | null> {
     assertReadArguments(commit, relPath);
     const { stdout, found } = await probe(
-      spec(['cat-file', 'blob', `${commit}:${relPath}`], repoDir, { maxStdoutBytes: BIG_OUTPUT_BYTES }),
+      spec(['cat-file', 'blob', `${commit}:${relPath}`], repoDir, { maxStdoutBytes: BIG_OUTPUT_BYTES, timeoutMs: GIT_TIMEOUT_MS }),
       'cat-file blob',
     );
     return found ? stdout : null;
@@ -414,9 +414,11 @@ export function createSourceTree(options: SourceTreeOptions): SourceTree {
 
   async function identity(): Promise<SourceTreeIdentity> {
     // An unborn branch has no HEAD: rev-list fails with 128 and the repository has no root commit yet.
-    const roots = await probe(spec(['rev-list', '--max-parents=0', 'HEAD'], repoDir), 'rev-list --max-parents=0');
+    const roots = await probe(spec(['rev-list', '--max-parents=0', 'HEAD'], repoDir, { timeoutMs: GIT_TIMEOUT_MS }), 'rev-list --max-parents=0');
     const rootCommit = roots.found ? (decoder.decode(roots.stdout).split('\n')[0] ?? '') || null : null;
-    const common = (await gitText(spec(['rev-parse', '--git-common-dir'], repoDir), 'rev-parse --git-common-dir')).trim();
+    const common = (
+      await gitText(spec(['rev-parse', '--git-common-dir'], repoDir, { timeoutMs: GIT_TIMEOUT_MS }), 'rev-parse --git-common-dir')
+    ).trim();
     const realCommon = fs.realpathSync.native(path.resolve(repoDir, common));
     const storeId = createHash('sha256').update(`${rootCommit ?? ''}\n${realCommon}`).digest('hex').slice(0, 16);
     return { rootCommit, storeId, commonDir: realCommon };
