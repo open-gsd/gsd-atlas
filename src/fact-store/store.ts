@@ -154,12 +154,14 @@ function status(parts: StoreParts, lifecycle: StoreLifecycle): StoreStatus {
     const version = metaValue('schema_version');
     const movedTo = metaValue(REBUILT_MOVED_TO_META);
     const rebuiltAt = metaValue(REBUILT_AT_META);
+    const holder = lifecycle.lease?.info() ?? null;
     return {
       schemaVersion: version === undefined ? SCHEMA_VERSION : Number(version),
       worktrees,
       sizeBytes: pages * pageSize,
       // With a cross-process lease the answer is whether this process holds it; without one, whether a writer is out.
       writerLeaseHeld: lifecycle.lease === undefined ? parts.state.writerTaken : lifecycle.lease.held,
+      ...(holder === null ? {} : { leaseHolder: { pid: holder.pid, startedAt: holder.startedAt, version: holder.version } }),
       ...(movedTo === undefined || rebuiltAt === undefined
         ? {}
         : { rebuiltAfterCorruption: { movedTo, at: Number(rebuiltAt) } }),

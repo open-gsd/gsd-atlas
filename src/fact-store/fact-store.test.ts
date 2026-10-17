@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { describe, it } from 'node:test';
 import type { Answer, FileFacts, SymbolIdentity } from '../facts/index.ts';
-import { SchemaTooNew, StoreClosed, UnknownWorktree, WriterBusy } from './index.ts';
+import { IDLE_MAINTENANCE, SchemaTooNew, StoreClosed, UnknownWorktree, WriterBusy } from './index.ts';
 import type { FactStore, OpenStore, Reader, RefRecord, StoreDeps, SymbolRecord, WorktreeId } from './index.ts';
 
 const here = import.meta.dirname;
@@ -53,7 +53,9 @@ async function typeCheckedUsage(store: FactStore, w: WorktreeId, id: SymbolIdent
   await store.compact({ budgetMs: 50 });
   await store.check();
   await store.maintain(50);
-  await store.status();
+  await store.maintain(50, IDLE_MAINTENANCE);
+  const status = await store.status();
+  void status.leaseHolder?.pid;
   await store.close();
   void [refs, hops, found, one, file, importers, result];
 }
@@ -81,6 +83,7 @@ describe('fact-store interface', () => {
   it('exports the four error classes, openFactStore, the store-location functions and the specifier rule as values, and nothing else (no fake store)', async () => {
     const mod = await import('./index.ts');
     assert.deepStrictEqual(Object.keys(mod).sort(), [
+      'IDLE_MAINTENANCE',
       'SchemaTooNew',
       'StoreClosed',
       'UnknownWorktree',
@@ -93,6 +96,8 @@ describe('fact-store interface', () => {
       'resolveStoreLocation',
     ]);
     assert.equal(typeof mod.openFactStore, 'function');
+    assert.deepStrictEqual({ ...mod.IDLE_MAINTENANCE }, { full: true });
+    assert.equal(Object.isFrozen(mod.IDLE_MAINTENANCE), true);
   });
 
   it('names a driver option only in open.ts, and reaches the SQLite kit only through its index', () => {

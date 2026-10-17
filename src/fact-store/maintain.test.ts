@@ -6,14 +6,14 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { describe, it } from 'node:test';
+import { afterEach, describe, it } from 'node:test';
 import type { FileFacts, Span } from '../facts/index.ts';
 import { generatedFacts, generatedHash, generatedPath } from '../../scripts/test-helpers/store-facts.ts';
 import { openDatabase } from '../sqlite/index.ts';
 import type { DriverName } from '../sqlite/index.ts';
 import { FakeClock, makeTempDir, realPath } from '../test-kit/index.ts';
 import { UnknownWorktree, WriterBusy } from './errors.ts';
-import { COMPACT_SLICE_LIMITS, lifecycleTestHooks } from './lifecycle.ts';
+import { COMPACT_SLICE_LIMITS, lifecycleTestHooks, resetLifecycleTestHooks } from './lifecycle.ts';
 import { IDLE_MAINTENANCE, maintainStore } from './maintain.ts';
 import type { MaintainTasks } from './maintain.ts';
 import { openFactStore } from './open.ts';
@@ -36,6 +36,11 @@ const noResolver: Resolver = async function* () {
 };
 
 const PAGE = 4096;
+
+// IN-08: a hook one test set must not reach the stores of the next one, however that test ended.
+afterEach(() => {
+  resetLifecycleTestHooks();
+});
 
 interface Rig {
   readonly clock: FakeClock;
@@ -84,11 +89,7 @@ async function withRig(driver: DriverName, run: (rig: Rig) => Promise<void>): Pr
   try {
     await run(rig);
   } finally {
-    lifecycleTestHooks.onSlice = undefined;
-    lifecycleTestHooks.onVacuum = undefined;
-    lifecycleTestHooks.onTask = undefined;
-    lifecycleTestHooks.noDbstat = undefined;
-    lifecycleTestHooks.onCheckpoint = undefined;
+    resetLifecycleTestHooks();
     for (const store of opened) await store.close();
     tmp.cleanup();
   }
@@ -788,5 +789,11 @@ describe('maintainStore splits one budget between the tasks', () => {
     const result = await maintainStore(failing, clock, 100);
     assert.equal(result.complete, true);
     assert.equal(result.processed, 3 + 5 + 2);
+  });
+});
+
+describe('test hygiene (IN-08)', () => {
+  it('no lifecycle hook is set when the last test of the file starts', () => {
+    assert.deepStrictEqual(Object.values(lifecycleTestHooks).filter((hook) => hook !== undefined), []);
   });
 });

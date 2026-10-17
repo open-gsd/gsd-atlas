@@ -6,7 +6,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { describe, it } from 'node:test';
+import { afterEach, describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { lineReader, pollUntil, within } from '../../scripts/test-helpers/child-lines.ts';
 import {
@@ -34,6 +34,7 @@ import {
   pruneQuarantine,
   quarantine,
   recoveryCounters,
+  resetRecoveryCounters,
 } from './recovery.ts';
 import { SCHEMA_VERSION, STORE_FILE_NAME } from './schema.ts';
 import type { FactStore, Resolver, StoreDeps } from './types.ts';
@@ -47,6 +48,11 @@ const CHILD_CEILING_MS = 20_000;
 const noResolver: Resolver = async function* () {
   // a resolver that resolves nothing
 };
+
+// IN-08: a counter one test moved must not be seen by the next one.
+afterEach(() => {
+  resetRecoveryCounters();
+});
 
 interface Rig {
   readonly clock: FakeClock;
@@ -649,5 +655,11 @@ describe('killing a real writer process', () => {
     } finally {
       tmp.cleanup();
     }
+  });
+});
+
+describe('test hygiene (IN-08)', () => {
+  it('the recovery counter is zero when the last test of the file starts', () => {
+    assert.equal(recoveryCounters.quickChecks, 0);
   });
 });

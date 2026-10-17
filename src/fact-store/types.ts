@@ -324,6 +324,12 @@ export interface StoreStatus {
   readonly sizeBytes: number;
   /** Whether this process holds the writer lease. */
   readonly writerLeaseHeld: boolean;
+  /**
+   * Who holds the writer lease: this process when it holds it, otherwise what the holder wrote to `lease.json`.
+   * Absent when the file is unreadable (no holder, or one that has not written yet) and when the store has no lease.
+   * Diagnostics only, to name the process in a message; never used to decide who owns the lease.
+   */
+  readonly leaseHolder?: { readonly pid: number; readonly startedAt: number; readonly version: string };
   /** Set when corruption was found, the file moved aside and the store rebuilt (A17). */
   readonly rebuiltAfterCorruption?: { readonly movedTo: string; readonly at: number };
 }

@@ -6,13 +6,13 @@
  */
 import assert from 'node:assert/strict';
 import path from 'node:path';
-import { describe, it } from 'node:test';
+import { afterEach, describe, it } from 'node:test';
 import type { FileFacts, Span } from '../facts/index.ts';
 import { openDatabase } from '../sqlite/index.ts';
 import type { DriverName } from '../sqlite/index.ts';
 import { FakeClock, makeTempDir, realPath } from '../test-kit/index.ts';
 import { WriterBusy } from './errors.ts';
-import { lifecycleTestHooks } from './lifecycle.ts';
+import { lifecycleTestHooks, resetLifecycleTestHooks } from './lifecycle.ts';
 import { DEFAULT_GC_GRACE_MS, openFactStore } from './open.ts';
 import type { StoreOpenOptions } from './open.ts';
 import { STORE_FILE_NAME } from './schema.ts';
@@ -21,6 +21,11 @@ import type { FactStore, Resolver, StoreDeps, Writer } from './types.ts';
 const noResolver: Resolver = async function* () {
   // a resolver that resolves nothing
 };
+
+// IN-08: a hook one test set must not reach the stores of the next one, however that test ended.
+afterEach(() => {
+  resetLifecycleTestHooks();
+});
 
 /** A 40-hex blob id built from a number. */
 const H = (n: number): string => n.toString(16).padStart(40, '0');
@@ -83,7 +88,7 @@ async function withRig(driver: DriverName, run: (rig: Rig) => Promise<void>): Pr
   try {
     await run(rig);
   } finally {
-    delete lifecycleTestHooks.onSelected;
+    resetLifecycleTestHooks();
     for (const store of opened) await store.close();
     tmp.cleanup();
   }
@@ -378,3 +383,9 @@ for (const driver of ['node:sqlite', 'better-sqlite3'] as const satisfies readon
     });
   });
 }
+
+describe('test hygiene (IN-08)', () => {
+  it('no lifecycle hook is set when the last test of the file starts', () => {
+    assert.deepStrictEqual(Object.values(lifecycleTestHooks).filter((hook) => hook !== undefined), []);
+  });
+});
