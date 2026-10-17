@@ -502,6 +502,10 @@ const AMENDED: readonly AmendedAdr[] = [
         title: 'Idle eviction, git timeouts and store identity',
         keywords: ['host.idleEvictMs', 'git.timeoutMs', 'smallest', 'source_too_large', 'store_unavailable'],
       },
+      {
+        title: 'Source Tree ignore verdicts and attribute prefetch',
+        keywords: ['unignoredPaths', 'pathAttributes', 'check-attr', 'snapshot', 'never cached'],
+      },
     ],
   },
   {
@@ -519,6 +523,10 @@ const AMENDED: readonly AmendedAdr[] = [
       {
         title: 'Git option allowlist',
         keywords: ['--batch-check', 'exact option tokens', 'runner.defaultTimeoutMs', 'SSH_AUTH_SOCK', 'DATABASE_URL'],
+      },
+      {
+        title: 'One pathspec-free ls-files listing for the ignore check',
+        keywords: ['--cached', '--pathspec-from-file', 'ls-files', '--literal-pathspecs', 'git-allowlist.test.ts'],
       },
     ],
   },
