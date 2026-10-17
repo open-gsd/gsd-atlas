@@ -3,6 +3,8 @@
  * the tenant of its repository, schedules it through the Governor and returns an Envelope. Adapters reach it only
  * through the HostClient.
  */
+export { loadUserConfig } from './config.ts';
+export type { LoadedUserConfig } from './config.ts';
 export { createHost } from './host.ts';
 export { LANG_LIST_SCHEMA, LANG_TEST_SCHEMA } from './lang.ts';
 export type { LangListData } from './lang.ts';

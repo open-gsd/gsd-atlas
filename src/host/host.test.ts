@@ -11,6 +11,7 @@ import type { Indexer, IndexerDeps } from '../indexer/index.ts';
 import { createTempGitRepo, makeTempDir } from '../test-kit/index.ts';
 import { makeWorld, setupRunner, storeIdOf, toyModules, writeFiles } from './harness.test.ts';
 import type { World } from './harness.test.ts';
+import { loadUserConfig } from './index.ts';
 
 const codes = (reply: Envelope): string[] => reply.diagnostics.map((d) => d.code);
 
@@ -446,5 +447,148 @@ describe('Host: tenant isolation (T-02-68)', () => {
     const recovered = await world.ask('build', { repo: other.dir });
     assert.equal(recovered.ok, true, 'a failed creation is forgotten, so the next request tries again');
     await world.host.closeTenant(otherId);
+  });
+});
+
+describe('loadUserConfig: user-level configuration only (T-02-67)', () => {
+  const writeConfig = (dir: string, content: string | Uint8Array): void => {
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, 'config.json'), content);
+  };
+  const absolute = (name: string): string => path.join(path.parse(process.cwd()).root, name);
+
+  it('a missing file gives the defaults and no diagnostics', (t) => {
+    const tmp = makeTempDir();
+    t.after(() => {
+      tmp.cleanup();
+    });
+    assert.deepEqual(loadUserConfig(path.join(tmp.path, 'nosuch'), {}), { config: {}, diagnostics: [] });
+  });
+
+  it('a valid file is read: store.dir, indexer settings, gc.graceMs and permissions', (t) => {
+    const tmp = makeTempDir();
+    t.after(() => {
+      tmp.cleanup();
+    });
+    const given = {
+      store: { dir: absolute('atlas-stores') },
+      indexer: { debounceMs: 50, maxWaitMs: 400 },
+      gc: { graceMs: 3600000 },
+      permissions: { allow: [{ repo: absolute('repo'), executable: 'tsc', argsPrefix: ['--noEmit'] }] },
+    };
+    writeConfig(tmp.path, JSON.stringify(given));
+    assert.deepEqual(loadUserConfig(tmp.path, {}), { config: given, diagnostics: [] });
+  });
+
+  it('a file with an unknown key, a relative store.dir, a fractional number, bad JSON, a wait below the debounce or over 64 KiB is ignored whole with one warning', (t) => {
+    const tmp = makeTempDir();
+    t.after(() => {
+      tmp.cleanup();
+    });
+    const bad: Array<[string, string]> = [
+      ['an unknown key', JSON.stringify({ gc: { graceMs: 1 }, surprise: true })],
+      ['an unknown nested key', JSON.stringify({ indexer: { speed: 3 } })],
+      ['a relative store.dir', JSON.stringify({ store: { dir: 'relative/stores' } })],
+      ['a fractional number', JSON.stringify({ indexer: { debounceMs: 1.5 } })],
+      ['a wait below the debounce', JSON.stringify({ indexer: { debounceMs: 300, maxWaitMs: 200 } })],
+      ['a debounce above the default wait', JSON.stringify({ indexer: { debounceMs: 900 } })],
+      ['invalid JSON', '{ "gc": '],
+      ['a file over 64 KiB', JSON.stringify({ gc: { graceMs: 1 }, pad: 'x'.repeat(70 * 1024) })],
+    ];
+    for (const [what, content] of bad) {
+      const dir = path.join(tmp.path, what.replaceAll(' ', '-'));
+      writeConfig(dir, content);
+      const loaded = loadUserConfig(dir, {});
+      assert.deepEqual(loaded.config, {}, what);
+      assert.equal(loaded.diagnostics.length, 1, what);
+      assert.equal(loaded.diagnostics[0]?.severity, 'warning', what);
+      assert.equal(loaded.diagnostics[0]?.code, 'user_config_ignored', what);
+    }
+  });
+
+  it('GSD_ATLAS_STORE_DIR overrides store.dir when it is absolute and is ignored with a warning when it is not', (t) => {
+    const tmp = makeTempDir();
+    t.after(() => {
+      tmp.cleanup();
+    });
+    writeConfig(tmp.path, JSON.stringify({ store: { dir: absolute('from-file') }, gc: { graceMs: 5 } }));
+    const overridden = loadUserConfig(tmp.path, { GSD_ATLAS_STORE_DIR: absolute('from-env') });
+    assert.deepEqual(overridden, { config: { store: { dir: absolute('from-env') }, gc: { graceMs: 5 } }, diagnostics: [] });
+
+    const alone = loadUserConfig(path.join(tmp.path, 'nosuch'), { GSD_ATLAS_STORE_DIR: absolute('only-env') });
+    assert.deepEqual(alone.config, { store: { dir: absolute('only-env') } });
+
+    const relative = loadUserConfig(tmp.path, { GSD_ATLAS_STORE_DIR: 'relative/dir' });
+    assert.deepEqual(relative.config, { store: { dir: absolute('from-file') }, gc: { graceMs: 5 } });
+    assert.equal(relative.diagnostics.length, 1);
+    assert.equal(relative.diagnostics[0]?.code, 'user_config_ignored');
+  });
+
+  it('an unreadable path (a directory where the file should be) is one warning, not a crash', (t) => {
+    const tmp = makeTempDir();
+    t.after(() => {
+      tmp.cleanup();
+    });
+    fs.mkdirSync(path.join(tmp.path, 'config.json'));
+    const loaded = loadUserConfig(tmp.path, {});
+    assert.deepEqual(loaded.config, {});
+    assert.equal(loaded.diagnostics.length, 1);
+  });
+});
+
+describe('Host: configuration reaches the tenant (T-02-67)', () => {
+  it('repository config is ignored: a config.json and a .gsd-atlas/config.json in the repository change nothing', async (t) => {
+    const hostile = JSON.stringify({
+      store: { dir: path.join(path.parse(process.cwd()).root, 'hijacked') },
+      indexer: { debounceMs: 1, maxWaitMs: 2 },
+      permissions: { allow: [{ repo: '/', executable: 'sh' }] },
+    });
+    let seen: Partial<{ debounceMs: number; maxWaitMs: number }> | undefined;
+    const world = await makeWorld(t, {
+      files: { 'a.toy': 'fn main {\n}\n', 'config.json': hostile, '.gsd-atlas/config.json': hostile },
+      host: {
+        indexerFactory: (deps: IndexerDeps): Indexer => {
+          seen = deps.config;
+          return createIndexer(deps);
+        },
+      },
+    });
+    // The loader takes only the user directory and the environment, so nothing in a repository can reach it.
+    assert.deepEqual(loadUserConfig(world.options.userDir ?? '', {}), { config: {}, diagnostics: [] });
+    await built(world);
+    const panel = await world.ask('status', { repo: world.repo.dir });
+    const location = (panel.data as { tenant: { location: { kind: string; dir: string } } }).tenant.location;
+    assert.equal(location.kind, 'git-common');
+    assert.ok(location.dir.startsWith(path.join(world.repo.dir, '.git')), location.dir);
+    assert.equal(seen, undefined, 'the Indexer got no settings from the repository');
+  });
+
+  it('config.store.dir places the store at that directory plus the store id', async (t) => {
+    const stores = makeTempDir();
+    t.after(() => {
+      stores.cleanup();
+    });
+    const world = await makeWorld(t, { host: { config: { store: { dir: stores.path } } } });
+    await built(world);
+    const panel = await world.ask('status', { repo: world.repo.dir });
+    const location = (panel.data as { tenant: { location: { kind: string; dir: string } } }).tenant.location;
+    assert.equal(location.kind, 'override');
+    assert.equal(location.dir, path.join(stores.path, await storeIdOf(world.repo)));
+    assert.ok(fs.existsSync(path.join(location.dir, 'facts.db')));
+  });
+
+  it('the indexer debounce and max wait from the user config reach the Indexer', async (t) => {
+    let seen: Partial<{ debounceMs: number; maxWaitMs: number }> | undefined;
+    const world = await makeWorld(t, {
+      host: {
+        config: { indexer: { debounceMs: 40, maxWaitMs: 300 } },
+        indexerFactory: (deps: IndexerDeps): Indexer => {
+          seen = deps.config;
+          return createIndexer(deps);
+        },
+      },
+    });
+    await built(world);
+    assert.deepEqual(seen, { debounceMs: 40, maxWaitMs: 300 });
   });
 });
