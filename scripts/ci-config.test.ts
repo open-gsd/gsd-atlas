@@ -349,21 +349,20 @@ test('ci.yml: diagnostic upload is pinned', () => {
   assert.doesNotMatch(text, /retention-days|timeout-minutes/, 'no retention or timeout setting is added');
 });
 
-test('ci.yml turns off real-time scanning on hosted Windows only, before the slow steps, and the step cannot fail a job', () => {
+test('ci.yml points temporary files at the fast runner disk on hosted Windows only, before the slow steps', () => {
   const lines = readLines('ci.yml');
   for (const name of ['test', 'grammar', 'gates']) {
     const body = jobs(lines).get(name);
     assert.ok(body !== undefined, `ci.yml has a ${name} job`);
-    const at = body.findIndex((l) => l.includes('name: Turn off real-time scanning (Windows only)'));
-    assert.ok(at >= 0, `${name}: the real-time scanning step exists`);
+    const at = body.findIndex((l) => l.includes('name: Use the fast runner disk for temporary files (Windows only)'));
+    assert.ok(at >= 0, `${name}: the temporary-files step exists`);
     const step = stepAround(body, at).join('\n');
     assert.match(step, /if: runner\.os == 'Windows'/, `${name}: Windows only`);
-    assert.match(step, /continue-on-error: true/, `${name}: cannot fail the job`);
-    assert.match(step, /shell: pwsh/, `${name}: PowerShell`);
-    assert.match(step, /Set-MpPreference -DisableRealtimeMonitoring \$true/, `${name}: disables real-time monitoring`);
-    assert.match(step, /Add-MpPreference -ExclusionPath/, `${name}: path exclusions as the fallback`);
-    assert.match(step, /Add-MpPreference -ExclusionProcess 'node\.exe', 'git\.exe'/, `${name}: process exclusions`);
+    for (const variable of ['TEMP', 'TMP', 'TMPDIR']) {
+      assert.match(step, new RegExp(`echo "${variable}=\\$RUNNER_TEMP" >> "\\$GITHUB_ENV"`), `${name}: ${variable} points at the runner temp folder`);
+    }
     const install = body.findIndex((l) => /npm ci --ignore-scripts/.test(l));
     assert.ok(at < install, `${name}: the step runs before npm ci`);
+    assert.ok(!body.some((l) => /Set-MpPreference|Add-MpPreference/.test(l)), `${name}: Defender is not touched`);
   }
 });
