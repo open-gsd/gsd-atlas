@@ -5,6 +5,8 @@
 export { FakeClock } from './fake-clock.ts';
 export { makeTempDir, realPath } from './tmpdir.ts';
 export type { TempDir } from './tmpdir.ts';
+export { collectStages, createRunGate } from './run-gate.ts';
+export type { RunGate } from './run-gate.ts';
 export { createTempGitRepo } from './git-repo.ts';
 export type {
   GitRepoWorld,

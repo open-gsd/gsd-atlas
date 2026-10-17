@@ -79,6 +79,7 @@ export function recordingTree(log: TreeLog): (tree: SourceTree) => SourceTree {
       return tree.hashPaths(worktree, paths);
     },
     sourceSet: (worktree, files, options) => tree.sourceSet(worktree, files, options),
+    pathAttributes: (worktree, paths) => tree.pathAttributes(worktree, paths),
     unignoredPaths: (worktree, paths) => {
       log.unignored.push([...paths]);
       return tree.unignoredPaths(worktree, paths);

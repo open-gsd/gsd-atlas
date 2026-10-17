@@ -306,6 +306,13 @@ export function createSourceTree(options: SourceTreeOptions): SourceTree {
     }
   }
 
+  /** One `check-attr` run for the paths `hashPaths` would hash (same vetting), none when nothing is left. */
+  async function pathAttributes(worktree: string, paths: readonly string[]): Promise<ReadonlyMap<string, PathAttributes>> {
+    const vetted = await vetPaths(worktree, [...new Set(paths)].sort(compareCodeUnits), []);
+    if (vetted.length === 0) return new Map();
+    return checkAttr(worktree, vetted);
+  }
+
   function sourceSet(worktree: string, files: ReadonlyMap<string, string>, options: SourceSetOptions): Promise<SourceSetResult> {
     return filterSourceSet({
       files,
@@ -542,7 +549,7 @@ export function createSourceTree(options: SourceTreeOptions): SourceTree {
     return readConfinedText(worktree, relPath, readOptions?.maxBytes ?? DEFAULT_READ_TEXT_BYTES);
   }
 
-  return { snapshot, hashPaths, unignoredPaths, sourceSet, worktrees, readText, hasObject, read, identity, resolveCommit, listTree, readMany };
+  return { snapshot, hashPaths, unignoredPaths, pathAttributes, sourceSet, worktrees, readText, hasObject, read, identity, resolveCommit, listTree, readMany };
 }
 
 /** One answer of `cat-file --batch-check`: the object's id, type and size, or `missing`/`ambiguous`. */

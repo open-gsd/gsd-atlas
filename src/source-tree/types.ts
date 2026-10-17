@@ -82,12 +82,24 @@ export type ReadTextResult =
   | { readonly kind: 'not_file' }
   | { readonly kind: 'too_large' };
 
+/** The linguist attributes git reports for one path; `unset`, `unspecified` and `false` all mean off. */
+export interface PathAttributes {
+  readonly generated: boolean;
+  readonly vendored: boolean;
+}
+
 /** What {@link SourceTree.sourceSet} keeps and why it drops the rest. */
 export interface SourceSetOptions {
   /** Extensions a loaded module claims: lower-case, with the dot (`.ts`). Matched case-insensitively on the last path segment. */
   readonly extensions: readonly string[];
   /** Files larger than this many bytes are dropped with `source_too_large`. */
   readonly maxBytes: number;
+  /**
+   * An answer of {@link SourceTree.pathAttributes} to use instead of asking git again. It is an optimisation and
+   * nothing more: an entry is used as given (even an all-false one), and a path the files include that the map lacks
+   * is still asked for, so a partial map changes the number of git runs, never the result.
+   */
+  readonly attributes?: ReadonlyMap<string, PathAttributes>;
 }
 
 export interface SourceSetResult {
@@ -176,6 +188,14 @@ export interface SourceTree {
    * before git starts. A failed listing rejects with `git_failed`.
    */
   unignoredPaths(worktree: string, paths: readonly string[]): Promise<ReadonlySet<string>>;
+  /**
+   * The `linguist-generated` and `linguist-vendored` attributes of `paths` from ONE `git check-attr` run, for the
+   * paths `hashPaths` would hash: the same vetting by name and by lstat, so a missing path, a directory, a link or a
+   * name that cannot ride the batch gets no entry and starts no git (none at all when nothing is left). Every path it
+   * asked git about has an entry, an all-false one included. It lets a caller ask while the clean filters are being
+   * enumerated and hand the answer to `sourceSet` (`SourceSetOptions.attributes`).
+   */
+  pathAttributes(worktree: string, paths: readonly string[]): Promise<ReadonlyMap<string, PathAttributes>>;
   /**
    * The files of `files` (a snapshot or hashPaths result, so never an ignored one) that are source (LNG-05): a
    * claimed extension, not `linguist-generated` or `linguist-vendored`, not binary, not a Git LFS pointer and

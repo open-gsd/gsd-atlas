@@ -45,7 +45,10 @@ describe('git spawns per save (plan 02-46)', () => {
     world.repo.write('a.toy', 'fn main {\n}\nfn edited_one {\n}\n');
     const result = await world.indexer.ensureFresh(world.dir, ['a.toy']);
     assert.deepEqual(result, { complete: true, stalePaths: [], invalid: [] });
-    assert.deepEqual(sequence(runner), ['config', 'hash-object', 'check-attr']);
+    // config and check-attr start together (their order is not fixed); hash-object needs the filter list, so it is last.
+    assert.deepEqual(sequence(runner).slice(0, 2).sort(), ['check-attr', 'config']);
+    assert.deepEqual(sequence(runner).slice(2), ['hash-object']);
+    assert.equal(runner.starts.length, 3);
     assert.equal(runner.denials.length, 0);
     assert.equal((await world.reader.find('edited_one')).data.length, 1, 'the facts were committed');
   });
@@ -56,7 +59,9 @@ describe('git spawns per save (plan 02-46)', () => {
     const result = await world.indexer.ensureFresh(world.dir, ['d.toy']);
     assert.deepEqual(result, { complete: true, stalePaths: [], invalid: [] });
     assert.equal(runner.starts.length, 4, sequence(runner).join(','));
-    assert.deepEqual(sequence(runner), ['ls-files', 'config', 'hash-object', 'check-attr']);
+    assert.equal(sequence(runner)[0], 'ls-files', 'the ignore listing comes first');
+    assert.deepEqual(sequence(runner).slice(1, 3).sort(), ['check-attr', 'config']);
+    assert.equal(sequence(runner)[3], 'hash-object');
     assert.equal(runner.denials.length, 0);
     assert.equal((await world.reader.find('brand_new')).data.length, 1, 'the facts were committed');
   });

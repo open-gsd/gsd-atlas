@@ -13,7 +13,7 @@
 import { diagnostic } from '../facts/index.ts';
 import type { Diagnostic } from '../facts/index.ts';
 import { SOURCE_TREE_CODES, SourceTreeError } from './types.ts';
-import type { SourceSetOptions, SourceSetResult } from './types.ts';
+import type { PathAttributes, SourceSetOptions, SourceSetResult } from './types.ts';
 import { unhashableReason } from './validate.ts';
 
 /** How much of a file is inspected for a NUL byte and the LFS pointer line. */
@@ -23,11 +23,7 @@ const PEEK_BATCH = 64;
 /** The first line of every Git LFS pointer file (the LFS spec, v1). */
 const LFS_SPEC_LINE = 'version https://git-lfs.github.com/spec/v1';
 
-/** The linguist attributes git reports for one path; `unset`, `unspecified` and `false` all mean off. */
-export interface PathAttributes {
-  readonly generated: boolean;
-  readonly vendored: boolean;
-}
+export type { PathAttributes };
 
 /** What opening a file for inspection found. A link or anything that is not a regular file is never read. */
 export type PeekResult =
@@ -101,12 +97,15 @@ export async function filterSourceSet(input: SourceSetInputs): Promise<SourceSet
     else named.push(rel);
   }
 
-  // 2. Generated and vendored files, from one batched attribute query.
+  // 2. Generated and vendored files. A prefetched map answers for the paths it covers (an optimisation: a path it
+  //    lacks is still asked for, in one batched query), so the result never depends on whether a map was given.
   const candidates: string[] = [];
   if (named.length > 0) {
-    const attributes = await input.checkAttr(named);
+    const given = options.attributes;
+    const missing = given === undefined ? named : named.filter((rel) => !given.has(rel));
+    const asked = missing.length === 0 ? new Map<string, PathAttributes>() : await input.checkAttr(missing);
     for (const rel of named) {
-      const attr = attributes.get(rel);
+      const attr = given?.get(rel) ?? asked.get(rel);
       if (attr?.generated === true) drop(rel, SOURCE_TREE_CODES.generatedSkipped, 'info', 'git marks this file linguist-generated');
       else if (attr?.vendored === true) drop(rel, SOURCE_TREE_CODES.vendoredSkipped, 'info', 'git marks this file linguist-vendored');
       else candidates.push(rel);

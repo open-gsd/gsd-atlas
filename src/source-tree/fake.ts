@@ -140,6 +140,17 @@ export function createFakeSourceTree(world: Partial<SourceTreeWorld> = {}): Sour
       return Promise.resolve({ files, diagnostics });
     },
 
+    pathAttributes(_worktree: string, paths: readonly string[]): Promise<ReadonlyMap<string, PathAttributes>> {
+      // Vets exactly as hashPaths does (name rules, then what is on disk) and answers an entry for each path it
+      // would ask git about, as the real tree's single check-attr run does.
+      const found = new Map<string, PathAttributes>();
+      for (const rel of [...new Set(paths)].sort(compareCodeUnits)) {
+        if (unhashableReason(rel) !== null || onDisk(rel) === null) continue;
+        found.set(rel, { generated: attributes[rel]?.generated === true, vendored: attributes[rel]?.vendored === true });
+      }
+      return Promise.resolve(found);
+    },
+
     // async so that invalid arguments reject, exactly as the real tree's does.
     async unignoredPaths(_worktree: string, paths: readonly string[]): Promise<ReadonlySet<string>> {
       assertRepoRelative(paths);
