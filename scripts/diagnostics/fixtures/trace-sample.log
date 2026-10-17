@@ -1,0 +1,51 @@
+800.00 T0 WRITE add
+801.00 T0 WRITE edit
+900.00 T0 SPAWN #1 git ls-files
+901.50 T0 SPAWNED #1 +1.5ms
+1100.00 T0 CLOSE #1 exit=0 total=200.0ms git ls-files
+1500.00 T2 SQL BEGIN 0.40ms
+1510.00 T2 SQL INSERT 0.50ms
+2000.00 T0 WRITE edit
+2005.00 T1 SPAWN #2 git config
+2006.00 T1 SPAWN #3 git check-attr
+2012.00 T0 EVENT update n=1
+2035.00 T1 CLOSE #2 exit=0 total=30.0ms git config
+2040.00 T1 CLOSE #3 exit=0 total=34.0ms git check-attr
+2041.00 T1 SPAWN #4 git hash-object
+2091.00 T1 CLOSE #4 exit=0 total=50.0ms git hash-object
+2100.00 T2 SQL COMMIT 1.20ms
+this line is not a trace line
+3000.00 T0 WRITE add
+3004.00 T1 SPAWN #5 git ls-files
+3024.00 T1 CLOSE #5 exit=0 total=20.0ms git ls-files
+3020.00 T0 EVENT create n=1
+3025.00 T1 SPAWN #6 git config
+3026.00 T1 SPAWN #7 git check-attr
+3057.00 T1 CLOSE #6 exit=0 total=32.0ms git config
+3064.00 T1 CLOSE #7 exit=0 total=38.0ms git check-attr
+3065.00 T1 SPAWN #8 git hash-object
+3117.00 T1 CLOSE #8 exit=0 total=52.0ms git hash-object
+3150.00 T2 SQL COMMIT 2.40ms
+4000.00 T0 WRITE edit
+4003.00 T1 SPAWN #9 git rev-parse
+4013.00 T1 CLOSE #9 exit=0 total=10.0ms git rev-parse
+4010.00 T0 EVENT update n=2
+4015.00 T1 SPAWN #10 git config
+4016.00 T1 SPAWN #11 git check-attr
+4043.00 T1 CLOSE #10 exit=0 total=28.0ms git config
+4052.00 T1 CLOSE #11 exit=0 total=36.0ms git check-attr
+2500.00 T0 CLOSE #99 exit=0 total=abc git config
+4053.00 T1 SPAWN #12 git hash-object
+4101.00 T1 CLOSE #12 exit=0 total=48.0ms git hash-object
+4090.00 T2 SQL COMMIT 0.80ms
+5000.00 T0 WRITE add
+5003.00 T1 SPAWN #13 git ls-files
+5027.00 T1 CLOSE #13 exit=0 total=24.0ms git ls-files
+5014.00 T0 EVENT create n=1
+5030.00 T1 SPAWN #14 git config
+5031.00 T1 SPAWN #15 git check-attr
+5060.00 T1 CLOSE #14 exit=0 total=30.0ms git config
+5071.00 T1 CLOSE #15 exit=0 total=40.0ms git check-attr
+5072.00 T1 SPAWN #16 git hash-object
+5128.00 T1 CLOSE #16 exit=0 total=56.0ms git hash-object
+5120.00 T2 SQL COMMIT 3.60ms

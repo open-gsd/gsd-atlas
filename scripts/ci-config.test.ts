@@ -231,7 +231,10 @@ test('ci.yml: the gates job runs on three operating systems at the Node floor an
     from = at + needle.length;
   }
   assert.ok(!/--edits\b/.test(gates), 'the size gate must run at its full 20,000 edits, not a reduced count');
-  assert.deepEqual(maxMsOf(gates), [FRESHNESS_PR_CEILING_MS]);
+  // The normal gate and the Windows-only traced diagnostic run (plan 02-46), both in this job and both at the approved
+  // ceiling. The nightly one-second bound lives in nightly.yml, which the diagnostic does not touch.
+  assert.deepEqual(maxMsOf(gates), [FRESHNESS_PR_CEILING_MS, FRESHNESS_PR_CEILING_MS]);
+  assert.ok(maxMsOf(gates).every((value) => value <= FRESHNESS_PR_CEILING_MS), 'no freshness bound above the approved ceiling');
 });
 
 test('ci.yml: the gates job does not install, cache a toolchain or use secrets', () => {
@@ -261,4 +264,87 @@ test('ci.yml: the grammar job prints each module rebuild hash before it judges t
   const verify = grammar.indexOf('npm run grammar:verify');
   assert.ok(report >= 0, 'the grammar job does not print the rebuild hashes');
   assert.ok(report < verify, 'the hashes are printed before grammar:verify runs');
+});
+
+// The opt-in spawn trace (plan 02-46, .planning/debug/windows-freshness.md): hosted Windows only, after the normal
+// gates, and unable to fail the job. These tests pin all three properties and that no normal step loads the preload.
+const TRACE_COMMAND = 'node --import ./scripts/diagnostics/trace-spawns.mjs scripts/freshness-gate.ts --saves 30 --max-ms 3000';
+const TRACE_NEEDLES = /trace-spawns|trace-summary|freshness-trace|GSD_ATLAS_TRACE_FILE|--import\b/;
+
+/** A step as text, without the comment lines that sit between steps and so land in the slice of the one before. */
+const textOf = (step: string[]): string => step.filter((line) => !line.trim().startsWith('#')).join('\n');
+
+/** The distinct steps of `lines` (by their first line) that mention the trace. */
+function traceSteps(lines: string[]): string[][] {
+  const seen = new Set<number>();
+  const steps: string[][] = [];
+  for (const { text, i } of codeLines(lines)) {
+    if (!TRACE_NEEDLES.test(text)) continue;
+    // `stepAround` of a nested line (an `env:` entry) stops at the next sibling key, so take the step from its first line.
+    const first = lines.indexOf(stepAround(lines, i)[0] as string);
+    if (seen.has(first)) continue;
+    seen.add(first);
+    steps.push(stepAround(lines, first));
+  }
+  return steps;
+}
+
+test('ci.yml: diagnostic steps are windows-only', () => {
+  const steps = traceSteps(readLines('ci.yml'));
+  assert.equal(steps.length, 3, 'the trace run, its summary and its artifact upload');
+  for (const step of steps) {
+    assert.match(textOf(step), /^\s*if:.*matrix\.os == 'windows-latest'/m, step[0]);
+  }
+});
+
+test('ci.yml: diagnostic steps are continue-on-error', () => {
+  for (const step of traceSteps(readLines('ci.yml'))) {
+    assert.match(textOf(step), /^\s*continue-on-error:\s*true\s*$/m, step[0]);
+    assert.match(textOf(step), /^\s*if:.*always\(\)/m, `${step[0] ?? ''}: a failed gate must not hide the trace`);
+  }
+});
+
+test('ci.yml: the diagnostic steps come after the normal gates and run the pinned commands', () => {
+  const lines = readLines('ci.yml');
+  const gates = (jobs(lines).get('gates') ?? []).join('\n');
+  const normal = gates.indexOf('run: node scripts/freshness-gate.ts --saves 30 --max-ms 3000');
+  const traced = gates.indexOf(TRACE_COMMAND);
+  const summary = gates.indexOf('node scripts/diagnostics/trace-summary.ts "$GSD_ATLAS_TRACE_FILE"');
+  const upload = gates.indexOf('actions/upload-artifact@');
+  assert.ok(normal >= 0 && traced > normal, 'the traced run follows the normal freshness gate');
+  assert.ok(summary > traced && upload > summary, 'the summary, then the upload');
+  for (const gate of ['scripts/recall.ts', 'scripts/corpus-gates.ts', 'scripts/size-gate.ts']) {
+    assert.ok(gates.indexOf(gate) < traced, `${gate} runs before the diagnostic`);
+  }
+  const run = traceSteps(lines).find((step) => textOf(step).includes(TRACE_COMMAND));
+  assert.ok(run !== undefined, 'the traced run step exists');
+  assert.match(textOf(run), /^\s*GSD_ATLAS_TRACE_FILE:\s*\$\{\{\s*runner\.temp\s*\}\}\/freshness-trace\.log\s*$/m);
+});
+
+test('ci.yml: no normal gate loads the preload', () => {
+  for (const file of files) {
+    const lines = readLines(file);
+    const steps = traceSteps(lines);
+    if (file !== 'ci.yml') {
+      assert.deepEqual(steps, [], `${file} must not mention the trace`);
+      continue;
+    }
+    // Every step that mentions the trace is one of the three diagnostic steps; the normal freshness step is plain.
+    for (const step of steps) assert.match(textOf(step), /continue-on-error:\s*true/);
+    const normal = lines.findIndex((l) => l.includes('run: node scripts/freshness-gate.ts --saves 30 --max-ms 3000'));
+    assert.ok(normal >= 0, 'the normal freshness gate is present');
+    const normalStep = textOf(stepAround(lines, normal));
+    assert.doesNotMatch(normalStep, /\bif:|continue-on-error|env:|--import|trace/, 'the normal freshness step is unchanged');
+  }
+});
+
+test('ci.yml: diagnostic upload is pinned', () => {
+  const lines = readLines('ci.yml');
+  const upload = traceSteps(lines).find((step) => textOf(step).includes('actions/upload-artifact@'));
+  assert.ok(upload !== undefined, 'the upload step exists');
+  const text = textOf(upload);
+  assert.match(text, /uses:\s+actions\/upload-artifact@[0-9a-f]{40}\s+#\s+v7\.0\.2\s*$/m);
+  assert.match(text, /^\s*name:\s*freshness-trace-windows\s*$/m);
+  assert.match(text, /^\s*path:\s*\$\{\{\s*runner\.temp\s*\}\}\/freshness-trace\.log\s*$/m);
+  assert.doesNotMatch(text, /retention-days|timeout-minutes/, 'no retention or timeout setting is added');
 });
