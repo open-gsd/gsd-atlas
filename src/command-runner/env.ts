@@ -5,6 +5,13 @@
  * Inherit-then-remove rather than build-from-scratch because a Windows child needs `SystemRoot`,
  * `PATH` and `TEMP` to start at all. The overlay is applied last, so a spec that sets (for example)
  * `GIT_CONFIG_GLOBAL` or `GIT_OPTIONAL_LOCKS` deliberately keeps it.
+ *
+ * Known limit (IN-05, plan 02-33): this is a denylist of name patterns. A user-allowed executable still
+ * inherits any variable the patterns do not name, including a credential with an unusual name. The switch to
+ * an inherited-environment allowlist is deferred: the right allowlist depends on executables users may allow
+ * later (the Phase 3 compiler, the Phase 6 SDK providers) and on Windows variables that cannot be verified
+ * without CI. Home: ROADMAP.md Phase 4, success criterion 8. `GIT_AUTHOR_*` and `GIT_COMMITTER_*` are never
+ * removed.
  */
 
 /** Names that redirect git away from the repository the host believes it is reading. */
@@ -19,11 +26,15 @@ const REDIRECTING: ReadonlySet<string> = new Set([
   'GIT_COMMON_DIR',
 ]);
 
-const SECRET_LOOKING = /TOKEN|SECRET|PASSWORD|API_KEY|CREDENTIAL/i;
+const SECRET_LOOKING = /TOKEN|SECRET|PASSWORD|PASSWD|API_KEY|ACCESS_KEY|PRIVATE_KEY|CREDENTIAL|_AUTH$/i;
+
+/** Credential-bearing names whose text carries no secret-looking word: the ssh agent socket and database URLs. */
+const SECRET_EXACT: ReadonlySet<string> = new Set(['SSH_AUTH_SOCK', 'DATABASE_URL']);
 
 /** True when an inherited variable must not reach a child. Windows names are case-insensitive, so compare upper-cased. */
 export function isDenied(name: string): boolean {
-  return REDIRECTING.has(name.toUpperCase()) || SECRET_LOOKING.test(name);
+  const upper = name.toUpperCase();
+  return REDIRECTING.has(upper) || SECRET_EXACT.has(upper) || SECRET_LOOKING.test(name);
 }
 
 export function scrubEnv(
