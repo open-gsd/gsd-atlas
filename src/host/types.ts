@@ -60,6 +60,11 @@ export interface HostOptions {
   readonly indexerFactory?: (deps: IndexerDeps) => Indexer;
   /** Shortens waits in tests. */
   readonly tuning?: Partial<TenantTuning>;
+  /**
+   * TEST HOOK. Where `history` creates its throwaway store (default: the operating system's temporary directory) and
+   * how many source files a whole-tree history question reads (default: the approved `history.maxFiles`).
+   */
+  readonly history?: { readonly tmpRoot?: string; readonly maxFiles?: number; readonly nonce?: () => string };
 }
 
 export interface Host {

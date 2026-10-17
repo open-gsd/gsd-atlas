@@ -16,12 +16,15 @@ import { PROTOCOL_VERSION, diagnostic, failEnvelope, systemClock } from '../fact
 import type { Envelope, Request } from '../facts/index.ts';
 import { createGovernor } from '../governor/index.ts';
 import type { Governor, JobClass } from '../governor/index.ts';
-import type { IndexerConfig } from '../indexer/index.ts';
+import { createModuleHost } from '../indexer/index.ts';
+import type { IndexerConfig, ModuleHost } from '../indexer/index.ts';
 import { ERROR_SCHEMA, errorEnvelope } from '../query/index.ts';
 import { createSourceTree } from '../source-tree/index.ts';
 import type { SourceTree } from '../source-tree/index.ts';
 import { createTenant } from '../tenant/index.ts';
 import type { Tenant } from '../tenant/index.ts';
+import { HISTORY_KIND, runHistory } from './history.ts';
+import type { HistoryDeps } from './history.ts';
 import { LANG_KINDS, handleLang } from './lang.ts';
 import { classFor, isAdmissionOnly, isRepoKind, parseRepoArgs, resolveRepository, short } from './route.ts';
 import type { RepoArgs, RepoKind, Resolved } from './route.ts';
@@ -164,6 +167,40 @@ export function createHost(options: HostOptions): Host {
     return isAdmissionOnly(kind) ? admitted(tenant.storeId, cls, run) : held(tenant.storeId, cls, run);
   }
 
+  /** The module host of a repository's history questions, created on first use and shared by later ones. */
+  const historyModules = new Map<string, ModuleHost>();
+  function historyModuleHost(repoDir: string): ModuleHost {
+    let found = historyModules.get(repoDir);
+    if (found === undefined) {
+      found = createModuleHost({ engine: options.engine, roots: { ...options.roots, repoRoot: repoDir } });
+      historyModules.set(repoDir, found);
+    }
+    return found;
+  }
+
+  /**
+   * `history` (STO-09): needs a Source Tree, a module host and the engine, never a Tenant, so it works on a repository
+   * nobody indexed and in a process that is not the writer. It reads git objects and writes only to a throwaway store.
+   */
+  async function historyRequest(request: Request): Promise<Envelope> {
+    const parsed: RepoArgs = parseRepoArgs('code_find', request.args);
+    if (!parsed.ok) return errorEnvelope('invalid_args', parsed.message);
+    const resolved = await resolveRepository(parsed.selection, hostCwd, makeTree);
+    if (resolved === null) return errorEnvelope('not_a_repo', NOT_A_REPO);
+    const deps: HistoryDeps = {
+      tree: resolved.tree,
+      modules: historyModuleHost(resolved.repoDir),
+      clock,
+      worktree: resolved.worktree,
+      repoName: resolved.identity.storeId,
+      keepOut: [resolved.repoDir, resolved.identity.commonDir, ...(config.store?.dir === undefined ? [] : [config.store.dir])],
+      ...(options.history?.tmpRoot === undefined ? {} : { tmpRoot: options.history.tmpRoot }),
+      ...(options.history?.maxFiles === undefined ? {} : { maxFiles: options.history.maxFiles }),
+      ...(options.history?.nonce === undefined ? {} : { nonce: options.history.nonce }),
+    };
+    return held(resolved.identity.storeId, classFor('code_find'), () => runHistory(deps, request));
+  }
+
   async function dispatch(request: Request): Promise<Envelope> {
     if (request.protocol !== PROTOCOL_VERSION) {
       return errorEnvelope(
@@ -175,6 +212,7 @@ export function createHost(options: HostOptions): Host {
     if ((LANG_KINDS as readonly string[]).includes(request.kind)) {
       return handleLang(request, { roots: options.roots, engine: options.engine });
     }
+    if (request.kind === HISTORY_KIND) return historyRequest(request);
     if (isRepoKind(request.kind)) return repoRequest(request, request.kind);
     return errorEnvelope('unknown_kind', `request kind ${short(JSON.stringify(request.kind))} is not known to this host`);
   }
@@ -207,6 +245,9 @@ export function createHost(options: HostOptions): Host {
     async close(): Promise<void> {
       closed = true;
       await Promise.all([...tenants.keys()].map((storeId) => closeTenant(storeId).catch(ignore)));
+      const modules = [...historyModules.values()];
+      historyModules.clear();
+      await Promise.all(modules.map((each) => each.dispose().catch(ignore)));
     },
   };
 }
