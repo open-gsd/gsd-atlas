@@ -164,6 +164,9 @@ Plans:
   3. The host listens on a Unix socket or named pipe where supported, every route needs a `0600`-file token, a browser-style request is rejected, and no fixed-port fallback exists that could leak the token.
   4. A supervisor restarts the host after a crash and per-tenant watchdogs report in `status`; with weighted round-robin across tenants, a memory budget and parser/compiler pools, 1,000 concurrent short-lived agents run with zero errors and read p99 of 100 ms or less.
   5. Diagnostics auto-submit is a separate opt-in that never includes notes, and the repo intake workflow validates, redacts, deduplicates and routes incoming reports.
+  6. The CLI hands `build` and `maintain` to the process that holds a repository's writer instead of answering `lease_held`: with an agent's MCP server running, `gsd-atlas build` in an unbuilt worktree of an indexed repository, or a rebuild of a built one, succeeds (carried over from Phase 2 review WR-02, where the message only names the holder).
+  7. A store keeps one identity when its repository's root commits change: the store id is persisted with the store and no longer recomputed from the roots reachable from HEAD (carried over from Phase 2 review WR-06; Phase 2 derives it from the smallest root, which still changes when the set of roots changes).
+  8. A child process started for a user-allowed executable receives an allowlisted environment (the variables the platform and the provider declare), not the inherited environment minus a denylist (carried over from Phase 2 review IN-05; Phase 2 only widens the denylist).
 
 **Plans:** TBD
 
