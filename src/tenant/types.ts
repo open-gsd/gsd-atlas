@@ -110,6 +110,11 @@ export interface TenantStatus {
    * finished (answers carry `reconciling`), `ready` once it settled, `none` when nothing was started.
    */
   readonly startup: 'pending' | 'ready' | 'none';
+  /**
+   * Idle maintenance (STO-10): `rounds` finished rounds (one that yielded to a request is not finished), when the
+   * last one ended, and `failedSteps` steps that failed and were swallowed so the later steps could still run.
+   */
+  readonly idle: { readonly lastRoundAt: number | null; readonly rounds: number; readonly failedSteps: number };
 }
 
 export interface Tenant {

@@ -132,11 +132,17 @@ function status(parts: StoreParts, lifecycle: StoreLifecycle): StoreStatus {
       .prepare(
         `SELECT v.worktree AS worktree, v.seq AS seq,
                 (SELECT count(*) FROM overlay_files o LEFT JOIN files f ON f.id = o.file_id
-                  WHERE o.worktree = v.worktree AND (o.file_id IS NULL OR f.stale = 1)) AS stale_paths
+                  WHERE o.worktree = v.worktree AND (o.file_id IS NULL OR f.stale = 1)) AS stale_paths,
+                (SELECT count(*) FROM overlay_files o WHERE o.worktree = v.worktree) AS files
          FROM overlays v WHERE v.dropped = 0 ORDER BY v.worktree`,
       )
       .all()
-      .map((row) => ({ worktree: String(row.worktree), seq: Number(row.seq), stalePaths: Number(row.stale_paths) }));
+      .map((row) => ({
+        worktree: String(row.worktree),
+        seq: Number(row.seq),
+        stalePaths: Number(row.stale_paths),
+        files: Number(row.files),
+      }));
     const pages = Number(db.pragma('page_count'));
     const pageSize = Number(db.pragma('page_size'));
     const metaValue = (name: string): string | undefined => {

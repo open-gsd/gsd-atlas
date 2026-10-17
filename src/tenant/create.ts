@@ -20,6 +20,7 @@ import type { Metrics } from '../metrics/index.ts';
 import { createQuery, errorEnvelope } from '../query/index.ts';
 import type { FreshPort } from '../query/index.ts';
 import { DEFAULT_TENANT_TUNING } from './defaults.ts';
+import { createIdleMaintainer } from './idle.ts';
 import { answerEvent } from './record.ts';
 import { createStatusPort } from './status-port.ts';
 import { BUILD_SCHEMA, MAINTAIN_SCHEMA, STATUS_SCHEMA } from './types.ts';
@@ -285,6 +286,121 @@ export async function createTenant(deps: TenantDeps): Promise<Tenant> {
     if (running !== undefined) await running.stop().catch(ignore);
   }
 
+  // Idle maintenance (STO-10). The counters feed `status().idle`; a failed step is counted and swallowed.
+  let idleRounds = 0;
+  let idleLastRoundAt: number | null = null;
+  let idleFailedSteps = 0;
+
+  /**
+   * Record the index-health gauge: files and stale paths summed over the overlays the store holds, the paths the
+   * Indexer gave up on, and the store size. Counts only (MET-02). `flush` writes it now.
+   */
+  async function recordHealth(flush: boolean): Promise<void> {
+    const storeStatus = await store.status();
+    let files = 0;
+    let staleFiles = 0;
+    for (const entry of storeStatus.worktrees) {
+      files += entry.files;
+      staleFiles += entry.stalePaths;
+    }
+    const errorFiles = indexer?.status().failed.length ?? 0;
+    recording(() => {
+      metrics.record({ kind: 'index_health', files, errorFiles, staleFiles, sizeBytes: storeStatus.sizeBytes });
+    });
+    if (flush) {
+      try {
+        await metrics.flush();
+      } catch {
+        // the gauge is still queued
+      }
+    }
+  }
+
+  type Attempt<T> = { readonly kind: 'ok'; readonly value: T } | { readonly kind: 'busy' } | { readonly kind: 'failed' };
+
+  /**
+   * One step of an idle round, submitted to the Governor at the maintenance class. A busy Governor ends the round
+   * quietly (the next quiet period tries again); a step that throws is counted and the next step still runs.
+   */
+  async function attempt<T>(work: () => Promise<T>): Promise<Attempt<T>> {
+    try {
+      const outcome = await governor.run({ tenant: identity.storeId, class: 'maintenance', cost: 1 }, work);
+      if (outcome.kind === 'ok') return { kind: 'ok', value: outcome.value };
+      if (outcome.kind === 'busy') return { kind: 'busy' };
+    } catch {
+      // counted below
+    }
+    idleFailedSteps += 1;
+    return { kind: 'failed' };
+  }
+
+  /**
+   * One slice of store upkeep. The store's `maintain` takes the in-process writer slot, which a running Indexer holds;
+   * then `collect` and `compact` (which need the lease, not the slot) do the same work, and `check` closes the pass.
+   */
+  async function maintenanceSlice(): Promise<MaintenanceResult> {
+    try {
+      return await store.maintain(tuning.maintenanceSliceMs);
+    } catch (error) {
+      if (!(error instanceof WriterBusy)) throw error;
+    }
+    const collected = await store.collect({ budgetMs: tuning.maintenanceSliceMs });
+    const compacted = await store.compact({ budgetMs: tuning.maintenanceSliceMs });
+    const complete = collected.complete && compacted.complete;
+    if (complete) await store.check();
+    return {
+      complete,
+      spentMs: collected.spentMs + compacted.spentMs,
+      processed: collected.processed + compacted.processed,
+    };
+  }
+
+  /**
+   * One idle round (STO-10): on the lease holder the store upkeep in slices until complete, then a refresh of each
+   * worktree the Indexer covers; on every process the metrics rollup and the index-health gauge. It checks
+   * `shouldYield` before every step and stops quietly when a request has arrived.
+   */
+  async function idleRound(shouldYield: () => boolean): Promise<void> {
+    if (closed) return;
+    if (await isLeader().catch(() => false)) {
+      let complete = false;
+      for (let slice = 0; slice < MAX_SLICES && !complete; slice += 1) {
+        if (shouldYield()) return;
+        const step = await attempt(maintenanceSlice);
+        if (step.kind === 'busy') return;
+        if (step.kind === 'failed') break;
+        complete = step.value.complete;
+      }
+      if (indexer !== undefined) {
+        const listed = await tree
+          .worktrees()
+          .then((entries) => new Set(entries.filter((entry) => !entry.bare).map((entry) => entry.path)))
+          .catch(() => new Set<string>());
+        for (const entry of (await store.status()).worktrees) {
+          if (!listed.has(entry.worktree)) continue;
+          if (shouldYield()) return;
+          const step = await attempt(() => getIndexer().refresh(entry.worktree));
+          if (step.kind === 'busy') return;
+        }
+      }
+    }
+    if (shouldYield()) return;
+    if ((await attempt(() => metrics.rollup())).kind === 'busy') return;
+    if (shouldYield()) return;
+    if ((await attempt(() => recordHealth(true))).kind === 'busy') return;
+    idleRounds += 1;
+    idleLastRoundAt = clock.now();
+  }
+
+  const idle = createIdleMaintainer({
+    clock,
+    idleAfterMs: tuning.idleAfterMs,
+    run: idleRound,
+    onError() {
+      idleFailedSteps += 1;
+    },
+  });
+
   const opening = await store.status();
   // A follower starts nothing: no Indexer, no watcher. It starts one when it takes over (`applyLease`).
   if (opening.writerLeaseHeld) beginIndexing(opening.worktrees.map((entry) => entry.worktree));
@@ -300,6 +416,7 @@ export async function createTenant(deps: TenantDeps): Promise<Tenant> {
       governor: governor.status(),
       metrics: metrics.status(),
       startup: starting !== undefined ? 'pending' : startAttempted ? 'ready' : 'none',
+      idle: { lastRoundAt: idleLastRoundAt, rounds: idleRounds, failedSteps: idleFailedSteps },
       ...(startError === undefined ? {} : { startError }),
     };
   }
@@ -356,6 +473,7 @@ export async function createTenant(deps: TenantDeps): Promise<Tenant> {
 
     async handle(request: Request, worktree: string): Promise<Envelope> {
       const started = clock.now();
+      idle.touch();
       await startupGate();
       const answered = await query.ask({ ...request, worktree });
       // Until the start-up Reconcile settles, an answer may lag the working tree: say so (D-02).
@@ -367,23 +485,30 @@ export async function createTenant(deps: TenantDeps): Promise<Tenant> {
         const event = answerEvent(request.kind, envelope, clock.now() - started);
         if (event !== null) metrics.record(event);
       });
+      idle.touch();
       return envelope;
     },
 
     async build(worktree: string): Promise<Envelope> {
+      idle.touch();
       try {
         if (!(await isLeader())) return leaseHeld();
         const ix = getIndexer();
         const result = await ix.build(worktree);
         await ix.attach(worktree);
+        // The dashboard's index-health panel fills after a build, not only after the first idle round.
+        await recordHealth(false).catch(ignore);
         return okEnvelope(BUILD_SCHEMA, buildData(worktree, result));
       } catch (error) {
         return failure(error);
+      } finally {
+        idle.touch();
       }
     },
 
     async maintain(task: MaintainTask, options: MaintainOptions): Promise<Envelope> {
       const tasks: readonly SingleTask[] = task === 'all' ? ALL_TASKS : [task];
+      idle.touch();
       try {
         // Only `resolve` (a no-op while no precise tier is active) needs neither the writer nor an overlay.
         if (tasks.some((each) => each !== 'resolve') && !(await isLeader())) return leaseHeld();
@@ -393,6 +518,8 @@ export async function createTenant(deps: TenantDeps): Promise<Tenant> {
         return okEnvelope(MAINTAIN_SCHEMA, { tasks: reports });
       } catch (error) {
         return failure(error);
+      } finally {
+        idle.touch();
       }
     },
 
@@ -416,6 +543,8 @@ export async function createTenant(deps: TenantDeps): Promise<Tenant> {
       closed = true;
       closing ??= (async () => {
         cancelGate?.();
+        // No idle timer may outlive the Tenant, and a round in flight is asked to yield and awaited.
+        await idle.close();
         await leaseWork.catch(ignore);
         const running = indexer;
         if (running !== undefined) await running.stop().catch(ignore);

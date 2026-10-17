@@ -298,6 +298,8 @@ export interface WorktreeStatus {
   readonly worktree: WorktreeId;
   readonly seq: number;
   readonly stalePaths: number;
+  /** How many paths the worktree's overlay holds, pending ones included (`stalePaths` is a subset of them). */
+  readonly files: number;
 }
 
 /** Store health, as its own method rather than a read variant. */

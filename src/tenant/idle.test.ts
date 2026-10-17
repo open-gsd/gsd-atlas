@@ -124,10 +124,15 @@ describe('createIdleMaintainer', () => {
     await idle.close();
     assert.equal(clock.active(), 0, 'a pending timer is cancelled');
 
-    const second = createIdleMaintainer({ clock, idleAfterMs: 100, run: (y) => {
-      yielded = y();
-      return gate;
-    }, onError() {} });
+    const second = createIdleMaintainer({
+      clock,
+      idleAfterMs: 100,
+      run: async (shouldYield) => {
+        await gate;
+        yielded = shouldYield();
+      },
+      onError() {},
+    });
     second.touch();
     await fake.advance(100);
     await settle();
@@ -380,13 +385,14 @@ describe('Tenant idle round', () => {
     await fake.advance(IDLE);
     await eventually(async () => (await tenant.status()).idle.rounds === 1, 'the idle round to finish');
     await settle();
-    assert.equal(clock.active(), 0, 'the round does not re-arm itself');
+    // The store's own dirty-sentinel timer may still be pending after upkeep wrote (it goes at close); the idle timer is not.
+    assert.equal(clock.activeDelays().includes(IDLE), false, 'the round does not re-arm itself');
     await fake.advance(10 * IDLE);
     await settle();
     assert.equal((await tenant.status()).idle.rounds, 1);
 
     await tenant.handle(find('helper', repo.dir), repo.dir);
-    assert.equal(clock.active(), 1);
+    assert.equal(clock.activeDelays().filter((ms) => ms === IDLE).length, 1);
     await tenant.close();
     assert.equal(clock.active(), 0, 'close cancels the idle timer');
   });
@@ -419,7 +425,8 @@ describe('Tenant idle round', () => {
 describe('index-health gauge', () => {
   it('gauge: reports the file, error and stale counts and the store size, read back through the Metrics report', async (t) => {
     const { repo, open } = await indexedWorld(t);
-    const fake = new FakeClock(1_000_000);
+    // The first tenant recorded a gauge at real time; this clock starts there so the newest gauge is the one under test.
+    const fake = new FakeClock(Date.now());
     const scripted = scriptedIndexers({ start: 'now' });
     const capture = captureStore();
     const tenant = await open({ clock: fake, indexerFactory: scripted.factory, openStore: capture.open });

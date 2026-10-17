@@ -50,7 +50,7 @@ interface Overrides {
 function ports(h: Harness, overrides: Overrides = {}): StatusPort {
   const store: StoreStatus = {
     schemaVersion: 1,
-    worktrees: [{ worktree: h.dir, seq: 7, stalePaths: overrides.staleCount ?? 0 }],
+    worktrees: [{ worktree: h.dir, seq: 7, stalePaths: overrides.staleCount ?? 0, files: 3 }],
     sizeBytes: 4096,
     writerLeaseHeld: true,
     ...overrides.store,
