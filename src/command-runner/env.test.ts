@@ -34,6 +34,55 @@ describe('scrubEnv', () => {
     assert.deepEqual(out, { PATH: '/bin' });
   });
 
+  it('removed names: cloud, ssh-agent and database credentials the first pattern missed (IN-05)', () => {
+    const removed = [
+      'AWS_ACCESS_KEY_ID',
+      'SSH_AUTH_SOCK',
+      'DATABASE_URL',
+      'DB_PASSWD',
+      'MYSQL_PASSWD',
+      'NPM_CONFIG__AUTH',
+      'DEPLOY_PRIVATE_KEY',
+      'STRIPE_ACCESS_KEY',
+      // still removed
+      'AWS_SECRET_ACCESS_KEY',
+      'AWS_SESSION_TOKEN',
+      'GITHUB_TOKEN',
+      'DB_PASSWORD',
+      // case-insensitive, as before
+      'ssh_auth_sock',
+      'Database_Url',
+      'npm_config__auth',
+    ];
+    const parent: Record<string, string> = { PATH: '/bin' };
+    for (const name of removed) parent[name] = 'v';
+    assert.deepEqual(scrubEnv(parent), { PATH: '/bin' });
+  });
+
+  it('kept names: ordinary variables and GIT_AUTHOR_* / GIT_COMMITTER_* survive', () => {
+    const kept: Record<string, string> = {
+      PATH: '/bin',
+      Path: 'C:\\bin',
+      HOME: '/h',
+      SystemRoot: 'C:\\Windows',
+      TEMP: '/t',
+      LANG: 'C',
+      GIT_AUTHOR_NAME: 'a',
+      GIT_AUTHOR_EMAIL: 'a@example.invalid',
+      GIT_COMMITTER_NAME: 'c',
+      GIT_COMMITTER_EMAIL: 'c@example.invalid',
+      GIT_CONFIG_GLOBAL: '/e',
+      XDG_CONFIG_HOME: '/x',
+      AUTHORITY_NAME: 'a word that merely contains AUTH',
+    };
+    assert.deepEqual(scrubEnv(kept), kept);
+  });
+
+  it('overlay wins: a spec that deliberately sets a removed name keeps it', () => {
+    const out = scrubEnv({ PATH: '/bin', SSH_AUTH_SOCK: '/parent', DATABASE_URL: 'parent' }, { SSH_AUTH_SOCK: '/deliberate', DB_PASSWD: 'deliberate' });
+    assert.deepEqual(out, { PATH: '/bin', SSH_AUTH_SOCK: '/deliberate', DB_PASSWD: 'deliberate' });
+  });
+
   it('applies the overlay last, even over denylisted names', () => {
     const out = scrubEnv({ PATH: '/bin', FOO: 'parent', GIT_DIR: '/x' }, { FOO: 'overlay', GIT_OPTIONAL_LOCKS: '0', GIT_DIR: '/deliberate' });
     assert.deepEqual(out, { PATH: '/bin', FOO: 'overlay', GIT_OPTIONAL_LOCKS: '0', GIT_DIR: '/deliberate' });
