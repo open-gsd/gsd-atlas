@@ -110,6 +110,112 @@ export async function runWith(composed: Composed, argv: readonly string[], cwd: 
   return { code, stdout: out, stderr: stderr.text(), envelope: out === '' ? ({} as Envelope) : (JSON.parse(out) as Envelope) };
 }
 
+/** Three TypeScript files with import and call edges: c calls b's run, which calls a's load. */
+const IMPORT_CHAIN: Readonly<Record<string, string>> = {
+  'a.ts': 'export function load(): number {\n  return 1;\n}\n',
+  'b.ts': "import { load } from './a';\nexport function run(): number {\n  return load();\n}\n",
+  'c.ts': "import { run } from './b';\nexport function main(): number {\n  return run();\n}\n",
+};
+
+interface Row {
+  readonly name: string;
+  readonly path: string;
+  readonly [key: string]: unknown;
+}
+
+const rows = (envelope: Envelope): Row[] => (envelope.data as { results: Row[] }).results;
+
+describe('CLI walking skeleton: refs, context, impact, health, status and maintain', () => {
+  it('after build, refs, context and impact answer from the ADR-shaped import chain, each as one envelope with exit 0', async (t) => {
+    const world = await makeWorld(t, { files: IMPORT_CHAIN });
+    const built = await world.cli(['build', '--repo', world.repo.dir]);
+    assert.equal(built.code, 0, built.stderr);
+    assert.equal((built.envelope.data as { files: number }).files, 3);
+
+    const refs = await world.cli(['refs', 'load', '--repo', world.repo.dir]);
+    assert.equal(refs.code, 0, refs.stderr);
+    assert.equal(refs.envelope.schema, 'gsd-atlas.code-refs/1');
+    assert.ok(rows(refs.envelope).some((row) => row.path === 'b.ts' && row['enclosing'] === 'run'), 'run in b.ts refers to load');
+
+    const context = await world.cli(['context', 'load', '--repo', world.repo.dir, '--path', 'a.ts']);
+    assert.equal(context.code, 0, context.stderr);
+    assert.equal(context.envelope.schema, 'gsd-atlas.code-context/1');
+    assert.ok(rows(context.envelope).some((row) => row['section'] === 'definition' && row.path === 'a.ts'), 'a definition item');
+
+    const impact = await world.cli(['impact', 'load', '--repo', world.repo.dir, '--depth', '2']);
+    assert.equal(impact.code, 0, impact.stderr);
+    assert.equal(impact.envelope.schema, 'gsd-atlas.code-impact/1');
+    const hops = rows(impact.envelope).map((row) => `${String(row['hop'])}:${row.path}`);
+    assert.ok(hops.includes('1:b.ts'), `the importer b.ts is at hop 1, got ${hops.join(',')}`);
+    assert.ok(hops.includes('2:c.ts'), `the importer of the importer c.ts is at hop 2, got ${hops.join(',')}`);
+    assert.equal(impact.stderr, '');
+
+    const shallow = await world.cli(['impact', 'load', '--repo', world.repo.dir, '--depth', '1']);
+    assert.ok(!rows(shallow.envelope).some((row) => row['hop'] === 2), '--depth 1 stops at the first hop');
+  });
+
+  it('health returns the atlas_status envelope with the policy off and the writer lease held by this process', async (t) => {
+    const world = await makeWorld(t, { files: IMPORT_CHAIN });
+    await world.cli(['build', '--repo', world.repo.dir]);
+    const health = await world.cli(['health', '--repo', world.repo.dir]);
+    assert.equal(health.code, 0, health.stderr);
+    assert.equal(health.envelope.schema, 'gsd-atlas.atlas-status/1');
+    const data = health.envelope.data as { policy: string; store: { writerLeaseHeld: boolean }; health: string };
+    assert.equal(data.policy, 'off');
+    assert.equal(data.store.writerLeaseHeld, true);
+    assert.ok(!('report' in (health.envelope.data as object)), 'health carries no metrics panels: those belong to status');
+  });
+
+  it('status prints the metrics panels with the token figures labelled estimate, and exits 0', async (t) => {
+    const world = await makeWorld(t, { files: IMPORT_CHAIN });
+    await world.cli(['build', '--repo', world.repo.dir]);
+    await world.cli(['find', 'load', '--repo', world.repo.dir]);
+    const status = await world.cli(['status', '--repo', world.repo.dir, '--since', '24h']);
+    assert.equal(status.code, 0, status.stderr);
+    assert.equal(status.envelope.schema, 'gsd-atlas.status/1');
+    assert.match(status.stdout, /estimate/);
+    const data = status.envelope.data as {
+      report: { answers: { total: number; latency: { overflow: boolean } }; freshness: { overflow: boolean }; tokens: { label: string; estimatedTotal: number } };
+      tenant: { metrics: { recording: boolean } };
+    };
+    assert.equal(data.report.tokens.label, 'estimate');
+    assert.equal(typeof data.report.answers.total, 'number');
+    assert.equal(typeof data.report.answers.latency.overflow, 'boolean', 'the overflow flag is part of the printed panel');
+    assert.equal(typeof data.report.freshness.overflow, 'boolean');
+    assert.equal(typeof data.tenant.metrics.recording, 'boolean');
+  });
+
+  it('maintain runs every task by default and each task by name, compact --full included, and refuses what it cannot run', async (t) => {
+    const world = await makeWorld(t, { files: IMPORT_CHAIN });
+    await world.cli(['build', '--repo', world.repo.dir]);
+
+    const all = await world.cli(['maintain', '--repo', world.repo.dir]);
+    assert.equal(all.code, 0, all.stderr);
+    assert.equal(all.envelope.schema, 'gsd-atlas.maintain/1');
+    const tasks = (all.envelope.data as { tasks: Record<string, { complete: boolean }> }).tasks;
+    assert.deepEqual(Object.keys(tasks), ['reconcile', 'resolve', 'refresh', 'collect', 'compact', 'check']);
+    assert.ok(Object.values(tasks).every((task) => task.complete));
+
+    for (const task of ['reconcile', 'resolve', 'refresh', 'collect', 'compact', 'check']) {
+      const one = await world.cli(['maintain', task, '--repo', world.repo.dir]);
+      assert.equal(one.code, 0, `${task}: ${one.stderr}`);
+      assert.deepEqual(Object.keys((one.envelope.data as { tasks: object }).tasks), [task]);
+    }
+    const full = await world.cli(['maintain', 'compact', '--full', '--repo', world.repo.dir]);
+    assert.equal(full.code, 0, full.stderr);
+
+    const refused = await world.cli(['maintain', 'collect', '--full', '--repo', world.repo.dir]);
+    assert.equal(refused.code, 1);
+    assert.equal(refused.stdout, '');
+  });
+
+  it('the CLI knows exactly the maintain tasks the Host accepts', async () => {
+    const { MAINTAIN_TASKS } = await import('../src/tenant/index.ts');
+    const { MAINTAIN_TASKS: CLI_TASKS } = await import('../src/cli/tool-commands.ts');
+    assert.deepEqual([...CLI_TASKS], [...MAINTAIN_TASKS]);
+  });
+});
+
 describe('CLI walking skeleton: build, then find', () => {
   it('build exits 0 with one build envelope, find then prints the definition with its citation and fenced text, and stderr stays empty', async (t) => {
     const world = await makeWorld(t);
