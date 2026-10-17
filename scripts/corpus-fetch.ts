@@ -3,6 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
+import { isInside } from '../src/facts/index.ts';
 import { validateCorpora } from './corpus.ts';
 
 /**
@@ -109,10 +110,6 @@ function resolveThroughExisting(target: string): string {
   return path.join(fs.realpathSync.native(existing), ...rest);
 }
 
-function isInside(child: string, parent: string): boolean {
-  return child === parent || child.startsWith(parent.endsWith(path.sep) ? parent : parent + path.sep);
-}
-
 function git(args: string[], cwd: string): { ok: boolean; stdout: string; stderr: string } {
   const result = spawnSync('git', args, {
     cwd,
@@ -141,7 +138,7 @@ export async function fetchCorpus(options: FetchCorpusOptions): Promise<FetchedC
   const entry = pinnedEntry(readManifest(options.manifest), options.id);
 
   const destination = resolveThroughExisting(options.destination);
-  if (isInside(destination, fs.realpathSync.native(repoRoot))) {
+  if (isInside(fs.realpathSync.native(repoRoot), destination)) {
     throw new CorpusFetchError(
       'destination_inside_repo',
       `${options.destination} is inside the repository working tree (${repoRoot}); a corpus checkout must never land in a checkout`,
