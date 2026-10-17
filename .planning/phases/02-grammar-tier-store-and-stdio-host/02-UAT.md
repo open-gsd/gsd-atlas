@@ -29,8 +29,8 @@ evidence: |
 
 ### 2. Cursor and Codex init config shapes
 expected: Each real host lists and starts the gsd-atlas MCP server from the entry init wrote; init changes nothing else
-result: [pending]
-note: The documented Cursor and Codex shapes were confirmed on 2026-10-17 in `.planning/research/MCP-HOST-CONFIGS.md` and plan 02-35 applied them (Cursor `type: "stdio"`, Codex `[mcp_servers.gsd-atlas]` with `command` and `args`; plan 02-44 made the Codex editor manage only those two keys). The check that real installs start the server is still the human step.
+result: pass
+evidence: Tested 2026-10-17 on macOS arm64 against the real CLIs in a scratch HOME, no login and no model prompt (.planning/research/MCP-HOST-LIVE-CHECK.md). Codex CLI 0.163.0: `codex mcp list` and `codex mcp get gsd-atlas` show the server enabled with the right command and args; existing tables and comments survived byte for byte. Cursor cursor-agent 2026.10.16: `agent mcp list` reports gsd-atlas ready (Cursor launched it) and `list-tools` returns the six tools. Codex has no model-free way to start the server, so its start was checked by running the same command and args by hand. Not tested: Windows, Linux, the Cursor and Codex desktop or IDE apps.
 
 ### 3. nightly.yml first remote run
 expected: freshness-gate (100 saves, 1000 ms) and corpus-gates pass on ubuntu, macOS and Windows after the file reaches the default branch
@@ -50,9 +50,9 @@ evidence: |
 ## Summary
 
 total: 5
-passed: 3
+passed: 4
 issues: 0
-pending: 2
+pending: 1
 skipped: 0
 blocked: 0
 
