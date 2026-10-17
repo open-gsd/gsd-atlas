@@ -17,7 +17,7 @@ import type { SourceTree } from '../source-tree/index.ts';
 import { FakeClock, createTempGitRepo, makeTempDir } from '../test-kit/index.ts';
 import type { TempGitRepo } from '../test-kit/index.ts';
 import { DEFAULT_INDEXER_CONFIG, IndexerError, createIndexer, createManualEventSource } from './index.ts';
-import type { Indexer, IndexerConfig, IndexerNotice } from './index.ts';
+import type { EventSource, Indexer, IndexerConfig, IndexerNotice } from './index.ts';
 
 const { debounceMs } = DEFAULT_INDEXER_CONFIG;
 
@@ -802,4 +802,54 @@ describe('Indexer.refresh: a forced re-extract of stale files (STO-10)', () => {
       (error: unknown) => error instanceof IndexerError && error.code === 'unknown_worktree',
     );
   });
+});
+
+describe('stop while a watch subscription is still opening (found by plan 02-23: a quick EOF left the process alive)', () => {
+  /** A source whose `subscribe` or `subscribeGit` (the one named) resolves only after `open()`, and says when it was entered. */
+  function gatedSource(which: 'file' | 'git') {
+    const manual = createManualEventSource();
+    let open: () => void = () => {};
+    const gate = new Promise<void>((resolve) => {
+      open = resolve;
+    });
+    let entered: () => void = () => {};
+    const enteredGate = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    const source: EventSource = {
+      ...manual.source,
+      async subscribe(root, handler) {
+        if (which === 'file') {
+          entered();
+          await gate;
+        }
+        return manual.source.subscribe(root, handler);
+      },
+      async subscribeGit(commonDir, handler) {
+        if (which === 'git') {
+          entered();
+          await gate;
+        }
+        return manual.source.subscribeGit(commonDir, handler);
+      },
+    };
+    return { manual, source, open: () => open(), entered: enteredGate };
+  }
+
+  for (const which of ['git', 'file'] as const) {
+    it(`a ${which} watch that finishes opening after stop() is unsubscribed, so no native watcher outlives the Indexer`, async (t) => {
+      const world = await makeWorld(t, { files: THREE_FILES });
+      const gated = gatedSource(which);
+      await world.indexer.attach(gated.source, []);
+      const starting = world.indexer.start().catch(() => undefined);
+      await gated.entered;
+      const stopping = world.indexer.stop();
+      gated.open();
+      await starting;
+      await stopping;
+      // Opening finished after stop() had looked for something to close: the late subscription must close itself.
+      assert.equal(gated.manual.subscriptions(), 0, 'no file watch is left open');
+      assert.deepEqual(gated.manual.gitSubscriptions(), [], 'no git watch is left open');
+    });
+  }
 });

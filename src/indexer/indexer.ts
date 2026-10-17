@@ -405,17 +405,33 @@ export function createIndexer(deps: IndexerDeps): Indexer {
 
   /** Subscribe the file watch of one worktree root, once. A source that cannot start leaves Reconcile as the only path. */
   async function cover(worktree: string, gitDirName: string): Promise<void> {
-    if (covered.has(worktree)) return;
+    if (covered.has(worktree) || stopped) return;
     const entry: Covered = { gitDirName };
     covered.set(worktree, entry);
     if (activeSource === undefined) return;
+    let unsubscribe: () => Promise<void>;
     try {
-      entry.unsubscribe = await activeSource.subscribe(worktree, fileHandler(worktree, true));
+      unsubscribe = await activeSource.subscribe(worktree, fileHandler(worktree, true));
     } catch {
       degraded = true;
       return;
     }
+    if (stopped) {
+      // stop() ran while this subscription was opening and found nothing to close: it closes itself.
+      await closeLate(unsubscribe);
+      return;
+    }
+    entry.unsubscribe = unsubscribe;
     void hintChanged(activeSource, worktree);
+  }
+
+  /** Close a subscription that finished opening after stop(); a watcher that fails to stop is not an error. */
+  async function closeLate(unsubscribe: () => Promise<void>): Promise<void> {
+    try {
+      await unsubscribe();
+    } catch {
+      // a watcher that fails to stop must not keep the Indexer from stopping
+    }
   }
 
   /**
@@ -476,13 +492,20 @@ export function createIndexer(deps: IndexerDeps): Indexer {
 
   /** Subscribe the git directory, once for the whole repository. */
   async function watchGitDir(commonDir: string): Promise<void> {
-    if (activeSource === undefined || gitSubscribed) return;
+    if (activeSource === undefined || gitSubscribed || stopped) return;
     gitSubscribed = true;
+    let unsubscribe: () => Promise<void>;
     try {
-      gitUnsubscribe = await activeSource.subscribeGit(commonDir, gitHandler(commonDir));
+      unsubscribe = await activeSource.subscribeGit(commonDir, gitHandler(commonDir));
     } catch {
       degraded = true;
+      return;
     }
+    if (stopped) {
+      await closeLate(unsubscribe);
+      return;
+    }
+    gitUnsubscribe = unsubscribe;
   }
 
   /** Bring the covered worktrees in step with `git worktree list`: subscribe new ones, drop the overlay of gone ones. */
@@ -617,7 +640,12 @@ export function createIndexer(deps: IndexerDeps): Indexer {
       }
       activeSource ??= first;
       for (const worktree of roots ?? []) {
-        unsubscribes.push(await first.subscribe(worktree, fileHandler(worktree, false)));
+        const unsubscribe = await first.subscribe(worktree, fileHandler(worktree, false));
+        if (stopped) {
+          await closeLate(unsubscribe);
+          return;
+        }
+        unsubscribes.push(unsubscribe);
       }
     },
 
