@@ -130,6 +130,16 @@ function isNonEmptyString(value: unknown): boolean {
   return typeof value === 'string' && value !== '';
 }
 
+/** A name the store interns: a non-empty string without a NUL character (the writer binds it as text). */
+function isFactName(value: unknown): boolean {
+  return typeof value === 'string' && value !== '' && !value.includes('\0');
+}
+
+/** An absent optional string is fine; a present one must be a string. */
+function isOptionalString(value: unknown): boolean {
+  return value === undefined || typeof value === 'string';
+}
+
 function isOneOf(set: readonly string[], value: unknown): boolean {
   return typeof value === 'string' && set.includes(value);
 }
@@ -187,6 +197,12 @@ export function validateFileFacts(value: unknown): Diagnostic[] {
     out.push(diagnostic('facts_invalid', 'error', 'FileFacts.path must be a string'));
   }
 
+  for (const field of ['contentHash', 'module', 'grammarVersion'] as const) {
+    if (!isNonEmptyString(value[field])) {
+      out.push(diagnostic('facts_invalid', 'error', `FileFacts.${field} must be a non-empty string`, subject));
+    }
+  }
+
   const groups: ReadonlyArray<readonly [string, string, boolean]> = [
     ['symbols', 'symbol', true],
     ['refSites', 'ref site', true],
@@ -223,26 +239,50 @@ export function validateFileFacts(value: unknown): Diagnostic[] {
       const where = `${label} at index ${index}`;
       switch (field) {
         case 'symbols':
+          if (!isFactName(item.name)) {
+            invalid(`${where} has a name that is not a non-empty string without a NUL character`);
+          }
+          if (!isNonEmptyString(item.kind)) {
+            invalid(`${where} has a kind that is not a non-empty string`);
+          }
+          if (!isOptionalString(item.qualifiedName)) {
+            invalid(`${where} has a qualifiedName that is not a string`);
+          }
           checkIndex(item.parent, symbolCount, `${where} has a parent outside the symbols array`, invalid);
           if (item.exported !== undefined && typeof item.exported !== 'boolean') {
             invalid(`${where} has an exported flag that is not a boolean`);
           }
           break;
         case 'refSites':
+          if (!isFactName(item.name)) {
+            invalid(`${where} has a name that is not a non-empty string without a NUL character`);
+          }
+          if (!isOptionalString(item.importPath)) {
+            invalid(`${where} has an importPath that is not a string`);
+          }
           checkIndex(item.enclosing, symbolCount, `${where} has an enclosing symbol outside the symbols array`, invalid);
           if (item.kind !== undefined && !isOneOf(REF_KINDS, item.kind)) {
             invalid(`${where} has an unknown reference kind`);
           }
           break;
         case 'imports':
+          if (typeof item.path !== 'string') {
+            invalid(`${where} has a path that is not a string`);
+          }
           if (item.style !== undefined && !isOneOf(IMPORT_STYLES, item.style)) {
             invalid(`${where} has an unknown import style`);
           }
           checkBindings(item.bindings, where, invalid);
           break;
         case 'exports':
-          if (!isNonEmptyString(item.name)) {
-            invalid(`${where} has no name`);
+          if (!isFactName(item.name)) {
+            invalid(`${where} has no name (a non-empty string without a NUL character)`);
+          }
+          if (!isOptionalString(item.local)) {
+            invalid(`${where} has a local that is not a string`);
+          }
+          if (!isOptionalString(item.from)) {
+            invalid(`${where} has a from that is not a string`);
           }
           break;
       }
