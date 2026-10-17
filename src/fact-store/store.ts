@@ -48,6 +48,8 @@ function reconcile(parts: StoreParts, truth: ReconcileTruth): ReconcileResult {
   return { reindex: [...reindex].sort(), complete: true };
 }
 
+const validFull = (full: unknown): boolean => full === undefined || typeof full === 'boolean';
+
 /** What the lifecycle layer (open.ts) hands the store beyond its connections. All optional. */
 export interface StoreLifecycle {
   /** The cross-process writer lease; absent when the store was opened with `lease: 'none'`. */
@@ -214,10 +216,13 @@ export function createStore(parts: StoreParts, lifecycle: StoreLifecycle = {}): 
       requireAuthority();
       return dirtied(() => checkStore(parts, lifecycle.rebuild));
     },
-    async maintain(budgetMs) {
+    async maintain(budgetMs, options) {
       requireAuthority();
       if (!Number.isFinite(budgetMs) || budgetMs < 0) {
         throw new RangeError('the maintenance budget must be a finite number of milliseconds, zero or more');
+      }
+      if (options !== undefined && (typeof options !== 'object' || options === null || !validFull(options.full))) {
+        throw new RangeError('the maintenance options must be an object whose full is a boolean when given');
       }
       // `maintain` takes the writer slot itself, so it can not run while the Indexer's writer is out.
       if (parts.state.writerTaken) throw new WriterBusy();
@@ -232,6 +237,7 @@ export function createStore(parts: StoreParts, lifecycle: StoreLifecycle = {}): 
             },
             parts.deps.clock,
             budgetMs,
+            options,
           ),
         );
       } finally {

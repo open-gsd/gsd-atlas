@@ -25,6 +25,8 @@ export const lifecycleTestHooks: {
   onVacuum?: () => void;
   /** Called as `maintain` starts each of its tasks, in order. A throw fails that task. */
   onTask?: (name: 'collect' | 'compact' | 'check') => void;
+  /** When true the store behaves as if this SQLite build had no `dbstat` table (so the fallback rule can be tested everywhere). */
+  noDbstat?: boolean;
 } = {};
 
 /** Where the last budget-limited `collect` stopped, so the next call goes on behind it (see `collectRetired`). */
@@ -190,12 +192,14 @@ const SLICE_FRACTION = 0.5;
  * no free page. Incremental vacuum only returns pages that are empty; scattered deletes (a heavily edited store
  * whose old versions were collected) leave pages two thirds empty that nothing returns, and measured on the
  * size gate that costs 1.34 times a fresh build. A fresh build is about 26 percent empty inside, so a third
- * leaves it alone. An internal bound of this plan, not an approved constant.
+ * leaves it alone, and that margin is the hysteresis that keeps the idle loop from vacuuming every round.
+ * This is the idle policy trigger recorded in 02-CONSTANTS.md as `compact.fullUnusedFraction`.
  */
 const FRAGMENTED_FRACTION = 1 / 3;
 
 /** Bytes of unused space inside the b-tree pages, or undefined when this SQLite build has no `dbstat` table. */
 function unusedBytes(db: Db): number | undefined {
+  if (lifecycleTestHooks.noDbstat === true) return undefined;
   try {
     const row = db.prepare('SELECT sum(unused) AS unused FROM dbstat').get();
     return row === undefined || row.unused === null ? undefined : Number(row.unused);
@@ -205,14 +209,18 @@ function unusedBytes(db: Db): number | undefined {
 }
 
 /**
- * Whether a full `VACUUM` is warranted: more than a quarter of the file is free pages (the plan's rule), or,
- * when this build can say, more than `FRAGMENTED_FRACTION` of it is empty space inside pages.
+ * Whether a full `VACUUM` is warranted: more than a quarter of the file is free pages (`compact.fullFreeFraction`,
+ * the rule of the worktree-lifecycle ADR), or, when this build can say, more than `FRAGMENTED_FRACTION` of it is
+ * empty space inside pages. Without `dbstat` the in-page space cannot be measured: `afterChurn` (a collect in this
+ * same call deleted files, set by `maintain`) then stands in for it, so the full request vacuums once per churn
+ * episode; a direct `compact({ full: true })` leaves it unset and follows the free-page rule only.
  */
-function worthVacuuming(db: Db, freePages: number): boolean {
+function worthVacuuming(db: Db, freePages: number, afterChurn: boolean): boolean {
   const total = Number(db.pragma('page_count'));
   if (freePages * 4 > total) return true;
   const unused = unusedBytes(db);
-  return unused !== undefined && unused > total * Number(db.pragma('page_size')) * FRAGMENTED_FRACTION;
+  if (unused === undefined) return afterChurn;
+  return unused > total * Number(db.pragma('page_size')) * FRAGMENTED_FRACTION;
 }
 
 /** The next slice's page count: aim for `target` ms given that `pages` took `ms`, growing by at most `MAX_SLICE_GROWTH`. */
@@ -228,8 +236,9 @@ function nextSlicePages(pages: number, ms: number, target: number): number {
  * checkpoint, which truncates the log when the run finished.
  *
  * A full `VACUUM` rewrites the whole file while it holds the writer, so it runs only when the caller asks
- * (`options.full`) and the file is worth it (`worthVacuuming`); otherwise `full` changes nothing. `processed`
- * counts the pages given back.
+ * (`options.full`) and the file is worth it (`worthVacuuming`); otherwise `full` changes nothing. The decision is
+ * taken before the slices and, when they returned every free page, once more after them. `processed` counts the
+ * pages given back.
  */
 export async function compactStore(parts: StoreParts, options: MaintenanceOptions): Promise<MaintenanceResult> {
   const db = parts.writeDb;
@@ -240,12 +249,19 @@ export async function compactStore(parts: StoreParts, options: MaintenanceOption
   let processed = 0;
   let complete = true;
 
-  let free = freePages();
-  if (options.full === true && worthVacuuming(db, free)) {
+  const afterChurn = options.afterChurn === true;
+  let vacuumed = false;
+  const vacuum = (): void => {
     const before = Number(db.pragma('page_count'));
     lifecycleTestHooks.onVacuum?.();
     db.exec('VACUUM');
     processed += before - Number(db.pragma('page_count'));
+    vacuumed = true;
+  };
+
+  let free = freePages();
+  if (options.full === true && worthVacuuming(db, free, afterChurn)) {
+    vacuum();
     free = freePages();
   }
 
@@ -264,6 +280,12 @@ export async function compactStore(parts: StoreParts, options: MaintenanceOption
       complete = false;
       break;
     }
+  }
+
+  // Second chance: returning the free pages made the file smaller, so the same empty space can now be more than a
+  // third of it. Decide again, once, so a single call converges (a VACUUM that already ran this call is enough).
+  if (options.full === true && !vacuumed && complete && free === 0 && worthVacuuming(db, 0, afterChurn)) {
+    vacuum();
   }
 
   // `optimize` first: it may write planner statistics, and the checkpoint must be the last write so the log ends

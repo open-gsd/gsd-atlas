@@ -6,6 +6,7 @@
 export { SchemaTooNew, StoreClosed, UnknownWorktree, WriterBusy } from './errors.ts';
 export { defaultCacheRoot, isSyncedFolderPath, resolveStoreLocation } from './location.ts';
 export type { CacheReason, ResolveStoreLocationInput, StoreLocation, StoreLocationKind } from './location.ts';
+export { IDLE_MAINTENANCE } from './maintain.ts';
 export { openFactStore } from './open.ts';
 export type { OpenFactStoreOptions, StoreOpenOptions } from './open.ts';
 export { candidatePaths, resolveSpecifier } from './specifier.ts';
@@ -31,6 +32,7 @@ export type {
   ResolveOptions,
   Resolver,
   StoreDeps,
+  StoreMaintainOptions,
   StoreOptions,
   StoreStatus,
   SymbolRecord,

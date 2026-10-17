@@ -277,6 +277,21 @@ export interface MaintenanceOptions {
    * full `VACUUM` never runs, because it rewrites the whole file while it holds the writer.
    */
   readonly full?: boolean;
+  /**
+   * `compact` only, internal to `maintain`: a collect in this same call deleted files. It stands in for the
+   * in-page measurement when this SQLite build has no `dbstat` table (the full request then vacuums after churn).
+   * Not part of the public contract; callers outside the store leave it unset.
+   */
+  readonly afterChurn?: boolean;
+}
+
+/**
+ * What `maintain` is asked to do beyond the default upkeep (STO-05, D-16). A full compaction is requested for the
+ * compact step; it still vacuums only past the recorded thresholds, and only after the collect step of the same
+ * call finished.
+ */
+export interface StoreMaintainOptions {
+  readonly full?: boolean;
 }
 
 /** Outcome of a time-boxed, resumable, idempotent maintenance task. */
@@ -336,8 +351,11 @@ export interface FactStore {
   /** Integrity check. */
   check(): Promise<CheckResult>;
 
-  /** A thin wrapper for the daemon's idle loop. Takes the writer lease itself. */
-  maintain(budgetMs: number): Promise<MaintenanceResult>;
+  /**
+   * A thin wrapper for the daemon's idle loop. Takes the writer lease itself. `IDLE_MAINTENANCE` asks for the
+   * idle policy: a full compaction once the collect step finished and the file is past the vacuum thresholds.
+   */
+  maintain(budgetMs: number, options?: StoreMaintainOptions): Promise<MaintenanceResult>;
 
   status(): Promise<StoreStatus>;
 
