@@ -314,6 +314,43 @@ for (const driver of ['node:sqlite', 'better-sqlite3'] as const satisfies readon
       });
     });
 
+    it('empty name: a live fact named with the empty string does not make collect fail after it deleted rows (WR-05)', async () => {
+      await withRig(driver, async (rig) => {
+        const store = await rig.open(); // the trigram index is on, which is what the rowid reset is for
+        const writer = store.writer();
+        await put(writer, H(1), ['old']);
+        await put(writer, H(2), ['keep']);
+        rig.git.add(H(1));
+        // The extractors never write this name; raw SQL stands in for a fact that does.
+        const raw = await openDatabase(rig.file, { driver });
+        try {
+          raw.exec("INSERT INTO names (name) VALUES ('')");
+          raw.exec(
+            `INSERT INTO symbols (file_id, ord, name_id, kind, start_line, start_col, end_line, end_col)
+             SELECT f.id, 99, n.id, 'function', 0, 0, 1, 1 FROM files f, names n WHERE f.hash = '${H(2)}' AND n.name = ''`,
+          );
+          raw.exec("INSERT INTO names_fts (rowid, name) SELECT id, name FROM names WHERE name = ''");
+        } finally {
+          raw.close();
+        }
+
+        const result = await store.collect({ budgetMs: 1000 });
+        assert.equal(result.processed, 1);
+        assert.equal(result.complete, true);
+        assert.equal(await rig.count("SELECT count(*) AS n FROM files WHERE hash = '" + H(1) + "'"), 0, 'the retired version is gone');
+        assert.equal(await rig.count("SELECT count(*) AS n FROM names WHERE name = ''"), 1, 'and the live empty name is still there');
+        assert.equal(
+          await rig.count(
+            `SELECT count(*) AS n FROM names WHERE id NOT IN (SELECT name_id FROM symbols UNION SELECT name_id FROM refs UNION SELECT name_id FROM exports)`,
+          ),
+          0,
+          'no sentinel row remains',
+        );
+        assert.equal((await writer.link('main', 'b.ts', H(2))).status, 'committed', 'the writer still works afterwards');
+        writer.release();
+      });
+    });
+
     it('collect on a follower, which does not hold the writer lease, throws WriterBusy', async () => {
       await withRig(driver, async (rig) => {
         const leader = await rig.open({ lease: 'acquire' });

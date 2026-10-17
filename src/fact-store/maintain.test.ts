@@ -13,7 +13,7 @@ import { openDatabase } from '../sqlite/index.ts';
 import type { DriverName } from '../sqlite/index.ts';
 import { FakeClock, makeTempDir, realPath } from '../test-kit/index.ts';
 import { UnknownWorktree, WriterBusy } from './errors.ts';
-import { lifecycleTestHooks } from './lifecycle.ts';
+import { COMPACT_SLICE_LIMITS, lifecycleTestHooks } from './lifecycle.ts';
 import { IDLE_MAINTENANCE, maintainStore } from './maintain.ts';
 import type { MaintainTasks } from './maintain.ts';
 import { openFactStore } from './open.ts';
@@ -88,6 +88,7 @@ async function withRig(driver: DriverName, run: (rig: Rig) => Promise<void>): Pr
     lifecycleTestHooks.onVacuum = undefined;
     lifecycleTestHooks.onTask = undefined;
     lifecycleTestHooks.noDbstat = undefined;
+    lifecycleTestHooks.onCheckpoint = undefined;
     for (const store of opened) await store.close();
     tmp.cleanup();
   }
@@ -190,28 +191,93 @@ async function freshSize(rig: Rig, driver: DriverName, count: number, offset: nu
 
 for (const driver of ['node:sqlite', 'better-sqlite3'] as const satisfies readonly DriverName[]) {
   describe(`compact (${driver})`, () => {
-    it('slice: free pages are returned in bounded slices, the WAL is truncated and the file shrinks', async () => {
+    it('slice limits: free pages are returned in bounded, growing slices, the WAL is truncated and the file shrinks', async () => {
       await withRig(driver, async (rig) => {
         const store = await rig.open();
         await withFreePages(rig, store, 400, 400);
         const free = Number(await rig.pragma('freelist_count'));
         const pages = Number(await rig.pragma('page_count'));
-        assert.ok(free > 64, `the setup must leave more free pages than one first slice (${free})`);
+        assert.ok(free > COMPACT_SLICE_LIMITS.firstPages, `the setup must leave more free pages than one first slice (${free})`);
         assert.ok(free * 4 > pages, 'and a large part of the file');
         const sizeBefore = (await store.status()).sizeBytes;
 
-        const slices: Array<{ pages: number; ms: number }> = [];
-        lifecycleTestHooks.onSlice = (slice) => slices.push({ pages: slice.pages, ms: slice.ms });
+        // Structure only: no wall-clock time is asserted here (the measured bound is in the gate scripts).
+        const slices: number[] = [];
+        lifecycleTestHooks.onSlice = (slice) => slices.push(slice.pages);
         const result = await store.compact({ budgetMs: 60_000 });
 
         assert.equal(result.complete, true);
-        assert.equal(result.processed, free, 'processed counts the pages returned to the file system');
-        assert.ok(slices.length >= 1);
-        for (const slice of slices) assert.ok(slice.ms < 200 * 5, `a slice took ${slice.ms} ms against the approved 200 ms`);
+        assert.equal(result.processed, free, 'the pages returned equal the free pages counted before');
+        assert.ok(slices.length > 1, `more than one slice (${slices.length})`);
+        assert.equal(slices[0], COMPACT_SLICE_LIMITS.firstPages, 'the first slice asks for the first-slice size');
+        slices.forEach((asked, index) => {
+          assert.ok(asked <= COMPACT_SLICE_LIMITS.maxPages, `slice ${index} asks for at most ${COMPACT_SLICE_LIMITS.maxPages} pages`);
+          const previous = slices[index - 1];
+          if (previous !== undefined) {
+            assert.ok(asked <= previous * COMPACT_SLICE_LIMITS.maxGrowth, `slice ${index} grows by at most ${COMPACT_SLICE_LIMITS.maxGrowth} times`);
+          }
+        });
         assert.equal(Number(await rig.pragma('freelist_count')), 0);
         assert.ok((await store.status()).sizeBytes < sizeBefore, 'the file got smaller');
         const wal = `${rig.file}-wal`;
         assert.equal(fs.existsSync(wal) ? fs.statSync(wal).size : 0, 0, 'the WAL was checkpointed and truncated');
+      });
+    });
+
+    it('checkpoint: a finished run asks for TRUNCATE with a zero busy timeout, an unfinished run for PASSIVE, and the timeout is restored', async () => {
+      await withRig(driver, async (rig) => {
+        const store = await rig.open();
+        await withFreePages(rig, store, 400, 400);
+        const seen: Array<{ mode: string; busyTimeoutMs: number; previousBusyTimeoutMs: number }> = [];
+        lifecycleTestHooks.onCheckpoint = (checkpoint) => seen.push({ ...checkpoint });
+
+        const unfinished = await store.compact({ budgetMs: 0 });
+        assert.equal(unfinished.complete, false);
+        assert.deepStrictEqual(seen.map((entry) => [entry.mode, entry.busyTimeoutMs]), [['PASSIVE', 0]]);
+
+        const finished = await store.compact({ budgetMs: 60_000 });
+        assert.equal(finished.complete, true);
+        assert.deepStrictEqual(seen.map((entry) => [entry.mode, entry.busyTimeoutMs]), [['PASSIVE', 0], ['TRUNCATE', 0]]);
+        assert.deepStrictEqual(
+          seen.map((entry) => entry.previousBusyTimeoutMs),
+          [5000, 5000],
+          'the connection had the store busy timeout before each call and has it again after the first',
+        );
+      });
+    });
+
+    it('checkpoint: the busy timeout is restored when the checkpoint step throws', async () => {
+      await withRig(driver, async (rig) => {
+        const store = await rig.open();
+        lifecycleTestHooks.onCheckpoint = () => {
+          throw new Error('checkpoint failed on purpose');
+        };
+        await assert.rejects(store.compact({ budgetMs: 1000 }), /checkpoint failed on purpose/);
+        const seen: number[] = [];
+        lifecycleTestHooks.onCheckpoint = (checkpoint) => seen.push(checkpoint.previousBusyTimeoutMs);
+        await store.compact({ budgetMs: 1000 });
+        assert.deepStrictEqual(seen, [5000], 'the throw did not leave the timeout at zero');
+      });
+    });
+
+    it('checkpoint: a reader holding a snapshot does not hold the compaction, the log drains once it ends', async () => {
+      await withRig(driver, async (rig) => {
+        const store = await rig.open();
+        await withFreePages(rig, store, 400, 400);
+        const reader = await openDatabase(rig.file, { readOnly: true, driver });
+        const wal = `${rig.file}-wal`;
+        try {
+          reader.exec('BEGIN');
+          reader.prepare('SELECT count(*) AS n FROM files').get(); // the snapshot starts here
+          const during = await store.compact({ budgetMs: 60_000 });
+          assert.equal(during.complete, true, 'the call returned instead of waiting for the reader');
+          assert.ok(fs.existsSync(wal) && fs.statSync(wal).size > 0, 'the log could not be truncated under the reader');
+        } finally {
+          reader.exec('COMMIT');
+          reader.close();
+        }
+        await store.compact({ budgetMs: 60_000 });
+        assert.equal(fs.existsSync(wal) ? fs.statSync(wal).size : 0, 0, 'with the reader gone the next run truncates it');
       });
     });
 

@@ -10,6 +10,7 @@
  * connection, which is shared with the writer, so a commit can land between two awaits of a task; every delete
  * is therefore guarded by the state it was selected under, inside its own transaction.
  */
+import { randomUUID } from 'node:crypto';
 import type { Db } from '../sqlite/index.ts';
 import type { StoreParts } from './parts.ts';
 import { isCorruptionError, recoveryCounters } from './recovery.ts';
@@ -27,7 +28,26 @@ export const lifecycleTestHooks: {
   onTask?: (name: 'collect' | 'compact' | 'check') => void;
   /** When true the store behaves as if this SQLite build had no `dbstat` table (so the fallback rule can be tested everywhere). */
   noDbstat?: boolean;
+  /**
+   * Called just before the checkpoint a `compact` run ends with: the mode asked for, the connection's busy timeout
+   * at that moment, and the value it had when the checkpoint step began (restored afterwards). A throw fails the run.
+   */
+  onCheckpoint?: (checkpoint: {
+    readonly mode: 'TRUNCATE' | 'PASSIVE';
+    readonly busyTimeoutMs: number;
+    readonly previousBusyTimeoutMs: number;
+  }) => void;
 } = {};
+
+/**
+ * Clear every lifecycle test hook. Tests call it in `afterEach`, so a failing test cannot leak a hook into the
+ * next store. Production code never calls it.
+ */
+export function resetLifecycleTestHooks(): void {
+  for (const key of Object.keys(lifecycleTestHooks) as Array<keyof typeof lifecycleTestHooks>) {
+    delete lifecycleTestHooks[key];
+  }
+}
 
 /** Where the last budget-limited `collect` stopped, so the next call goes on behind it (see `collectRetired`). */
 interface CollectCursor {
@@ -110,9 +130,17 @@ function deleteUnusedNames(parts: StoreParts): number {
  * id above 2^53. The kit refuses to hand such a number back, so the next `run()` of any statement on this
  * connection, a `DELETE` in the writer included, would throw `IntegerOutOfRangeError`. Inserting into an
  * ordinary table sets the value to a small one again; the row is removed at once.
+ *
+ * The row goes into `names` and not into `meta`: `meta` is a WITHOUT ROWID table, and those do not move the
+ * last-insert rowid. Its name is a NUL character plus a random identifier, deleted by exact value. No fact can
+ * collide with it (a name holding a NUL is not a name an extractor produces, and the value is random besides),
+ * where the former empty-string sentinel threw a constraint error, after the rows were already deleted, when a live
+ * fact was named `''` (WR-05). Built in SQL text with `exec`: a prepared `run()` would read the very rowid this
+ * function exists to repair.
  */
 function resetLastInsertRowid(db: Db): void {
-  db.exec("INSERT INTO names (name) VALUES (''); DELETE FROM names WHERE name = ''");
+  const sentinel = `char(0) || '${randomUUID()}'`;
+  db.exec(`INSERT INTO names (name) VALUES (${sentinel}); DELETE FROM names WHERE name = ${sentinel}`);
 }
 
 /**
@@ -177,12 +205,16 @@ export async function collectRetired(parts: StoreParts, options: MaintenanceOpti
   return { complete, spentMs: clock.now() - started, processed };
 }
 
-/** The pages the first incremental-vacuum slice asks for; later slices are sized from how long this one took. */
-const FIRST_SLICE_PAGES = 64;
-
-/** The most pages one slice may ask for (64 MiB at 4 KiB pages), and the most a slice may grow from its last. */
-const MAX_SLICE_PAGES = 16_384;
-const MAX_SLICE_GROWTH = 4;
+/**
+ * How incremental-vacuum slices are sized. The first slice asks for `firstPages`; later slices are sized from how
+ * long the last one took, at most `maxGrowth` times the last and never above `maxPages` (64 MiB at 4 KiB pages).
+ * Exported so the slice test can assert the structure instead of a wall-clock time.
+ */
+export const COMPACT_SLICE_LIMITS: Readonly<{ firstPages: number; maxPages: number; maxGrowth: number }> = Object.freeze({
+  firstPages: 64,
+  maxPages: 16_384,
+  maxGrowth: 4,
+});
 
 /** What a slice is sized to take: half the pause the plan allows, so noise does not push it over. */
 const SLICE_FRACTION = 0.5;
@@ -226,7 +258,26 @@ function worthVacuuming(db: Db, freePages: number, afterChurn: boolean): boolean
 /** The next slice's page count: aim for `target` ms given that `pages` took `ms`, growing by at most `MAX_SLICE_GROWTH`. */
 function nextSlicePages(pages: number, ms: number, target: number): number {
   const scaled = Math.floor((pages * target) / Math.max(ms, 0.05));
-  return Math.max(1, Math.min(scaled, pages * MAX_SLICE_GROWTH, MAX_SLICE_PAGES));
+  return Math.max(1, Math.min(scaled, pages * COMPACT_SLICE_LIMITS.maxGrowth, COMPACT_SLICE_LIMITS.maxPages));
+}
+
+/**
+ * Checkpoint the log without ever waiting for a reader (WR-04). `wal_checkpoint(TRUNCATE)` calls the connection's
+ * busy handler while a reader in another process still uses the log, and this runs synchronously on the leader's
+ * event loop, so the connection's 5 s busy timeout would freeze every request. The timeout is set to 0 for this one
+ * call (0 means do not wait, it is not a duration: `compact.checkpointBusyTimeoutMs` in 02-CONSTANTS.md) and put
+ * back afterwards, also when the call throws. A checkpoint that finds a reader reports busy instead of failing, and
+ * the log drains on a later run.
+ */
+function checkpoint(db: Db, mode: 'TRUNCATE' | 'PASSIVE'): void {
+  const previousBusyTimeoutMs = Number(db.pragma('busy_timeout'));
+  db.pragma('busy_timeout', 0);
+  try {
+    lifecycleTestHooks.onCheckpoint?.({ mode, busyTimeoutMs: Number(db.pragma('busy_timeout')), previousBusyTimeoutMs });
+    db.pragma('wal_checkpoint', mode);
+  } finally {
+    db.pragma('busy_timeout', previousBusyTimeoutMs);
+  }
 }
 
 /**
@@ -265,7 +316,7 @@ export async function compactStore(parts: StoreParts, options: MaintenanceOption
     free = freePages();
   }
 
-  let pages = FIRST_SLICE_PAGES;
+  let pages = COMPACT_SLICE_LIMITS.firstPages;
   while (free > 0) {
     const began = performance.now();
     db.pragma('incremental_vacuum', pages);
@@ -289,10 +340,9 @@ export async function compactStore(parts: StoreParts, options: MaintenanceOption
   }
 
   // `optimize` first: it may write planner statistics, and the checkpoint must be the last write so the log ends
-  // empty. A truncating checkpoint waits for readers, so only a finished run asks for one; an unfinished run
-  // lets the log drain.
+  // empty. Only a finished run asks for a truncating checkpoint; an unfinished run lets the log drain.
   db.pragma('optimize');
-  db.pragma('wal_checkpoint', complete ? 'TRUNCATE' : 'PASSIVE');
+  checkpoint(db, complete ? 'TRUNCATE' : 'PASSIVE');
   return { complete, spentMs: clock.now() - started, processed };
 }
 
