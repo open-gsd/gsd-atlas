@@ -4,6 +4,7 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
+import { isInside } from '../facts/index.ts';
 
 /** True for a non-empty string that is not absolute, holds no NUL and has no `..` segment (either separator). */
 export function isRepoRelative(rel: unknown): rel is string {
@@ -11,9 +12,6 @@ export function isRepoRelative(rel: unknown): rel is string {
   if (rel.startsWith('/') || rel.startsWith('\\') || /^[A-Za-z]:/.test(rel)) return false;
   return !rel.split(/[\\/]/).includes('..');
 }
-
-const isInside = (rootReal: string, candidateReal: string): boolean =>
-  candidateReal === rootReal || candidateReal.startsWith(rootReal.endsWith(path.sep) ? rootReal : rootReal + path.sep);
 
 /** The real path of a worktree root, or undefined when it cannot be resolved. Compare paths through this, never raw strings. */
 export async function realRoot(worktree: string): Promise<string | undefined> {

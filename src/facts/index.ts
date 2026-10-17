@@ -4,6 +4,7 @@
  */
 export { isValidSpan } from './span.ts';
 export type { Span } from './span.ts';
+export { isInside } from './inside.ts';
 export { diagnostic } from './diagnostic.ts';
 export type { Diagnostic, Severity } from './diagnostic.ts';
 export { systemClock } from './clock.ts';

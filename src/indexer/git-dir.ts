@@ -9,6 +9,7 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
+import { isInside as isPathInside } from '../facts/index.ts';
 
 /** The `.git` file of a real worktree is one short line; anything much longer is not read. */
 const MAX_DOT_GIT_BYTES = 4096;
@@ -23,15 +24,13 @@ const realOf = (p: string): string | undefined => {
 
 /**
  * True when the real path of `child` is the real path of `parent` or lies under it. A path that does not exist
- * is not inside anything. Compared with a trailing separator, so `/a/bc` is not inside `/a/b`.
+ * is not inside anything. The comparison is the shared separator-aware `isInside`, so `/a/bc` is not inside `/a/b`.
  */
 export function isInside(parent: string, child: string): boolean {
   const realParent = realOf(parent);
   const realChild = realOf(child);
   if (realParent === undefined || realChild === undefined) return false;
-  if (realChild === realParent) return true;
-  const prefix = realParent.endsWith(path.sep) ? realParent : realParent + path.sep;
-  return realChild.startsWith(prefix);
+  return isPathInside(realParent, realChild);
 }
 
 /** The first `gitdir:` value of a `.git` file, or undefined. Reads at most {@link MAX_DOT_GIT_BYTES} bytes. */

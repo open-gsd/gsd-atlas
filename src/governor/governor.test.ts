@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
+import { setImmediate as tick } from 'node:timers/promises';
 
 import type { Clock } from '../facts/index.ts';
 import { FakeClock } from '../test-kit/index.ts';
@@ -286,6 +287,66 @@ describe('real Governor: per-class bounds', () => {
     assert.equal(clock.live, 0);
     assert.equal(governor.status().queued, 0);
     assert.equal(governor.status().running, 0);
+  });
+});
+
+describe('real Governor: timeout contract (IN-11)', () => {
+  it('timeout honours the signal: the signal is aborted, the slot is released once and the next job starts', async () => {
+    const clock = new FakeClock();
+    const governor = createGovernor({ clock, concurrency: 1 });
+    let seen: AbortSignal | undefined;
+    const hung = governor.run(job('indexing', { timeoutMs: 100 }), (signal) => {
+      seen = signal;
+      return new Promise<void>((_resolve, reject) => {
+        signal.addEventListener('abort', () => reject(new Error('aborted')), { once: true });
+      }).catch(() => undefined);
+    });
+    let nextStarted = false;
+    const next = governor.run(job('indexing'), async () => {
+      nextStarted = true;
+      return 'next';
+    });
+    assert.equal(governor.status().running, 1);
+    assert.equal(governor.status().queued, 1);
+    assert.equal(nextStarted, false);
+
+    await clock.advance(100);
+
+    assert.deepEqual(await hung, { kind: 'timeout' });
+    assert.equal(seen?.aborted, true);
+    assert.deepEqual(await next, { kind: 'ok', value: 'next' });
+    assert.deepEqual(governor.status(), { queued: 0, running: 0, leases: 0, leasedBytes: 0 });
+  });
+
+  it('timeout ignores the signal: the result is timeout and the slot is freed at once, so the function runs on outside the cap', async () => {
+    const clock = new FakeClock();
+    const governor = createGovernor({ clock, concurrency: 1 });
+    const gate = deferred();
+    let seen: AbortSignal | undefined;
+    // The function never looks at its signal: it only settles when the test lets it.
+    const orphan = governor.run(job('indexing', { timeoutMs: 100 }), async (signal) => {
+      seen = signal;
+      await gate.promise;
+    });
+    assert.equal(governor.status().running, 1);
+
+    await clock.advance(100);
+
+    assert.deepEqual(await orphan, { kind: 'timeout' });
+    assert.equal(seen?.aborted, true, 'the signal was aborted even though the function ignores it');
+    assert.equal(governor.status().running, 0, 'the slot is released while the function is still pending');
+
+    // The freed slot is used by another job while the orphan still runs: that is the documented over-cap path.
+    const gate2 = deferred();
+    const second = governor.run(job('indexing'), () => gate2.promise);
+    assert.equal(governor.status().running, 1);
+
+    gate.resolve();
+    await tick();
+    assert.equal(governor.status().running, 1, 'the orphan settling releases nothing a second time');
+    gate2.resolve();
+    await second;
+    assert.deepEqual(governor.status(), { queued: 0, running: 0, leases: 0, leasedBytes: 0 });
   });
 });
 
