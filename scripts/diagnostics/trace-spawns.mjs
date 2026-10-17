@@ -40,6 +40,8 @@ if (typeof traceFile === 'string' && traceFile !== '') {
 function install(file) {
   // Creating the file proves it is writable and gives a process that starts no child a valid, empty trace.
   fs.appendFileSync(file, '');
+  // On Windows appending nothing to a directory does not throw, so the path must also be a regular file.
+  if (!fs.statSync(file).isFile()) throw new Error('not a file');
   const appendFileSync = fs.appendFileSync;
   const now = () => performance.timeOrigin + performance.now();
   const log = (kind, detail) => {
