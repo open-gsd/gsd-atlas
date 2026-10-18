@@ -5,6 +5,7 @@ import type { Db, DriverModule, DriverName } from '../sqlite/index.ts';
 import { SchemaTooNew, StoreClosed } from './errors.ts';
 import { createLease, startTakeover } from './lease.ts';
 import type { Lease } from './lease.ts';
+import { createProjectContextSource } from './parts.ts';
 import type { LifecycleSettings, StoreParts } from './parts.ts';
 import {
   KEEP_QUARANTINED,
@@ -393,7 +394,7 @@ export async function openFactStore(
       lease === undefined
         ? (options.canCache ?? (() => true))
         : () => lease.held && (options.canCache?.() ?? true),
-    resolutionContext: options.resolutionContext ?? (() => ({ id: 'grammar', configHashes: [] })),
+    projectContext: createProjectContextSource(options.projectContext, options.resolutionContext),
     fuzzyTrigram: opened.fuzzyTrigram,
     settings,
     snapshotIds: new Map(),

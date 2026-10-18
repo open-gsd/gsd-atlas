@@ -5,11 +5,12 @@
  * once the resolver integration lands). Internal; not exported from index.ts.
  */
 import { posix } from 'node:path';
-import { symbolKey } from '../facts/index.ts';
+import { DEFAULT_PROJECT_CONTEXT, symbolKey } from '../facts/index.ts';
 import type {
   Clock,
   DegradedCode,
   OverlaySnapshot,
+  ProjectContext,
   RefKind,
   RefSiteKey,
   ResolutionContext,
@@ -53,7 +54,7 @@ import {
   str,
   symbolsIn,
 } from './snapshot.ts';
-import type { FileSymbol, ImportRow, Snapshot } from './snapshot.ts';
+import type { FileSymbol, ImportRow, Snapshot, SnapshotRead } from './snapshot.ts';
 import type { CallerRecord, ImporterRecord, Provenance, RefRecord, ResolveOptions, WorktreeId } from './types.ts';
 
 /** One reference site of the overlay, with the identity of the symbol that contains it. */
@@ -428,6 +429,8 @@ export function callerRecord(
 export interface ResolveInput {
   /** Hash of the overlay's sorted (path, content hash) pairs: the cache key of its contents. */
   readonly snapshotId: string;
+  /** The project context computed for this snapshot; its `context` keys the cache. */
+  readonly project: ProjectContext;
   readonly context: ResolutionContext;
   /** The stored form of `context`. */
   readonly contextKey: string;
@@ -437,6 +440,11 @@ export interface ResolveInput {
   readonly sites: readonly RefSiteKey[];
   /** Valid cached edges by `siteId`; a site is answered when it has at least one. */
   readonly cached: ReadonlyMap<string, readonly CachedEdge[]>;
+  /**
+   * True when no project context could be had for this snapshot (the provider failed or lost the race against a
+   * commit twice). The resolver is not asked and nothing is cached: the answer is the grammar one.
+   */
+  readonly unavailable?: true;
 }
 
 export function siteKeyOf(hit: SiteHit): RefSiteKey {
@@ -453,16 +461,32 @@ function snapshotIdOf(snap: Snapshot): string {
 }
 
 /**
- * Phase 1: the snapshot id, the resolution context and the cached answers for `sites`. A cached edge whose
- * target the overlay does not hold is dropped (T-02-35), so a damaged row can never remove a real site.
+ * Phase 1: the snapshot id, the project context and the cached answers for `sites`. A cached edge whose target
+ * the overlay does not hold is dropped (T-02-35), so a damaged row can never remove a real site. With no
+ * `project` (null: none could be had for this snapshot) nothing is read from the cache and the input is marked
+ * `unavailable`, so the cache is never consulted under a context that does not belong to the snapshot.
  */
-export function prepareResolution(snap: Snapshot, sites: readonly RefSiteKey[]): ResolveInput {
+export function prepareResolution(snap: Snapshot, sites: readonly RefSiteKey[], project: ProjectContext | null): ResolveInput {
   const distinct = new Map<string, RefSiteKey>();
   for (const site of sites) distinct.set(siteId(site), site);
-  const context = snap.parts.resolutionContext();
-  const key = contextKey(context);
   const snapshotId = snapshotIdOf(snap);
+  const overlay: OverlaySnapshot = { id: snapshotId, pathToHash: overlayView(snap).hashes };
   const cached = new Map<string, readonly CachedEdge[]>();
+  if (project === null) {
+    const context = DEFAULT_PROJECT_CONTEXT.context;
+    return {
+      snapshotId,
+      project: DEFAULT_PROJECT_CONTEXT,
+      context,
+      contextKey: contextKey(context),
+      overlay,
+      sites: [...distinct.values()],
+      cached,
+      unavailable: true,
+    };
+  }
+  const { context } = project;
+  const key = contextKey(context);
   const contextId = distinct.size === 0 ? undefined : findContextId(snap.db, key);
   if (contextId !== undefined) {
     for (const [id, edges] of readEdges(snap.db, snapshotId, contextId, [...distinct.values()], snap.parts.repo)) {
@@ -470,8 +494,59 @@ export function prepareResolution(snap: Snapshot, sites: readonly RefSiteKey[]):
       if (valid.length > 0) cached.set(id, valid);
     }
   }
-  const overlay: OverlaySnapshot = { id: snapshotId, pathToHash: overlayView(snap).hashes };
-  return { snapshotId, context, contextKey: key, overlay, sites: [...distinct.values()], cached };
+  return { snapshotId, project, context, contextKey: key, overlay, sites: [...distinct.values()], cached };
+}
+
+/**
+ * Phase 1 for a read that may resolve: the grammar result (`grammar`, run inside the read transaction) and the
+ * `ResolveInput` for the sites it names (`sitesOf`), with the project context of the snapshot the read used.
+ *
+ * The context is asynchronous, so it is computed before the read transaction, for the overlay snapshot a quick
+ * read sees. The read then checks that the snapshot did not move; if it did, the context is recomputed once for
+ * the snapshot the second read sees. A second loss, and a provider that fails, give an `unavailable` input: the
+ * answer is the grammar one with `resolver_failed`, and no edge is ever cached under a context computed for
+ * another snapshot (T-03-202). A provider never makes a read throw.
+ */
+export function readResolving<T>(
+  parts: StoreParts,
+  worktree: WorktreeId,
+  grammar: (snap: Snapshot) => T,
+  sitesOf: (value: T) => readonly RefSiteKey[],
+): ResolvingRead<T> | Promise<ResolvingRead<T>> {
+  const attempt = (n: number): ResolvingRead<T> | Promise<ResolvingRead<T>> => {
+    const seen = readSnapshot(parts, worktree, (snap) => ({
+      id: snapshotIdOf(snap),
+      pathToHash: overlayView(snap).hashes,
+    })).value;
+    const finish = (project: ProjectContext | null): ResolvingRead<T> | Promise<ResolvingRead<T>> => {
+      const read = readSnapshot(parts, worktree, (snap) => {
+        const value = grammar(snap);
+        const moved = project !== null && snapshotIdOf(snap) !== seen.id;
+        return { grammar: value, input: prepareResolution(snap, sitesOf(value), moved ? null : project), moved };
+      });
+      return read.value.moved && n < 2 ? attempt(n + 1) : read;
+    };
+    const project = askProject(parts, worktree, seen);
+    return project instanceof Promise ? project.then(finish) : finish(project);
+  };
+  return attempt(1);
+}
+
+/** What `readResolving` returns: the grammar result and the resolve input, read in one transaction. */
+export type ResolvingRead<T> = SnapshotRead<{ readonly grammar: T; readonly input: ResolveInput }>;
+
+/** The project context of a snapshot, or null when the source throws or rejects. Synchronous when the source is. */
+function askProject(
+  parts: StoreParts,
+  worktree: WorktreeId,
+  overlay: OverlaySnapshot,
+): ProjectContext | null | Promise<ProjectContext | null> {
+  try {
+    const got = parts.projectContext({ worktree, overlay });
+    return got instanceof Promise ? got.catch(() => null) : got;
+  } catch {
+    return null; // the source failed: answer from grammar facts
+  }
 }
 
 /** The outcome of phase 2. */
@@ -623,9 +698,11 @@ export async function resolveSites(
   for (const [id, list] of input.cached) edges.set(id, [...list]);
   const pending = input.sites.filter((site) => !input.cached.has(siteId(site)));
   if (pending.length === 0) return { edges, degraded: [] };
+  // No project context for this snapshot: the resolver is not asked, and nothing is cached.
+  if (input.unavailable === true) return { edges, degraded: ['resolver_failed'] };
   const asked = new Set(pending.map(siteId));
 
-  const run = collectEdges(parts, pending, { worktree, overlay: input.overlay, project: { context: input.context } });
+  const run = collectEdges(parts, pending, { worktree, overlay: input.overlay, project: input.project });
   const outcome = await settle(run, parts.deps.clock, options?.timeoutMs);
 
   if (outcome.kind === 'failed') return { edges, degraded: ['resolver_failed'] };
