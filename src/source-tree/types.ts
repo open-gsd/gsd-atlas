@@ -82,6 +82,30 @@ export type ReadTextResult =
   | { readonly kind: 'not_file' }
   | { readonly kind: 'too_large' };
 
+/** How a {@link SourceTree.listDirectory} request ended. A bad path is an answer, never a throw. */
+export type DirectoryStatus = 'ok' | 'missing' | 'not_directory' | 'escape';
+
+/** What {@link SourceTree.listDirectory} found. */
+export interface DirectoryListing {
+  readonly status: DirectoryStatus;
+  /** The regular files directly inside the directory, sorted by code unit, at most the cap; empty unless `status` is `ok`. */
+  readonly names: readonly string[];
+  /** The directory's modification time in milliseconds (0 unless `status` is `ok`); it moves when an entry is added, removed or renamed. */
+  readonly mtimeMs: number;
+  /** True when the directory holds more names than the cap, or more entries than the bounded scan looks at. */
+  readonly truncated: boolean;
+  /** Set only when the caller's remembered `ifMtimeMs` still equals the directory's: `names` is then empty because nothing changed. */
+  readonly unchanged?: true;
+}
+
+/** Options of {@link SourceTree.listDirectory}. */
+export interface ListDirectoryOptions {
+  /** The most names returned (default 5000, the approved `adr.listMaxEntries`). A whole number of at least 1. */
+  readonly maxEntries?: number;
+  /** The `mtimeMs` of an earlier listing the caller kept: when the directory still has it, the answer is `unchanged` and costs one stat. */
+  readonly ifMtimeMs?: number;
+}
+
 /** The linguist attributes git reports for one path; `unset`, `unspecified` and `false` all mean off. */
 export interface PathAttributes {
   readonly generated: boolean;
@@ -213,6 +237,15 @@ export interface SourceTree {
    * bad input or bad content: see {@link ReadTextResult}.
    */
   readText(worktree: string, path: string, options?: { readonly maxBytes?: number }): Promise<ReadTextResult>;
+  /**
+   * The names of the regular files directly inside `dir` (repo-relative, POSIX) of `worktree` (plan 03-28, D-20: the ADR
+   * directory). The path is confined like {@link SourceTree.readText}'s: one that is absolute, drive-relative, empty, holds NUL or
+   * a `..` segment, or whose real path (links followed) leaves the worktree, is `escape` and nothing is read. A link among the
+   * entries is never followed and never listed; a name with a line break or NUL, or that starts with a dash, is left out. Only
+   * names come back, never file content. The scan looks at a bounded number of entries and sets `truncated` when it stopped
+   * early or the cap cut the sorted list. It starts no git process. Never throws for a bad path or an unreadable directory.
+   */
+  listDirectory(worktree: string, dir: string, options?: ListDirectoryOptions): Promise<DirectoryListing>;
   /** True when the object database holds the object. False for an unknown or malformed id. */
   hasObject(hash: string): Promise<boolean>;
   /**

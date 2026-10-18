@@ -78,6 +78,7 @@ function recordingTree(log: TreeLog): (tree: SourceTree) => SourceTree {
       log.readTexts.push(path);
       return tree.readText(worktree, path, options);
     },
+    listDirectory: (worktree, dir, options) => tree.listDirectory(worktree, dir, options),
     hasObject: (hash) => tree.hasObject(hash),
     read: (commit, path) => tree.read(commit, path),
     identity: () => tree.identity(),

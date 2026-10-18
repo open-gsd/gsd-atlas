@@ -9,6 +9,7 @@ import type {
   RefKind,
   RefSite,
 } from '../facts/index.ts';
+import { readCitations } from './citations.ts';
 import {
   clampDepth,
   collectCallEdges,
@@ -241,6 +242,9 @@ export function createReader(parts: StoreParts, worktree: WorktreeId): Reader {
         const fileId = fileIdAt(snap, path);
         return fileId === null ? null : rebuildFacts(snap, path, fileId);
       });
+    },
+    async citations(query, options) {
+      return answer(parts, worktree, (snap) => readCitations(snap, query, options?.limit));
     },
     async emittedAs(path) {
       const pending = emitLookupFor(parts, worktree);

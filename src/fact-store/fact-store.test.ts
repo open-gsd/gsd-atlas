@@ -71,6 +71,7 @@ const readerShape = {
   emittedAs: async () => ({ data: [], watermark: { seq: 0, stalePaths: [] } }),
   relations: async () => ({ data: [], watermark: { seq: 0, stalePaths: [] } }),
   provenance: async () => ({ data: null, watermark: { seq: 0, stalePaths: [] } }),
+  citations: async () => ({ data: [], watermark: { seq: 0, stalePaths: [] } }),
 } satisfies Reader;
 
 describe('fact-store interface', () => {

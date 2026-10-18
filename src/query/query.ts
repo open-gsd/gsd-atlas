@@ -5,6 +5,7 @@
 import type { z } from 'zod';
 import { PROTOCOL_VERSION, diagnostic } from '../facts/index.ts';
 import type { Envelope, Request } from '../facts/index.ts';
+import { ADR_KIND, runAdrFind, runAdrRefs } from './adr.ts';
 import { decodeCursor, queryHash } from './cursor.ts';
 import type { CursorPayload, CursorProblem, QueryParts } from './cursor.ts';
 import { resolveQueryConfig } from './defaults.ts';
@@ -161,7 +162,9 @@ export function createQuery(deps: QueryDeps): Query {
             mode: input.mode ?? 'auto',
             cwd: input.cwd,
           }));
-          return 'error' in ready ? ready.error : runFind(ready.ctx, ready.input);
+          if ('error' in ready) return ready.error;
+          // `kind: adr` is not a symbol kind: it asks where an ADR is (plan 03-28).
+          return ready.input.kind === ADR_KIND ? runAdrFind(ready.ctx, ready.input) : runFind(ready.ctx, ready.input);
         }
         case 'code_refs': {
           const ready = await prepare(deps, config, request, 'code_refs', codeRefsSchema, (input, worktree) => ({
@@ -172,7 +175,8 @@ export function createQuery(deps: QueryDeps): Query {
             path: input.path,
             cwd: input.cwd,
           }));
-          return 'error' in ready ? ready.error : runRefs(ready.ctx, ready.input);
+          if ('error' in ready) return ready.error;
+          return ready.input.kind === ADR_KIND ? runAdrRefs(ready.ctx, ready.input) : runRefs(ready.ctx, ready.input);
         }
         case 'code_context': {
           const ready = await prepare(deps, config, request, 'code_context', codeContextSchema, (input, worktree) => ({

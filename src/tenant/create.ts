@@ -21,6 +21,7 @@ import type { Metrics } from '../metrics/index.ts';
 import type { PreciseTier } from '../precise-resolver/index.ts';
 import { createQuery, errorEnvelope } from '../query/index.ts';
 import type { ExplainPort, FreshPort, TierInfo } from '../query/index.ts';
+import { DEFAULT_ADR_DIRS, createAdrDirectory } from './adr.ts';
 import { DEFAULT_TENANT_TUNING } from './defaults.ts';
 import { createFollowerFresh } from './follower-overlay.ts';
 import { createFlightRecorder } from './flight.ts';
@@ -441,11 +442,15 @@ export async function createTenant(deps: TenantDeps): Promise<Tenant> {
     grammarVersion: (module) => moduleRegistry().modules.find((entry) => entry.name === module)?.version,
   };
 
+  // Plan 03-28: which ADR file a citation number names, joined at read time against the repository's ADR directory.
+  const adrDirectory = createAdrDirectory({ tree, dirsFor: () => DEFAULT_ADR_DIRS });
+
   let query: ReturnType<typeof createQuery>;
   try {
     query = createQuery({
       store,
       text: tree,
+      adr: adrDirectory,
       explain: explainPort,
       fresh,
       status: createStatusPort({

@@ -155,9 +155,33 @@ export interface ExplainPort {
   grammarVersion(module: string): string | undefined;
 }
 
+/** How a citation number relates to the repository's ADR files (plan 03-28, D-20): one file, several (duplicate ids), or none. */
+export type AdrStatus = 'resolved' | 'ambiguous' | 'unresolved';
+
+/**
+ * The ADR file or files a number names in one worktree. `files` are repo-relative paths sorted by code unit; only names are ever
+ * known, never file content. `listTruncated` is set only on an `unresolved` answer whose directory listing was cut or could not be
+ * made, so "no file" must not be read as "no such ADR".
+ */
+export interface AdrLookup {
+  readonly status: AdrStatus;
+  readonly files: readonly string[];
+  readonly listTruncated?: true;
+}
+
+/**
+ * The part of the Tenant that knows the repository's ADR directory (found from the module manifests and the repository's own
+ * config), through the Source Tree seam. Absent: no ADR directory is known, so every number is `unresolved` and no file is listed.
+ */
+export interface AdrPort {
+  lookup(worktree: string, number: number): Promise<AdrLookup>;
+}
+
 export interface QueryDeps {
   /** Reads only: Query asks for a Reader per request and never writes. */
   readonly store: Pick<FactStore, 'at'>;
+  /** Absent: `kind: adr` answers have no ADR file to link to (every number is `unresolved`). */
+  readonly adr?: AdrPort;
   /** Absent: `code_explain` reports the precise tier as inactive and cannot look an answer id up. */
   readonly explain?: ExplainPort;
   /** Absent: `atlas_status` answers `unavailable`. */
