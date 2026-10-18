@@ -30,7 +30,12 @@ Both lines are derived from the reply under "Approvals" by the plan 03-01 reply 
 
 ## Diagnostics ADR ratification
 
-The user approved ratifying the user-controlled-diagnostics ADR as written (Part A of the Task 2 decision). Ratified on 2026-10-18: the orchestrator opened GitHub issue #15 (https://github.com/open-gsd/gsd-atlas/issues/15) at the user's request, `docs/adr/draft-user-controlled-diagnostics.md` was renamed to `docs/adr/15-user-controlled-diagnostics.md` with Status Accepted, Issue and Ratified header lines, and the README table, Ratification log and schedule were updated. The decision text is unchanged and no amendments were applied.
+Ratification was deliberately NOT performed, by the user's decision of 2026-10-18: "adr ratification is just part of the phase doesn't need its own pr we are developing for mvp release nothing is ratified as it's not done".
+
+- GitHub issue open-gsd/gsd-atlas#15 was opened and then closed as not planned.
+- `docs/adr/draft-user-controlled-diagnostics.md` keeps its draft filename and stays a draft until the MVP is done. `docs/adr/README.md` and `scripts/adr.test.ts` (REMAINING / RATIFIED) are as plan 03-01 Task 1 left them; nothing was renamed or ratified.
+- The nine OQ answers in the Register and the two gate lines under "Stop-gates" are unchanged.
+- Consequence: the ratified-ADR precondition of SKL-03 is not met (see 03-01-SUMMARY.md).
 
 ## Approvals
 
@@ -39,4 +44,4 @@ Task 2 (blocking-human checkpoint) replies, in order, verbatim:
 1. `approve-all oq4=point_estimate`
 2. `approve-all oq4=wilson_lower_bound` (a newer genuine reply from the user that supersedes reply 1; this is the reply the gate lines and the OQ4 answer follow)
 
-Both replies ratify the ADR and accept all nine defaults OQ1 to OQ9; they differ only in the OQ4 value. The ratification itself (GitHub issue, rename) was approved by both and is unchanged.
+Both replies accept all nine defaults OQ1 to OQ9; they differ only in the OQ4 value. Both replies also approved ratifying the ADR, but the user later decided not to ratify it (see "Diagnostics ADR ratification" above), so no ratification took place.
