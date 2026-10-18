@@ -237,23 +237,90 @@ export function sumToolCalls(counts: Readonly<Record<string, number>>): number {
   return total;
 }
 
-interface ChildSummary {
-  code: number | null;
-  signal: string | null;
-  stdout: Buffer;
-  stderr: string;
-  timedOut: boolean;
-  capExceeded: boolean;
-  spawnError: string | null;
+const USAGE_FIELDS = ['input', 'output', 'cacheCreation', 'cacheRead'] as const;
+
+function checkedUsage(usage: Usage): Usage {
+  for (const field of USAGE_FIELDS) {
+    const value = usage[field];
+    if (!Number.isInteger(value) || value < 0) {
+      throw new RangeError(`usage.${field} must be a non-negative integer, got ${String(value)}`);
+    }
+  }
+  return usage;
 }
 
-function statusOfTask1(summary: ChildSummary, result: ResultEvent | null): SessionStatus {
-  if (result === null) {
-    if (summary.timedOut) return 'timeout';
-    if (summary.capExceeded) return 'killed';
-    return 'error';
+/** Input + output + cache creation + cache read (D-06). Throws RangeError on a wrong report. */
+export function billableTokens(usage: Usage): number {
+  const u = checkedUsage(usage);
+  return u.input + u.output + u.cacheCreation + u.cacheRead;
+}
+
+/** Cache reads on their own, reported as a separate column (D-06). */
+export function cacheReadTokens(usage: Usage): number {
+  return checkedUsage(usage).cacheRead;
+}
+
+export interface ExpectedToolSet {
+  tools: string[];
+  mcpServers: string[];
+  skills?: string[];
+}
+
+/**
+ * Compare the init event with the arm's registered tool set (Pitfall 14). Returns one
+ * human-readable string per difference; an empty array means the session ran in the expected
+ * environment. A missing init event is itself a difference.
+ */
+export function assertToolSet(init: InitEvent | null, expected: ExpectedToolSet): string[] {
+  if (init === null) return ['init event absent'];
+  const diffs: string[] = [];
+  const actualTools = new Set(init.tools);
+  const wantedTools = new Set(expected.tools);
+  for (const tool of expected.tools) if (!actualTools.has(tool)) diffs.push(`missing tool: ${tool}`);
+  for (const tool of init.tools) if (!wantedTools.has(tool)) diffs.push(`extra tool: ${tool}`);
+  const actualServers = new Set(init.mcpServers.map((s) => s.name));
+  const wantedServers = new Set(expected.mcpServers);
+  for (const name of expected.mcpServers) if (!actualServers.has(name)) diffs.push(`mcp server absent: ${name}`);
+  for (const name of actualServers) if (!wantedServers.has(name)) diffs.push(`unexpected mcp server: ${name}`);
+  const actualSkills = new Set(init.skills);
+  for (const skill of expected.skills ?? []) if (!actualSkills.has(skill)) diffs.push(`skill absent: ${skill}`);
+  return diffs;
+}
+
+export interface ExitInfo {
+  code: number | null;
+  signal: string | null;
+  spawnFailed: boolean;
+}
+
+export interface KillFlags {
+  timedOut: boolean;
+  capExceeded: boolean;
+}
+
+/**
+ * The single status mapping. A result event, when one arrived, decides the status (the session
+ * finished; a late kill or exit code does not change that). Without one: the wall-clock kill is a
+ * timeout, the stdout-cap kill or any other signal is killed, everything else is error.
+ */
+export function statusOf(exit: ExitInfo, result: ResultEvent | null, flags: KillFlags): SessionStatus {
+  if (result !== null) {
+    if (/budget/i.test(result.subtype)) return 'budget';
+    return result.isError ? 'error' : 'ok';
   }
-  return result.isError ? 'error' : 'ok';
+  if (exit.spawnFailed) return 'error';
+  if (flags.timedOut) return 'timeout';
+  if (flags.capExceeded) return 'killed';
+  if (exit.signal !== null) return 'killed';
+  return 'error';
+}
+
+interface ChildSummary {
+  exit: ExitInfo;
+  stdout: Buffer;
+  stderr: string;
+  flags: KillFlags;
+  spawnError: string | null;
 }
 
 export async function runClaudeSession(spec: SessionSpec): Promise<SessionOutcome> {
@@ -266,7 +333,7 @@ export async function runClaudeSession(spec: SessionSpec): Promise<SessionOutcom
   const result = extractResult(events);
   const toolCalls = countToolCalls(events);
   return {
-    status: statusOfTask1(summary, result),
+    status: statusOf(summary.exit, result, summary.flags),
     init: extractInit(events),
     result,
     toolCalls,
@@ -300,12 +367,10 @@ function runChild(spec: SessionSpec, cap: number): Promise<ChildSummary> {
       settled = true;
       clearTimeout(timer);
       resolve({
-        code,
-        signal,
+        exit: { code, signal, spawnFailed: spawnError !== null },
         stdout: Buffer.concat(chunks),
         stderr,
-        timedOut,
-        capExceeded,
+        flags: { timedOut, capExceeded },
         spawnError,
       });
     };
@@ -339,6 +404,15 @@ function runChild(spec: SessionSpec, cap: number): Promise<ChildSummary> {
       stderr = (stderr + chunk.toString('utf8')).slice(-STDERR_TAIL_CHARS);
     });
     child.on('close', (code, signal) => finish(code, signal));
+    // A grandchild that inherited the pipes can keep 'close' from firing after the child is gone;
+    // give the streams a moment to drain, then stop waiting so no call hangs.
+    child.on('exit', (code, signal) => {
+      setTimeout(() => {
+        child.stdout.destroy();
+        child.stderr.destroy();
+        finish(code, signal);
+      }, 1_000).unref();
+    });
 
     child.stdin.end(spec.prompt);
   });
