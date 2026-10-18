@@ -169,7 +169,7 @@ Plans:
   4. The `gsd-atlas` skill routes agents to atlas tools and `gsd-atlas-module-author` guides module writing; a user can rate a session, feature or last answer up, meh or down; diagnostics are off by default, approved per data type and previewed before manual submission; and `gsd-atlas bug` captures a flight recorder, versions, config, store health and the failing answer with hashed names and paths by default.
   5. The free-alternatives evaluation (LSP-wrapping MCP servers, agent repo-maps, colbymchenry/codegraph, Claude Code LSP, Memtrace) is recorded before the eval, the eval design is pre-registered (at least 50 questions per corpus including abstain cases, at least 3 runs per configuration, independent oracle, paired pooled analysis, accuracy non-inferiority margin, tool-call rate logged), and on gsd-core agents using atlas consume fewer tokens than the grep-only baseline at non-inferior accuracy with verifiable file:line citations at least 80% of the time.
 
-**Plans:** 25/36 plans executed
+**Plans:** 27/36 plans executed
 
 Plans:
 **Wave 1**
@@ -216,8 +216,8 @@ Plans:
 - [x] 03-25-PLAN.md — `extends`, `implements` and `overrides` relations through `code_refs`, `code_impact`, `code_context` (TSM-01)
 
 **Wave 10** *(blocked on Wave 9 completion)*
-- [ ] 03-26-PLAN.md — `explain` and the seventh tool `code_explain` (QRY-07)
-- [ ] 03-27-PLAN.md — Memory budget, RSS sampler, LRU worker pool, gsd-pi no-break; runs only if the D-21 sampler deviation was approved (TSM-05)
+- [x] 03-26-PLAN.md — `explain` and the seventh tool `code_explain` (QRY-07)
+- [x] 03-27-PLAN.md — Memory budget, RSS sampler, LRU worker pool, gsd-pi no-break; runs only if the D-21 sampler deviation was approved (TSM-05)
 
 **Wave 11** *(blocked on Wave 10 completion)*
 - [ ] 03-29-PLAN.md — Eager resolve in build, incremental update, warm start, gated `precise.command` (TSM-06, SEC-02, SEC-01)
@@ -361,7 +361,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 |-------|----------------|--------|-----------|
 | 1. Foundations and Walking Skeleton | 20/20 | Complete    | 2026-10-16 |
 | 2. Grammar Tier, Store and stdio Host | 46/46 | Complete    | 2026-10-17 |
-| 3. TypeScript Module and MVP Eval | 25/36 | In Progress | - |
+| 3. TypeScript Module and MVP Eval | 27/36 | In Progress | - |
 | 4. Host Hardening | 0/TBD | Not started | - |
 | 5. Swift Module | 0/TBD | Not started | - |
 | 6. Platform SDK Facts | 0/TBD | Not started | - |
