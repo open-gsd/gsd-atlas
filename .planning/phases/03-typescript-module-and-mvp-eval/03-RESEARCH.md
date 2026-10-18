@@ -568,20 +568,20 @@ else if (major >= 7) fallback(subpaths.includes('./unstable/sync') ? '7.0-unstab
 | `eval.intervalLevel` | 90% two-sided (95% one-sided) | Eval D; must be registered |
 | `eval.maxBudgetUsdPerSession` | set from the pilot | cost control |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
-1. **Relation storage design (G3).**
+1. **Relation storage design (G3).** RESOLVED: see 03-DECISIONS.md OQ1.
    - Known: `overrides` has no reference site; `ResolvedEdge` has no relation; ADR 7 treats the Fact Store interface as frozen.
    - Unclear: whether the user prefers an optional `relations()` method plus a new table, or declaration-name pseudo-sites emitted by the grammar tier.
    - Recommendation: the optional method and table; both need an ADR amendment in Wave 0 or 1.
-2. **Memory watch location (D-21).** In-worker sampler (portable, verified on macOS) versus parent polling via `/proc`, `ps` and a Windows tool (needs new builtins). Recommend the sampler and ask the user to confirm it satisfies "parent RSS watch that kills it".
-3. **"No fact points under `outDir`" (TSM-03).** Recommend: emit outputs of included sources get no facts; keep the 17 tracked hand-written files in `gsd-core/bin/lib`. Confirm.
-4. **EVL-03 citation criterion.** Point estimate at or above 80% with the interval reported, or a lower bound above 80%? Not covered by D-04.
-5. **Scope of `precise.command` in Phase 3.** Gate and run an approved command through the runner, record its exit status, build no importer. Confirm that is enough for SEC-02.
-6. **Skill distribution.** The package needs `skills` in `files`; whether `init` installs it, and under which name, is unspecified. The eval loads it by `--plugin-dir`, which namespaces the name.
-7. **Number of questions.** Fifty meets the requirement; a pilot should decide whether the gate is reachable at that N or N should rise.
-8. **Corpus preparation for the eval.** Run `npm ci --ignore-scripts` in the pinned gsd-core checkout (project TypeScript used) or not (bundled fallback, answers flagged `degraded` throughout)? Recommend yes, and register it.
-9. **Edge-precision sample.** PRD criterion 1 (hand-verified `EXTRACTED` edges at least 98%) is an M2 gate but has no requirement id here; confirm it belongs in this phase.
+2. **Memory watch location (D-21).** In-worker sampler (portable, verified on macOS) versus parent polling via `/proc`, `ps` and a Windows tool (needs new builtins). Recommend the sampler and ask the user to confirm it satisfies "parent RSS watch that kills it". RESOLVED: see 03-DECISIONS.md OQ2.
+3. **"No fact points under `outDir`" (TSM-03).** Recommend: emit outputs of included sources get no facts; keep the 17 tracked hand-written files in `gsd-core/bin/lib`. Confirm. RESOLVED: see 03-DECISIONS.md OQ3.
+4. **EVL-03 citation criterion.** Point estimate at or above 80% with the interval reported, or a lower bound above 80%? Not covered by D-04. RESOLVED: see 03-DECISIONS.md OQ4.
+5. **Scope of `precise.command` in Phase 3.** Gate and run an approved command through the runner, record its exit status, build no importer. Confirm that is enough for SEC-02. RESOLVED: see 03-DECISIONS.md OQ5.
+6. **Skill distribution.** The package needs `skills` in `files`; whether `init` installs it, and under which name, is unspecified. The eval loads it by `--plugin-dir`, which namespaces the name. RESOLVED: see 03-DECISIONS.md OQ6.
+7. **Number of questions.** Fifty meets the requirement; a pilot should decide whether the gate is reachable at that N or N should rise. RESOLVED: see 03-DECISIONS.md OQ7.
+8. **Corpus preparation for the eval.** Run `npm ci --ignore-scripts` in the pinned gsd-core checkout (project TypeScript used) or not (bundled fallback, answers flagged `degraded` throughout)? Recommend yes, and register it. RESOLVED: see 03-DECISIONS.md OQ8.
+9. **Edge-precision sample.** PRD criterion 1 (hand-verified `EXTRACTED` edges at least 98%) is an M2 gate but has no requirement id here; confirm it belongs in this phase. RESOLVED: see 03-DECISIONS.md OQ9.
 
 ## Environment Availability
 
