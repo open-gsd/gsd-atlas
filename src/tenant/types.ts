@@ -42,6 +42,14 @@ export interface TenantTuning {
   readonly flightMaxEvents: number;
   /** Bytes the flight recorder keeps (`recorder.maxBytes`, 03-CONSTANTS.md). */
   readonly flightMaxBytes: number;
+  /**
+   * The time bound of the eager resolution pass that follows a build, and of an approved `precise.command` (plan 03-29):
+   * `precise.requestTimeoutMs`, 03-CONSTANTS.md (25000 ms). Zero or less turns the pass after a build off, so every read meets
+   * a cold cache (a measurement hook of `scripts/precise-gate.ts --lazy`; `maintain resolve` still works).
+   */
+  readonly resolveBoundMs: number;
+  /** The most reference sites one resolver call of the eager pass carries: `precise.sitesPerRequest`, 03-CONSTANTS.md (2000). */
+  readonly resolveBatchSites: number;
 }
 
 export interface TenantDeps {
@@ -96,6 +104,36 @@ export interface TenantDeps {
   readonly tuning?: Partial<TenantTuning>;
 }
 
+/**
+ * What running a language module's approved `precise.command` came to (plan 03-29, SEC-02). Only the facts of the process, never
+ * what it printed: its output is neither stored nor returned.
+ */
+export interface CommandReport {
+  /** True when the command was started. False when it was not approved (or could not be started). */
+  readonly ran: boolean;
+  /** True when it ended with exit code 0 inside its time limit. */
+  readonly ok: boolean;
+  readonly exitCode: number | null;
+  readonly signal: string | null;
+  readonly timedOut: boolean;
+  /** How long it ran, in milliseconds. */
+  readonly ms: number;
+  /** True when the command was not started because the person has not approved exactly this command for this repository. */
+  readonly needsApproval: boolean;
+}
+
+/** What the eager resolution pass of `resolve` did (plan 03-29). */
+export interface PreciseReport {
+  /** Reference sites the resolver was asked about in this run. */
+  readonly asked: number;
+  /** Of those, the sites it produced an edge for. */
+  readonly answered: number;
+  /** True when the pass reached the end of the overlay. */
+  readonly complete: boolean;
+  /** `resolve` only, for a module that declares a `precise.command`. */
+  readonly command?: CommandReport;
+}
+
 /** What one maintenance task did. */
 export interface TaskReport {
   /** True when the task finished; false when its slice bound ran out first. */
@@ -107,6 +145,8 @@ export interface TaskReport {
   readonly note?: string;
   /** `check` only: whether the integrity check passed. */
   readonly ok?: boolean;
+  /** `resolve` only, when a precise tier or a module command took part. */
+  readonly precise?: PreciseReport;
 }
 
 export interface MaintainOptions {

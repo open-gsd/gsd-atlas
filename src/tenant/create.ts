@@ -10,7 +10,7 @@
  */
 import path from 'node:path';
 import { IDLE_MAINTENANCE, StoreClosed, UnknownWorktree, WriterBusy, openFactStore, resolveStoreLocation } from '../fact-store/index.ts';
-import type { FactStore, MaintenanceResult, Resolver } from '../fact-store/index.ts';
+import type { FactStore, MaintenanceResult, ResolveResult, Resolver } from '../fact-store/index.ts';
 import { createAnswerId, createSessionId, okEnvelope } from '../facts/index.ts';
 import type { DegradedCode, Diagnostic, Envelope, ProjectContextProvider, Request } from '../facts/index.ts';
 import { DEFAULT_INDEXER_CONFIG, IndexerError, createIndexer, createModuleHost } from '../indexer/index.ts';
@@ -29,7 +29,7 @@ import { createIdleMaintainer } from './idle.ts';
 import { recordRating } from './rate.ts';
 import type { RateInput } from './rate.ts';
 import { answerEvent, flightAnswer, isAnsweredKind } from './record.ts';
-import { leaseHeldEnvelope, notIndexedEnvelope, storeUnavailableEnvelope } from './messages.ts';
+import { buildNotes, leaseHeldEnvelope, notIndexedEnvelope, storeUnavailableEnvelope } from './messages.ts';
 import type { LeaseHolderName } from './messages.ts';
 import { createOutputFilter, createTenantProjectProvider, preciseAdapterIds } from './project.ts';
 import type { ProjectProvider } from './project.ts';
@@ -690,6 +690,73 @@ export async function createTenant(deps: TenantDeps): Promise<Tenant> {
   }
 
   /**
+   * True when something can answer the eager pass: a test hook's resolver, or a precise tier the user has not switched off. A
+   * repository whose modules name no known tier has none, and `resolve` then does nothing (and needs neither lease nor overlay).
+   */
+  const hasResolver = (): boolean => deps.resolverFactory !== undefined || tier?.active === true;
+
+  /** What the eager pass of one task came to, summed over its slices. */
+  interface PassOutcome {
+    readonly complete: boolean;
+    readonly spentMs: number;
+    readonly asked: number;
+    readonly answered: number;
+    /** Why it stopped before the end of the overlay: the time bound (`budget`), or a failure of the resolver or the cache. */
+    readonly stopped: 'budget' | 'failure' | undefined;
+  }
+
+  /**
+   * The eager pass (plan 03-29) in slices: each slice is one `store.resolve` call of at most `sliceMs`, so other work can take a
+   * turn between them. It ends at the end of the overlay, at a failure (the next run asks again), when `boundMs` of this
+   * pass has passed, or after `MAX_SLICES`. `slice` wraps one call (the build runs it in a Governor job, `maintain` does not).
+   */
+  async function resolveInSlices(
+    worktree: string,
+    boundMs: number | undefined,
+    slice: (call: () => Promise<ResolveResult>) => Promise<ResolveResult | undefined>,
+  ): Promise<PassOutcome> {
+    const startedAt = clock.now();
+    let asked = 0;
+    let answered = 0;
+    let spentMs = 0;
+    for (let count = 0; count < MAX_SLICES; count += 1) {
+      const left = boundMs === undefined ? tuning.maintenanceSliceMs : Math.max(0, boundMs - (clock.now() - startedAt));
+      const budgetMs = Math.min(tuning.maintenanceSliceMs, left);
+      const result = await slice(() => store.resolve(worktree, { budgetMs, batchSize: tuning.resolveBatchSites }));
+      if (result === undefined) return { complete: false, spentMs: Math.max(0, clock.now() - startedAt), asked, answered, stopped: 'budget' };
+      asked += result.asked;
+      answered += result.answered;
+      spentMs += result.spentMs;
+      if (result.complete) return { complete: true, spentMs, asked, answered, stopped: undefined };
+      if (result.stopped === 'failure') return { complete: false, spentMs, asked, answered, stopped: 'failure' };
+      if (boundMs !== undefined && clock.now() - startedAt >= boundMs) return { complete: false, spentMs, asked, answered, stopped: 'budget' };
+    }
+    return { complete: false, spentMs, asked, answered, stopped: 'budget' };
+  }
+
+  /**
+   * The eager pass that follows a build: bounded by `precise.requestTimeoutMs`, in the `indexing` class. A new build is a new
+   * attempt, so a compiler memory stop is forgotten first. True when the pass ran out of its bound; a pass that failed, or that
+   * could not run because the lease or the store went away, is not a build failure and leaves the cache to the reads.
+   */
+  async function buildPass(worktree: string): Promise<boolean> {
+    if (!hasResolver() || tuning.resolveBoundMs <= 0) return false;
+    tier?.clearMemoryStop();
+    try {
+      const outcome = await resolveInSlices(worktree, tuning.resolveBoundMs, async (call) => {
+        const ran = await governor.run({ tenant: identity.storeId, class: 'indexing', cost: 1 }, call);
+        return ran.kind === 'ok' ? ran.value : undefined;
+      });
+      return outcome.stopped === 'budget';
+    } catch {
+      return false;
+    }
+  }
+
+  /** What `resolve` says when its pass stopped on a failure: fixed words. */
+  const PASS_FAILED_NOTE = 'the precise pass stopped because the compiler or the cache failed; run it again to continue';
+
+  /**
    * One maintenance task. `collect`, `compact` and `check` call the store directly: they need write authority (the
    * lease) but not the in-process writer slot, which the Indexer holds, so they run while it indexes. The store's own
    * `maintain` wrapper takes that slot and would answer `WriterBusy` here.
@@ -702,14 +769,19 @@ export async function createTenant(deps: TenantDeps): Promise<Tenant> {
         const outcome = await getIndexer().reconcile(options.worktree);
         return { complete: true, spentMs: outcome.durationMs, processed: outcome.changed };
       }
-      case 'resolve':
-        // Eager resolution is plan 03-29; until then an active tier resolves when a read asks.
+      case 'resolve': {
+        if (!hasResolver()) return { complete: true, spentMs: 0, processed: 0, note: 'no precise tier is active' };
+        // An explicit resolve asks again after a memory stop (plan 03-27): the person is asking for it.
+        tier?.clearMemoryStop();
+        const pass = await resolveInSlices(options.worktree, undefined, async (call) => call());
         return {
-          complete: true,
-          spentMs: 0,
-          processed: 0,
-          note: tier?.active === true ? 'the precise tier resolves on demand, when a read asks' : 'no precise tier is active',
+          complete: pass.complete,
+          spentMs: pass.spentMs,
+          processed: pass.asked,
+          ...(pass.stopped === 'failure' ? { note: PASS_FAILED_NOTE } : {}),
+          precise: { asked: pass.asked, answered: pass.answered, complete: pass.complete },
         };
+      }
       case 'refresh': {
         const { processed } = await getIndexer().refresh(options.worktree);
         return { complete: true, spentMs: took(), processed };
@@ -783,9 +855,13 @@ export async function createTenant(deps: TenantDeps): Promise<Tenant> {
         const ix = getIndexer();
         const result = await ix.build(worktree);
         await ix.attach(worktree);
+        // Plan 03-29: the compiler is asked about every reference site before the build returns, so the first question is a
+        // cache hit. A pass that cannot finish in its bound leaves the build successful, with a note.
+        const timedOut = await buildPass(worktree);
         // The dashboard's index-health panel fills after a build, not only after the first idle round.
         await recordHealth(false).catch(ignore);
-        return okEnvelope(BUILD_SCHEMA, buildData(worktree, result));
+        // The envelope's notes come from the build result alone (amendment of 2026-10-18); `data` keeps its documented keys.
+        return okEnvelope(BUILD_SCHEMA, buildData(worktree, result), buildNotes(result.skipped, timedOut));
       } catch (error) {
         return failure(error);
       } finally {
@@ -797,9 +873,12 @@ export async function createTenant(deps: TenantDeps): Promise<Tenant> {
       const tasks: readonly SingleTask[] = task === 'all' ? ALL_TASKS : [task];
       idle.touch();
       try {
-        // Only `resolve` (a no-op while no precise tier is active) needs neither the writer nor an overlay.
-        if (tasks.some((each) => each !== 'resolve') && !(await isLeader())) return await leaseHeld();
-        if (tasks.some((each) => WORKTREE_TASKS.has(each)) && !(await isIndexed(options.worktree))) return await notIndexed();
+        // Only `resolve` while nothing can answer it (no precise tier is active) needs neither the writer nor an overlay.
+        const resolving = hasResolver();
+        if (tasks.some((each) => each !== 'resolve' || resolving) && !(await isLeader())) return await leaseHeld();
+        if (tasks.some((each) => WORKTREE_TASKS.has(each) || (each === 'resolve' && resolving)) && !(await isIndexed(options.worktree))) {
+          return await notIndexed();
+        }
         const reports: Partial<Record<SingleTask, TaskReport>> = {};
         for (const each of tasks) reports[each] = await runTask(each, options);
         return okEnvelope(MAINTAIN_SCHEMA, { tasks: reports });

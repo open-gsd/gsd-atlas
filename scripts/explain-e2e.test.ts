@@ -296,6 +296,10 @@ describe('explain over the real bins (QRY-07): answer ids, injection, read-only 
     try {
       const built = await runner.run({ executable: process.execPath, args: [CLI_BIN, 'build', '--repo', repo.dir], cwd: outside, env });
       assert.equal(built.exitCode, 0, decoder.decode(built.stderr));
+      // Plan 03-29: the build asks the compiler about every site, so the build's own worker loaded the project compiler and wrote
+      // the marker. The question here is whether explain starts one, so the marker starts empty.
+      assert.equal(fs.existsSync(marker), true, 'the build ran the eager compiler pass');
+      fs.rmSync(marker);
       await server.initialize();
       const found = await server.callTool('code_find', { name: 'compute', repo: repo.dir });
       const handle = (found.envelope.citations as Array<{ debug: string }> | undefined)?.[0]?.debug ?? '';

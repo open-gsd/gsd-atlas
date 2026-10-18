@@ -251,6 +251,18 @@ An error answer has schema `gsd-atlas.error/1`, `ok: false`, `data: null` and on
 
 Only `build` creates an index. No MCP tool creates, opens for writing or changes one.
 
+## Diagnostics of a build
+
+`gsd-atlas build` is a command-line request to the same Host and has no MCP tool; its envelope is described here because it uses the envelope `diagnostics` that every answer has. The documented `data` of `gsd-atlas.build/1` is unchanged (`skipped` is still a count), and a build that left nothing out has `diagnostics: []`. Otherwise `diagnostics` carries these `info` notes, in this order, each with fixed text and a count and with no file path and no repository text:
+
+| Code | Meaning |
+| --- | --- |
+| `emit_output_not_indexed` | Some files are the emit output of an included source (for example `lib.cjs` built from `lib.cts`) and are not indexed. |
+| `citation_comment_too_long` | Some files have comments that mention an ADR but are over the comment size bound, so the citations in those comments are not indexed. |
+| `resolver_timeout` | The compiler pass that follows a build did not finish within its bound. The build succeeded; `gsd-atlas maintain resolve` continues the pass. |
+
+These are diagnostics, not degraded codes: they do not appear in `degraded`, and the set of degraded codes is unchanged. Any other note a build collects is counted in `skipped` only.
+
 ## Writer lease
 
 One process at a time holds the writer lease of a repository's store. The holder is the process that opened the store first; a process opens it when a tool call arrives for a repository whose store holds an index.
@@ -261,7 +273,7 @@ One process at a time holds the writer lease of a repository's store. The holder
 | Other processes | Read-only. Their answers carry `degraded: follower`; `atlas_status` shows `store.writerLeaseHeld: false`, `indexer: null` and the reason `follower`. For `fresh` paths a follower parses them into an in-memory overlay for that one request. |
 | Taking over | A follower retries the lease at a jittered interval between 10000 and 30000 ms. The operating system releases the lock when the holder ends, including when it is killed. |
 | Release | When the process exits, or when its tenant has had no request and none in flight for 1800000 ms (30 minutes); the next request opens it again. |
-| `build` and `maintain` from a non-holder | `lease_held`; the command line exits 3. `maintain resolve` does not need the lease. |
+| `build` and `maintain` from a non-holder | `lease_held`; the command line exits 3. `maintain resolve` does not need the lease while no precise tier is active. |
 | Hand-off | A build cannot be handed to the process that holds the lease. |
 
 The `lease_held` text is `gsd-atlas process <pid> (version <version>) holds the writer for this repository, so this process cannot index or run maintenance. Handing a build to the process that holds the writer is not available yet: end that process (the agent session that started it), run the command again in a terminal, then start the agent again.` When the holder is not known it reads `another gsd-atlas process`.

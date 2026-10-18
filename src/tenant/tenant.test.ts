@@ -8,7 +8,7 @@ import type { Resolver } from '../fact-store/index.ts';
 import { PROTOCOL_VERSION, ResolverFailure, diagnostic, systemClock } from '../facts/index.ts';
 import type { Envelope, RefSiteKey } from '../facts/index.ts';
 import { createGovernor } from '../governor/index.ts';
-import { createGrammarEngine } from '../grammar-engine/index.ts';
+import { CITATION_COMMENT_TOO_LONG, createGrammarEngine } from '../grammar-engine/index.ts';
 import { createManualEventSource } from '../indexer/index.ts';
 import type { BuildResult, Indexer, IndexerDeps, ManualEventSource } from '../indexer/index.ts';
 import type { PreciseTier } from '../precise-resolver/index.ts';
@@ -18,6 +18,7 @@ import type { TempGitRepo } from '../test-kit/index.ts';
 import { scriptedIndexers } from './harness.test.ts';
 import { createTenant } from './index.ts';
 import type { Tenant, TenantDeps } from './index.ts';
+import { BUILD_NOTE_CODES, buildNotes } from './messages.ts';
 
 const toyModules = path.resolve(import.meta.dirname, '..', '..', 'test', 'fixtures', 'modules');
 
@@ -408,6 +409,15 @@ describe('Tenant: the build envelope tells what the build could not index', () =
     const reply = await buildWith(t, { parsed: 0, linked: 4, skipped: [COMMENT] });
     assert.deepEqual(reply.diagnostics.map((entry) => entry.code), ['citation_comment_too_long']);
     assert.equal((reply.data as { parsed: number }).parsed, 0);
+  });
+
+  it('the allow-list is exactly the two aggregated notes the Indexer makes, and nothing a source-tree diagnostic can be', () => {
+    assert.deepEqual([...BUILD_NOTE_CODES], ['emit_output_not_indexed', CITATION_COMMENT_TOO_LONG]);
+    assert.deepEqual(buildNotes([], false), []);
+    assert.deepEqual(
+      buildNotes([], true).map((note) => [note.code, note.severity, note.subject]),
+      [['resolver_timeout', 'info', undefined]],
+    );
   });
 
   it('build data keys unchanged: the documented keys of gsd-atlas.build/1 and their types, whatever the notes', async (t) => {

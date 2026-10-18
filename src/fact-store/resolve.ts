@@ -24,6 +24,7 @@ import type {
   SymbolLookup,
 } from '../facts/index.ts';
 import { DbError } from '../sqlite/index.ts';
+import type { Db } from '../sqlite/index.ts';
 import {
   contextKey,
   ensureContextId,
@@ -74,7 +75,9 @@ import type {
   RelationDirection,
   RelationRecord,
   RelationsOptions,
+  ResolveBatchOptions,
   ResolveOptions,
+  ResolveResult,
   WorktreeId,
 } from './types.ts';
 
@@ -1239,4 +1242,177 @@ export function mergeCaller(
   return verdict.kind === 'precise'
     ? { ...grammar, extractor: `precise:${verdict.resolver}`, confidence: 'EXTRACTED', tier: 'precise' }
     : grammar;
+}
+
+// ---------------------------------------------------------------------------------------------------------
+// The eager pass (plan 03-29, research Pattern 10 and Pitfall 5).
+//
+// `FactStore.resolve` asks the resolver about EVERY reference site of an overlay, in path order and in batches, through the
+// same phase 1 / phase 2 / store path a read uses (`readResolving`, `resolveSites`, `validate`, `store`). The asked markers
+// are what make it idempotent and resumable: a settled site is never asked again. The cursor in `meta` is a shortcut over
+// them, so a resumed or repeated call does not walk the settled part of the overlay. It is keyed by the overlay snapshot and
+// the resolution context, so an edit (a new snapshot) or another configuration starts again, as the cache itself does.
+// ---------------------------------------------------------------------------------------------------------
+
+/** The sites one resolver call of the pass carries when the caller does not say: the approved `precise.sitesPerRequest`. */
+export const DEFAULT_RESOLVE_BATCH = 2000;
+
+/** The names of the cursors in `meta` start with this; the rest is `<snapshot id>:<resolution context row id>`. */
+export const RESOLVE_CURSOR_PREFIX = 'resolve_cursor:';
+
+/** Where the pass stands: every site was asked (`done`), or the last site asked is the `ord`-th reference of `path`. */
+type PassCursor = { readonly done: true } | { readonly done: false; readonly path: string; readonly ord: number };
+
+/** A position the running call holds in memory, valid only for the snapshot and context it was reached under. */
+interface PassPosition {
+  readonly snapshotId: string;
+  readonly contextKey: string;
+  readonly path: string;
+  readonly ord: number;
+}
+
+const cursorName = (snapshotId: string, contextId: number): string => `${RESOLVE_CURSOR_PREFIX}${snapshotId}:${String(contextId)}`;
+
+/** The stored cursor, or undefined when there is none or it cannot be read (the pass then starts at the beginning). */
+function readPassCursor(db: Db, name: string): PassCursor | undefined {
+  try {
+    const row = db.prepare('SELECT value FROM meta WHERE name = ?').get(name);
+    if (row === undefined) return undefined;
+    const value = JSON.parse(str(row.value)) as { readonly done?: unknown; readonly path?: unknown; readonly ord?: unknown } | null;
+    if (value?.done === true) return { done: true };
+    if (typeof value?.path === 'string' && typeof value.ord === 'number' && Number.isInteger(value.ord)) {
+      return { done: false, path: value.path, ord: value.ord };
+    }
+  } catch (error) {
+    if (!(error instanceof DbError) && !(error instanceof SyntaxError)) throw error;
+  }
+  return undefined;
+}
+
+/**
+ * Store the cursor of the pass for the snapshot and context `input` was read under, and forget the cursors of snapshots that no
+ * live overlay has any more. Best effort: a cursor that cannot be written only costs the next call a walk over settled sites.
+ */
+function savePassCursor(parts: StoreParts, input: ResolveInput, cursor: PassCursor): void {
+  if (!parts.canCache() || input.unavailable === true) return;
+  try {
+    parts.writeDb.transaction(() => {
+      const live = liveSnapshotIds(parts.writeDb);
+      if (!live.has(input.snapshotId)) return;
+      const contextId = ensureContextId(parts.writeDb, input.contextKey);
+      // ':' is followed by ';' in code-unit order, so this is exactly the names that start with the prefix.
+      const upper = `${RESOLVE_CURSOR_PREFIX.slice(0, -1)};`;
+      for (const row of parts.writeDb.prepare('SELECT name FROM meta WHERE name >= ? AND name < ?').all(RESOLVE_CURSOR_PREFIX, upper)) {
+        const name = str(row.name);
+        const snapshot = name.slice(RESOLVE_CURSOR_PREFIX.length).split(':')[0] ?? '';
+        if (!live.has(snapshot)) parts.writeDb.prepare('DELETE FROM meta WHERE name = ?').run(name);
+      }
+      parts.writeDb.prepare('INSERT OR REPLACE INTO meta (name, value) VALUES (?, ?)').run(cursorName(input.snapshotId, contextId), JSON.stringify(cursor));
+    });
+  } catch (error) {
+    if (!(error instanceof DbError)) throw error; // busy, read-only or closed: the cursor is not ours to write
+  }
+}
+
+const NEXT_PASS_SITES_SQL = `SELECT o.path AS path, r.ord AS ord, n.name AS name, r.start_line AS start_line, r.start_col AS start_col,
+       r.end_line AS end_line, r.end_col AS end_col
+       FROM overlay_files o
+       JOIN refs r ON r.file_id = o.file_id
+       JOIN names n ON n.id = r.name_id
+       WHERE o.worktree = ? AND (o.path > ? OR (o.path = ? AND r.ord > ?))
+       ORDER BY o.path, r.ord
+       LIMIT ?`;
+
+/** What phase 1 of one batch of the pass found. */
+type PassStep =
+  /** No project context could be had for this snapshot: nothing can be asked. */
+  | { readonly kind: 'unavailable' }
+  /** The project has no compiler configuration, so there is nothing a precise tier could be asked. */
+  | { readonly kind: 'nothing' }
+  /** The stored cursor of this snapshot and context says every site was asked. */
+  | { readonly kind: 'settled' }
+  /** The next sites after the cursor (none at the end of the overlay) and the position of the last of them. */
+  | { readonly kind: 'batch'; readonly sites: readonly RefSiteKey[]; readonly last: { readonly path: string; readonly ord: number } | undefined };
+
+function readPassStep(snap: Snapshot, project: ProjectContext | null, batchSize: number, local: PassPosition | undefined): PassStep {
+  if (project === null) return { kind: 'unavailable' };
+  if (project.precise !== undefined && project.precise.configs.length === 0) return { kind: 'nothing' };
+  const snapshotId = snapshotIdOf(snap);
+  const key = contextKey(project.context);
+  let from: { readonly path: string; readonly ord: number } = { path: '', ord: -1 };
+  if (local !== undefined && local.snapshotId === snapshotId && local.contextKey === key) {
+    from = local;
+  } else {
+    const contextId = findContextId(snap.db, key);
+    const saved = contextId === undefined ? undefined : readPassCursor(snap.db, cursorName(snapshotId, contextId));
+    if (saved?.done === true) return { kind: 'settled' };
+    if (saved !== undefined) from = saved;
+  }
+  const rows = snap.db.prepare(NEXT_PASS_SITES_SQL).all(snap.worktree, from.path, from.path, from.ord, batchSize);
+  const sites = rows.map((row): RefSiteKey => ({ path: str(row.path), span: spanOf(row), name: str(row.name) }));
+  const end = rows[rows.length - 1];
+  return { kind: 'batch', sites, last: end === undefined ? undefined : { path: str(end.path), ord: num(end.ord) } };
+}
+
+/** The codes that stop the pass: the resolver or the cache failed, so what the call asked is not settled. */
+const PASS_FAILURES: ReadonlySet<DegradedCode> = new Set<DegradedCode>(['resolver_failed', 'resolver_timeout', 'memory_budget', 'cache_unavailable']);
+
+/**
+ * `FactStore.resolve`: see the interface. The time box is checked between batches, and one batch always runs per call, so a
+ * call makes progress whatever the budget. A batch is awaited whole: its own bound is the resolver's (the compiler worker's
+ * request time-out), not the budget's.
+ */
+export async function resolveAllSites(parts: StoreParts, worktree: WorktreeId, options: ResolveBatchOptions): Promise<ResolveResult> {
+  const { clock } = parts.deps;
+  const startedAt = clock.now();
+  const batchSize = options.batchSize ?? DEFAULT_RESOLVE_BATCH;
+  const noted = new Set<DegradedCode>();
+  let asked = 0;
+  let answered = 0;
+  let batches = 0;
+  let local: PassPosition | undefined;
+  const report = (complete: boolean, stopped?: 'budget' | 'failure'): ResolveResult => ({
+    complete,
+    spentMs: Math.max(0, clock.now() - startedAt),
+    processed: asked,
+    asked,
+    answered,
+    degraded: [...noted],
+    ...(complete || stopped === undefined ? {} : { stopped }),
+  });
+  if (!parts.canCache()) {
+    // A process that may not write the cache can not settle anything; asking would only repeat the work next time.
+    noted.add('cache_unavailable');
+    return report(false, 'failure');
+  }
+  for (;;) {
+    if (batches > 0 && clock.now() - startedAt >= options.budgetMs) return report(false, 'budget');
+    const begun = readResolving(
+      parts,
+      worktree,
+      (snap, project) => readPassStep(snap, project, batchSize, local),
+      (step) => (step.kind === 'batch' ? step.sites : []),
+    );
+    const first = begun instanceof Promise ? await begun : begun;
+    const { grammar: step, input } = first.value;
+    if (step.kind === 'nothing' || step.kind === 'settled') return report(true);
+    if (step.kind === 'unavailable') {
+      noted.add('resolver_failed');
+      return report(false, 'failure');
+    }
+    if (step.last === undefined) {
+      savePassCursor(parts, input, { done: true });
+      return report(true);
+    }
+    // The sites this batch really asks: the ones neither the cache nor a marker settled before (a resumed call meets some).
+    const pending = input.sites.filter((site) => !input.cached.has(siteId(site)) && !input.asked.has(siteId(site)));
+    const resolved = await resolveSites(parts, worktree, input, undefined);
+    for (const code of resolved.degraded) noted.add(code);
+    if (resolved.degraded.some((code) => PASS_FAILURES.has(code))) return report(false, 'failure');
+    asked += pending.length;
+    answered += pending.filter((site) => (resolved.edges.get(siteId(site))?.length ?? 0) > 0).length;
+    batches += 1;
+    local = { snapshotId: input.snapshotId, contextKey: input.contextKey, path: step.last.path, ord: step.last.ord };
+    savePassCursor(parts, input, { done: false, path: step.last.path, ord: step.last.ord });
+  }
 }

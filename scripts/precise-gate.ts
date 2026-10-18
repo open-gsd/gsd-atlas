@@ -13,7 +13,11 @@
  * stops the plan rather than being loosened). `--budget-mb <n>` runs it under a memory budget of n megabytes instead of the
  * machine's 25 percent of RAM (plan 03-27): a budget the project does not fit degrades the answer with `memory_budget`.
  *
- * node scripts/precise-gate.ts --nobreak --corpus gsd-pi --dir <checkout> [--budget-mb <n>] [--seed <n>] [--symbols <n>]
+ * node scripts/precise-gate.ts --nobreak --corpus gsd-pi --dir <checkout> [--budget-mb <n>] [--seed <n>] [--symbols <n>] [--lazy]
+ *
+ * Since plan 03-29 the build asks the compiler about every reference site before it returns (the eager pass), so the reads of
+ * this trace are mostly cache hits and a memory stop happens during the build. `--lazy` builds without that pass, so each read
+ * meets a cold cache and the trace shows the reads' own memory behavior, as plan 03-27 measured it.
  *
  * The no-break trace (plan 03-27, D-21, D-22): build an isolated index of the checkout, pick up to twelve symbols from
  * different packages (a seeded order of the packages; per package the first exported name another file of it mentions) and
@@ -57,7 +61,7 @@ const TRACES: Readonly<Record<string, { readonly symbol: string; readonly file: 
 
 const USAGE = [
   'usage: node scripts/precise-gate.ts --trace --corpus gsd-core [--dir <prepared checkout>] [--config tsconfig.json] [--max-wait-ms 120000] [--budget-mb <n>]',
-  '       node scripts/precise-gate.ts --nobreak --corpus gsd-pi --dir <checkout> [--budget-mb <n>] [--seed <n>] [--symbols <n>] [--max-wait-ms 120000]',
+  '       node scripts/precise-gate.ts --nobreak --corpus gsd-pi --dir <checkout> [--budget-mb <n>] [--seed <n>] [--symbols <n>] [--max-wait-ms 120000] [--lazy]',
   '',
 ].join('\n');
 
@@ -250,6 +254,12 @@ export interface NoBreakOptions {
   readonly precise?: Omit<TypeScriptTierTuning, 'memory'>;
   /** Extra environment for the git and Host children (the test kit's isolated git configuration). */
   readonly env?: Readonly<Record<string, string | undefined>>;
+  /**
+   * Build without the eager compiler pass (plan 03-29), so each read meets a cold cache and starts or feeds the compiler
+   * itself: the memory behavior of the reads, as plan 03-27 measured it. Default false: the build asks the compiler about every
+   * site, as the product does.
+   */
+  readonly lazy?: boolean;
 }
 
 export type NoBreakOutcome = 'resolved' | 'degraded' | 'empty' | 'unexplained' | 'crashed';
@@ -410,6 +420,7 @@ export async function runNoBreak(options: NoBreakOptions): Promise<NoBreakReport
     stderr: process.stderr,
     ...(options.budgetMb === undefined ? {} : { totalMemBytes: ramForBudget(options.budgetMb) }),
     ...(options.precise === undefined ? {} : { precise: options.precise }),
+    ...(options.lazy === true ? { tuning: { resolveBoundMs: 0 } } : {}),
     tierHook: (built) => {
       tiers.push(built);
     },
@@ -534,6 +545,7 @@ export async function main(argv: readonly string[], io: { stdout: { write(text: 
   let values: {
     trace?: boolean;
     nobreak?: boolean;
+    lazy?: boolean;
     corpus?: string;
     dir?: string;
     config?: string;
@@ -548,6 +560,7 @@ export async function main(argv: readonly string[], io: { stdout: { write(text: 
       options: {
         trace: { type: 'boolean' },
         nobreak: { type: 'boolean' },
+        lazy: { type: 'boolean' },
         corpus: { type: 'string' },
         dir: { type: 'string' },
         config: { type: 'string' },
@@ -591,6 +604,7 @@ export async function main(argv: readonly string[], io: { stdout: { write(text: 
         ...(budgetMb === undefined ? {} : { budgetMb }),
         ...(seed === undefined ? {} : { seed }),
         ...(symbols === undefined ? {} : { symbols }),
+        ...(values.lazy === true ? { lazy: true } : {}),
       });
       io.stdout.write(`${JSON.stringify(report)}\n`);
       return report.ok ? 0 : 1;

@@ -63,15 +63,17 @@ describe('--nobreak (D-21, D-22)', () => {
   let limitMb = 0;
 
   before(async () => {
-    // Calibrate on this machine with a limit nothing reaches: the worker's resident memory after each package's answer.
-    calibration = await run();
+    // Calibrate on this machine with a limit nothing reaches: the worker's resident memory after each package's answer. The
+    // reads are what is measured here, so the build does not run the eager pass (plan 03-29, `lazy`): each read meets a cold
+    // cache and builds the program of its package.
+    calibration = await run({ lazy: true });
     const rss = calibration.answers.map((answer) => answer.workerRssMb ?? 0);
     const afterSmall = rss[SMALL.length - 1] ?? 0;
     const afterBig = rss[SMALL.length] ?? 0;
     assert.ok(afterBig - afterSmall >= 40, `the big package must be clearly bigger than the rest: ${JSON.stringify(rss)}`);
     // Between the two: the small packages fit, the big one does not.
     limitMb = Math.ceil((afterSmall + afterBig) / 2);
-    bounded = await run({ precise: { rssLimitMb: limitMb, sampleMs: 50 } });
+    bounded = await run({ lazy: true, precise: { rssLimitMb: limitMb, sampleMs: 50 } });
   });
 
   it('nobreak on a multi-config fixture: four packages, one symbol each, every answer explained, exit 0', async () => {
@@ -109,6 +111,21 @@ describe('--nobreak (D-21, D-22)', () => {
     assert.equal(bounded.budget.usable, true);
     assert.ok(bounded.answers.every((answer) => answer.ms >= 0 && answer.workers >= 0));
     assert.ok(bounded.workers.seen >= 1);
+  });
+
+  it('the eager pass under the same limit: the build succeeds, nothing crashes, the worker stays inside its limit and the big package is memory_budget', async () => {
+    // Plan 03-29: the build asks the compiler about every site, in path order. The three small packages come first, then the
+    // big one, whose program the limit stops. The stop is a memory_budget answer, never a failed build or a crashed Host.
+    const eager = await run({ precise: { rssLimitMb: limitMb, sampleMs: 50 } });
+    assert.equal(eager.crashed, 0, JSON.stringify(eager));
+    assert.equal(eager.unexplained, 0, JSON.stringify(eager));
+    assert.equal(eager.workers.withinLimit, true, JSON.stringify(eager.workers));
+    assert.equal(eager.ok, true, JSON.stringify(eager));
+    const big = eager.answers.find((answer) => answer.package === `packages/${BIG}`);
+    assert.ok(big !== undefined);
+    assert.equal(big.outcome, 'degraded', JSON.stringify(big));
+    assert.ok(big.degraded.includes('memory_budget'), JSON.stringify(big.degraded));
+    for (const answer of eager.answers) assert.ok(answer.outcome === 'resolved' || answer.outcome === 'degraded', JSON.stringify(answer));
   });
 
   it('a budget below the floor degrades every answer with memory_budget and starts no worker', async () => {

@@ -187,7 +187,9 @@ gsd-atlas build [--repo <dir>] [--cwd <dir>]   (index the repository; the only w
 
 - Options: `--repo`, `--cwd`.
 - Result schema: `gsd-atlas.build/1`.
-- `data`: `worktree`, `files` (files in the source set), `parsed` (files whose facts were extracted), `linked` (files attached to facts the store already held), `removed` (paths that left the index), `skipped` (count of skipped items), `failed` (count of files that failed), `failedCodes` (failure code to count).
+- `data`: `worktree`, `files` (files in the source set), `parsed` (files whose facts were extracted), `linked` (files attached to facts the store already held), `removed` (paths that left the index), `skipped` (count of skipped items), `failed` (count of files that failed), `failedCodes` (failure code to count). `skipped` is still a count; the keys and their types do not change.
+- After the index is built, a repository with a precise tier (the TypeScript compiler) gets one more pass before the command returns: the compiler is asked about every reference site of the indexed files, in batches, and the answers are stored, so the first `refs` after a build is answered from the store and not from a cold compiler. The pass has a time bound (25 seconds, `precise.requestTimeoutMs`). A pass that does not finish leaves the build successful, with a `resolver_timeout` note in `diagnostics`; `gsd-atlas maintain resolve` continues it.
+- `diagnostics` (the envelope field, not `data`): `[]` for a build that left nothing out. Otherwise it lists the notes of the build, in this order: `emit_output_not_indexed` (some files are the emit output of an included source and are not indexed), `citation_comment_too_long` (some files have comments that mention an ADR but are over the comment size bound, so their citations are not indexed), then `resolver_timeout` (the compiler pass above did not finish). Each is an `info` diagnostic with fixed text and a count, and carries no file path and no repository text. They are diagnostics, not degraded codes: a build sets no `degraded`. Any other note the build collects (for example files no language module claims) is counted in `skipped` and goes no further.
 - Errors: `not_a_repo`, `lease_held` (exit 3), `store_unavailable`, `schema_too_new`.
 
 ### gsd-atlas maintain
@@ -198,8 +200,10 @@ gsd-atlas maintain [reconcile|resolve|refresh|collect|compact|check|all] [--full
 
 - Tasks: `reconcile`, `resolve`, `refresh`, `collect`, `compact`, `check`, `all`. The default is `all`, which runs the other six in that order. `--full` is accepted only with `compact` and `all`.
 - Options: `--repo`, `--cwd`, `--full`.
-- Result schema: `gsd-atlas.maintain/1`. `data.tasks` maps each task that ran to `complete`, `spentMs`, `processed`, and, when present, `note` (`resolve` reports `no precise tier is active`) and `ok` (`check` only).
-- Every task except `resolve` needs the writer lease; without it the answer is `lease_held` (exit 3). `reconcile` and `refresh` also need the worktree to have been built.
+- Result schema: `gsd-atlas.maintain/1`. `data.tasks` maps each task that ran to `complete`, `spentMs`, `processed`, and, when present, `note` (`resolve` reports `no precise tier is active` when there is none), `ok` (`check` only) and `precise` (`resolve` only, see below).
+- `resolve` asks the precise tier (the TypeScript compiler) about every reference site of the worktree's files in batches of at most 2000, stores the answers and remembers which sites were asked, so it is time-boxed, resumable and idempotent: a second run over an unchanged tree asks nothing (`processed: 0`). `processed` counts the sites asked. `precise` is `{ asked, answered, complete }`, and, when the language module declares a `precise.command`, `command`: `{ ran, ok, exitCode, signal, timedOut, ms, needsApproval }`. A module's command is never started unless you approved exactly that command with `gsd-atlas allow`; only its exit status, signal, time-out flag and duration are reported, never its output. An unapproved command is not started and the answer carries `needs_approval`.
+- `resolve` also forgets a compiler memory stop, so a project that ran out of memory is tried again once.
+- Every task needs the writer lease; without it the answer is `lease_held` (exit 3). `resolve` is the exception while no precise tier is active. `reconcile`, `refresh` and an active `resolve` also need the worktree to have been built.
 - Errors: `not_indexed`, `not_a_repo`, `lease_held`, `store_unavailable`, `schema_too_new`.
 
 ### gsd-atlas status

@@ -1809,7 +1809,6 @@ for (const driver of DRIVERS) {
       const inner = manyBinding();
       const resolver: Resolver = (sites, context, symbols, scope) => {
         if (broken) {
-          // eslint-disable-next-line require-yield
           return (async function* () {
             throw new ResolverFailure('memory_budget', 'out of memory');
           })();
