@@ -12,4 +12,4 @@ Before the final release, design and set up the model properly:
 - split `scripts/adr-ratify.ts` into "accept" and "number at release";
 - Phase 3 left `user-controlled-diagnostics` as an unnumbered draft (issue open-gsd/gsd-atlas#15 was closed as not planned); plan 03-21 / SKL-03 expects a ratified ADR and needs re-planning or a changed precondition.
 
-A research pass on ADR best practices was started on 2026-10-18; see its findings when available.
+A research pass on ADR best practices was started on 2026-10-18; see pre-release-adr-numbering-research.md in this folder.
