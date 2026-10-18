@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Eval final answer",
+  "description": "The one structured final answer an agent gives in both arms of the pre-registered eval (EVL-02, D-02). Passed to `claude -p` as --json-schema. Hashed into the pre-registration; a change after the freeze needs a new registered run.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["answer", "items", "summary"],
+  "properties": {
+    "answer": {
+      "description": "`found` when the agent located what the question asks for, `not_found` when it concluded there is nothing to find.",
+      "enum": ["found", "not_found"]
+    },
+    "items": {
+      "description": "The places that answer the question. Empty for `not_found`.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["file"],
+        "properties": {
+          "file": {
+            "description": "Path of the file, relative to the repository root.",
+            "type": "string",
+            "minLength": 1
+          },
+          "line": {
+            "description": "1-based line number in that file.",
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          },
+          "symbol": {
+            "description": "Name of the function, class or method the item is about.",
+            "type": "string"
+          }
+        }
+      }
+    },
+    "summary": {
+      "description": "One short sentence of explanation; at most 400 characters.",
+      "type": "string",
+      "maxLength": 400
+    }
+  }
+}
