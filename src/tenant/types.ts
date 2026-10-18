@@ -12,6 +12,7 @@ import type { Roots } from '../lang/index.ts';
 import type { Metrics, MetricsStatus } from '../metrics/index.ts';
 import type { SourceTree, SourceTreeIdentity } from '../source-tree/index.ts';
 import type { FlightEvent } from './flight.ts';
+import type { RateInput } from './rate.ts';
 
 /** Schema of a `build` reply. */
 export const BUILD_SCHEMA = 'gsd-atlas.build/1';
@@ -149,6 +150,12 @@ export interface Tenant {
   lastAnswerId(): string | null;
   /** The id of the newest session marker the recorder holds, or null. */
   sessionId(): string | null;
+  /**
+   * Record one rating a person gave (plan 03-17, D-16): the newest recorded answer, a feature, or the newest session.
+   * `no_recent_answer` or `no_recent_session` when there is nothing to rate, `rating_not_saved` when the metrics
+   * database could not take it. Never throws for either.
+   */
+  rate(input: RateInput): Promise<Envelope>;
   /** Stop the Indexer, close Metrics, close the store and give up the writer lease. Safe to call twice. */
   close(): Promise<void>;
 }

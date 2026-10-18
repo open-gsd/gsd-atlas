@@ -22,7 +22,7 @@ import type { IndexerConfig, ModuleHost } from '../indexer/index.ts';
 import { ERROR_SCHEMA, TOOL_NAMES, errorEnvelope } from '../query/index.ts';
 import { createSourceTree } from '../source-tree/index.ts';
 import type { SourceTree } from '../source-tree/index.ts';
-import { createTenant, notIndexedNoStore } from '../tenant/index.ts';
+import { createTenant, noRecentEnvelope, notIndexedNoStore } from '../tenant/index.ts';
 import type { Tenant } from '../tenant/index.ts';
 import { ALLOW_KIND, handleAllow, permissionsFor } from './allow.ts';
 import type { AllowDeps } from './allow.ts';
@@ -46,6 +46,8 @@ const errorName = (error: unknown): string => {
 const NOT_A_REPO = 'repo must be an existing directory inside a git repository.';
 
 const ALLOW_FORBIDDEN = 'Approvals are recorded only by a person at a terminal with "gsd-atlas allow"; this server cannot record one.';
+
+const RATE_FORBIDDEN = 'Ratings are given only by a person at a terminal with "gsd-atlas rate"; this server cannot record one.';
 
 /** Envelope schema of an `index_state` reply (internal, plan 02-44). */
 export const INDEX_STATE_SCHEMA = 'gsd-atlas.index-state/1';
@@ -246,7 +248,13 @@ export function createHost(options: HostOptions): Host {
     // as the leader would take the lease and make the advertised `gsd-atlas build` fail with exit 3.
     if (kind !== 'build') {
       try {
-        if (!(await hasIndex(resolved))) return notIndexedNoStore();
+        if (!(await hasIndex(resolved))) {
+          // A rating of "the newest answer" or "the session" with no index has nothing to find; say so in its own words.
+          if (kind === 'rate' && parsed.rate !== undefined && parsed.rate.scope !== 'feature' && parsed.rate.answerId === undefined) {
+            return noRecentEnvelope(parsed.rate.scope);
+          }
+          return notIndexedNoStore();
+        }
       } catch (error) {
         return tenantFailure(error);
       }
@@ -268,6 +276,9 @@ export function createHost(options: HostOptions): Host {
           return tenant.maintain(parsed.task, { worktree: resolved.worktree, full: parsed.full });
         case 'status':
           return tenant.statusEnvelope(parsed.sinceMs);
+        case 'rate':
+          // The arguments were checked with the rest; a missing `rate` here would be a bug in `parseRepoArgs`.
+          return parsed.rate === undefined ? Promise.resolve(errorEnvelope('invalid_args', 'rate: scope and value are required.')) : tenant.rate(parsed.rate);
         default:
           return tenant.handle(forwarded(request, kind), resolved.worktree);
       }
@@ -409,6 +420,8 @@ export function createHost(options: HostOptions): Host {
     if (request.kind === HISTORY_KIND) return historyRequest(request);
     // D-15: an agent's server never records an approval, whatever the request carries. Checked before the arguments are read.
     if (request.kind === ALLOW_KIND) return origin === 'mcp' ? errorEnvelope('allow_forbidden', ALLOW_FORBIDDEN) : allowRequest(request);
+    // D-16: users rate, agents do not. There is no MCP tool for it; a Host started for MCP also refuses the request kind itself.
+    if (request.kind === 'rate' && origin === 'mcp') return errorEnvelope('rate_forbidden', RATE_FORBIDDEN);
     if (isRepoKind(request.kind)) return repoRequest(request, request.kind);
     return errorEnvelope('unknown_kind', `request kind ${short(JSON.stringify(request.kind))} is not known to this host`);
   }

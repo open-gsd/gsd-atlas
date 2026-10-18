@@ -52,3 +52,15 @@ export function approvedLine(data: unknown): string | null {
   if (typeof executable !== 'string' || !Array.isArray(args) || !args.every((each): each is string => typeof each === 'string')) return null;
   return `gsd-atlas: approved command: ${show(executable)} [${args.map(show).join(', ')}]\n`;
 }
+
+/**
+ * The one line that tells the person a `rate` was recorded: the value and what it was for (the answer, the session or
+ * a feature by name). It never repeats an id. A reply without the expected words still gets a plain confirmation.
+ */
+export function ratedLine(data: unknown): string {
+  const { value, scope, feature } = (typeof data === 'object' && data !== null ? data : {}) as Record<string, unknown>;
+  if (value !== 'up' && value !== 'meh' && value !== 'down') return 'gsd-atlas: rating recorded\n';
+  const what =
+    scope === 'feature' && typeof feature === 'string' ? `feature ${show(feature)}` : scope === 'session' ? 'the session' : 'the last answer';
+  return `gsd-atlas: recorded "${value}" for ${what}\n`;
+}

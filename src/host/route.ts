@@ -6,17 +6,19 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
-import { isInside } from '../facts/index.ts';
+import { ANSWER_ID_PATTERN, isInside } from '../facts/index.ts';
 import type { JobClass } from '../governor/index.ts';
 import type { SourceTree, SourceTreeIdentity } from '../source-tree/index.ts';
-import { MAINTAIN_TASKS } from '../tenant/index.ts';
-import type { MaintainTask } from '../tenant/index.ts';
+import { MAINTAIN_TASKS, RATING_FEATURES, RATING_SCOPES, RATING_VALUES } from '../tenant/index.ts';
+import type { MaintainTask, RateInput } from '../tenant/index.ts';
 
 /**
  * The request kinds that name a repository. `index_state` is internal (plan 02-44): the CLI's `no index yet` hint asks
  * it, it is not an MCP tool and not a CLI command, so the six-tool profile (QRY-06) is unchanged. `allow` (D-15) is the
  * CLI's two-step approval of one command: not an MCP tool either, refused by a Host started for MCP, served in the
  * `interactive` class, and it needs no tenant and no store (it reads the repository's identity and writes the user's config).
+ * `rate` (plan 03-17, D-16) is a person's rating of an answer, a feature or the session: not an MCP tool, refused by a
+ * Host started for MCP, served in the `interactive` class from the repository's Tenant.
  */
 export const REPO_KINDS = [
   'code_find',
@@ -29,6 +31,7 @@ export const REPO_KINDS = [
   'status',
   'index_state',
   'allow',
+  'rate',
 ] as const;
 
 export type RepoKind = (typeof REPO_KINDS)[number];
@@ -79,6 +82,29 @@ const maintainSchema = z.strictObject({
   full: z.boolean().optional(),
 });
 const statusSchema = z.strictObject({ ...selection, since: z.string().optional() });
+/**
+ * A rating: closed scope, closed value, and the one reference its scope takes. No free-text key exists, so a note is an
+ * unknown key and the request is refused. The messages are fixed sentences.
+ */
+const rateSchema = z
+  .strictObject({
+    ...selection,
+    value: z.enum(RATING_VALUES),
+    scope: z.enum(RATING_SCOPES),
+    feature: z.enum(RATING_FEATURES).optional(),
+    answer_id: z.string().regex(ANSWER_ID_PATTERN, 'not an answer id').optional(),
+  })
+  .superRefine((data, context) => {
+    if (data.scope === 'feature' && data.feature === undefined) {
+      context.addIssue({ code: 'custom', path: ['feature'], message: 'a feature rating needs a feature name' });
+    }
+    if (data.scope !== 'feature' && data.feature !== undefined) {
+      context.addIssue({ code: 'custom', path: ['feature'], message: 'only a feature rating takes a feature name' });
+    }
+    if (data.scope !== 'answer' && data.answer_id !== undefined) {
+      context.addIssue({ code: 'custom', path: ['answer_id'], message: 'only an answer rating takes an answer id' });
+    }
+  });
 /** The code tools check the rest of their arguments themselves (Query's strict schemas); the Host reads only these two. */
 const selectionOnly = z.looseObject({ ...selection });
 
@@ -108,6 +134,8 @@ export type RepoArgs =
       readonly task: MaintainTask;
       readonly full: boolean;
       readonly sinceMs: number;
+      /** `rate` only. */
+      readonly rate?: RateInput;
     };
 
 /** Read the arguments of a repo-scoped kind. `undefined` and `null` mean no arguments; anything but an object is refused. */
@@ -125,10 +153,22 @@ export function parseRepoArgs(kind: RepoKind, args: unknown): RepoArgs {
           ? maintainSchema
           : kind === 'status'
             ? statusSchema
-            : selectionOnly;
+            : kind === 'rate'
+              ? rateSchema
+              : selectionOnly;
   const parsed = schema.safeParse(given);
   if (!parsed.success) return { ok: false, message: firstProblem(parsed.error) };
-  const data = parsed.data as { repo?: string; cwd?: string; task?: MaintainTask; full?: boolean; since?: string };
+  const data = parsed.data as {
+    repo?: string;
+    cwd?: string;
+    task?: MaintainTask;
+    full?: boolean;
+    since?: string;
+    scope?: RateInput['scope'];
+    value?: RateInput['value'];
+    feature?: RateInput['feature'];
+    answer_id?: string;
+  };
   const sinceMs = parseSince(data.since ?? DEFAULT_SINCE);
   if (sinceMs === null) return { ok: false, message: 'since: use a count and a unit, such as 30m, 12h or 7d' };
   return {
@@ -137,6 +177,9 @@ export function parseRepoArgs(kind: RepoKind, args: unknown): RepoArgs {
     task: data.task ?? 'all',
     full: data.full === true,
     sinceMs,
+    ...(kind === 'rate' && data.scope !== undefined && data.value !== undefined
+      ? { rate: { scope: data.scope, value: data.value, feature: data.feature, answerId: data.answer_id } }
+      : {}),
   };
 }
 

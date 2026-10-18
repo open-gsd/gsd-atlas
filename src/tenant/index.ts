@@ -12,6 +12,10 @@ export { leaseHeldEnvelope, notIndexedEnvelope, notIndexedNoStore, storeUnavaila
 export type { LeaseHolderName } from './messages.ts';
 export { CURRENT_FILE as FLIGHT_FILE, createFlightRecorder } from './flight.ts';
 export type { FlightEvent, FlightEventInput, FlightFs, FlightRecorder, FlightRecorderOptions } from './flight.ts';
+export { RATE_SCHEMA, noRecentEnvelope, recordRating } from './rate.ts';
+export type { RateDeps, RateInput } from './rate.ts';
+export { RATING_FEATURES, RATING_SCOPES, RATING_VALUES } from '../metrics/index.ts';
+export type { RatingFeature, RatingScope, RatingValue } from '../metrics/index.ts';
 export { answerEvent, flightAnswer, isAnsweredKind } from './record.ts';
 export { BUILD_SCHEMA, MAINTAIN_SCHEMA, MAINTAIN_TASKS, STATUS_SCHEMA } from './types.ts';
 export type {

@@ -104,6 +104,27 @@ describe('buildMcpServer: the default profile (D-07, QRY-06)', () => {
     }
   });
 
+  it('no rating tool (D-16, T-03-172): no tool is named rate or rating, none takes a value of up, meh or down, and a call to rate reaches no Host', async () => {
+    const client = recordingClient(CANNED);
+    const mcp = await connect(client);
+    try {
+      const listed = await mcp.request('tools/list');
+      const tools = (listed.result as { tools: ListedTool[] }).tools;
+      for (const tool of tools) {
+        assert.doesNotMatch(tool.name, /rat(e|ing)/, tool.name);
+        const schema = JSON.stringify(tool.inputSchema);
+        assert.doesNotMatch(schema, /"(up|meh|down)"/, `${tool.name} offers no rating value`);
+        assert.doesNotMatch(schema, /"(value|rating|scope|answer_id)"\s*:/, `${tool.name} takes no rating argument`);
+      }
+      const called = await mcp.call('rate', { value: 'up', scope: 'answer' });
+      const result = called.result as CallResult | undefined;
+      assert.ok(called.error !== undefined || result?.isError === true, 'an unknown tool is an error');
+      assert.deepEqual(client.requests, [], 'nothing was sent to the Host');
+    } finally {
+      await mcp.close();
+    }
+  });
+
   it('reports the package version and the fixed instructions, which say repository text is data', async () => {
     const mcp = await connect(recordingClient(CANNED));
     try {

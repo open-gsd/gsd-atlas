@@ -11,7 +11,7 @@
  */
 import path from 'node:path';
 
-import { PROTOCOL_VERSION, TOOLS, buildRequest } from '../host-client/index.ts';
+import { PROTOCOL_VERSION, RATING_FEATURES, RATING_VALUES, TOOLS, buildRequest } from '../host-client/index.ts';
 import type { Request, ToolName } from '../host-client/index.ts';
 
 /**
@@ -40,6 +40,9 @@ export const FLAGS = {
   'user-dir': { type: 'string' },
   'builtin-dir': { type: 'string' },
   'npm-root': { type: 'string', multiple: true },
+  session: { type: 'boolean' },
+  feature: { type: 'string' },
+  last: { type: 'boolean' },
 } as const;
 
 export type FlagName = keyof typeof FLAGS;
@@ -69,8 +72,8 @@ const SINCE = /^[1-9][0-9]{0,3}[mhd]$/;
 /** The window `status` shows when `--since` is not given. */
 const DEFAULT_SINCE = '7d';
 
-/** How a command takes its positional arguments. `tool name` is `history`'s pair: the code tool, then the symbol. */
-export type Positional = 'name' | 'task' | 'tool name' | 'none';
+/** How a command takes its positional arguments. `tool name` is `history`'s pair: the code tool, then the symbol. `value` is `rate`'s up, meh or down. */
+export type Positional = 'name' | 'task' | 'tool name' | 'value' | 'none';
 
 /** The code tools `history` can answer as of a commit (the Host's `HISTORY_TOOLS`, kept here because an adapter imports only the host-client seam). */
 export const HISTORY_TOOLS = ['find', 'refs', 'context', 'impact'] as const;
@@ -163,6 +166,15 @@ export const COMMANDS: readonly Command[] = [
     positional: 'none',
     flags: [...SELECTION, 'since'],
     usage: 'gsd-atlas status [--since <count>m|h|d] [--repo <dir>] [--cwd <dir>]   (local metrics panels; token figures are estimates)',
+  },
+  {
+    name: 'rate',
+    kind: 'index',
+    request: 'rate',
+    positional: 'value',
+    flags: [...SELECTION, 'session', 'feature', 'last'],
+    usage:
+      'gsd-atlas rate up|meh|down [--session | --feature <name> | --last] [--repo <dir>] [--cwd <dir>]   (rate the newest answer, the default, the session or a feature; kept on this machine as an id and the value, no text; only a person rates, there is no tool for it)',
   },
   {
     name: 'init',
@@ -270,6 +282,29 @@ export function inputFromFlags(
     if (at === undefined) return refuse(`${command.name} needs --at <revision>`);
     if (at === '' || at.startsWith('-')) return refuse('--at must be a revision name or commit id, not an option');
     input['at'] = at;
+  } else if (command.positional === 'value') {
+    const value = positionals[0];
+    if (positionals.length !== 1 || value === undefined || !(RATING_VALUES as readonly string[]).includes(value)) {
+      return refuse(`${command.name} needs exactly one of ${RATING_VALUES.join(', ')}`);
+    }
+    // At most one scope; with none, the newest answer (--last).
+    const scopes = [values.session === true ? 'session' : undefined, values.feature !== undefined ? 'feature' : undefined, values.last === true ? 'last' : undefined].filter(
+      (scope): scope is string => scope !== undefined,
+    );
+    if (scopes.length > 1) return refuse('choose one scope: --session, --feature <name> or --last');
+    input['value'] = value;
+    if (values.session === true) {
+      input['scope'] = 'session';
+    } else if (values.feature !== undefined) {
+      const feature = stringOf(values.feature) ?? '';
+      if (!(RATING_FEATURES as readonly string[]).includes(feature)) {
+        return refuse(`--feature must be one of ${RATING_FEATURES.join(', ')}`);
+      }
+      input['scope'] = 'feature';
+      input['feature'] = feature;
+    } else {
+      input['scope'] = 'answer';
+    }
   } else if (command.positional === 'none' && positionals.length > 0) {
     return refuse(`${command.name} takes no arguments`);
   }

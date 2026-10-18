@@ -11,6 +11,9 @@ export {
   LAG_BUCKETS_MS,
   LATENCY_BUCKETS_MS,
   METRICS_DEFAULTS,
+  RATING_FEATURES,
+  RATING_SCOPES,
+  RATING_VALUES,
   TOOL_NAMES,
   bucketLabelFor,
 } from './types.ts';
@@ -27,6 +30,10 @@ export type {
   MetricsRange,
   MetricsReport,
   MetricsStatus,
+  RatingEvent,
+  RatingFeature,
+  RatingScope,
+  RatingValue,
   ToolName,
 } from './types.ts';
 export type { Migration } from './migrations.ts';

@@ -19,7 +19,7 @@ import { INIT_SCHEMA, runInit } from './init.ts';
 import type { IndexState, InitEnvironment } from './init.ts';
 import { AGENT_IDS } from './init-targets.ts';
 import type { AgentId } from './init-targets.ts';
-import { oneLine, printEnvelope } from './text.ts';
+import { oneLine, printEnvelope, ratedLine } from './text.ts';
 import { COMMANDS, FLAGS, inputFromFlags, requestFor, resolveCommand, unusedFlag } from './tool-commands.ts';
 import type { FlagValues } from './tool-commands.ts';
 
@@ -93,8 +93,11 @@ function rootsFrom(flags: RootFlags): Record<string, unknown> | undefined {
   return Object.keys(roots).length === 0 ? undefined : roots;
 }
 
-/** Send one request, print the envelope exactly as returned, then one reason line per error or warning. */
-async function send(io: CliIo, request: Request): Promise<number> {
+/**
+ * Send one request, print the envelope exactly as returned, then one reason line per error or warning. `confirm` makes
+ * the one line a reply that succeeded adds on stderr (a rating says what it recorded).
+ */
+async function send(io: CliIo, request: Request, confirm?: (data: unknown) => string | null): Promise<number> {
   let envelope: Envelope;
   try {
     envelope = await io.client.handle(request);
@@ -103,7 +106,12 @@ async function send(io: CliIo, request: Request): Promise<number> {
     return EXIT_FAILURE;
   }
   printEnvelope(io, envelope);
-  return exitCodeFor(envelope);
+  const code = exitCodeFor(envelope);
+  if (code === EXIT_OK && confirm !== undefined) {
+    const line = confirm(envelope.data);
+    if (line !== null) io.stderr.write(line);
+  }
+  return code;
 }
 
 const langRequest = (kind: string, args: Record<string, unknown>): Request => ({ protocol: PROTOCOL_VERSION, kind, args });
@@ -246,7 +254,7 @@ export async function runCli(argv: readonly string[], io: CliIo): Promise<number
       if (!input.ok) {
         return usageError(io, input.message);
       }
-      return send(io, requestFor(command, input.input));
+      return send(io, requestFor(command, input.input), command.request === 'rate' ? ratedLine : undefined);
     }
   }
 }

@@ -24,6 +24,8 @@ import { createFollowerFresh } from './follower-overlay.ts';
 import { createFlightRecorder } from './flight.ts';
 import type { FlightRecorder } from './flight.ts';
 import { createIdleMaintainer } from './idle.ts';
+import { recordRating } from './rate.ts';
+import type { RateInput } from './rate.ts';
 import { answerEvent, flightAnswer, isAnsweredKind } from './record.ts';
 import { leaseHeldEnvelope, notIndexedEnvelope, storeUnavailableEnvelope } from './messages.ts';
 import type { LeaseHolderName } from './messages.ts';
@@ -673,6 +675,15 @@ export async function createTenant(deps: TenantDeps): Promise<Tenant> {
 
     sessionId(): string | null {
       return flight?.sessionId() ?? null;
+    },
+
+    async rate(input: RateInput): Promise<Envelope> {
+      idle.touch();
+      try {
+        return await recordRating({ metrics, flight }, input);
+      } finally {
+        idle.touch();
+      }
     },
 
     close(): Promise<void> {
