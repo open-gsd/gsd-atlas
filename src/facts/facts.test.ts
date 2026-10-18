@@ -3,6 +3,7 @@ import { describe, it } from 'node:test';
 
 import {
   ANSWER_ID_PATTERN,
+  DEFAULT_PROJECT_CONTEXT,
   DEGRADED_CODES,
   FACT_PREDICATES,
   IMPORT_STYLES,
@@ -24,9 +25,13 @@ import type {
   Citation,
   FileFacts,
   OverlaySnapshot,
+  ProjectContext,
+  ProjectContextProvider,
   Request,
   ResolutionContext,
   ResolvedEdge,
+  ResolveScope,
+  ResolverPort,
   Span,
   SymbolIdentity,
   SymbolLookup,
@@ -737,8 +742,36 @@ describe('resolution contracts', () => {
 
     const lookup: SymbolLookup = {
       find: async (name) => (name === 'A' ? [identity] : []),
+      findIn: async (path, name) =>
+        path === identity.path && name === 'A' ? [{ ...identity, span: span(0, 0, 4, 1) }] : [],
     };
     assert.deepEqual(await lookup.find('A'), [identity]);
     assert.deepEqual(await lookup.find('Z'), []);
+    assert.deepEqual(await lookup.findIn(identity.path, 'A'), [{ ...identity, span: span(0, 0, 4, 1) }]);
+    assert.deepEqual(await lookup.findIn('src/other.ts', 'A'), []);
+  });
+
+  it('shapes ResolveScope, ProjectContext and ProjectContextProvider, and the default context is the grammar tier', async () => {
+    const overlay: OverlaySnapshot = { id: 'ov1', pathToHash: new Map([['src/a.ts', 'h1']]) };
+    const project: ProjectContext = { context: { id: 'ts:6', configHashes: ['h-tsconfig'] } };
+    const scope: ResolveScope = { worktree: 'main', overlay, project };
+    const provider: ProjectContextProvider = async (asked) => (asked.worktree === scope.worktree ? project : DEFAULT_PROJECT_CONTEXT);
+    assert.equal(await provider({ worktree: 'main', overlay }), project);
+    assert.equal(await provider({ worktree: 'other', overlay }), DEFAULT_PROJECT_CONTEXT);
+
+    assert.deepEqual(DEFAULT_PROJECT_CONTEXT, { context: { id: 'grammar', configHashes: [] } });
+    assert.ok(Object.isFrozen(DEFAULT_PROJECT_CONTEXT), 'a shared default can not be changed by a resolver');
+    assert.ok(Object.isFrozen(DEFAULT_PROJECT_CONTEXT.context));
+    assert.ok(Object.isFrozen(DEFAULT_PROJECT_CONTEXT.context.configHashes));
+
+    // A resolver written for the three-argument shape is a ResolverPort.
+    const old: ResolverPort = async function* (sites, context) {
+      for (const site of sites) yield { site, target: identity, confidence: 'EXTRACTED', resolver: context.id };
+    };
+    const lookup: SymbolLookup = { find: async () => [], findIn: async () => [] };
+    const site = { path: 'src/b.ts', span: span(1, 0, 1, 1), name: 'A' };
+    const seen: string[] = [];
+    for await (const edge of old([site], project.context, lookup)) seen.push(edge.resolver);
+    assert.deepEqual(seen, ['ts:6']);
   });
 });

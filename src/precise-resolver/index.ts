@@ -1,5 +1,6 @@
-import type { OverlaySnapshot, RefSiteKey, ResolutionContext, ResolvedEdge } from '../facts/index.ts';
+import type { OverlaySnapshot, RefSiteKey, ResolutionContext, ResolvedEdge, SymbolLookup } from '../facts/index.ts';
 
+export { asStoreResolver } from './store-adapter.ts';
 export { createScriptedResolver } from './stub.ts';
 export type { ScriptedEdge, ScriptedResolverOptions } from './stub.ts';
 
@@ -29,10 +30,16 @@ export interface PreciseResolver {
   /**
    * Resolve `sites` against the file contents in `overlay`, under the configuration in `context`.
    * Resolvers never read the Fact Store; everything they need is passed in.
+   *
+   * `symbols` is the store's read-only lookup of the grammar tier's symbols. An adapter uses it to map a
+   * compiler declaration to the grammar symbol whose span contains the declaration's name token, so the edge
+   * names the symbol identity the store holds. It is optional: a resolver that does not need it ignores it,
+   * and one called without it still resolves (it just cannot map identities itself).
    */
   resolve(
     overlay: OverlaySnapshot,
     context: ResolutionContext,
     sites: readonly RefSiteKey[],
+    symbols?: SymbolLookup,
   ): AsyncIterable<ResolvedEdge>;
 }

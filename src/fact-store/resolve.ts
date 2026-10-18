@@ -491,6 +491,7 @@ async function collectEdges(
     // Read back through the read-only connection, one short transaction per call (never held across an await).
     find: async (name) =>
       readSnapshot(parts, worktree, (snap) => findRecords(snap, name, { mode: 'exact' }).map((record) => record.identity)).value,
+    findIn: async () => [], // RED scaffold
   };
   const out: ResolvedEdge[] = [];
   for await (const edge of parts.deps.resolver(sites, context, lookup)) out.push(edge);

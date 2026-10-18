@@ -1,8 +1,26 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
+import path from 'node:path';
 import { describe, it } from 'node:test';
-import { contextKey, overlaySnapshotId } from './cache.ts';
+import type {
+  FileFacts,
+  LocatedSymbol,
+  RefSiteKey,
+  ResolutionContext,
+  ResolveScope,
+  Span,
+  SymbolIdentity,
+} from '../facts/index.ts';
+import { asStoreResolver, createScriptedResolver } from '../precise-resolver/index.ts';
+import { openDatabase } from '../sqlite/index.ts';
+import type { Db, DriverName } from '../sqlite/index.ts';
+import { FakeClock, makeTempDir } from '../test-kit/index.ts';
+import { contextKey, overlaySnapshotId, siteId } from './cache.ts';
+import { openFactStore } from './open.ts';
+import type { OpenFactStoreOptions } from './open.ts';
+import { STORE_FILE_NAME } from './schema.ts';
 import { candidatePaths, resolveSpecifier } from './specifier.ts';
+import type { FactStore, Resolver, StoreDeps, Writer } from './types.ts';
 
 describe('overlaySnapshotId', () => {
   it('is the sha256 of the sorted path and hash pairs, in hex, whatever the map order', () => {
@@ -156,3 +174,317 @@ describe('candidatePaths', () => {
     }
   });
 });
+
+// ---------------------------------------------------------------------------------------------------------
+// The resolver seam (plan 03-20): scope and a symbol lookup with spans, a per-overlay asynchronous project
+// context, and the negative marker for asked sites. Real stores on a temp directory, both SQLite drivers.
+// ---------------------------------------------------------------------------------------------------------
+
+const DRIVERS: readonly DriverName[] = ['node:sqlite', 'better-sqlite3'];
+
+/** The resolver of a store that has no precise resolver: it resolves nothing. */
+const noResolver: Resolver = async function* () {
+  // a resolver that resolves nothing
+};
+
+interface Rig {
+  readonly store: FactStore;
+  readonly clock: FakeClock;
+  /** Close the store and open the same directory again, with these options added. */
+  reopen(extra?: Partial<OpenFactStoreOptions>): Promise<FactStore>;
+  /** A read-only connection on the store file; closed before the directory goes. */
+  peek(): Promise<Db>;
+  /** A writable connection on the store file (tests that delete derived rows). */
+  tamper(): Promise<Db>;
+}
+
+async function withRig(
+  driver: DriverName,
+  run: (rig: Rig) => Promise<void>,
+  options: Partial<OpenFactStoreOptions> = {},
+  resolver: Resolver = noResolver,
+): Promise<void> {
+  const tmp = makeTempDir();
+  const clock = new FakeClock(1000);
+  const deps: StoreDeps = { resolver, clock, gitHas: async () => true };
+  const dir = path.join(tmp.path, 'store');
+  const file = path.join(dir, STORE_FILE_NAME);
+  const opened: FactStore[] = [];
+  const open = async (extra: Partial<OpenFactStoreOptions> = {}): Promise<FactStore> => {
+    const store = await openFactStore(dir, deps, { driver, repo: 'repo', version: '9.9.9', ...options, ...extra });
+    opened.push(store);
+    return store;
+  };
+  try {
+    let current = await open();
+    await run({
+      get store() {
+        return current;
+      },
+      clock,
+      reopen: async (extra) => {
+        await current.close();
+        current = await open(extra);
+        return current;
+      },
+      peek: async () => tmp.adopt(await openDatabase(file, { readOnly: true, driver })),
+      tamper: async () => tmp.adopt(await openDatabase(file, { driver })),
+    });
+  } finally {
+    for (const store of opened) await store.close(); // close the handles before the directory goes (EBUSY on Windows)
+    tmp.cleanup();
+  }
+}
+
+const span = (startLine: number, startColumn: number, endLine = startLine, endColumn = startColumn + 1): Span => ({
+  startLine,
+  startColumn,
+  endLine,
+  endColumn,
+});
+
+/** A 40-hex blob id built from a number, so fixtures read as H(1), H(2). */
+const H = (n: number): string => n.toString(16).padStart(40, '0');
+
+function fileOf(filePath: string, n: number, parts: Partial<FileFacts>): FileFacts {
+  return {
+    path: filePath,
+    contentHash: H(n),
+    module: 'typescript',
+    grammarVersion: '0.23.2',
+    symbols: [],
+    refSites: [],
+    imports: [],
+    exports: [],
+    parse: { errorBytes: 0, totalBytes: 100 },
+    ...parts,
+  };
+}
+
+const identity = (filePath: string, qualifiedName: string, kind = 'function'): SymbolIdentity => ({
+  repo: 'repo',
+  path: filePath,
+  qualifiedName,
+  kind,
+});
+
+/** The two sites in src/use.ts that call `run` from src/lib.ts, and `run` itself. */
+const SITE_A: RefSiteKey = { path: 'src/use.ts', span: span(3, 2, 3, 5), name: 'run' };
+const SITE_B: RefSiteKey = { path: 'src/use.ts', span: span(6, 2, 6, 5), name: 'run' };
+const RUN = identity('src/lib.ts', 'run');
+
+/** The overlay of `seed`, as a path to hash map. */
+const SEEDED = new Map([
+  ['src/a.ts', H(3)],
+  ['src/lib.ts', H(1)],
+  ['src/use.ts', H(2)],
+]);
+
+/**
+ * src/lib.ts defines `run`; src/use.ts imports it and calls it at SITE_A and SITE_B inside `main`; src/a.ts
+ * defines two symbols called `parse` (a function and the method `Box.parse`).
+ */
+async function seed(writer: Writer, worktree = 'main'): Promise<void> {
+  await writer.commitFile({
+    worktree,
+    path: 'src/lib.ts',
+    hash: H(1),
+    facts: fileOf('src/lib.ts', 1, {
+      symbols: [{ name: 'run', kind: 'function', span: span(1, 0, 3, 1), exported: true }],
+      exports: [{ name: 'run', span: span(1, 0, 3, 1) }],
+    }),
+  });
+  await writer.commitFile({
+    worktree,
+    path: 'src/use.ts',
+    hash: H(2),
+    facts: fileOf('src/use.ts', 2, {
+      symbols: [{ name: 'main', kind: 'function', span: span(1, 0, 9, 1) }],
+      imports: [{ path: './lib', span: span(0, 0, 0, 22), style: 'es', bindings: [{ imported: 'run', local: 'run' }] }],
+      refSites: [
+        { name: 'run', span: SITE_A.span, kind: 'call', enclosing: 0, importPath: './lib' },
+        { name: 'run', span: SITE_B.span, kind: 'call', enclosing: 0, importPath: './lib' },
+      ],
+    }),
+  });
+  await writer.commitFile({
+    worktree,
+    path: 'src/a.ts',
+    hash: H(3),
+    facts: fileOf('src/a.ts', 3, {
+      symbols: [
+        { name: 'parse', kind: 'function', span: span(1, 0, 3, 1) },
+        { name: 'Box', kind: 'class', qualifiedName: 'Box', span: span(5, 0, 10, 1) },
+        { name: 'parse', kind: 'method', qualifiedName: 'Box.parse', span: span(6, 2, 8, 3), parent: 1 },
+      ],
+    }),
+  });
+}
+
+/** What a probing resolver saw on one call. */
+interface Seen {
+  readonly sites: readonly RefSiteKey[];
+  readonly context: ResolutionContext;
+  readonly scope: ResolveScope | undefined;
+  readonly found: ReadonlyMap<string, readonly LocatedSymbol[]>;
+}
+
+const lookupKey = (filePath: string, name: string): string => `${filePath}\u0000${name}`;
+
+/** A store resolver that asks `findIn` for each query, records what it was given, then delegates to `inner`. */
+function probing(
+  queries: ReadonlyArray<readonly [string, string]>,
+  inner?: Resolver,
+): { readonly resolver: Resolver; readonly seen: Seen[] } {
+  const seen: Seen[] = [];
+  const resolver: Resolver = async function* (sites, context, symbols, scope) {
+    const found = new Map<string, readonly LocatedSymbol[]>();
+    for (const [filePath, name] of queries) found.set(lookupKey(filePath, name), await symbols.findIn(filePath, name));
+    seen.push({ sites, context, scope, found });
+    if (inner !== undefined) yield* inner(sites, context, symbols, scope);
+  };
+  return { resolver, seen };
+}
+
+const identityOnly = (symbol: LocatedSymbol): SymbolIdentity => ({
+  repo: symbol.repo,
+  path: symbol.path,
+  qualifiedName: symbol.qualifiedName,
+  kind: symbol.kind,
+  ...(symbol.discriminator === undefined ? {} : { discriminator: symbol.discriminator }),
+});
+
+const tiers = (data: ReadonlyArray<{ readonly span: Span; readonly tier: string; readonly confidence: string }>): unknown[] =>
+  data.map((record) => [record.span.startLine, record.tier, record.confidence]);
+
+for (const driver of DRIVERS) {
+  describe(`resolver seam: scope and symbol lookup (${driver})`, () => {
+    it('findIn returns spans: every symbol of that name in the overlay file, with identity and span as find reports them', async () => {
+      const { resolver, seen } = probing([['src/a.ts', 'parse']]);
+      await withRig(
+        driver,
+        async (rig) => {
+          const writer = rig.store.writer();
+          await seed(writer);
+          const reader = rig.store.at('main');
+          await reader.refs(RUN);
+          assert.equal(seen.length, 1);
+          const located = seen[0]?.found.get(lookupKey('src/a.ts', 'parse')) ?? [];
+          const expected = (await reader.find('parse')).data.filter((record) => record.source_path === 'src/a.ts');
+          assert.equal(expected.length, 2, 'the fixture defines a function and a method called parse');
+          assert.deepStrictEqual(located.map(identityOnly), expected.map((record) => record.identity));
+          assert.deepStrictEqual(located.map((symbol) => symbol.span), expected.map((record) => record.span));
+          assert.deepStrictEqual(located.map((symbol) => symbol.kind), ['function', 'method']);
+          writer.release();
+        },
+        {},
+        resolver,
+      );
+    });
+
+    it('findIn empty for unknown: an unknown path, an unknown name, an empty name and a path outside the overlay', async () => {
+      const queries = [
+        ['src/missing.ts', 'parse'],
+        ['src/a.ts', 'nope'],
+        ['src/a.ts', ''],
+        ['../outside/a.ts', 'parse'],
+        ['/abs/src/a.ts', 'parse'],
+        ['src/./a.ts', 'parse'],
+      ] as const;
+      const { resolver, seen } = probing(queries);
+      await withRig(
+        driver,
+        async (rig) => {
+          const writer = rig.store.writer();
+          await seed(writer);
+          await rig.store.at('main').refs(RUN);
+          assert.equal(seen.length, 1);
+          for (const [filePath, name] of queries) {
+            assert.deepStrictEqual(seen[0]?.found.get(lookupKey(filePath, name)), [], `${filePath} ${name}`);
+          }
+          writer.release();
+        },
+        {},
+        resolver,
+      );
+    });
+
+    it('identical bytes at two paths: each path gets its own identities and spans from the overlay version of the file', async () => {
+      const { resolver, seen } = probing([
+        ['src/a.ts', 'parse'],
+        ['src/copy.ts', 'parse'],
+      ]);
+      await withRig(
+        driver,
+        async (rig) => {
+          const writer = rig.store.writer();
+          await seed(writer);
+          const linked = await writer.link('main', 'src/copy.ts', H(3));
+          assert.equal(linked.status, 'committed');
+          await rig.store.at('main').refs(RUN);
+          const original = seen[0]?.found.get(lookupKey('src/a.ts', 'parse')) ?? [];
+          const copy = seen[0]?.found.get(lookupKey('src/copy.ts', 'parse')) ?? [];
+          assert.equal(original.length, 2);
+          assert.equal(copy.length, 2);
+          assert.deepStrictEqual(original.map((symbol) => symbol.path), ['src/a.ts', 'src/a.ts']);
+          assert.deepStrictEqual(copy.map((symbol) => symbol.path), ['src/copy.ts', 'src/copy.ts']);
+          assert.deepStrictEqual(copy.map((symbol) => symbol.span), original.map((symbol) => symbol.span));
+          writer.release();
+        },
+        {},
+        resolver,
+      );
+    });
+
+    it('resolver receives scope: the sites asked, the context, a working lookup, the worktree and the overlay snapshot', async () => {
+      const scripted = asStoreResolver(createScriptedResolver({ id: 'scripted', edges: [{ site: SITE_B, target: RUN }] }));
+      const { resolver, seen } = probing([['src/lib.ts', 'run']], scripted);
+      await withRig(
+        driver,
+        async (rig) => {
+          const writer = rig.store.writer();
+          await seed(writer);
+          const refs = await rig.store.at('main').refs(RUN);
+          assert.equal(seen.length, 1);
+          const call = seen[0];
+          assert.ok(call?.scope !== undefined, 'the store passes a scope as the fourth argument');
+          assert.deepStrictEqual(call.sites, [SITE_A, SITE_B]);
+          assert.deepStrictEqual(call.context, { id: 'grammar', configHashes: [] });
+          assert.equal(call.scope.worktree, 'main');
+          assert.equal(call.scope.overlay.id, overlaySnapshotId(SEEDED));
+          assert.deepStrictEqual(call.scope.overlay.pathToHash, SEEDED);
+          assert.deepStrictEqual(call.scope.project.context, call.context);
+          assert.deepStrictEqual(call.found.get(lookupKey('src/lib.ts', 'run'))?.map(identityOnly), [RUN]);
+          assert.deepStrictEqual(tiers(refs.data), [[3, 'grammar', 'INFERRED'], [6, 'precise', 'EXTRACTED']]);
+          assert.equal(refs.data[1]?.extractor, 'precise:scripted');
+          assert.equal(refs.degraded, undefined);
+          writer.release();
+        },
+        {},
+        resolver,
+      );
+    });
+
+    it('three-argument resolver still works: a plain generator written for the earlier shape is taken as is', async () => {
+      const old: Resolver = async function* (sites, context) {
+        assert.equal(context.id, 'grammar');
+        for (const site of sites) {
+          if (siteId(site) === siteId(SITE_B)) yield { site, target: RUN, confidence: 'EXTRACTED', resolver: 'old' };
+        }
+      };
+      await withRig(
+        driver,
+        async (rig) => {
+          const writer = rig.store.writer();
+          await seed(writer);
+          const refs = await rig.store.at('main').refs(RUN);
+          assert.deepStrictEqual(tiers(refs.data), [[3, 'grammar', 'INFERRED'], [6, 'precise', 'EXTRACTED']]);
+          assert.equal(refs.data[1]?.extractor, 'precise:old');
+          writer.release();
+        },
+        {},
+        old,
+      );
+    });
+  });
+}

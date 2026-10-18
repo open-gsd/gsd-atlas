@@ -1,11 +1,19 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import type { OverlaySnapshot, RefSiteKey, ResolutionContext, ResolvedEdge, SymbolIdentity } from '../facts/index.ts';
+import type {
+  OverlaySnapshot,
+  RefSiteKey,
+  ResolutionContext,
+  ResolvedEdge,
+  ResolveScope,
+  SymbolIdentity,
+  SymbolLookup,
+} from '../facts/index.ts';
 import { definePreciseResolverContract } from './contract.ts';
 import type { PreciseResolverSubject } from './contract.ts';
-import { createScriptedResolver } from './index.ts';
-import type { ScriptedEdge } from './index.ts';
+import { asStoreResolver, createScriptedResolver } from './index.ts';
+import type { PreciseResolver, ScriptedEdge } from './index.ts';
 
 const overlay: OverlaySnapshot = { id: 'overlay-1', pathToHash: new Map([['src/a.ts', 'h1']]) };
 const context: ResolutionContext = { id: 'ctx-1', configHashes: ['c1'] };
@@ -126,5 +134,62 @@ describe('scripted PreciseResolver', () => {
 
   it('refuses an empty id', () => {
     assert.throws(() => createScriptedResolver({ id: '', edges: [] }), RangeError);
+  });
+});
+
+describe('asStoreResolver', () => {
+  const lookup: SymbolLookup = { find: async () => [], findIn: async () => [] };
+  const scope: ResolveScope = { worktree: 'wt', overlay, project: { context } };
+
+  /** A PreciseResolver that records the arguments `resolve` was called with. */
+  function recording(): { readonly resolver: PreciseResolver; readonly calls: unknown[][] } {
+    const calls: unknown[][] = [];
+    const resolver: PreciseResolver = {
+      id: 'recording',
+      async *resolve(...args) {
+        calls.push(args);
+        yield { site: SITE_A, target: target('alpha'), confidence: 'EXTRACTED', resolver: 'recording' };
+      },
+    };
+    return { resolver, calls };
+  }
+
+  it('calls PreciseResolver.resolve with the scope overlay, the context, the sites and the symbol lookup', async () => {
+    const { resolver, calls } = recording();
+    const edges = await collect(asStoreResolver(resolver)([SITE_A, SITE_B], context, lookup, scope));
+    assert.equal(calls.length, 1);
+    const [receivedOverlay, receivedContext, receivedSites, receivedSymbols] = calls[0] ?? [];
+    assert.equal(receivedOverlay, overlay, 'the overlay is the one in the scope');
+    assert.equal(receivedContext, context);
+    assert.deepEqual(receivedSites, [SITE_A, SITE_B]);
+    assert.equal(receivedSymbols, lookup, 'the store lookup reaches the adapter');
+    assert.deepEqual(
+      edges.map((edge) => edge.target.qualifiedName),
+      ['alpha'],
+    );
+  });
+
+  it('yields the edges of the scripted resolver for the sites asked', async () => {
+    const scripted = createScriptedResolver({ id: 'scripted', edges: SCRIPT });
+    const edges = await collect(asStoreResolver(scripted)([SITE_B], context, lookup, scope));
+    assert.deepEqual(
+      edges.map((edge) => [edge.site.name, edge.target.qualifiedName, edge.resolver]),
+      [['beta', 'beta', 'scripted']],
+    );
+  });
+
+  it('yields nothing and never calls the resolver when the store passes no scope', async () => {
+    const { resolver, calls } = recording();
+    assert.deepEqual(await collect(asStoreResolver(resolver)([SITE_A], context, lookup)), []);
+    assert.equal(calls.length, 0);
+  });
+
+  it('runs the resolver cleanup exactly once when the consumer stops after the first edge', async () => {
+    let closes = 0;
+    const scripted = createScriptedResolver({ id: 'scripted', edges: SCRIPT, onClose: () => void (closes += 1) });
+    for await (const _edge of asStoreResolver(scripted)([SITE_A, SITE_B], context, lookup, scope)) {
+      break;
+    }
+    assert.equal(closes, 1);
   });
 });
