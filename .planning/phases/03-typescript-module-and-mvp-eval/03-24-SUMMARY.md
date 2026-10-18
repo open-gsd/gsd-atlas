@@ -176,3 +176,14 @@ None. The `citations` table is the stored surface the plan's register covers; th
 - Files present: modules/typescript/fixtures/adr.ts and its golden, modules/javascript/fixtures/adr.cjs and its golden, scripts/adr-citations-check.ts and its test, and the modified files above.
 - Commits c14bda7, 375ae99, ad9eb11, f580b4f, a3635e3, 1222827, 325cdbc and 6791854 are ancestors of HEAD; `git rev-list --count 88bc167..HEAD` was 8 before this SUMMARY commit.
 - The `node_modules` link and the `.codegraph` index of the worktree are removed before returning; the corpus checkout and probe scripts were kept in the session scratchpad outside the repository.
+
+## Follow-up (2026-10-18, user reply `approve both`)
+
+Review: `.planning/research/COMMENT-BOUND-FOLLOWUP.md`. The bound stays 32,768. This note supersedes the "1.8 times" sentence in Deviations (kept above as written): the floor test requires the bound to exceed the longest observed comment (17,881) and keeps that comment through the real engine (32,769 and 35,762 units are dropped and counted); it does not use a multiple, and it no longer reads `03-CONSTANTS.md`.
+
+- Per-capture scan bound: on the full path (overlapping or repeated captures, as a hostile module can script) each capture yields at most its first 200 mentions; output is unchanged. Regression test: ten identical 5,000-mention captures, `steps <= 12 * 200 * 10` (150,000 steps before).
+- Guard: a capture whose text is longer than its span takes the full path (it diverged from the scan-everything output before; unreachable with the real engine). Test with the review's `lying.ts` shape. Real-engine CRLF and astral input still takes the early exit.
+- `scanProbe` and `ScanProbe` are tagged `@internal`.
+- `03-CONSTANTS.md`: the `adr.maxCommentUnits` basis is reworded (1.83 is an observed headroom, not a derived requirement) and an Approvals entry quotes `approve both`.
+- Not done here, by instruction: the `citationGaps` visibility work (persisted flag, ADR-answer diagnostic, status field, build envelope) belongs to plans 03-28 and 03-29.
+- Commits: 031286c (floor test), 497642b (RED), 27901ef (GREEN), 2b90cf3 (`@internal`), plus the docs commit for this note, the registry wording and the research note.
