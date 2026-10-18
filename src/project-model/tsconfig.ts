@@ -27,6 +27,8 @@ export interface ReadContext {
   readonly fs: ProjectFs;
   readonly diagnostics: Diagnostic[];
   readonly reads: Map<string, Promise<ReadTextResult>>;
+  /** Set by `discoverConfigs`: the config paths it probed and the ones that existed. */
+  probe?: { readonly candidates: readonly string[]; readonly present: readonly string[] };
 }
 
 export function createReadContext(fs: ProjectFs): ReadContext {
@@ -246,18 +248,28 @@ function ancestorDirs(overlayPaths: readonly string[]): string[] {
 }
 
 /**
+ * The config paths discovery looks for: a `tsconfig.json` and a `jsconfig.json` in every directory from each source
+ * file's up to the root, then the extra configs given. A caller keeps the answer of `exists` for this list to notice
+ * a config that appeared or went away without describing the project again.
+ */
+function configCandidates(overlayPaths: readonly string[], extraConfigs: readonly string[] = []): string[] {
+  const extras = extraConfigs.map((p) => resolveRepoPath('', p)).filter((p) => p !== '' && p.endsWith('.json'));
+  return [
+    ...ancestorDirs(overlayPaths).flatMap((d) => CONFIG_FILE_NAMES.map((name) => (d === '' ? name : `${d}/${name}`))),
+    ...extras,
+  ];
+}
+
+/**
  * Finds the configs that matter for `overlayPaths`: a `tsconfig.json` or `jsconfig.json` in the directory of any
  * source file or above it, plus every config a found config `references` (each round of references is checked
  * for existence). At most {@link MAX_CONFIGS} are kept, first in lexical order, with a `too_many_configs`
  * diagnostic. Returns the parsed nodes, sorted by path; configs that cannot be read are left out.
  */
 export async function discoverConfigs(ctx: ReadContext, overlayPaths: readonly string[], extraConfigs: readonly string[] = []): Promise<ConfigNode[]> {
-  const extras = extraConfigs.map((p) => resolveRepoPath('', p)).filter((p) => p !== '' && p.endsWith('.json'));
-  const candidates = [
-    ...ancestorDirs(overlayPaths).flatMap((d) => CONFIG_FILE_NAMES.map((name) => (d === '' ? name : `${d}/${name}`))),
-    ...extras,
-  ];
+  const candidates = configCandidates(overlayPaths, extraConfigs);
   const present = await ctx.fs.exists(candidates);
+  ctx.probe = { candidates, present: candidates.filter((c) => present.has(c)) };
   const found = [...new Set(candidates.filter((c) => present.has(c)))].sort(compareCodeUnits);
   let overflow = found.length > MAX_CONFIGS;
   const seen = new Set(found.slice(0, MAX_CONFIGS));
@@ -324,6 +336,15 @@ function resolveList(
   return out;
 }
 
+/** True when the path option `key` is absolute or climbs above the repository root, read against the config that set it. */
+function optionEscapes(node: ConfigNode, key: string): boolean {
+  const option = node.options.get(key);
+  if (option === undefined || typeof option.value !== 'string' || option.value === '') return false;
+  const value = option.value.replace(/\\/g, '/');
+  if (value.startsWith(CONFIG_DIR_TEMPLATE)) return climbsAboveRoot(node.dir, value.slice(CONFIG_DIR_TEMPLATE.length).replace(/^\/+/, ''));
+  return isAbsoluteSpec(value) || climbsAboveRoot(option.dir, value);
+}
+
 function optionPath(node: ConfigNode, key: string): string | undefined {
   const option = node.options.get(key);
   if (option === undefined || typeof option.value !== 'string' || option.value === '') return undefined;
@@ -356,6 +377,8 @@ export function effectiveConfig(ctx: ReadContext, node: ConfigNode): EffectiveCo
   const allowJsOption = node.options.get('allowJs')?.value;
   const allowJs = typeof allowJsOption === 'boolean' ? allowJsOption : baseName(node.path) === 'jsconfig.json';
   const jsx = node.options.get('jsx')?.value;
+  const flag = (key: string): boolean => node.options.get(key)?.value === true;
+  const outFile = [node.options.get('outFile')?.value, node.options.get('out')?.value].some((v) => typeof v === 'string' && v !== '');
   return {
     hashes: node.hashes,
     info: {
@@ -370,6 +393,11 @@ export function effectiveConfig(ctx: ReadContext, node: ConfigNode): EffectiveCo
       ...(declarationDir === undefined ? {} : { declarationDir }),
       allowJs,
       ...(typeof jsx === 'string' ? { jsx } : {}),
+      noEmit: flag('noEmit'),
+      declaration: flag('declaration') || flag('composite'),
+      emitDeclarationOnly: flag('emitDeclarationOnly'),
+      outFile,
+      emitEscapes: ['rootDir', 'outDir', 'declarationDir'].some((key) => optionEscapes(node, key)),
       references: node.references,
     },
   };

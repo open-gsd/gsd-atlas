@@ -37,6 +37,7 @@ export type {
   IndexerNotice,
   IndexerStatus,
   LastReconcile,
+  OutputFilter,
   ReconcileOutcome,
   RefreshOutcome,
   StartOptions,

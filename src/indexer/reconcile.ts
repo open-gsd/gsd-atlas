@@ -18,11 +18,15 @@
  */
 import { UnknownWorktree } from '../fact-store/index.ts';
 import type { Writer } from '../fact-store/index.ts';
+import { diagnostic } from '../facts/index.ts';
 import type { Diagnostic } from '../facts/index.ts';
 import { SOURCE_TREE_CODES } from '../source-tree/index.ts';
-import { compareCodeUnits, processBatch, runJob } from './process.ts';
+import { compareCodeUnits, emitOutputsAmong, processBatch, runJob } from './process.ts';
 import type { PathResult, ProcessContext } from './process.ts';
 import type { FailedPath, ReconcileOutcome } from './types.ts';
+
+/** The aggregated note a run leaves when it kept emit outputs out of the overlay; counts only, never a path. */
+export const EMIT_OUTPUT_NOT_INDEXED = 'emit_output_not_indexed';
 
 /** `indexing` for start-up, watcher problems, HEAD changes and builds; `maintenance` for the idle timer. */
 export type ReconcilePriority = 'indexing' | 'maintenance';
@@ -115,7 +119,11 @@ export async function reconcileWorktree(
   const source = await runJob(ctx, job, () =>
     ctx.tree.sourceSet(worktree, snapshot.files, { extensions, maxBytes: ctx.config.maxFileBytes }),
   );
-  const truth = source.files;
+  // The emit outputs of included sources get no facts (TSM-03, OQ3): they are left out of the truth, so the overlay this
+  // run writes does not map them, whether or not it held them before. One question for the whole run.
+  const excluded = await runJob(ctx, job, () => emitOutputsAmong(ctx, worktree, source.files.keys()));
+  const truth: ReadonlyMap<string, string> =
+    excluded.size === 0 ? source.files : new Map([...source.files].filter(([filePath]) => !excluded.has(filePath)));
   // A source file over the byte cap is a failure of the run (named in `failed`), not a silent skip, and it keeps
   // any facts it already has, exactly as a file the engine refuses does.
   const oversize = source.skipped
@@ -159,6 +167,15 @@ export async function reconcileWorktree(
   const skipped: Diagnostic[] = [
     ...snapshot.diagnostics,
     ...source.skipped.filter((d) => d.code !== SOURCE_TREE_CODES.sourceTooLarge),
+    ...(excluded.size === 0
+      ? []
+      : [
+          diagnostic(
+            EMIT_OUTPUT_NOT_INDEXED,
+            'info',
+            `${String(excluded.size)} ${excluded.size === 1 ? 'file is' : 'files are'} the emit output of an included source and ${excluded.size === 1 ? 'is' : 'are'} not indexed`,
+          ),
+        ]),
   ];
   return {
     changed: reindex.length,

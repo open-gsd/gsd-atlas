@@ -35,7 +35,7 @@ import type { PathFilter } from './ignore.ts';
 import { extensionOf } from './modules.ts';
 import type { ModuleHost } from './modules.ts';
 import { IndexerError } from './types.ts';
-import type { IndexerConfig, IndexerNotice } from './types.ts';
+import type { IndexerConfig, IndexerNotice, OutputFilter } from './types.ts';
 
 /** How many independent files are handed to the Governor at once; the Governor's own queue bound does the rest. */
 const IN_FLIGHT_PATHS = 8;
@@ -84,6 +84,8 @@ export interface ProcessContext {
   readonly host: ModuleHost;
   /** Drops ignored paths before `hashPaths`, which would hash them (T-02-14). */
   readonly filter: PathFilter;
+  /** Keeps the emit outputs of included sources out of the index (TSM-03, OQ3); absent: nothing is kept out. */
+  readonly outputFilter?: OutputFilter;
   readonly locks: PathLocks;
   readonly counters: ProcessCounters;
   readonly config: IndexerConfig;
@@ -119,6 +121,32 @@ export interface PathResult {
 
 /** What one attempt at a path found; `raced` means the file changed under it and nothing was committed. */
 type Attempt = PathResult | { readonly path: string; readonly outcome: 'raced' };
+
+/**
+ * True when the output filter says `rel` is the emit output of an included source. A filter that throws, or none at
+ * all, says no: when the project cannot be described nothing is dropped from the index (fail open).
+ */
+function isEmitOutput(ctx: ProcessContext, worktree: string, rel: string): boolean {
+  if (ctx.outputFilter === undefined) return false;
+  try {
+    return ctx.outputFilter.isOutput(worktree, rel);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The paths of `paths` that are the emit output of an included source, asked once for a whole build or Reconcile run.
+ * Fails open like {@link isEmitOutput}.
+ */
+export async function emitOutputsAmong(ctx: ProcessContext, worktree: string, paths: Iterable<string>): Promise<ReadonlySet<string>> {
+  if (ctx.outputFilter === undefined) return new Set();
+  try {
+    return await ctx.outputFilter.exclude(worktree, paths);
+  } catch {
+    return new Set();
+  }
+}
 
 /** Run `fn` as one Governor job, waiting out `busy` answers for as long as the Indexer is running. */
 export async function runJob<T>(ctx: ProcessContext, spec: JobSpec, fn: () => Promise<T>): Promise<T> {
@@ -251,12 +279,16 @@ interface Prepared {
 async function prepare(ctx: ProcessContext, worktree: string, sorted: readonly string[]): Promise<Prepared> {
   const extensions = ctx.host.extensions();
   const claimed = new Set(extensions);
-  // Unclaimed extensions are set aside first: they cost no git run and no ignore verdict. Then git's ignore rules
-  // are applied, because hashPaths would hash an ignored file that exists (T-02-14).
-  const wanted = sorted.filter((p) => claimed.has(extensionOf(p)));
+  // Unclaimed extensions are set aside first: they cost no git run and no ignore verdict. Then the emit outputs of an
+  // included source (TSM-03, OQ3), which get no facts; they are handled like an unclaimed path, so one the overlay
+  // still holds leaves it and one it never held costs nothing. Then git's ignore rules are applied, because hashPaths
+  // would hash an ignored file that exists (T-02-14).
+  const claimedPaths = sorted.filter((p) => claimed.has(extensionOf(p)));
+  const outputs = new Set(claimedPaths.filter((p) => isEmitOutput(ctx, worktree, p)));
+  const wanted = claimedPaths.filter((p) => !outputs.has(p));
   const { kept, dropped } = await ctx.filter.keep(worktree, wanted);
   const candidates = [...kept].sort(compareCodeUnits);
-  const unclaimed = [...sorted.filter((p) => !claimed.has(extensionOf(p))), ...dropped].sort(compareCodeUnits);
+  const unclaimed = [...sorted.filter((p) => !claimed.has(extensionOf(p))), ...outputs, ...dropped].sort(compareCodeUnits);
 
   // The stamps come first: whatever happens to a file after this moment is what the race checks look for.
   const stamps = new Map<string, Stamp | undefined>(

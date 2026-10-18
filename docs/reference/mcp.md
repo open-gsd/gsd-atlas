@@ -102,6 +102,7 @@ Result `data`:
 
 - `results[]`: one ordered list for the best-ranked definition. Each item has a `section`: `definition`, `parent`, `child`, `import`, `export` or `reference`. The definition comes first, and a cut removes the lowest-priority items first. At most 10 references are shown.
 - `alternatives[]`: the other definitions of the name (at most 5).
+- `file`: present only when the project's compiler configuration says what the defining file compiles to: `{ path, emittedAs[] }`, with `emittedAs` the repository-relative output paths (for example `src/lib.cts` to `out/lib.cjs`). Absent for a file in no TypeScript project, and for a repository with no tsconfig.
 
 ### code_impact
 

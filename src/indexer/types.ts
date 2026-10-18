@@ -47,9 +47,23 @@ export type IndexerNotice =
   | { readonly kind: 'failed'; readonly worktree: string; readonly path: string; readonly code: string }
   | { readonly kind: 'requeued'; readonly worktree: string; readonly path: string };
 
+/**
+ * Which paths are the emit output of an included source and so get no facts (TSM-03, OQ3). The Indexer asks `exclude`
+ * once per build or Reconcile run, with every path the source set holds, before the overlay is written; it asks
+ * `isOutput` (synchronously, from what the last `exclude` or the store's own project context learned) for a single
+ * path an event or a fresh request names. A hand-written file under the output directory that matches no source is
+ * not an output and keeps its facts. A filter never throws: when it cannot tell, it excludes nothing.
+ */
+export interface OutputFilter {
+  exclude(worktree: string, paths: Iterable<string>): Promise<ReadonlySet<string>>;
+  isOutput(worktree: string, path: string): boolean;
+}
+
 export interface IndexerDeps {
   /** The tenant (one repository composition) the Governor jobs are for. */
   readonly tenant: string;
+  /** Keeps emit outputs out of the index; absent: every claimed source file is indexed (Phase 2). */
+  readonly outputFilter?: OutputFilter;
   readonly tree: SourceTree;
   readonly store: FactStore;
   readonly engine: GrammarEngine;

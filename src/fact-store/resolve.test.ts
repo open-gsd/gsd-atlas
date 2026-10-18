@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { describe, it } from 'node:test';
 import type {
+  EmitLookup,
   FileFacts,
   LocatedSymbol,
   ProjectContextProvider,
@@ -1014,6 +1015,151 @@ for (const driver of DRIVERS) {
         {},
         resolver,
       );
+    });
+  });
+}
+
+// ---------------------------------------------------------------------------------------------------------
+// Plan 03-22: the emit lookup reaches the specifier rule through the project context, and `emittedAs`.
+// ---------------------------------------------------------------------------------------------------------
+
+/** src/lib.cts compiles to out/lib.cjs; consumer.cjs requires the built file; src/user.cts imports the source. */
+const EMIT: EmitLookup = {
+  outputToSource: (p) => (p === 'out/lib.cjs' ? 'src/lib.cts' : undefined),
+  sourceToOutputs: (p) => (p === 'src/lib.cts' ? ['out/lib.cjs'] : []),
+  isOutput: (p) => p === 'out/lib.cjs',
+};
+
+const COMPUTE = identity('src/lib.cts', 'compute');
+const CONSUMER_SITE: RefSiteKey = { path: 'consumer.cjs', span: span(2, 9, 2, 16), name: 'compute' };
+const USER_SITE: RefSiteKey = { path: 'src/user.cts', span: span(2, 9, 2, 16), name: 'compute' };
+
+/** The three files of the emit story, written to the 'main' overlay. */
+async function seedEmit(writer: Writer): Promise<void> {
+  await writer.commitFile({
+    worktree: 'main',
+    path: 'src/lib.cts',
+    hash: H(11),
+    facts: fileOf('src/lib.cts', 11, {
+      symbols: [{ name: 'compute', kind: 'function', span: span(0, 0, 2, 1), exported: true }],
+      exports: [{ name: 'compute', span: span(0, 0, 2, 1) }],
+    }),
+  });
+  await writer.commitFile({
+    worktree: 'main',
+    path: 'src/user.cts',
+    hash: H(12),
+    facts: fileOf('src/user.cts', 12, {
+      symbols: [{ name: 'twice', kind: 'function', span: span(1, 0, 3, 1) }],
+      imports: [{ path: './lib.cjs', span: span(0, 0, 0, 33), style: 'es', bindings: [{ imported: 'compute', local: 'compute' }] }],
+      refSites: [{ name: 'compute', span: USER_SITE.span, kind: 'call', enclosing: 0, importPath: './lib.cjs' }],
+    }),
+  });
+  await writer.commitFile({
+    worktree: 'main',
+    path: 'consumer.cjs',
+    hash: H(13),
+    facts: fileOf('consumer.cjs', 13, {
+      module: 'javascript',
+      symbols: [{ name: 'run', kind: 'function', span: span(1, 0, 3, 1) }],
+      imports: [{ path: './out/lib.cjs', span: span(0, 0, 0, 44), style: 'cjs', bindings: [{ imported: 'compute', local: 'compute' }] }],
+      refSites: [{ name: 'compute', span: CONSUMER_SITE.span, kind: 'call', enclosing: 0, importPath: './out/lib.cjs' }],
+    }),
+  });
+}
+
+for (const driver of DRIVERS) {
+  describe(`emit lookup in the specifier rule and emittedAs (${driver})`, () => {
+    const withEmit: ProjectContextProvider = async () => ({ context: { id: 'ts:emit', configHashes: ['aa'] }, emit: EMIT });
+
+    it('importers: a built-output requirer is an EXTRACTED importer of the source, and absent without the lookup', async () => {
+      await withRig(driver, async (rig) => {
+        const writer = rig.store.writer();
+        await seedEmit(writer);
+        const importers = (await rig.store.at('main').importers('src/lib.cts')).data;
+        assert.deepStrictEqual(
+          importers.map((record) => [record.importer, record.specifier, record.hops, record.confidence]),
+          [
+            ['consumer.cjs', './out/lib.cjs', 1, 'EXTRACTED'],
+            ['src/user.cts', './lib.cjs', 1, 'EXTRACTED'],
+          ],
+        );
+        writer.release();
+      }, { projectContext: withEmit });
+
+      await withRig(driver, async (rig) => {
+        const writer = rig.store.writer();
+        await seedEmit(writer);
+        const importers = (await rig.store.at('main').importers('src/lib.cts')).data;
+        assert.deepStrictEqual(importers.map((record) => record.importer), ['src/user.cts'], 'Phase 2 behaviour without a project model');
+        writer.release();
+      });
+    });
+
+    it('refs and callers: the call in the requirer is a reference to, and a caller of, the .cts function', async () => {
+      await withRig(driver, async (rig) => {
+        const writer = rig.store.writer();
+        await seedEmit(writer);
+        const reader = rig.store.at('main');
+        const refs = (await reader.refs(COMPUTE)).data;
+        assert.deepStrictEqual(refs.map((record) => record.source_path).sort(), ['consumer.cjs', 'src/user.cts']);
+        const callers = (await reader.callers(COMPUTE)).data;
+        assert.deepStrictEqual(callers.map((record) => record.caller.qualifiedName).sort(), ['run', 'twice']);
+        writer.release();
+      }, { projectContext: withEmit });
+
+      await withRig(driver, async (rig) => {
+        const writer = rig.store.writer();
+        await seedEmit(writer);
+        const refs = (await rig.store.at('main').refs(COMPUTE)).data;
+        assert.deepStrictEqual(refs.map((record) => record.source_path), ['src/user.cts'], 'the control: no lookup, no requirer');
+        writer.release();
+      });
+    });
+
+    it('the resolver is told the emit lookup in the scope it receives', async () => {
+      const { resolver, seen } = probing([]);
+      await withRig(driver, async (rig) => {
+        const writer = rig.store.writer();
+        await seedEmit(writer);
+        await rig.store.at('main').refs(COMPUTE);
+        assert.equal(seen[0]?.scope?.project.emit, EMIT);
+        writer.release();
+      }, { projectContext: withEmit }, resolver);
+    });
+
+    it('emittedAs: the outputs of a source the overlay holds, and nothing for any other path', async () => {
+      await withRig(driver, async (rig) => {
+        const writer = rig.store.writer();
+        await seedEmit(writer);
+        const reader = rig.store.at('main');
+        assert.deepStrictEqual((await reader.emittedAs('src/lib.cts')).data, ['out/lib.cjs']);
+        assert.deepStrictEqual((await reader.emittedAs('consumer.cjs')).data, []);
+        assert.deepStrictEqual((await reader.emittedAs('src/missing.cts')).data, [], 'a path outside the overlay');
+        writer.release();
+      }, { projectContext: withEmit });
+
+      await withRig(driver, async (rig) => {
+        const writer = rig.store.writer();
+        await seedEmit(writer);
+        assert.deepStrictEqual((await rig.store.at('main').emittedAs('src/lib.cts')).data, [], 'a store with no provider');
+        writer.release();
+      });
+    });
+
+    it('a provider that fails leaves importers on the plain rule and emittedAs empty', async () => {
+      await withRig(driver, async (rig) => {
+        const writer = rig.store.writer();
+        await seedEmit(writer);
+        const reader = rig.store.at('main');
+        assert.deepStrictEqual((await reader.importers('src/lib.cts')).data.map((record) => record.importer), ['src/user.cts']);
+        assert.deepStrictEqual((await reader.emittedAs('src/lib.cts')).data, []);
+        writer.release();
+      }, {
+        projectContext: async () => {
+          throw new Error('no project');
+        },
+      });
     });
   });
 }

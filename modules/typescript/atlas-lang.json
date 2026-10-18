@@ -13,5 +13,9 @@
     "imports": "queries/imports.scm"
   },
   "tiers": ["grammar"],
-  "parseBudget": 0.005
+  "parseBudget": 0.005,
+  "project": {
+    "markers": ["tsconfig.json"],
+    "model": "typescript"
+  }
 }

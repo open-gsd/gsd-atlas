@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import type { TestContext } from 'node:test';
-import type { Envelope, RefKind, Request } from '../facts/index.ts';
+import type { EmitLookup, Envelope, ProjectContextProvider, RefKind, Request } from '../facts/index.ts';
 import { estimateTokens } from './budget.ts';
 import { addCaller, defineFn, nameOf, where } from './fixtures.test.ts';
 import { createHarness } from './harness.test.ts';
@@ -41,6 +41,7 @@ interface Alternative {
 interface ContextData {
   readonly results: readonly ContextItem[];
   readonly alternatives: readonly Alternative[];
+  readonly file?: { readonly path: string; readonly emittedAs?: readonly string[] };
 }
 
 const dataOf = (envelope: Envelope): ContextData => envelope.data as ContextData;
@@ -282,5 +283,47 @@ describe('code_context: a symbol in the context of its file', () => {
 
     assert.equal(envelope.ok, false);
     assert.equal(envelope.diagnostics[0]?.code, 'bad_cursor');
+  });
+});
+
+describe('code_context: emittedAs (TSM-03)', () => {
+  const EMIT: EmitLookup = {
+    outputToSource: (p) => (p === 'out/lib.cjs' ? 'src/lib.cts' : undefined),
+    sourceToOutputs: (p) => (p === 'src/lib.cts' ? ['out/lib.cjs'] : []),
+    isOutput: (p) => p === 'out/lib.cjs',
+  };
+  const withEmit: ProjectContextProvider = async () => ({ context: { id: 'ts:test', configHashes: [] }, emit: EMIT });
+  const LIB = 'export function compute(n) {\n  return n + 1;\n}\n';
+
+  it('emittedAs: names the output of the file that defines the symbol, through the same envelope', async (t) => {
+    const h = await createHarness({ projectContext: withEmit });
+    t.after(() => h.cleanup());
+    await h.addFile('src/lib.cts', LIB, [{ name: 'compute', line: 0, col: 16, exported: true }]);
+    await h.addFile('other.ts', 'export function elsewhere() {}\n', [{ name: 'elsewhere', line: 0, col: 16 }]);
+
+    const envelope = await h.query().ask(contextRequest(h, { name: 'compute' }));
+    assert.equal(envelope.ok, true, JSON.stringify(envelope.diagnostics));
+    assert.deepEqual(dataOf(envelope).file, { path: 'src/lib.cts', emittedAs: ['out/lib.cjs'] });
+    assert.equal(dataOf(envelope).results[0]?.section, 'definition', 'the items are unchanged');
+
+    const other = await h.query().ask(contextRequest(h, { name: 'elsewhere' }));
+    assert.equal(other.ok, true, JSON.stringify(other.diagnostics));
+    assert.ok(!('file' in dataOf(other)), 'a file no config includes has no emittedAs, and not an empty one');
+  });
+
+  it('emittedAs is absent, not an empty array, for a store with no project model and for a symbol that is not found', async (t) => {
+    const h = await world(t);
+    await h.addFile('src/lib.cts', LIB, [{ name: 'compute', line: 0, col: 16, exported: true }]);
+    const plain = await h.query().ask(contextRequest(h, { name: 'compute' }));
+    assert.equal(plain.ok, true, JSON.stringify(plain.diagnostics));
+    assert.ok(!('file' in dataOf(plain)));
+    assert.ok(!JSON.stringify(plain.data).includes('emittedAs'));
+
+    const withProject = await createHarness({ projectContext: withEmit });
+    t.after(() => withProject.cleanup());
+    await withProject.addFile('src/lib.cts', LIB, [{ name: 'compute', line: 0, col: 16, exported: true }]);
+    const none =await withProject.query().ask(contextRequest(withProject, { name: 'nothingCalledThis' }));
+    assert.equal(none.ok, true, JSON.stringify(none.diagnostics));
+    assert.ok(!('file' in dataOf(none)));
   });
 });

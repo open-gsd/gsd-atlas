@@ -29,6 +29,7 @@ import type { RateInput } from './rate.ts';
 import { answerEvent, flightAnswer, isAnsweredKind } from './record.ts';
 import { leaseHeldEnvelope, notIndexedEnvelope, storeUnavailableEnvelope } from './messages.ts';
 import type { LeaseHolderName } from './messages.ts';
+import { createOutputFilter, createTenantProjectProvider } from './project.ts';
 import { createStatusPort } from './status-port.ts';
 import { BUILD_SCHEMA, MAINTAIN_SCHEMA, STATUS_SCHEMA } from './types.ts';
 import type { MaintainOptions, MaintainTask, TaskReport, Tenant, TenantDeps, TenantStatus, TenantTuning } from './types.ts';
@@ -104,11 +105,16 @@ export async function createTenant(deps: TenantDeps): Promise<Tenant> {
       .catch(ignore);
   };
 
+  // TSM-03: the project the modules' manifests name (`project.model`) is described once per path set, and the store and
+  // the Indexer both read the same description. No module names a model: no provider, and Phase 2 behaviour as it was.
+  const projectProvider = createTenantProjectProvider(tree, roots);
+
   const store: FactStore = await (deps.openStore ?? openFactStore)(
     location.dir,
     { resolver: noPreciseTier, clock, gitHas: (hash) => tree.hasObject(hash) },
     {
       lease: 'acquire',
+      ...(projectProvider === undefined ? {} : { projectContext: projectProvider }),
       takeover: { retryMinMs: tuning.takeoverRetryMinMs, retryMaxMs: tuning.takeoverRetryMaxMs },
       onLeaseChange,
       ...(deps.version === undefined ? {} : { version: deps.version }),
@@ -199,6 +205,7 @@ export async function createTenant(deps: TenantDeps): Promise<Tenant> {
         governor,
         clock,
         onNotice: onIndexerNotice,
+        ...(projectProvider === undefined ? {} : { outputFilter: createOutputFilter(projectProvider) }),
         ...(source === undefined ? {} : { source }),
         ...(deps.indexer === undefined ? {} : { config: deps.indexer }),
       };

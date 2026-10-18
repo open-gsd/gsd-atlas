@@ -9,6 +9,7 @@ import { DEFAULT_PROJECT_CONTEXT, symbolKey } from '../facts/index.ts';
 import type {
   Clock,
   DegradedCode,
+  EmitLookup,
   OverlaySnapshot,
   ProjectContext,
   RefKind,
@@ -527,17 +528,35 @@ export function readResolving<T>(
       pathToHash: overlayView(snap).hashes,
     })).value;
     const finish = (project: ProjectContext | null): ResolvingRead<T> | Promise<ResolvingRead<T>> => {
-      const read = readSnapshot(parts, worktree, (snap) => {
-        const value = grammar(snap);
-        const moved = project !== null && snapshotIdOf(snap) !== seen.id;
-        return { grammar: value, input: prepareResolution(snap, sitesOf(value), moved ? null : project), moved };
-      });
+      const read = readSnapshot(
+        parts,
+        worktree,
+        (snap) => {
+          const value = grammar(snap);
+          const moved = project !== null && snapshotIdOf(snap) !== seen.id;
+          return { grammar: value, input: prepareResolution(snap, sitesOf(value), moved ? null : project), moved };
+        },
+        // The specifier rule asks the project's emit lookup (TSM-03); a snapshot that moved is read again.
+        project?.emit,
+      );
       return read.value.moved && n < 2 ? attempt(n + 1) : read;
     };
     const project = askProject(parts, worktree, seen);
     return project instanceof Promise ? project.then(finish) : finish(project);
   };
   return attempt(1);
+}
+
+/**
+ * The emit lookup of the project context of the snapshot a read is about to see (TSM-03), for the reads that need it
+ * but do not resolve (`importers`, `emittedAs`). A store with no provider answers undefined at once, without a read,
+ * so its reads stay as they were in Phase 2. A provider that fails gives undefined: the plain specifier rule applies.
+ */
+export function emitLookupFor(parts: StoreParts, worktree: WorktreeId): EmitLookup | undefined | Promise<EmitLookup | undefined> {
+  if (!parts.projectContext.provided) return undefined;
+  const seen = readSnapshot(parts, worktree, (snap) => ({ id: snapshotIdOf(snap), pathToHash: overlayView(snap).hashes })).value;
+  const project = askProject(parts, worktree, seen);
+  return project instanceof Promise ? project.then((got) => got?.emit) : project?.emit;
 }
 
 /** What `readResolving` returns: the grammar result and the resolve input, read in one transaction. */

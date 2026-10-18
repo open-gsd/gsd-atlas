@@ -4,8 +4,9 @@ import { createFileSetMatcher, dirOf, hasHigherPriorityExtension } from './globs
 import type { FileSetMatcher } from './globs.ts';
 import { compilerFallbackDiagnostic, detectTypeScriptInstall, selectCompiler } from './install.ts';
 import { chooseOwner } from './owners.ts';
+import { buildEmitMap } from './emit.ts';
 import { createReadContext, discoverConfigs, effectiveConfig } from './tsconfig.ts';
-import type { ConfigInfo, DescribeInput, ProjectDescription, ProjectFs, ProjectModel } from './types.ts';
+import type { ConfigInfo, DescribeInput, EmitMap, ProjectDescription, ProjectFs, ProjectModel } from './types.ts';
 
 /** The ids of the built-in ProjectModels a manifest may name through `project.model` (ADR 5). */
 export const PROJECT_MODEL_IDS: readonly string[] = ['typescript'];
@@ -104,6 +105,9 @@ export function createTypeScriptProjectModel(defaultFs?: ProjectFs, options: Typ
       const compiler = selectCompiler(install);
       const fallback = compilerFallbackDiagnostic(compiler);
 
+      const configFiles = new Map<string, string>();
+      for (const e of effective) for (const [file, hash] of e.hashes) configFiles.set(file, hash);
+      let emit: EmitMap | undefined;
       return {
         context: buildContext(compiler, effective.map((e) => e.hashes)),
         configs,
@@ -111,6 +115,13 @@ export function createTypeScriptProjectModel(defaultFs?: ProjectFs, options: Typ
         ownerOf,
         compiler,
         diagnostics: uniqueDiagnostics([...ctx.diagnostics, ...install.diagnostics, ...(fallback === undefined ? [] : [fallback])]),
+        // Computed on first use: the file-set differential never asks, and building it walks every source once.
+        get emit(): EmitMap {
+          emit ??= buildEmitMap(configs, overlay, matches);
+          return emit;
+        },
+        configFiles,
+        configProbe: ctx.probe ?? { candidates: [], present: [] },
       };
     },
   };
