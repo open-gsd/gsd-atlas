@@ -143,6 +143,18 @@ gsd-atlas impact <name> [--path <file>] [--depth <hops>] [selection and paging f
 - `data.seeds[]`: the matching definitions: `name`, `kind`, `path`, `line`, `handle`.
 - `data.results[]`: `hop`, `via` (`call`, `reference` or `import`), `kind` (`file` for a file), `name`, `path`, `line`, `col`, `confidence` (of this edge), `chain_confidence` (of the whole chain from the seed; `INFERRED` as soon as one edge is), `handle`, `from` (the seed handle), `citation`. Each item is reported once per seed, at the smallest hop that reaches it. A hop keeps at most 200 items per seed.
 
+### gsd-atlas explain
+
+```
+gsd-atlas explain <handle | answer id> [--repo <dir>] [--cwd <dir>]
+```
+
+- The argument is the `debug` handle of any citation, or the `answer_id` of an earlier answer; an argument shaped like an answer id (`a_` and 16 hexadecimal digits) is sent as `answer_id`, anything else as `handle`.
+- Options: `--repo`, `--cwd`. The command prints the JSON of the `code_explain` MCP tool, apart from `answer_id`.
+- Result schema: `gsd-atlas.code-explain/1`. For a handle, `data.explanation` (the extractor, tier, grammar version, file version, resolution context and cache state, overlay) and `data.tiers` (the precise tier's state and the compiler); for an answer id, `data.answer` and `data.facts[]`. The fields are in [the MCP reference](mcp.md#code_explain).
+- It reads what is already stored: it runs no resolver, starts no compiler and writes nothing but the record of its own answer.
+- Errors: `invalid_handle`, `stale_handle`, `answer_not_found`, `invalid_args`, `not_indexed`, `not_a_repo`.
+
 ### gsd-atlas history
 
 ```
