@@ -7,6 +7,7 @@ import type {
   Answer,
   DegradedCode,
   ImportStyle,
+  LocatedSymbol,
   Span,
   SymbolIdentity,
   Watermark,
@@ -216,6 +217,20 @@ export function findSymbol(snap: Snapshot, id: SymbolIdentity): { file: FileRow;
       candidate.discriminator === id.discriminator,
   );
   return symbol === undefined ? null : { file: fileRow(snap, fileId), symbol };
+}
+
+/**
+ * Every symbol called `name` that the overlay's version of the file at `path` defines (the content hash the
+ * overlay maps to that path), in definition order, with its identity and the span of its definition. The path
+ * is looked up exactly as the overlay stores it; an unknown path, a pending one, a path outside the overlay
+ * and an unknown name all give an empty list (T-03-204: nothing outside the overlay's own file is read).
+ */
+export function symbolsIn(snap: Snapshot, path: string, name: string): LocatedSymbol[] {
+  const fileId = fileIdAt(snap, path);
+  if (fileId === null) return [];
+  return fileSymbols(snap, fileId)
+    .filter((symbol) => symbol.name === name)
+    .map((symbol) => ({ ...identityOf(snap, path, symbol), span: symbol.span }));
 }
 
 /** Every path of the overlay, loaded once per read. */

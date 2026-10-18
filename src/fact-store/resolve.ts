@@ -9,10 +9,12 @@ import { symbolKey } from '../facts/index.ts';
 import type {
   Clock,
   DegradedCode,
+  OverlaySnapshot,
   RefKind,
   RefSiteKey,
   ResolutionContext,
   ResolvedEdge,
+  ResolveScope,
   Span,
   SymbolIdentity,
   SymbolLookup,
@@ -49,6 +51,7 @@ import {
   resolveImport,
   spanOf,
   str,
+  symbolsIn,
 } from './snapshot.ts';
 import type { FileSymbol, ImportRow, Snapshot } from './snapshot.ts';
 import type { CallerRecord, ImporterRecord, Provenance, RefRecord, ResolveOptions, WorktreeId } from './types.ts';
@@ -428,6 +431,8 @@ export interface ResolveInput {
   readonly context: ResolutionContext;
   /** The stored form of `context`. */
   readonly contextKey: string;
+  /** The overlay snapshot the sites were read from: its id and its path to content hash map. */
+  readonly overlay: OverlaySnapshot;
   /** The distinct sites to resolve, in request order. */
   readonly sites: readonly RefSiteKey[];
   /** Valid cached edges by `siteId`; a site is answered when it has at least one. */
@@ -465,7 +470,8 @@ export function prepareResolution(snap: Snapshot, sites: readonly RefSiteKey[]):
       if (valid.length > 0) cached.set(id, valid);
     }
   }
-  return { snapshotId, context, contextKey: key, sites: [...distinct.values()], cached };
+  const overlay: OverlaySnapshot = { id: snapshotId, pathToHash: overlayView(snap).hashes };
+  return { snapshotId, context, contextKey: key, overlay, sites: [...distinct.values()], cached };
 }
 
 /** The outcome of phase 2. */
@@ -480,21 +486,24 @@ type Settled =
   | { readonly kind: 'timeout' }
   | { readonly kind: 'failed' };
 
-/** Drain the resolver for `sites`. Rejects when it throws, on the call or while iterating. */
+/**
+ * Drain the resolver for `sites`, telling it where it resolves (`scope`) and giving it a read-only lookup of the
+ * grammar tier's symbols. Rejects when it throws, on the call or while iterating.
+ */
 async function collectEdges(
   parts: StoreParts,
-  worktree: WorktreeId,
   sites: readonly RefSiteKey[],
-  context: ResolutionContext,
+  scope: ResolveScope,
 ): Promise<ResolvedEdge[]> {
+  const { worktree } = scope;
   const lookup: SymbolLookup = {
     // Read back through the read-only connection, one short transaction per call (never held across an await).
     find: async (name) =>
       readSnapshot(parts, worktree, (snap) => findRecords(snap, name, { mode: 'exact' }).map((record) => record.identity)).value,
-    findIn: async () => [], // RED scaffold
+    findIn: async (path, name) => readSnapshot(parts, worktree, (snap) => symbolsIn(snap, path, name)).value,
   };
   const out: ResolvedEdge[] = [];
-  for await (const edge of parts.deps.resolver(sites, context, lookup)) out.push(edge);
+  for await (const edge of parts.deps.resolver(sites, scope.project.context, lookup, scope)) out.push(edge);
   return out;
 }
 
@@ -616,7 +625,7 @@ export async function resolveSites(
   if (pending.length === 0) return { edges, degraded: [] };
   const asked = new Set(pending.map(siteId));
 
-  const run = collectEdges(parts, worktree, pending, input.context);
+  const run = collectEdges(parts, pending, { worktree, overlay: input.overlay, project: { context: input.context } });
   const outcome = await settle(run, parts.deps.clock, options?.timeoutMs);
 
   if (outcome.kind === 'failed') return { edges, degraded: ['resolver_failed'] };
