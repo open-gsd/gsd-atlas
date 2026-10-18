@@ -11,8 +11,8 @@ The claim under test is the Phase 3 goal in ROADMAP.md: agents using atlas consu
 ## Hypotheses
 
 - **H1, accuracy is non-inferior (D-04).** The accuracy of the atlas arm is not worse than the accuracy of the grep arm by 5 percentage points or more. It is judged on the lower end of the paired cluster bootstrap of the accuracy difference: the claim holds when the 5th percentile of the bootstrap distribution of (atlas accuracy minus grep accuracy) is strictly greater than minus 0.05. A miss means the MVP is not met; the work is then diagnosed and iterated before Phase 4.
-- **H2, atlas uses fewer billable tokens.** Billable tokens of a session are input, output, cache-creation and cache-read tokens added together (D-06). The registered criterion is set under Analysis; it is awaiting the human's decision at Task 3.
-- **H3, citations are verifiable (EVL-03).** In at least 80 percent of the atlas arm's sessions on questions that have an answer, the answer cites at least one file and line and every cited file and line verifies on disk. How "at least 80 percent" is judged (the point estimate, or the Wilson lower bound) is the user's explicit choice (OQ4); it is awaiting the human's decision at Task 3.
+- **H2, atlas uses fewer billable tokens.** Billable tokens of a session are input, output, cache-creation and cache-read tokens added together (D-06). The registered criterion is the stricter form set under Analysis: the 95th percentile of the paired bootstrap difference must be below zero.
+- **H3, citations are verifiable (EVL-03).** In at least 80 percent of the atlas arm's sessions on questions that have an answer, the answer cites at least one file and line and every cited file and line verifies on disk. How "at least 80 percent" is judged (the point estimate, or the Wilson lower bound) was the user's explicit choice (OQ4): the point estimate, with the interval reported.
 
 ## Design
 
@@ -49,8 +49,8 @@ The claim under test is the Phase 3 goal in ROADMAP.md: agents using atlas consu
 ## Analysis
 
 - **Accuracy statistic.** For every question, the accuracy of an arm is the mean of its runs (1 for a correct session, 0 for an incorrect one), and the question's difference is atlas minus grep. The unit of resampling is the question: all runs of a question stay together. The bootstrap draws 75 questions with replacement, 10,000 times (`resamples`), from a random stream seeded with 20261017 (`seed`, the mulberry32 generator), and records the mean difference of each draw. The sorted distribution is read without interpolation: the 5th percentile is the element at index floor(0.05 x (10,000 - 1)) and the 95th percentile the element at index floor(0.95 x (10,000 - 1)). The registered interval level is 0.95 one-sided (`intervalLevel`), which is the 90 percent two-sided interval whose lower end is the 5th percentile. H1 holds when the 5th percentile is strictly greater than minus 0.05 (`marginPoints` 5).
-- **Token criterion.** The same paired cluster bootstrap is applied to billable tokens per session: the question's difference is the mean billable tokens of the atlas runs minus the mean of the grep runs. The default criterion, `point`, is that the observed mean of those differences is below zero (atlas uses fewer tokens overall), with the 5th and 95th percentiles reported. The alternative, `upper-bound`, requires the 95th percentile of the bootstrap distribution to be below zero, which is stricter and more likely to miss on noise. This Draft registers `point`, the default; it is awaiting the human's decision at Task 3.
-- **Citation criterion.** The rate is the share of atlas-arm sessions on the 66 non-abstain questions (66 x 3 = 198 sessions) whose answer has a verifiable citation, with the Wilson score interval at z = 1.96 (`wilsonZ`) reported for both arms. The threshold is 0.8 (`citationRate`). Judged on the point estimate, 159 of the 198 sessions are needed; judged on the Wilson lower bound, 170 of 198 (85.9 percent) are needed. The Wilson interval treats the sessions as independent, although the three runs of a question are not. This Draft registers `wilson_lower_bound`, the value of the user's earlier answer at plan 03-01 (the `Gate OQ4` line of 03-DECISIONS.md); it is awaiting the human's decision at Task 3, and the freezer refuses to freeze unless the Approvals section holds the user's explicit line.
+- **Token criterion.** The same paired cluster bootstrap is applied to billable tokens per session: the question's difference is the mean billable tokens of the atlas runs minus the mean of the grep runs. The criterion `point` would be that the observed mean of those differences is below zero (atlas uses fewer tokens overall). The registered criterion is the stricter `upper-bound`: the 95th percentile of the bootstrap distribution of the difference (atlas minus grep) must be below zero, which is more likely to miss on noise. The observed difference and the 5th and 95th percentiles are reported. The user chose the stricter criterion at the Task 3 checkpoint (see Approvals).
+- **Citation criterion.** The rate is the share of atlas-arm sessions on the 66 non-abstain questions (66 x 3 = 198 sessions) whose answer has a verifiable citation, with the Wilson score interval at z = 1.96 (`wilsonZ`) reported for both arms. The threshold is 0.8 (`citationRate`). The registered judgement (`citationJudgedOn`) is the point estimate: the criterion holds when the observed rate is at or above 0.8, which needs 159 of the 198 sessions. The Wilson interval is reported next to it, not judged on (judged on its lower bound, 170 of 198 sessions, 85.9 percent, would be needed). The Wilson interval treats the sessions as independent, although the three runs of a question are not. The user confirmed `point_estimate` explicitly at the Task 3 checkpoint, which replaces the earlier answer `wilson_lower_bound` given at plan 03-01; the confirmation is the `OQ4 confirmed by the user:` line under Approvals.
 - **Failure handling.** A session that ran and did not finish with status `ok` (timeout, budget stop, error, kill) counts as incorrect, has no verifiable citation, and keeps its tokens. Failed sessions are never dropped. The only registered rule is `incorrect-keep-tokens`.
 - **Completeness rule.** The expected cells are every (question, arm, run) triple. A row outside the expected cells, or two rows for one cell, is an error. A run with a missing cell is incomplete: it gets no verdict, and the analysis exits non-zero.
 - **Verdict.** The overall verdict is true when accuracy (H1), tokens (H2) and citations (H3) all hold.
@@ -61,7 +61,7 @@ The claim under test is the Phase 3 goal in ROADMAP.md: agents using atlas consu
 - **Claude Code.** Version `2.1.302`; a scored run refuses a different version.
 - **Concurrency.** 2 sessions in flight at once (`eval.concurrency`).
 - **Per-session bounds.** `--max-budget-usd` 3 (USD) and a wall-clock kill at 900,000 ms (15 minutes), the values the user chose at plan 03-14 (`eval.maxBudgetUsdPerSession`, `eval.sessionWallClockMs`).
-- **Retry rule.** A session that reached the model is final, whether it succeeded or failed; it is never retried. Only an infrastructure failure, a rate-limit or overload result (status 429 or 529, or the same words in the result text) with no tool call made, is retried, at most 2 times, after waiting 60,000 ms (`DEFAULT_RETRY_DELAY_MS` in `scripts/eval/arms.ts`, a planner-added value that is awaiting the human's approval at Task 3). Every attempt is logged.
+- **Retry rule.** A session that reached the model is final, whether it succeeded or failed; it is never retried. Only an infrastructure failure, a rate-limit or overload result (status 429 or 529, or the same words in the result text) with no tool call made, is retried, at most 2 times, after waiting 60,000 ms (`DEFAULT_RETRY_DELAY_MS` in `scripts/eval/arms.ts`, a planner-added value approved by the user together with this pre-registration; see Approvals). Every attempt is logged.
 - **Cost stop.** The harness has an optional running-cost stop (`--stop-at-cost-usd`) that stops scheduling when the results directory has cost that much. It is a spending guard, not a registered value, and it cannot change a session's result; a run stopped by it is incomplete and gets no verdict.
 - **Registered flags.** Model, runs, concurrency, seed, per-session budget and wall clock are taken from the `prereg-json` block; a scored run refuses a command-line flag that differs.
 
@@ -76,7 +76,27 @@ Nothing registered here changes after the freeze. A change to a question, a key,
 
 ## Approvals
 
-Awaiting the human's decisions: the question set and its answer keys (Task 2) and the registered parameters, the citation and token criteria and the run configuration (Task 3). The replies will be recorded here verbatim with their date, and the explicit OQ4 value will be recorded as its own line. No approval is recorded in this Draft.
+The question set and its answer keys (Task 2 of plan 03-16) and the registered parameters, the citation and token criteria and the run configuration (Task 3) were approved by the user on 2026-10-18. The replies are recorded verbatim.
+
+Question set and answer keys (all 75 scored questions and the 5 pilot questions, no replacements). Reply:
+
+> approve questions
+
+Registered parameters, criteria and run configuration. Reply, as first sent:
+
+> point_estimate, stricter point estimate, approve pre-registration
+
+The reply did not use the `oq4=` form and named both the `approve` and the `stricter` options, so the user was asked to clarify which applied. The user answered:
+
+> both unless they conflict and you didn't tell me
+
+The parts do not conflict, so both apply. The reply is resolved as `approve` with `stricter oq4=point_estimate`:
+
+- The EVL-03 citation criterion (OQ4) is judged on the point estimate at or above 0.8 (`citationJudgedOn` is `point_estimate`), replacing the answer `wilson_lower_bound` given at plan 03-01.
+- The token criterion is the stricter form: the 95th percentile of the paired bootstrap difference below zero (`tokenCriterion` is `upper-bound`).
+- The rest of the document is approved as written, including the 5-point margin on the 5th percentile, the failure rule and the run configuration. The approval covers the retry delay `DEFAULT_RETRY_DELAY_MS` of 60,000 ms (infrastructure failures only, at most 2 retries).
+
+OQ4 confirmed by the user: point_estimate
 
 ## Machine-readable block
 
@@ -91,9 +111,9 @@ Awaiting the human's decisions: the question set and its answer keys (Task 2) an
     "seed": 20261017,
     "runsPerCell": 3,
     "citationRate": 0.8,
-    "citationJudgedOn": "wilson_lower_bound",
+    "citationJudgedOn": "point_estimate",
     "wilsonZ": 1.96,
-    "tokenCriterion": "point",
+    "tokenCriterion": "upper-bound",
     "failureRule": "incorrect-keep-tokens",
     "concurrency": 2,
     "maxBudgetUsdPerSession": 3,

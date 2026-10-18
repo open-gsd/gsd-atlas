@@ -45,3 +45,7 @@ Task 2 (blocking-human checkpoint) replies, in order, verbatim:
 2. `approve-all oq4=wilson_lower_bound` (a newer genuine reply from the user that supersedes reply 1; this is the reply the gate lines and the OQ4 answer follow)
 
 Both replies accept all nine defaults OQ1 to OQ9; they differ only in the OQ4 value. Both replies also approved ratifying the ADR, but the user later decided not to ratify it (see "Diagnostics ADR ratification" above), so no ratification took place.
+
+## Later reply: OQ4 re-asked at the pre-registration freeze (plan 03-16)
+
+The OQ4 line above (`Gate OQ4 (EVL-03 citation criterion): Confirmed wilson_lower_bound`) and the replies above are kept as they were. Plan 03-16 re-asks OQ4 at its blocking checkpoint because the freezer needs an explicit `OQ4 confirmed by the user:` line. The user answered on 2026-10-18 (verbatim): `point_estimate, stricter point estimate, approve pre-registration`; asked whether the replies conflicted, the user answered (verbatim): `both unless they conflict and you didn't tell me`. The replies do not conflict. The newest reply therefore sets OQ4 to `point_estimate`, which supersedes `wilson_lower_bound` for the frozen pre-registration (`docs/eval/preregistration.md`, `params.citationJudgedOn`). The Register row for OQ4 is not rewritten; this section is the later entry.
