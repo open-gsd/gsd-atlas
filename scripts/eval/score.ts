@@ -107,6 +107,33 @@ export function checkoutRoots(repoDir: string): string[] {
   return [...roots];
 }
 
+/** The checkout directory with symbolic links resolved, or undefined when it does not exist. */
+function realCheckout(repoDir: string): string | undefined {
+  try {
+    return fs.realpathSync.native(repoDir);
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * True when the cited file, with every symbolic link on its way resolved, lies outside the
+ * checkout (T-03-71). `verifyCitation` checks the spelling of the path, not the target of a link,
+ * so a link planted in the tree would be read through without this. A path that does not exist
+ * returns false: `verifyCitation` reports it as `file missing`.
+ */
+function leavesCheckout(repoReal: string | undefined, rel: string): boolean {
+  if (repoReal === undefined) return false;
+  let real: string;
+  try {
+    real = fs.realpathSync.native(path.resolve(repoReal, rel));
+  } catch {
+    return false;
+  }
+  const back = path.relative(repoReal, real);
+  return back === '..' || back.startsWith(`..${path.sep}`) || path.isAbsolute(back);
+}
+
 function stripRoot(slashed: string, roots: readonly string[]): string | undefined {
   for (const root of roots) {
     const caseFold = /^[A-Za-z]:/.test(root);
@@ -187,15 +214,31 @@ function matchCost(key: ScoredItem, given: ScoredItem, granularity: Granularity)
   if (granularity === 'file') return 0;
   if (granularity === 'file+symbol') {
     if (key.symbol === undefined) return 0;
-    return key.symbol === given.symbol ? 0 : undefined;
+    if (given.symbol === undefined) return undefined;
+    return matchSymbols(key.symbol, given.symbol);
   }
   if (key.line === undefined || given.line === undefined) return undefined;
   return matchLines(key.line, given.line);
 }
 
-/** The distance between a key line and an answered line when they match, else undefined. */
+/** The distance between a key line and an answered line when they are within `LINE_SLACK`, else undefined. */
 export function matchLines(keyLine: number, givenLine: number): number | undefined {
-  return keyLine === givenLine ? 0 : undefined;
+  const distance = Math.abs(keyLine - givenLine);
+  return distance <= LINE_SLACK ? distance : undefined;
+}
+
+/**
+ * Cost of matching two normalised symbols. The same string costs 0. A method written with its
+ * class (`Circle.area`, `Circle#area`, `Circle::area`) matches a key symbol that names only the
+ * method, and the other way round, on the last segment (cost 1); two qualified names must be equal
+ * as a whole, so `Square.area` never matches `Circle.area`.
+ */
+export function matchSymbols(keySymbol: string, givenSymbol: string): number | undefined {
+  if (keySymbol === givenSymbol) return 0;
+  const keyParts = keySymbol.split(/::|[.#]/);
+  const givenParts = givenSymbol.split(/::|[.#]/);
+  if (keyParts.length > 1 && givenParts.length > 1) return undefined;
+  return keyParts[keyParts.length - 1] === givenParts[givenParts.length - 1] ? 1 : undefined;
 }
 
 export interface SetMatch {
@@ -307,8 +350,41 @@ export async function scoreAnswer(
     };
   }
   const { answer } = extracted;
+  const given = (): ScoredItem[] =>
+    answer.items.map((item) => ({
+      file: item.file,
+      ...(item.line === undefined ? {} : { line: item.line }),
+      ...(item.symbol === undefined ? {} : { symbol: item.symbol }),
+    }));
+
+  // An abstain question has nothing to find: the only correct answer is `not_found` with no items.
+  if (key.abstain) {
+    let reason = 'fabricated answer';
+    if (answer.answer === 'not_found') reason = answer.items.length === 0 ? 'abstain correct' : 'abstain with items';
+    return {
+      correct: reason === 'abstain correct',
+      reason,
+      answered: answer.answer,
+      matched: [],
+      missing: [],
+      extra: given(),
+      citation: citationOf(false, 0, []),
+    };
+  }
+  if (answer.answer === 'not_found') {
+    return {
+      correct: false,
+      reason: 'gave up',
+      answered: 'not_found',
+      matched: [],
+      missing: projectItems(keyItemsOf(key), key.granularity),
+      extra: [],
+      citation: citationOf(true, 0, []),
+    };
+  }
 
   const roots = checkoutRoots(ctx.repoDir);
+  const repoReal = realCheckout(ctx.repoDir);
   const failures: CitationFailure[] = [];
   const valid: ScoredItem[] = [];
   const invalid: ScoredItem[] = [];
@@ -326,11 +402,15 @@ export async function scoreAnswer(
       ...(item.line === undefined ? {} : { line: item.line }),
       ...(item.symbol === undefined ? {} : { symbol: item.symbol }),
     });
-    if (item.line !== undefined) {
-      const result = await verifyCitation(ctx, { file: normalised.path, line: item.line }, key.needles);
-      if (!result.ok) {
-        failures.push({ file: normalised.path, line: item.line, reason: result.reason ?? 'unverified' });
-      }
+    if (item.line === undefined) continue;
+    const citation = { file: normalised.path, line: item.line };
+    if (cited > MAX_CITATIONS) {
+      failures.push({ ...citation, reason: 'too many citations' });
+    } else if (leavesCheckout(repoReal, normalised.path)) {
+      failures.push({ ...citation, reason: 'outside checkout' });
+    } else {
+      const result = await verifyCitation(ctx, citation, key.needles);
+      if (!result.ok) failures.push({ ...citation, reason: result.reason ?? 'unverified' });
     }
   }
 
