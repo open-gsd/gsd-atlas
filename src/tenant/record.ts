@@ -65,5 +65,9 @@ export function flightAnswer(request: Request, envelope: Envelope, latencyMs: nu
     degraded,
     count: envelope.citations?.length ?? 0,
     handles,
+    // Plan 03-32: what `gsd-atlas bug` shows of the envelope. Words the program chose, and a number; no data.
+    schema: envelope.schema,
+    diag: envelope.diagnostics.map((entry) => entry.code),
+    ...(envelope.watermark === undefined ? {} : { seq: envelope.watermark.seq }),
   };
 }

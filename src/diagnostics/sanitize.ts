@@ -52,8 +52,11 @@ export type Json = string | number | boolean | null | Json[] | { [key: string]: 
 /** What a name, path or handle becomes in `redacted` mode. */
 export const REMOVED_TOKEN = '<removed>';
 
-/** What a fixed word may look like: letters, digits and the few marks versions, buckets and placeholders use. */
-export const CODE_PATTERN = /^[A-Za-z0-9_.:@+<>–\- ]{1,64}$/u;
+/**
+ * What a fixed word may look like: letters, digits and the few marks versions, buckets and placeholders use, or an envelope
+ * schema name (`gsd-atlas.code-refs/1`), whose slash is the only one a code may hold.
+ */
+export const CODE_PATTERN = /^(?:[A-Za-z0-9_.:@+<>–\- ]{1,64}|gsd-atlas\.[a-z0-9-]{1,40}\/[0-9]{1,3})$/u;
 
 /** The shape of an object key. */
 const KEY_PATTERN = /^[A-Za-z][A-Za-z0-9_]{0,47}$/;

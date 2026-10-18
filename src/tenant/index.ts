@@ -25,6 +25,7 @@ export { BUILD_SCHEMA, MAINTAIN_SCHEMA, MAINTAIN_TASKS, STATUS_SCHEMA } from './
 export type {
   CommandGate,
   CommandReport,
+  ExplainSummary,
   MaintainOptions,
   MaintainTask,
   PreciseReport,

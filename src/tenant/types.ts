@@ -206,6 +206,21 @@ export interface TenantStatus {
   readonly idle: { readonly lastRoundAt: number | null; readonly rounds: number; readonly failedSteps: number };
 }
 
+/**
+ * What `code_explain` says about one fact, reduced to words and flags (plan 03-32): the kind, the tier, the confidence, the
+ * extractor (`grammar:<module>@<version>` or `precise:<resolver>`) and whether a precise edge is cached for it. `stale`
+ * when the file behind the handle changed, `unknown` when the handle reads nothing. It carries no path, no name and no text.
+ */
+export interface ExplainSummary {
+  readonly handle: string;
+  readonly status: 'ok' | 'stale' | 'unknown';
+  readonly kind?: string;
+  readonly tier?: string;
+  readonly confidence?: string;
+  readonly extractor?: string;
+  readonly cache?: string;
+}
+
 export interface Tenant {
   readonly storeId: string;
   readonly location: StoreLocation;
@@ -235,6 +250,11 @@ export interface Tenant {
   lastAnswerId(): string | null;
   /** The id of the newest session marker the recorder holds, or null. */
   sessionId(): string | null;
+  /**
+   * `explain` for one fact handle, as a summary (plan 03-32, `gsd-atlas bug`). It asks Query directly, so it is neither
+   * recorded as an answer nor counted by Metrics: making a bug bundle leaves no trace in what it reports on. Never throws.
+   */
+  explainSummary(handle: string, worktree: string): Promise<ExplainSummary>;
   /**
    * Record one rating a person gave (plan 03-17, D-16): the newest recorded answer, a feature, or the newest session.
    * `no_recent_answer` or `no_recent_session` when there is nothing to rate, `rating_not_saved` when the metrics

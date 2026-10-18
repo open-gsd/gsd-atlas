@@ -15,6 +15,7 @@
  * Pure: no file, process, database or network. The Host gathers, this module shapes.
  */
 import crypto from 'node:crypto';
+import { bucketBytes, bucketMs } from './bucket.ts';
 import { createHasher } from './hash.ts';
 import type { Hasher } from './hash.ts';
 import { leaf, sanitize } from './sanitize.ts';
@@ -232,6 +233,9 @@ export interface BuiltBundle {
   readonly digest: string;
   /** The approved types that are in the bundle, in the fixed order. */
   readonly included: readonly BugType[];
+  /** The recorder excerpt: events considered (the newest `excerptEvents`) and events kept after trimming to the byte cap. */
+  readonly eventsTotal?: number;
+  readonly eventsKept?: number;
 }
 
 /** The fields {@link renderPreview} frames a bundle's text with. */
@@ -240,6 +244,8 @@ export interface PreviewInput {
   readonly text: string;
   readonly digest: string;
   readonly included: readonly BugType[];
+  /** Set when the recorder excerpt was cut to fit the byte cap. */
+  readonly trimmed?: { readonly kept: number; readonly total: number } | undefined;
 }
 
 /** The first line of a raw-mode preview. */
@@ -256,6 +262,7 @@ export function renderPreview(input: PreviewInput): string {
     `gsd-atlas bug bundle: format ${BUNDLE_FORMAT}, mode ${input.mode}, ${String(Buffer.byteLength(input.text, 'utf8'))} bytes, sha256 ${input.digest.slice(0, 12)}`,
   );
   lines.push(`Contains: report header, your own text${input.included.map((id) => `, ${id}`).join('')}`);
+  if (input.trimmed !== undefined) lines.push(`excerpt trimmed to ${String(input.trimmed.kept)} of ${String(input.trimmed.total)} events`);
   lines.push('Nothing is uploaded. The bytes below are exactly what is written to bundle.json on this machine.');
   lines.push('----- bundle.json -----');
   return `${lines.join('\n')}\n${input.text}`;
@@ -281,17 +288,296 @@ function problemTree(problem: ProblemInput, approved: boolean): Tree {
   };
 }
 
+// ---------------------------------------------------------------------------------------------------------------------
+// The forensic types. Every string that came from the recorder or the Host is checked against the closed shape it should
+// have before it becomes a `code` leaf; anything else becomes a name (hashed) or `unknown`, so a value that is not what it
+// should be can cost a token and never a leak.
+// ---------------------------------------------------------------------------------------------------------------------
+
+const TOOL_PATTERN = /^(?:code|atlas|lang)_[a-z]{1,16}$/;
+const OUTCOME_PATTERN = /^[a-z][a-z0-9_]{0,63}$/;
+const LATENCY_PATTERN = /^(?:le[0-9]{1,5}|inf)$/;
+const SCHEMA_PATTERN = /^gsd-atlas\.[a-z0-9-]{1,40}\/[0-9]{1,3}$/;
+const ANSWER_PATTERN = /^a_[0-9a-f]{16}$/;
+const WORD_PATTERN = /^[A-Za-z][A-Za-z0-9_]{0,31}$/;
+const ARGUMENT_CODE_PATTERN = /^[A-Za-z0-9_.-]{1,40}$/;
+
+/** Codes kept in one list, and the paths kept in one `fresh` argument. */
+const LIST_MAX = 16;
+const PATHS_MAX = 20;
+const HANDLES_MAX = 20;
+/** Explanations of the failing answer's facts (`code_explain` summarises five). */
+const FACTS_MAX = 5;
+
+const UNKNOWN = leaf.code('unknown');
+
+/** A fixed word of the closed shape `pattern`, else `unknown`. */
+const closed = (value: string | undefined, pattern: RegExp): Tree => (typeof value === 'string' && pattern.test(value) ? leaf.code(value) : UNKNOWN);
+
+const codes = (values: readonly string[] | undefined): Tree[] =>
+  (values ?? [])
+    .filter((value): value is string => typeof value === 'string' && OUTCOME_PATTERN.test(value))
+    .slice(0, LIST_MAX)
+    .map((value) => leaf.code(value));
+
+/** A tool the program has (`code_find`, `atlas_status`) is a word; anything else is somebody's name. */
+const toolOf = (tool: string | undefined): Tree => (typeof tool !== 'string' ? UNKNOWN : TOOL_PATTERN.test(tool) ? leaf.code(tool) : leaf.name(tool));
+
+const count = (value: number | undefined): Tree => leaf.count(typeof value === 'number' && Number.isFinite(value) && value >= 0 ? Math.trunc(value) : 0);
+
+type ArgumentKind = 'name' | 'path' | 'handle' | 'code' | 'count' | 'paths';
+
+/**
+ * The request arguments atlas's tools take, and how each is typed. A key that is not here, and a value that is not of the
+ * type its key says, is counted in `other_args` and never shown: the recorder keeps whatever a caller sent, and neither a
+ * key nor a value of an unknown shape is allowed to carry text out.
+ */
+const ARGUMENT_KINDS: Readonly<Record<string, ArgumentKind>> = {
+  name: 'name',
+  adr: 'name',
+  path: 'path',
+  repo: 'path',
+  cwd: 'path',
+  handle: 'handle',
+  more: 'handle',
+  answer_id: 'code',
+  kind: 'code',
+  mode: 'code',
+  limit: 'count',
+  depth: 'count',
+  budget_tokens: 'count',
+  fresh: 'paths',
+};
+
+function argumentsTree(args: Readonly<Record<string, unknown>> | undefined): Tree {
+  const out: { [key: string]: Tree } = {};
+  let other = 0;
+  for (const [key, value] of Object.entries(args ?? {})) {
+    const kind = Object.hasOwn(ARGUMENT_KINDS, key) ? ARGUMENT_KINDS[key] : undefined;
+    if (kind === undefined) {
+      other += 1;
+    } else if (kind === 'count') {
+      if (typeof value === 'number' && Number.isFinite(value)) out[key] = count(value);
+      else other += 1;
+    } else if (kind === 'paths') {
+      if (Array.isArray(value) && value.every((each): each is string => typeof each === 'string')) out[key] = value.slice(0, PATHS_MAX).map((each) => leaf.path(each));
+      else other += 1;
+    } else if (typeof value !== 'string') {
+      other += 1;
+    } else if (kind === 'code') {
+      out[key] = ARGUMENT_CODE_PATTERN.test(value) ? leaf.code(value) : leaf.name(value);
+    } else {
+      out[key] = leaf[kind](value);
+    }
+  }
+  if (other > 0) out['other_args'] = count(other);
+  return out;
+}
+
+const unavailable: Tree = { status: leaf.code('unavailable') };
+
+function configTree(config: ConfigFacts): Tree {
+  const { indexer } = config;
+  return {
+    ...(config.storeDirSet === true ? { store: { dir: leaf.code('<path>') } } : {}),
+    ...(indexer === undefined || (indexer.debounceMs === undefined && indexer.maxWaitMs === undefined)
+      ? {}
+      : {
+          indexer: {
+            ...(indexer.debounceMs === undefined ? {} : { debounceMs: count(indexer.debounceMs) }),
+            ...(indexer.maxWaitMs === undefined ? {} : { maxWaitMs: count(indexer.maxWaitMs) }),
+          },
+        }),
+    ...(config.gcGraceMs === undefined ? {} : { gc: { graceMs: count(config.gcGraceMs) } }),
+    ...(config.allowCount === undefined ? {} : { permissions: { allowCount: count(config.allowCount) } }),
+    ...(config.providersDisabled === undefined ? {} : { providers: { disabled: config.providersDisabled.slice(0, LIST_MAX).map((id) => leaf.code(id)) } }),
+    ...(config.metrics === undefined ? {} : { metrics: config.metrics }),
+  };
+}
+
+function versionsTree(data: VersionsData | null | undefined): Tree {
+  if (data === null || data === undefined) return unavailable;
+  const compiler = data.typescript;
+  return {
+    atlas: leaf.code(data.atlas),
+    node: leaf.code(data.node),
+    sqlite: leaf.code(data.sqlite),
+    driver: leaf.code(data.driver),
+    modules: data.modules.slice(0, LIST_MAX * 4).map((entry) => ({
+      // A built-in module's name is a fixed word; any other module is the user's own and is named like any other name.
+      name: entry.builtin ? leaf.code(entry.name) : leaf.name(entry.name),
+      version: leaf.code(entry.version),
+      schema_version: count(entry.schemaVersion),
+    })),
+    typescript:
+      compiler === null
+        ? { status: leaf.code('unknown') }
+        : {
+            version: leaf.code(compiler.version),
+            source: leaf.code(compiler.source),
+            case: leaf.code(compiler.case),
+            ...(compiler.reason === undefined ? {} : { reason: leaf.text(compiler.reason) }),
+          },
+    config_effective: configTree(data.config),
+    policy_mode: leaf.code('none'),
+  };
+}
+
+const bucketed = (label: string | null): Tree => leaf.code(label ?? 'unknown');
+
+function healthTree(data: HealthData | null | undefined): Tree {
+  if (data === null || data === undefined) return unavailable;
+  const { store, host, indexer, governor, startup, tier } = data;
+  return {
+    store:
+      store === null
+        ? unavailable
+        : {
+            schema_version: count(store.schemaVersion),
+            worktrees: count(store.worktrees),
+            size: bucketed(bucketBytes(store.sizeBytes)),
+            writer_lease_held: store.writerLeaseHeld,
+            rebuilt_after_corruption: store.rebuiltAfterCorruption,
+          },
+    host: { tenants_loaded: count(host.tenantsLoaded), transport: leaf.code(host.transport), uptime: bucketed(bucketMs(host.uptimeMs)) },
+    ...(indexer === null
+      ? {}
+      : {
+          indexer: {
+            watch_mode: leaf.code(indexer.watchMode),
+            queued: count(indexer.queued),
+            running: count(indexer.running),
+            failed: count(indexer.failed),
+            reconciling: indexer.reconciling,
+          },
+        }),
+    ...(indexer?.lastReconcile === null || indexer?.lastReconcile === undefined
+      ? {}
+      : { reconcile: { changed: count(indexer.lastReconcile.changed), duration: bucketed(bucketMs(indexer.lastReconcile.durationMs)) } }),
+    ...(governor === null ? {} : { governor: { queued: count(governor.queued), running: count(governor.running) } }),
+    ...(startup === null ? {} : { startup: leaf.code(startup) }),
+    ...(tier === null ? {} : { tier: { precise: leaf.code(tier.precise), ...(tier.code === undefined ? {} : { code: leaf.code(tier.code) }) } }),
+  };
+}
+
+/** The seconds between an event and the newest one, as the example in DIAGNOSTICS 9.3 writes it: `-4.2s`. */
+const beforeNewest = (newest: number, at: number): string => `-${(Math.max(0, newest - at) / 1000).toFixed(1)}s`;
+
+function eventTree(event: RecorderEvent, newest: number): Tree {
+  return {
+    t: leaf.code(Number.isFinite(event.t) ? beforeNewest(newest, event.t) : 'unknown'),
+    tool: toolOf(event.tool),
+    args: argumentsTree(event.args),
+    outcome: closed(event.outcome, OUTCOME_PATTERN),
+    ms: closed(event.ms, LATENCY_PATTERN),
+    degraded: codes(event.degraded),
+    count: count(event.count),
+    handles: (event.handles ?? []).filter((handle): handle is string => typeof handle === 'string').slice(0, HANDLES_MAX).map((handle) => leaf.handle(handle)),
+  };
+}
+
+/** The newest `limit` events of the recorder (oldest first), the ones the excerpt considers. */
+const consideredOf = (data: RecorderData, limit: number): readonly RecorderEvent[] => (limit <= 0 ? [] : data.events.slice(-limit));
+
+function recorderTree(considered: readonly RecorderEvent[], keep: number): Tree {
+  const newest = considered[considered.length - 1]?.t ?? 0;
+  const kept = keep <= 0 ? [] : considered.slice(considered.length - keep);
+  return { total: count(considered.length), kept: count(kept.length), events: kept.map((event) => eventTree(event, newest)) };
+}
+
+function factTree(fact: FactSummary): Tree {
+  const kind = fact.extractor?.split(':', 1)[0];
+  return {
+    handle: leaf.handle(fact.handle),
+    status: closed(fact.status, WORD_PATTERN),
+    ...(fact.kind === undefined ? {} : { kind: closed(fact.kind, WORD_PATTERN) }),
+    ...(fact.tier === undefined ? {} : { tier: closed(fact.tier, WORD_PATTERN) }),
+    ...(fact.confidence === undefined ? {} : { confidence: closed(fact.confidence, WORD_PATTERN) }),
+    // `grammar:<module>@<version>`: the module is somebody's name, so only the tier word is shown.
+    ...(fact.extractor === undefined ? {} : { extractor: kind === 'grammar' || kind === 'precise' ? leaf.code(kind) : UNKNOWN }),
+    ...(fact.cache === undefined ? {} : { cache: closed(fact.cache, WORD_PATTERN) }),
+  };
+}
+
+function failingTree(data: FailingData | null | undefined): Tree {
+  if (data === null || data === undefined) return unavailable;
+  const event = data.event;
+  if (data.status === 'answer_not_found' || event === undefined) return { status: leaf.code('answer_not_found') };
+  const failed = event.outcome !== undefined && event.outcome !== 'ok';
+  return {
+    ...(typeof event.id === 'string' && ANSWER_PATTERN.test(event.id) ? { answer_id: leaf.code(event.id) } : {}),
+    tool: toolOf(event.tool),
+    request: argumentsTree(event.args),
+    envelope: {
+      schema: closed(event.schema, SCHEMA_PATTERN),
+      ok: event.outcome === 'ok',
+      degraded: codes(event.degraded),
+      diagnostics: codes(event.diag ?? (failed ? [event.outcome as string] : [])),
+      citations: count(event.count),
+      ...(typeof event.seq === 'number' ? { watermark_seq: count(event.seq) } : {}),
+    },
+    explain: (data.facts ?? []).slice(0, FACTS_MAX).map(factTree),
+  };
+}
+
+interface Serialised {
+  readonly bundle: { [key: string]: Json };
+  readonly text: string;
+  readonly bytes: number;
+}
+
 /** Build the bundle, its digest and its preview from one sanitised tree. */
 export function buildBundle(input: BugInput): BuiltBundle {
   const hasher = input.hasher ?? createHasher();
-  const included = BUG_TYPES.filter((id) => input.include.includes(id) && id === 'problem');
-  const tree: Tree = {
-    format: leaf.code(BUNDLE_FORMAT),
-    header: { atlas_version: leaf.code(input.atlasVersion), catalog_version: leaf.count(input.catalogVersion) },
-    problem: problemTree(input.problem, input.include.includes('problem')),
+  const included = BUG_TYPES.filter((id) => input.include.includes(id));
+  const excerpt = input.excerptEvents ?? BUG_DEFAULTS.excerptEvents;
+  const maxBytes = input.bundleMaxBytes ?? BUG_DEFAULTS.bundleMaxBytes;
+  const considered = included.includes('recorder') && input.recorder !== null && input.recorder !== undefined ? consideredOf(input.recorder, excerpt) : null;
+
+  const serialise = (keep: number): Serialised => {
+    const tree: { [key: string]: Tree } = {
+      format: leaf.code(BUNDLE_FORMAT),
+      header: { atlas_version: leaf.code(input.atlasVersion), catalog_version: leaf.count(input.catalogVersion) },
+      problem: problemTree(input.problem, included.includes('problem')),
+    };
+    if (included.includes('versions')) tree['versions'] = versionsTree(input.versions);
+    if (included.includes('health')) tree['health'] = healthTree(input.health);
+    if (included.includes('recorder')) tree['recorder'] = considered === null ? unavailable : recorderTree(considered, keep);
+    if (included.includes('failing')) tree['failing'] = failingTree(input.failing);
+    const bundle = sanitize(tree, input.mode, hasher) as { [key: string]: Json };
+    const text = `${JSON.stringify(bundle, null, 2)}\n`;
+    return { bundle, text, bytes: Buffer.byteLength(text, 'utf8') };
   };
-  const bundle = sanitize(tree, input.mode, hasher) as { [key: string]: Json };
-  const text = `${JSON.stringify(bundle, null, 2)}\n`;
-  const digest = crypto.createHash('sha256').update(text).digest('hex');
-  return { bundle, text, preview: renderPreview({ mode: input.mode, text, digest, included }), digest, included };
+
+  // Oldest events are dropped first until the bundle fits: the largest `keep` whose bytes are within the cap (the size only
+  // grows with `keep`, so a bisection finds it). If even no event fits, the bundle is written with none rather than refused.
+  let keep = considered?.length ?? 0;
+  let built = serialise(keep);
+  if (considered !== null && built.bytes > maxBytes) {
+    let low = 0;
+    let high = keep - 1;
+    let best = 0;
+    while (low <= high) {
+      const middle = Math.floor((low + high) / 2);
+      if (serialise(middle).bytes <= maxBytes) {
+        best = middle;
+        low = middle + 1;
+      } else {
+        high = middle - 1;
+      }
+    }
+    keep = best;
+    built = serialise(keep);
+  }
+
+  const digest = crypto.createHash('sha256').update(built.text).digest('hex');
+  const trimmed = considered !== null && keep < considered.length ? { kept: keep, total: considered.length } : undefined;
+  return {
+    bundle: built.bundle,
+    text: built.text,
+    preview: renderPreview({ mode: input.mode, text: built.text, digest, included, trimmed }),
+    digest,
+    included,
+    ...(considered === null ? {} : { eventsTotal: considered.length, eventsKept: keep }),
+  };
 }

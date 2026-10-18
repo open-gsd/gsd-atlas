@@ -29,13 +29,28 @@ import {
   defaultCatalogDir,
   loadCatalog,
 } from '../diagnostics/index.ts';
-import type { BugType, DiagnosticsFs, Hasher, Mode, RandomSource } from '../diagnostics/index.ts';
+import type {
+  BugType,
+  ConfigFacts,
+  DiagnosticsFs,
+  FactSummary,
+  FailingData,
+  Hasher,
+  HealthData,
+  ModuleVersion,
+  Mode,
+  RandomSource,
+  RecorderEvent,
+  TypeScriptVersion,
+} from '../diagnostics/index.ts';
 import { ANSWER_ID_PATTERN, okEnvelope } from '../facts/index.ts';
 import type { Clock, Envelope, Request } from '../facts/index.ts';
 import { errorEnvelope } from '../query/index.ts';
-import { RATING_FEATURES, RATING_VALUES } from '../tenant/index.ts';
+import { DEFAULT_TENANT_TUNING, RATING_FEATURES, RATING_VALUES } from '../tenant/index.ts';
+import type { Tenant } from '../tenant/index.ts';
 import { firstProblem } from './route.ts';
 import type { Selection } from './route.ts';
+import type { UserConfig } from './types.ts';
 
 /** The request kind, and the one Governor key its requests run under. */
 export const BUG_KIND = 'bug';
@@ -96,6 +111,7 @@ export interface PendingBundle {
   readonly fingerprint: string;
   readonly text: string;
   readonly preview: string;
+  readonly included: readonly BugType[];
   readonly at: number;
 }
 
@@ -107,8 +123,51 @@ export interface BugState {
 
 export const createBugState = (): BugState => ({ pending: new Map(), written: new Set() });
 
+/** Which data the approved types need from a repository, so nothing is gathered for a type that was not approved. */
+export interface BugWant {
+  /** `health` approved: the store, indexer, governor and tier facts. */
+  readonly health: boolean;
+  /** `versions` approved: the compiler the precise tier uses. */
+  readonly typescript: boolean;
+  /** `recorder` approved: the newest `excerptEvents` events. */
+  readonly recorder: boolean;
+  /** `failing` approved: an answer id, or `last` for the newest recorded answer; null when the type is not approved. */
+  readonly failing: string | null;
+  readonly excerptEvents: number;
+}
+
+/** What a repository's Tenant knows of the approved types. Absent members were not asked for. */
+export interface BugRepoData {
+  readonly store: HealthData['store'];
+  readonly indexer: HealthData['indexer'];
+  readonly governor: HealthData['governor'];
+  readonly startup: HealthData['startup'];
+  readonly tier: HealthData['tier'];
+  readonly typescript: TypeScriptVersion | null;
+  readonly events: readonly RecorderEvent[] | null;
+  readonly failing: FailingData | null;
+}
+
+/** What the machine and the Host know without looking at a repository. */
+export interface MachineFacts {
+  readonly node: string;
+  readonly sqlite: string;
+  readonly driver: string;
+  readonly modules: readonly ModuleVersion[];
+  readonly config: ConfigFacts;
+}
+
 /** What the Host supplies: it alone knows the version, the cache root and where the data comes from. */
 export interface BugDeps {
+  /** Node, SQLite, the loaded modules and the effective configuration. */
+  readonly machine: () => MachineFacts;
+  /** Tenants loaded, the transport and how long the Host has been up. */
+  readonly hostHealth: () => HealthData['host'];
+  /**
+   * The facts of the repository a selection names, or null when it is not one or has no index. Opens no store of its own,
+   * records nothing, and gathers only what `want` asks for.
+   */
+  readonly repoData: (selection: Selection, want: BugWant) => Promise<BugRepoData | null>;
   /** The version of this build; it is the bundle's `atlas_version`. */
   readonly version: string;
   /** The folder the shipped catalog is read from (`catalog_version` comes from it). */
@@ -159,7 +218,94 @@ function tidy(state: BugState, now: number): void {
   }
 }
 
-async function collect(deps: BugDeps, args: BugArgs, _chosen: Selection): Promise<Envelope> {
+/**
+ * The user-level configuration as a bundle shows it: a directory is a flag (the path is never shown), permissions are a
+ * count (the executables and hashes are never shown), and what is left is the tunables and the ids of disabled providers.
+ * Pure, so the rule is testable without a Host.
+ */
+export function configFactsOf(config: UserConfig, metrics: boolean | undefined): ConfigFacts {
+  const { indexer } = config;
+  const tunables =
+    indexer === undefined || (indexer.debounceMs === undefined && indexer.maxWaitMs === undefined)
+      ? undefined
+      : { debounceMs: indexer.debounceMs, maxWaitMs: indexer.maxWaitMs };
+  return {
+    ...(config.store?.dir === undefined ? {} : { storeDirSet: true }),
+    ...(tunables === undefined ? {} : { indexer: tunables }),
+    ...(config.gc?.graceMs === undefined ? {} : { gcGraceMs: config.gc.graceMs }),
+    ...(config.permissions === undefined ? {} : { allowCount: config.permissions.allow.length }),
+    ...(config.providers?.disabled === undefined ? {} : { providersDisabled: config.providers.disabled }),
+    ...(metrics === undefined ? {} : { metrics }),
+  };
+}
+
+/** `code_explain` for up to five facts of an answer: five is what `explain` itself summarises. */
+const FACTS_EXPLAINED = 5;
+
+/**
+ * Read the approved types out of a repository's Tenant. It uses only the Tenant's own accessors, none of which records an
+ * answer or opens a store, so reading changes nothing it reports on. `want` says what was approved; nothing else is read.
+ */
+export async function readTenant(tenant: Tenant, worktree: string, want: BugWant): Promise<BugRepoData> {
+  let store: HealthData['store'] = null;
+  let indexer: HealthData['indexer'] = null;
+  let governor: HealthData['governor'] = null;
+  let startup: HealthData['startup'] = null;
+  if (want.health) {
+    const status = await tenant.status();
+    store = {
+      schemaVersion: status.store.schemaVersion,
+      worktrees: status.store.worktrees.length,
+      sizeBytes: status.store.sizeBytes,
+      writerLeaseHeld: status.store.writerLeaseHeld,
+      rebuiltAfterCorruption: status.store.rebuiltAfterCorruption !== undefined,
+    };
+    indexer =
+      status.indexer === null
+        ? null
+        : {
+            watchMode: status.indexer.watchMode,
+            queued: status.indexer.queued,
+            running: status.indexer.running,
+            failed: status.indexer.failed.length,
+            reconciling: status.indexer.reconciling,
+            lastReconcile: status.indexer.lastReconcile === null ? null : { changed: status.indexer.lastReconcile.changed, durationMs: status.indexer.lastReconcile.durationMs },
+          };
+    governor = { queued: status.governor.queued, running: status.governor.running };
+    startup = status.startup;
+  }
+
+  let tier: HealthData['tier'] = null;
+  let typescript: TypeScriptVersion | null = null;
+  if (want.health || want.typescript) {
+    const info = await tenant.tierInfo(worktree);
+    tier = { precise: info.precise, ...(info.code === undefined ? {} : { code: info.code }) };
+    if (info.compiler !== undefined) {
+      typescript = { version: info.compiler.version, source: info.compiler.source, case: info.compiler.case, reason: info.compiler.reason };
+    }
+  }
+
+  let events: readonly RecorderEvent[] | null = null;
+  let failing: FailingData | null = null;
+  if (want.recorder || want.failing !== null) {
+    const recorded = tenant.recentAnswers(DEFAULT_TENANT_TUNING.flightMaxEvents);
+    const asEvent = (each: (typeof recorded)[number]): RecorderEvent => each;
+    if (want.recorder) events = (want.excerptEvents <= 0 ? [] : recorded.slice(-want.excerptEvents)).map(asEvent);
+    if (want.failing !== null) {
+      const found = want.failing === 'last' ? recorded[recorded.length - 1] : recorded.find((each) => each.id === want.failing);
+      if (found === undefined) {
+        failing = { status: 'answer_not_found' };
+      } else {
+        const facts: FactSummary[] = [];
+        for (const handle of (found.handles ?? []).slice(0, FACTS_EXPLAINED)) facts.push(await tenant.explainSummary(handle, worktree));
+        failing = { status: 'ok', event: asEvent(found), facts };
+      }
+    }
+  }
+  return { store, indexer, governor, startup, tier, typescript, events, failing };
+}
+
+async function collect(deps: BugDeps, args: BugArgs, chosen: Selection): Promise<Envelope> {
   const mode: Mode = args.mode ?? 'hashed';
   if (mode === 'raw' && args.confirm_raw !== true) return errorEnvelope('raw_not_confirmed', RAW_TEXT);
   let catalogVersion: number;
@@ -169,6 +315,19 @@ async function collect(deps: BugDeps, args: BugArgs, _chosen: Selection): Promis
     return errorEnvelope('catalog_unavailable', NO_CATALOG);
   }
   const include = approvedOf(args.include);
+  const excerptEvents = deps.excerptEvents ?? BUG_DEFAULTS.excerptEvents;
+
+  // Only what was approved is gathered: a type that is not in `include` is never read, not even to be thrown away.
+  const want: BugWant = {
+    health: include.includes('health'),
+    typescript: include.includes('versions'),
+    recorder: include.includes('recorder'),
+    failing: include.includes('failing') ? (args.answer ?? 'last') : null,
+    excerptEvents,
+  };
+  const repo = want.health || want.typescript || want.recorder || want.failing !== null ? await deps.repoData(chosen, want) : null;
+  const machine = include.includes('versions') ? deps.machine() : null;
+
   const hasher: Hasher = createHasher(deps.random);
   const built = buildBundle({
     atlasVersion: deps.version,
@@ -176,19 +335,36 @@ async function collect(deps: BugDeps, args: BugArgs, _chosen: Selection): Promis
     mode,
     include,
     problem: { what: args.what, expected: args.expected, steps: args.steps, feature: args.feature, rating: args.rating },
-    excerptEvents: deps.excerptEvents ?? BUG_DEFAULTS.excerptEvents,
+    versions:
+      machine === null
+        ? undefined
+        : { atlas: deps.version, node: machine.node, sqlite: machine.sqlite, driver: machine.driver, modules: machine.modules, typescript: repo?.typescript ?? null, config: machine.config },
+    health: want.health
+      ? {
+          store: repo?.store ?? null,
+          host: deps.hostHealth(),
+          indexer: repo?.indexer ?? null,
+          governor: repo?.governor ?? null,
+          startup: repo?.startup ?? null,
+          tier: repo?.tier ?? null,
+        }
+      : undefined,
+    recorder: repo?.events === null || repo?.events === undefined ? null : { events: repo.events },
+    failing: repo?.failing ?? null,
+    excerptEvents,
     bundleMaxBytes: deps.bundleMaxBytes ?? BUG_DEFAULTS.bundleMaxBytes,
     hasher,
   });
   const now = deps.clock.now();
   tidy(deps.state, now);
-  deps.state.pending.set(built.digest, { fingerprint: fingerprintOf(args), text: built.text, preview: built.preview, at: now });
+  deps.state.pending.set(built.digest, { fingerprint: fingerprintOf(args), text: built.text, preview: built.preview, included: built.included, at: now });
   return okEnvelope(BUG_SCHEMA, {
     preview: built.preview,
     digest: built.digest,
     mode,
     bytes: Buffer.byteLength(built.text, 'utf8'),
     included: built.included,
+    ...(built.eventsTotal === undefined ? {} : { excerpt: { kept: built.eventsKept, total: built.eventsTotal } }),
     types: BUG_TYPE_INFO,
   });
 }
@@ -260,6 +436,7 @@ function write(deps: BugDeps, args: BugArgs): Envelope {
     written: true,
     path: dir,
     files: [BUNDLE_FILE, PREVIEW_FILE],
+    included: entry.included,
     digest: confirm,
     bytes: Buffer.byteLength(entry.text, 'utf8'),
     preview: entry.preview,

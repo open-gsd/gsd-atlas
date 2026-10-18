@@ -11,7 +11,7 @@
 import path from 'node:path';
 import { IDLE_MAINTENANCE, StoreClosed, UnknownWorktree, WriterBusy, openFactStore, resolveStoreLocation } from '../fact-store/index.ts';
 import type { FactStore, MaintenanceResult, ResolveResult, Resolver } from '../fact-store/index.ts';
-import { createAnswerId, createSessionId, okEnvelope } from '../facts/index.ts';
+import { PROTOCOL_VERSION, createAnswerId, createSessionId, okEnvelope } from '../facts/index.ts';
 import type { DegradedCode, Diagnostic, Envelope, ProjectContextProvider, Request } from '../facts/index.ts';
 import { DEFAULT_INDEXER_CONFIG, IndexerError, createIndexer, createModuleHost } from '../indexer/index.ts';
 import type { BuildResult, Indexer, IndexerNotice, ModuleHost } from '../indexer/index.ts';
@@ -38,7 +38,14 @@ import { createOutputFilter, createTenantProjectProvider, preciseAdapterIds } fr
 import type { ProjectProvider } from './project.ts';
 import { createStatusPort } from './status-port.ts';
 import { BUILD_SCHEMA, MAINTAIN_SCHEMA, STATUS_SCHEMA } from './types.ts';
-import type { CommandReport, MaintainOptions, MaintainTask, TaskReport, Tenant, TenantDeps, TenantStatus, TenantTuning } from './types.ts';
+import type { CommandReport, ExplainSummary, MaintainOptions, MaintainTask, TaskReport, Tenant, TenantDeps, TenantStatus, TenantTuning } from './types.ts';
+
+/** The part of a `code_explain` fact explanation that `explainSummary` reads. */
+interface ExplanationShape {
+  readonly kind?: unknown;
+  readonly fact?: { readonly tier?: unknown; readonly confidence?: unknown; readonly extractor?: unknown };
+  readonly resolution?: { readonly cache?: unknown } | null;
+}
 
 /** The tasks `all` runs, in this order. */
 const ALL_TASKS = ['reconcile', 'resolve', 'refresh', 'collect', 'compact', 'check'] as const;
@@ -992,6 +999,34 @@ export async function createTenant(deps: TenantDeps): Promise<Tenant> {
 
     sessionId(): string | null {
       return flight?.sessionId() ?? null;
+    },
+
+    async explainSummary(handle: string, worktree: string): Promise<ExplainSummary> {
+      try {
+        // Straight to Query, not through `handle`: this is a look at an answer for a bug bundle, not an answer, so it must
+        // neither stamp an id nor become the newest event of the recorder it is reading.
+        const reply = await query.ask({ protocol: PROTOCOL_VERSION, kind: 'code_explain', args: { handle }, worktree });
+        if (!reply.ok) return { handle, status: reply.diagnostics[0]?.code === 'stale_handle' ? 'stale' : 'unknown' };
+        const explanation = (reply.data as { explanation?: ExplanationShape } | null)?.explanation;
+        if (explanation === undefined || explanation === null) return { handle, status: 'unknown' };
+        const word = (value: unknown): string | undefined => (typeof value === 'string' ? value : undefined);
+        const kind = word(explanation.kind);
+        const tier = word(explanation.fact?.tier);
+        const confidence = word(explanation.fact?.confidence);
+        const extractor = word(explanation.fact?.extractor);
+        const cache = word(explanation.resolution?.cache);
+        return {
+          handle,
+          status: 'ok',
+          ...(kind === undefined ? {} : { kind }),
+          ...(tier === undefined ? {} : { tier }),
+          ...(confidence === undefined ? {} : { confidence }),
+          ...(extractor === undefined ? {} : { extractor }),
+          ...(cache === undefined ? {} : { cache }),
+        };
+      } catch {
+        return { handle, status: 'unknown' };
+      }
     },
 
     async rate(input: RateInput): Promise<Envelope> {

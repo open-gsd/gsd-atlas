@@ -31,8 +31,8 @@ import { DEFAULT_TENANT_TUNING, FLIGHT_FILE, FLIGHT_PREVIOUS_FILE, createFlightR
 import type { Tenant } from '../tenant/index.ts';
 import { ALLOW_KIND, handleAllow, needsApprovalFrom, permissionsFor } from './allow.ts';
 import type { AllowDeps } from './allow.ts';
-import { BUG_KIND, createBugState, handleBug } from './bug.ts';
-import type { BugDeps } from './bug.ts';
+import { BUG_KIND, BUG_SCHEMA, configFactsOf, createBugState, handleBug, readTenant } from './bug.ts';
+import type { BugDeps, BugRepoData, BugWant } from './bug.ts';
 import { HOST_DEFAULTS } from './defaults.ts';
 import { DIAGNOSTICS_KIND, factsFromStatus, handleDiagnostics, platformFactsOf } from './diagnostics.ts';
 import type { DiagnosticsDeps, RepoFacts } from './diagnostics.ts';
@@ -544,7 +544,45 @@ export function createHost(options: HostOptions): Host {
    * this Host's own. It writes under the Host's cache root, never into a repository.
    */
   const bugState = createBugState();
+  const startedAt = clock.now();
+
+  /**
+   * What the approved bug types need from one repository, from its Tenant. It follows `diagnosticsRepoFacts`: a store is never
+   * created (only a repository that already has an index gets a Tenant), the request is counted as in flight so the idle timer
+   * cannot close the tenant under it, and the read runs in a Governor slot. Null: not a repository, or not indexed.
+   */
+  async function bugRepoData(selection: Selection, want: BugWant): Promise<BugRepoData | null> {
+    const resolved = await resolveRepository(selection, hostCwd, makeTree);
+    if (resolved === null) return null;
+    const key = resolved.identity.storeId;
+    tenantIdle.begin(key);
+    try {
+      await closing.get(key);
+      let tenant: Tenant;
+      try {
+        if (!(await hasIndex(resolved))) return null;
+        tenant = await tenantFor(resolved);
+      } catch {
+        return null;
+      }
+      let found = null as BugRepoData | null;
+      await held(tenant.storeId, classFor('status'), async () => {
+        try {
+          found = await readTenant(tenant, resolved.worktree, want);
+        } catch {
+          found = null;
+        }
+        return okEnvelope(BUG_SCHEMA, null);
+      });
+      return found;
+    } finally {
+      tenantIdle.end(key);
+      if (!tenants.has(key)) tenantIdle.forget(key);
+    }
+  }
+
   function bugRequest(request: Request): Promise<Envelope> {
+    const userDir = options.userDir ?? options.roots.userDir;
     const deps: BugDeps = {
       version: options.version ?? '0.0.0',
       catalogDir: options.diagnostics?.catalogDir,
@@ -552,6 +590,22 @@ export function createHost(options: HostOptions): Host {
       cacheRoot,
       clock,
       state: bugState,
+      machine: () => ({
+        node: process.versions.node,
+        sqlite: process.versions.sqlite ?? 'unknown',
+        // The Host never asks for another driver: `node:sqlite` is what a composed Host opens (better-sqlite3 is a test fallback).
+        driver: 'node:sqlite',
+        // The user's roots only, never the repository (a repository can name a module anything); a module is built in or the user's.
+        modules: resolveModules({ ...options.roots, repoRoot: path.join(userDir, NO_REPOSITORY), npmRoots: [] }).modules.map((entry) => ({
+          name: entry.name,
+          builtin: entry.source === 'builtin',
+          version: entry.version ?? 'unknown',
+          schemaVersion: entry.schemaVersion,
+        })),
+        config: configFactsOf(config, options.metrics),
+      }),
+      hostHealth: () => ({ tenantsLoaded: tenants.size, transport: origin === 'mcp' ? 'stdio' : 'in-process', uptimeMs: Math.max(0, clock.now() - startedAt) }),
+      repoData: bugRepoData,
       excerptEvents: options.bug?.excerptEvents,
       bundleMaxBytes: options.bug?.bundleMaxBytes,
       random: options.bug?.random,
