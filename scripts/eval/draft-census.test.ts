@@ -3,16 +3,33 @@ import path from 'node:path';
 import { before, describe, test } from 'node:test';
 
 import {
+  CandidatesFileSchema,
+  PILOT_COUNT,
+  SCORED_MIX,
   buildCensus,
+  decide,
+  draftCandidates,
+  identityOfKey,
   mulberry32,
   orderCandidates,
+  pickPilotCategories,
+  projectedSize,
   sample,
+  serializeCandidates,
   type Candidate,
   type Census,
+  type DecideInput,
   type ExportEntry,
 } from './draft-census.ts';
 import { computeAnswerKey, type OracleContext } from './oracle.ts';
-import { CategorySchema, KeySpecSchema, type Category } from './questions.ts';
+import {
+  CategorySchema,
+  KeySpecSchema,
+  type AnswerItem,
+  type AnswerKey,
+  type Category,
+  type Granularity,
+} from './questions.ts';
 
 const FIXTURE = path.join(import.meta.dirname, '__fixtures__', 'oracle-repo');
 const CTX: OracleContext = { repoDir: FIXTURE, tsconfig: 'tsconfig.json' };
@@ -176,5 +193,215 @@ describe('ordering', () => {
     const impact = names(orderCandidates(census, 'impact', 7));
     assert.deepEqual([...impact].sort(), [...callers].sort());
     assert.notDeepEqual(impact, callers);
+  });
+});
+
+function answerKey(overrides: Partial<AnswerKey> = {}): AnswerKey {
+  return {
+    questionId: 'q-0',
+    kind: 'callers',
+    abstain: false,
+    items: [{ file: 'src/a.cts', line: 3, symbol: 'f' }],
+    granularity: 'file',
+    equality: 'exact-set',
+    needles: [],
+    unexplained: [],
+    notes: {},
+    oracleVersion: 'test',
+    ...overrides,
+  };
+}
+
+function filesItems(count: number): AnswerItem[] {
+  return Array.from({ length: count }, (_unused, index) => ({ file: `src/f${index}.cts`, line: 1, symbol: 'f' }));
+}
+
+interface DecidePatch {
+  nameCount?: number;
+  candidate?: Candidate;
+  answer?: AnswerKey;
+  error?: { code: string; message: string };
+  used?: ReadonlyMap<string, 'scored' | 'pilot' | 'reserved'>;
+}
+
+/** A decide input for the first synthetic callers candidate, with a clean answer unless patched. */
+function decideInput(patch: DecidePatch = {}): DecideInput {
+  const base = orderCandidates(synthetic(), 'callers', 7)[0];
+  assert.ok(base);
+  const candidate: Candidate = patch.candidate ?? structuredClone(base);
+  if (patch.nameCount !== undefined) candidate.facts.nameCount = patch.nameCount;
+  const input: DecideInput = { candidate, used: patch.used ?? new Map() };
+  if (patch.error !== undefined) input.error = patch.error;
+  else input.answer = patch.answer ?? answerKey();
+  return input;
+}
+
+function reasonOf(decision: ReturnType<typeof decide>): string | undefined {
+  return decision.status === 'rejected' ? decision.reason : undefined;
+}
+
+describe('projectedSize', () => {
+  test('counts distinct files, file and symbol pairs, or file and line pairs by granularity', () => {
+    const items: AnswerItem[] = [
+      { file: 'src/a.cts', line: 1, symbol: 'f' },
+      { file: 'src/a.cts', line: 9, symbol: 'f' },
+      { file: 'src/a.cts', line: 12, symbol: 'g' },
+      { file: 'src/b.cts', line: 1, symbol: 'f' },
+      { file: 'docs/adr/0001-x.md', adr: 1, resolved: true },
+    ];
+    const size = (granularity: Granularity): number => projectedSize(items, granularity);
+    assert.equal(size('file'), 3);
+    assert.equal(size('file+symbol'), 4);
+    assert.equal(size('file+line'), 5);
+  });
+
+  test('an item without a file (an unresolved citation) counts for nothing', () => {
+    assert.equal(projectedSize([{ adr: 3, resolved: false }, { file: 'src/a.cts', line: 1 }], 'file'), 1);
+  });
+});
+
+describe('decide', () => {
+  test('a clean candidate with one to thirty expected files is accepted', () => {
+    assert.deepEqual(decide(decideInput()), { status: 'accepted' });
+    assert.deepEqual(decide(decideInput({ answer: answerKey({ items: filesItems(30) }) })), { status: 'accepted' });
+  });
+
+  test('many sites in a few files is not too large', () => {
+    const items = Array.from({ length: 80 }, (_unused, index) => ({ file: `src/f${index % 3}.cts`, line: index + 1 }));
+    assert.deepEqual(decide(decideInput({ answer: answerKey({ items }) })), { status: 'accepted' });
+  });
+
+  test('too-large: more than thirty expected files', () => {
+    const decision = decide(decideInput({ answer: answerKey({ items: filesItems(31) }) }));
+    assert.equal(decision.status, 'rejected');
+    assert.equal(decision.status === 'rejected' && decision.reason, 'too-large');
+  });
+
+  test('empty: a non-abstain key with nothing in it', () => {
+    const decision = decide(decideInput({ answer: answerKey({ items: [] }) }));
+    assert.equal(decision.status === 'rejected' && decision.reason, 'empty');
+  });
+
+  test('unexplained: a key with a mention the compiler result neither includes nor classifies', () => {
+    const answer = answerKey({ unexplained: [{ file: 'src/z.cts', line: 4, text: 'x' }] });
+    assert.equal((decide(decideInput({ answer })) as { reason: string }).reason, 'unexplained');
+  });
+
+  test('unexplained: an adr-of key with a citation that has no ADR file', () => {
+    const candidate = decideInput().candidate;
+    candidate.key = { kind: 'adr-of', symbol: 'alpha', definedIn: 'src/alpha.cts', granularity: 'file', equality: 'exact-set' };
+    const answer = answerKey({ kind: 'adr-of', items: [{ file: 'docs/adr/1-x.md', adr: 1, resolved: true }, { adr: 7, resolved: false }] });
+    assert.equal((decide(decideInput({ candidate, answer })) as { reason: string }).reason, 'unexplained');
+  });
+
+  test('duplicate-symbol and used-by-pilot depend on who holds the identity', () => {
+    const identity = decideInput().candidate.identity;
+    const held = (holder: 'scored' | 'pilot' | 'reserved') => decide(decideInput({ used: new Map([[identity, holder]]) }));
+    assert.equal(reasonOf(held('scored')), 'duplicate-symbol');
+    assert.equal(reasonOf(held('reserved')), 'duplicate-symbol');
+    assert.equal(reasonOf(held('pilot')), 'used-by-pilot');
+    assert.equal(reasonOf(decide(decideInput({ used: new Map([['sym:somethingElse', 'scored']]) }))), undefined);
+  });
+
+  test('ambiguous-name: a name declared more than once, or an oracle that refuses it', () => {
+    assert.equal(reasonOf(decide(decideInput({ nameCount: 2 }))), 'ambiguous-name');
+    assert.equal(reasonOf(decide(decideInput({ error: { code: 'SYMBOL_AMBIGUOUS', message: 'two symbols' } }))), 'ambiguous-name');
+    assert.equal(reasonOf(decide(decideInput({ error: { code: 'ABSTAIN_PROBE_MATCHES', message: 'present' } }))), 'ambiguous-name');
+  });
+
+  test('any other oracle error is a bug in the draft, not a rejection', () => {
+    assert.throws(() => decide(decideInput({ error: { code: 'SYMBOL_NOT_FOUND', message: 'gone' } })), /SYMBOL_NOT_FOUND/);
+  });
+
+  test('abstain: accepted when the key abstains, with no items', () => {
+    const candidate = decideInput().candidate;
+    candidate.key = { kind: 'abstain', probe: { symbol: 'nope' }, granularity: 'file', equality: 'exact-set' };
+    candidate.facts.nameCount = 0;
+    const answer = answerKey({ kind: 'abstain', abstain: true, items: [] });
+    assert.deepEqual(decide(decideInput({ candidate, answer })), { status: 'accepted' });
+  });
+});
+
+describe('pickPilotCategories', () => {
+  test('picks the requested number of different categories in category order, the same ones every time', () => {
+    const first = pickPilotCategories(20261017, PILOT_COUNT);
+    assert.equal(first.length, PILOT_COUNT);
+    assert.equal(new Set(first).size, PILOT_COUNT);
+    assert.deepEqual(first, pickPilotCategories(20261017, PILOT_COUNT));
+    const order = CategorySchema.options;
+    assert.deepEqual(first, [...first].sort((a, b) => order.indexOf(a) - order.indexOf(b)));
+    assert.equal(pickPilotCategories(20261017, 2).length, 2);
+  });
+
+  test('the registered mix sums to fifty with abstain at twelve percent', () => {
+    const total = Object.values(SCORED_MIX).reduce((sum, groups) => sum + Object.values(groups).reduce((a, b) => a + b, 0), 0);
+    assert.equal(total, 50);
+    assert.equal(Object.values(SCORED_MIX.abstain).reduce((a, b) => a + b, 0), 6);
+  });
+});
+
+describe('draftCandidates', () => {
+  const MIX = {
+    callers: { callers: 1 },
+    heritage: { heritage: 1 },
+    emit: { 'emit-outputs': 1 },
+    abstain: { 'abstain-symbol': 1, 'abstain-adr': 1 },
+  } as const;
+  let census: Census;
+  before(async () => {
+    census = await buildCensus(CTX);
+  });
+
+  function options(extra: Record<string, unknown> = {}) {
+    return { seed: 20261017, corpusId: 'oracle-fixture', corpusSha: 'abc', mix: MIX, pilotCount: 2, ...extra };
+  }
+
+  test('every candidate is decided once, the quotas and the pilot are met, and ids are assigned in order', async () => {
+    const file = await draftCandidates(census, CTX, options());
+    CandidatesFileSchema.parse(file);
+    assert.equal(file.pilotCategories.length, 2);
+    const accepted = Object.values(file.categories).flat().filter((record) => record.status === 'accepted');
+    const scored = accepted.filter((record) => record.slot === 'scored');
+    const pilot = accepted.filter((record) => record.slot === 'pilot');
+    assert.equal(scored.length, 5);
+    assert.equal(pilot.length, 2);
+    assert.deepEqual(scored.map((record) => record.questionId), ['q-001', 'q-002', 'q-003', 'q-004', 'q-005']);
+    assert.deepEqual(pilot.map((record) => record.questionId), ['p-001', 'p-002']);
+    for (const category of CategorySchema.options) {
+      const records = file.categories[category] ?? [];
+      assert.deepEqual(records.map((record) => record.rank), records.map((_unused, index) => index + 1), `${category} ranks are contiguous`);
+      const wanted = Object.values(MIX[category as keyof typeof MIX] ?? {}).reduce((a, b) => a + b, 0) + (file.pilotCategories.includes(category) ? 1 : 0);
+      assert.equal(records.filter((record) => record.status === 'accepted').length, wanted, `${category} accepted count`);
+      for (const record of records) {
+        assert.equal(record.status === 'rejected', record.reason !== undefined, `${category} rank ${record.rank}: a reason goes with a rejection`);
+      }
+    }
+  });
+
+  test('no identity is used twice and the pilot shares no identity with the scored set', async () => {
+    const file = await draftCandidates(census, CTX, options());
+    const accepted = Object.values(file.categories).flat().filter((record) => record.status === 'accepted');
+    const identities = accepted.map((record) => record.identity);
+    assert.equal(new Set(identities).size, identities.length);
+    for (const record of accepted) assert.equal(record.identity, identityOfKey(record.key));
+  });
+
+  test('the same census and seed give a byte-identical file', async () => {
+    const first = serializeCandidates(await draftCandidates(census, CTX, options()));
+    const second = serializeCandidates(await draftCandidates(census, CTX, options()));
+    assert.equal(first, second);
+  });
+
+  test('a reserved identity is rejected as duplicate-symbol and recorded', async () => {
+    const head = orderCandidates(census, 'callers', 20261017)[0];
+    assert.ok(head);
+    const file = await draftCandidates(census, CTX, options({ reserved: [head.identity] }));
+    const record = (file.categories.callers ?? []).find((entry) => entry.identity === head.identity);
+    assert.equal(record?.status, 'rejected');
+    assert.equal(record?.reason, 'duplicate-symbol');
+  });
+
+  test('asking for more than the census offers fails loudly', async () => {
+    await assert.rejects(draftCandidates(census, CTX, options({ mix: { callers: { callers: 10 } } })), /not enough/);
   });
 });

@@ -29,7 +29,15 @@ import {
   type State,
   type Unit,
 } from './oracle.ts';
-import { CategorySchema, KeySpecSchema, type Category, type KeySpec } from './questions.ts';
+import {
+  CategorySchema,
+  KeySpecSchema,
+  type AnswerItem,
+  type AnswerKey,
+  type Category,
+  type Granularity,
+  type KeySpec,
+} from './questions.ts';
 
 /**
  * Candidate census and seeded sampler for the pre-registered question set (EVL-02, D-01, plan 03-09).
@@ -396,13 +404,31 @@ const FILE_EXACT = { granularity: 'file', equality: 'exact-set' } as const;
 function candidate(
   category: Category,
   group: string,
-  identity: string,
   name: string,
   file: string,
   key: KeySpec,
   facts: Record<string, number | string>,
 ): Candidate {
-  return { category, group, identity, name, file, key: KeySpecSchema.parse(key), facts };
+  const parsed = KeySpecSchema.parse(key);
+  return { category, group, identity: identityOfKey(parsed), name, file, key: parsed, facts };
+}
+
+/**
+ * What "already used" compares for a key: the symbol (`sym:`), the source path of an emit key
+ * (`path:`) or the ADR number (`adr:`). One question per identity, across all categories.
+ */
+export function identityOfKey(key: KeySpec): string {
+  switch (key.kind) {
+    case 'emit':
+    case 'emit-consumers':
+      return `path:${key.source}`;
+    case 'adr-citers':
+      return `adr:${key.number}`;
+    case 'abstain':
+      return 'adrNoFile' in key.probe ? `adr:${key.probe.adrNoFile}` : `sym:${key.probe.symbol}`;
+    default:
+      return `sym:${key.symbol}`;
+  }
 }
 
 /** Every candidate the census offers for a category, in no particular order. */
@@ -413,7 +439,7 @@ export function candidatesOf(census: Census, category: Category): Candidate[] {
       for (const entry of census.exports) {
         if (entry.kind !== 'function' || entry.calls < 1) continue;
         out.push(
-          candidate('callers', 'callers', `sym:${entry.symbol}`, entry.symbol, entry.file,
+          candidate('callers', 'callers', entry.symbol, entry.file,
             { kind: 'callers', symbol: entry.symbol, definedIn: entry.file, ...FILE_EXACT },
             { calls: entry.calls, callerFiles: entry.callerFiles, nameCount: entry.nameCount }),
         );
@@ -423,7 +449,7 @@ export function candidatesOf(census: Census, category: Category): Candidate[] {
       for (const entry of census.exports) {
         if (entry.refs < 1) continue;
         out.push(
-          candidate('references', 'references', `sym:${entry.symbol}`, entry.symbol, entry.file,
+          candidate('references', 'references', entry.symbol, entry.file,
             { kind: 'references', symbol: entry.symbol, definedIn: entry.file, ...FILE_EXACT },
             { refs: entry.refs, exportKind: entry.kind, nameCount: entry.nameCount }),
         );
@@ -432,14 +458,14 @@ export function candidatesOf(census: Census, category: Category): Candidate[] {
     case 'heritage':
       for (const entry of census.types) {
         out.push(
-          candidate('heritage', 'heritage', `sym:${entry.symbol}`, entry.symbol, entry.file,
+          candidate('heritage', 'heritage', entry.symbol, entry.file,
             { kind: 'heritage', symbol: entry.symbol, definedIn: entry.file, direction: 'subtypes', granularity: 'file+symbol', equality: 'exact-set' },
             { subtypes: entry.subtypes, typeKind: entry.kind, nameCount: entry.nameCount }),
         );
       }
       for (const entry of census.libTypes) {
         out.push(
-          candidate('heritage', 'heritage', `sym:${entry.symbol}`, entry.symbol, '',
+          candidate('heritage', 'heritage', entry.symbol, '',
             { kind: 'heritage', symbol: entry.symbol, lib: true, direction: 'subtypes', granularity: 'file+symbol', equality: 'exact-set' },
             { subtypes: entry.subtypes, typeKind: 'library', nameCount: 1 }),
         );
@@ -449,14 +475,14 @@ export function candidatesOf(census: Census, category: Category): Candidate[] {
       for (const entry of census.emits) {
         if (entry.outputs.length > 0) {
           out.push(
-            candidate('emit', 'emit-outputs', `path:${entry.source}`, entry.source, entry.source,
+            candidate('emit', 'emit-outputs', entry.source, entry.source,
               { kind: 'emit', source: entry.source, ...FILE_EXACT },
               { outputs: entry.outputs.length }),
           );
         }
         if (entry.requirers > 0) {
           out.push(
-            candidate('emit', 'emit-consumers', `path:${entry.source}`, entry.source, entry.source,
+            candidate('emit', 'emit-consumers', entry.source, entry.source,
               { kind: 'emit-consumers', source: entry.source, ...FILE_EXACT },
               { requirers: entry.requirers, requirerFiles: entry.requirerFiles }),
           );
@@ -467,14 +493,14 @@ export function candidatesOf(census: Census, category: Category): Candidate[] {
       for (const entry of census.adrs) {
         if (entry.files.length === 0) continue;
         out.push(
-          candidate('adr', 'adr-citers', `adr:${entry.number}`, String(entry.number), '',
+          candidate('adr', 'adr-citers', String(entry.number), '',
             { kind: 'adr-citers', number: entry.number, ...FILE_EXACT },
             { citations: entry.citations, citingFiles: entry.citingFiles, adrFiles: entry.files.length }),
         );
       }
       for (const entry of census.adrOf) {
         out.push(
-          candidate('adr', 'adr-of', `sym:${entry.symbol}`, entry.symbol, entry.file,
+          candidate('adr', 'adr-of', entry.symbol, entry.file,
             { kind: 'adr-of', symbol: entry.symbol, definedIn: entry.file, ...FILE_EXACT },
             { adrs: entry.adrs.join(','), nameCount: entry.nameCount }),
         );
@@ -484,7 +510,7 @@ export function candidatesOf(census: Census, category: Category): Candidate[] {
       for (const entry of census.exports) {
         if (entry.kind !== 'function' || entry.calls < 1) continue;
         out.push(
-          candidate('impact', 'impact', `sym:${entry.symbol}`, entry.symbol, entry.file,
+          candidate('impact', 'impact', entry.symbol, entry.file,
             { kind: 'impact', symbol: entry.symbol, definedIn: entry.file, depth: 2, ...FILE_EXACT },
             { calls: entry.calls, callerFiles: entry.callerFiles, nameCount: entry.nameCount }),
         );
@@ -493,7 +519,7 @@ export function candidatesOf(census: Census, category: Category): Candidate[] {
     case 'definition':
       for (const entry of census.exports) {
         out.push(
-          candidate('definition', 'definition', `sym:${entry.symbol}`, entry.symbol, entry.file,
+          candidate('definition', 'definition', entry.symbol, entry.file,
             { kind: 'definition', symbol: entry.symbol, granularity: 'file+line', equality: 'exact-set' },
             { exportKind: entry.kind, nameCount: entry.nameCount }),
         );
@@ -502,7 +528,7 @@ export function candidatesOf(census: Census, category: Category): Candidate[] {
     case 'abstain':
       for (const entry of census.nearMisses) {
         out.push(
-          candidate('abstain', 'abstain-symbol', `sym:${entry.name}`, entry.name, entry.file,
+          candidate('abstain', 'abstain-symbol', entry.name, entry.file,
             { kind: 'abstain', probe: { symbol: entry.name }, ...FILE_EXACT },
             { from: entry.from, nameCount: 0 }),
         );
@@ -510,7 +536,7 @@ export function candidatesOf(census: Census, category: Category): Candidate[] {
       for (const entry of census.adrs) {
         if (entry.files.length > 0) continue;
         out.push(
-          candidate('abstain', 'abstain-adr', `adr:${entry.number}`, String(entry.number), '',
+          candidate('abstain', 'abstain-adr', String(entry.number), '',
             { kind: 'abstain', probe: { adrNoFile: entry.number }, ...FILE_EXACT },
             { citations: entry.citations, citingFiles: entry.citingFiles, nameCount: 0 }),
         );
@@ -649,6 +675,66 @@ export function skeletonCandidates(
     pilotCategories: [],
     categories,
   };
+}
+
+// ---------------------------------------------------------------------------------------------
+// Drafting: the closed acceptance rules and the single pass over the ordered candidates
+
+/** How many scored questions each group of a category gets; the sum is the registered 50. */
+export const SCORED_MIX: Readonly<Record<Category, Readonly<Record<string, number>>>> = {
+  callers: { callers: 11 },
+  references: { references: 5 },
+  heritage: { heritage: 5 },
+  emit: { 'emit-outputs': 3, 'emit-consumers': 4 },
+  adr: { 'adr-citers': 4, 'adr-of': 3 },
+  impact: { impact: 4 },
+  definition: { definition: 5 },
+  abstain: { 'abstain-symbol': 4, 'abstain-adr': 2 },
+};
+
+/** Questions in the pilot set, one each from this many different categories (`eval.pilotQuestions`). */
+export const PILOT_COUNT = 5;
+
+/** The largest expected answer a scored question may have, after projection to its granularity. */
+export const MAX_EXPECTED_ITEMS = 30;
+
+export function pickPilotCategories(_seed: number, _count: number): Category[] {
+  return [];
+}
+
+/** The number of expected answers a model has to give for `items` at `granularity`. */
+export function projectedSize(_items: readonly AnswerItem[], _granularity: Granularity): number {
+  return 0;
+}
+
+export type Decision = { status: 'accepted' } | { status: 'rejected'; reason: CandidateReason; detail: string };
+
+export interface DecideInput {
+  candidate: Candidate;
+  /** The oracle's key, or undefined when computing it threw. */
+  answer?: AnswerKey;
+  /** The OracleError (code and message) when computing the key threw. */
+  error?: { code: string; message: string };
+  /** Identity to who holds it: `scored`, `pilot` or `reserved`. */
+  used: ReadonlyMap<string, 'scored' | 'pilot' | 'reserved'>;
+}
+
+export function decide(_input: DecideInput): Decision {
+  return { status: 'accepted' };
+}
+
+export interface DraftOptions {
+  seed: number;
+  corpusId: string;
+  corpusSha: string;
+  /** Identities already used by questions outside this set (the scan questions). */
+  reserved?: readonly string[];
+  mix?: Readonly<Partial<Record<Category, Readonly<Record<string, number>>>>>;
+  pilotCount?: number;
+}
+
+export async function draftCandidates(_census: Census, _ctx: OracleContext, options: DraftOptions): Promise<CandidatesFile> {
+  return { corpusId: options.corpusId, corpusSha: options.corpusSha, seed: options.seed, oracleVersion: ORACLE_VERSION, pilotCategories: [], categories: {} as CandidatesFile['categories'] };
 }
 
 // ---------------------------------------------------------------------------------------------
