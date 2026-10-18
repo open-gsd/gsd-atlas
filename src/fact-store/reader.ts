@@ -18,6 +18,7 @@ import {
   mergeRefs,
   readResolving,
   refRecord,
+  resolveRelations,
   resolveSites,
   scopedRefs,
   selectCallers,
@@ -190,6 +191,9 @@ export function createReader(parts: StoreParts, worktree: WorktreeId): Reader {
         return mergeCaller(resolved.edges, edge, known, at);
       });
       return toAnswer(first, data, resolved.degraded);
+    },
+    async relations(id, options) {
+      return resolveRelations(parts, worktree, id, options);
     },
     async symbol(id) {
       return answer(parts, worktree, (snap) => {

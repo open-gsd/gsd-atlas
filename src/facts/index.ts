@@ -36,7 +36,15 @@ export type {
   UntrustedEntry,
   UntrustedText,
 } from './request.ts';
-export { DEFAULT_PROJECT_CONTEXT, ResolverFailure, degradedCodeOf, isResolverNotice, symbolKey } from './resolution.ts';
+export {
+  DEFAULT_PROJECT_CONTEXT,
+  RELATION_KINDS,
+  ResolverFailure,
+  degradedCodeOf,
+  isRelationKind,
+  isResolverNotice,
+  symbolKey,
+} from './resolution.ts';
 export type {
   CompilerFacts,
   EmitLookup,
@@ -46,8 +54,11 @@ export type {
   ProjectContext,
   ProjectContextProvider,
   RefSiteKey,
+  RelationKind,
+  RelationsPort,
   ResolutionContext,
   ResolvedEdge,
+  ResolvedRelation,
   ResolveScope,
   NoticingResolverPort,
   ResolverNotice,

@@ -45,6 +45,15 @@ interface Run {
 
 const rows = (envelope: Envelope): Row[] => (envelope.data as { results: Row[] }).results;
 
+/**
+ * True when an answer says the compiler was late (`resolver_timeout`): a cold compiler worker under the load of a full test run
+ * can need more than the approved 1.5 seconds. Two answers that are compared across the CLI and MCP are asked again when either
+ * is late, never compared loosely: a late answer is a grammar-tier one and is legitimately different from a precise one.
+ */
+const isLate = (envelope: Envelope): boolean => (envelope['degraded'] as readonly string[] | undefined)?.includes('resolver_timeout') === true;
+
+const pause = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+
 interface Emitted {
   readonly dir: string;
   readonly tmp: TempDir;
@@ -198,10 +207,18 @@ describe('a .cjs requirer of the built output is a user of the .cts source (TSM-
     await withEmitFixture(BASE_FILES, BUILT, async (fixture) => {
       const built = await fixture.cli(['build', '--repo', fixture.dir]);
       assert.equal(built.code, 0, built.stderr);
-      const cli = await fixture.cli(['impact', 'compute', '--repo', fixture.dir, '--path', 'src/lib.cts']);
+      let cli = await fixture.cli(['impact', 'compute', '--repo', fixture.dir, '--path', 'src/lib.cts']);
+      for (let attempt = 0; attempt < 6 && isLate(cli.envelope); attempt += 1) {
+        await pause(500);
+        cli = await fixture.cli(['impact', 'compute', '--repo', fixture.dir, '--path', 'src/lib.cts']);
+      }
       const server = fixture.mcp();
       await server.initialize();
-      const call = await server.callTool('code_impact', { name: 'compute', path: 'src/lib.cts', repo: fixture.dir });
+      let call = await server.callTool('code_impact', { name: 'compute', path: 'src/lib.cts', repo: fixture.dir });
+      for (let attempt = 0; attempt < 6 && isLate(call.envelope); attempt += 1) {
+        await pause(500);
+        call = await server.callTool('code_impact', { name: 'compute', path: 'src/lib.cts', repo: fixture.dir });
+      }
       const text = call.result.content[0]?.text ?? '';
       assert.equal(maskNonce(cli.stdout.trimEnd()), maskNonce(text));
       assert.ok(rows(call.envelope).some((row) => row.path === 'consumer.cjs'));
@@ -254,7 +271,11 @@ describe('code_context emittedAs over the CLI and MCP (TSM-03)', () => {
     await withEmitFixture(BASE_FILES, BUILT, async (fixture) => {
       const built = await fixture.cli(['build', '--repo', fixture.dir]);
       assert.equal(built.code, 0, built.stderr);
-      const context = await fixture.cli(['context', 'compute', '--repo', fixture.dir, '--path', 'src/lib.cts']);
+      let context = await fixture.cli(['context', 'compute', '--repo', fixture.dir, '--path', 'src/lib.cts']);
+      for (let attempt = 0; attempt < 6 && isLate(context.envelope); attempt += 1) {
+        await pause(500);
+        context = await fixture.cli(['context', 'compute', '--repo', fixture.dir, '--path', 'src/lib.cts']);
+      }
       assert.equal(context.code, 0, context.stderr);
       assert.deepEqual((context.envelope.data as { file?: unknown }).file, { path: 'src/lib.cts', emittedAs: ['out/lib.cjs'] });
       const plain = await fixture.cli(['context', 'run', '--repo', fixture.dir, '--path', 'consumer.cjs']);
@@ -264,7 +285,11 @@ describe('code_context emittedAs over the CLI and MCP (TSM-03)', () => {
 
       const server = fixture.mcp();
       await server.initialize();
-      const viaMcp = await server.callTool('code_context', { name: 'compute', path: 'src/lib.cts', repo: fixture.dir });
+      let viaMcp = await server.callTool('code_context', { name: 'compute', path: 'src/lib.cts', repo: fixture.dir });
+      for (let attempt = 0; attempt < 6 && isLate(viaMcp.envelope); attempt += 1) {
+        await pause(500);
+        viaMcp = await server.callTool('code_context', { name: 'compute', path: 'src/lib.cts', repo: fixture.dir });
+      }
       assert.equal(maskNonce(context.stdout.trimEnd()), maskNonce(viaMcp.result.content[0]?.text ?? ''), 'code_context: the CLI line equals the MCP text');
       assert.deepEqual((viaMcp.envelope.data as { file?: unknown }).file, { path: 'src/lib.cts', emittedAs: ['out/lib.cjs'] });
       const findViaMcp = await server.callTool('code_find', { name: 'compute', repo: fixture.dir });

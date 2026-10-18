@@ -383,6 +383,13 @@ export function createOverlayReader(base: Reader, patch: Patch, context: Overlay
       return result(await refsOf(id, options));
     },
 
+    async relations(id, options) {
+      // The store's relations, minus the ones that start or end in a patched file: the compiler saw the store's version of
+      // that file, so a relation that touches it may be stale. Like a patched file's sites, a patched file has none.
+      const stored = observe(await base.relations(id, options)).filter((record) => !patch.has(record.source_path) && !patch.has(record.to.path));
+      return result(stored);
+    },
+
     async callers(id, options) {
       const hops = clampDepth(options?.hops);
       const startKey = symbolKey(id);

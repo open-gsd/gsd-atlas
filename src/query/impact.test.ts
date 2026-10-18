@@ -3,7 +3,7 @@ import { describe, it } from 'node:test';
 import type { TestContext } from 'node:test';
 import type { Resolver } from '../fact-store/index.ts';
 import type { Envelope, Request } from '../facts/index.ts';
-import { addCaller, defineFn, nameOf, where } from './fixtures.test.ts';
+import { SHAPE_RELATIONS, addCaller, addShapes, defineFn, nameOf, relationResolver, where } from './fixtures.test.ts';
 import { createHarness } from './harness.test.ts';
 import type { Harness, HarnessOptions } from './harness.test.ts';
 
@@ -300,5 +300,155 @@ describe('code_impact: how far a change to a symbol reaches', () => {
 
     assert.equal(envelope.ok, false);
     assert.equal(envelope.diagnostics[0]?.code, 'bad_cursor');
+  });
+});
+
+// ---------------------------------------------------------------------------------------------------------
+// Plan 03-25: extends, implements and overrides as hops.
+// ---------------------------------------------------------------------------------------------------------
+
+const tick = async (turns = 20): Promise<void> => {
+  for (let turn = 0; turn < turns; turn += 1) await new Promise<void>((resolve) => setImmediate(resolve));
+};
+
+describe('code_impact relations: the subtypes and overriding members a change reaches', () => {
+  it('relation hops: Base reaches its subclasses via extends, EXTRACTED all the way, then the importing files', async (t) => {
+    const { resolver } = relationResolver(SHAPE_RELATIONS);
+    const h = await world(t, { resolver });
+    await addShapes(h);
+
+    const envelope = await h.query().ask(impactRequest(h, { name: 'Base', depth: 2 }));
+
+    assert.equal(envelope.ok, true, JSON.stringify(envelope.diagnostics));
+    assert.equal('degraded' in envelope, false, JSON.stringify(envelope.degraded));
+    assert.deepEqual(dataOf(envelope).results.map(rowOf), [
+      [1, 'Box', 'class', 'box.ts', 'extends', 'EXTRACTED', 'EXTRACTED'],
+      [1, 'Sub', 'class', 'sub.ts', 'extends', 'EXTRACTED', 'EXTRACTED'],
+      [1, 'box.ts', 'file', 'box.ts', 'import', 'EXTRACTED', 'EXTRACTED'],
+      [1, 'sub.ts', 'file', 'sub.ts', 'import', 'EXTRACTED', 'EXTRACTED'],
+    ]);
+  });
+
+  it('ordering with relations: inside a hop extends ranks before implements whatever the path, and relations are followed to the next hop', async (t) => {
+    const { resolver } = relationResolver(SHAPE_RELATIONS);
+    const h = await world(t, { resolver });
+    await addShapes(h);
+
+    const envelope = await h.query().ask(impactRequest(h, { name: 'Shape', depth: 2 }));
+
+    assert.equal(envelope.ok, true, JSON.stringify(envelope.diagnostics));
+    assert.deepEqual(dataOf(envelope).results.map(rowOf), [
+      [1, 'Square', 'interface', 'square.ts', 'extends', 'EXTRACTED', 'EXTRACTED'],
+      [1, 'Base', 'class', 'base.ts', 'implements', 'EXTRACTED', 'EXTRACTED'],
+      [1, 'base.ts', 'file', 'base.ts', 'import', 'EXTRACTED', 'EXTRACTED'],
+      [1, 'square.ts', 'file', 'square.ts', 'import', 'EXTRACTED', 'EXTRACTED'],
+      [2, 'Box', 'class', 'box.ts', 'extends', 'EXTRACTED', 'EXTRACTED'],
+      [2, 'Sub', 'class', 'sub.ts', 'extends', 'EXTRACTED', 'EXTRACTED'],
+      [2, 'box.ts', 'file', 'box.ts', 'import', 'EXTRACTED', 'EXTRACTED'],
+      [2, 'sub.ts', 'file', 'sub.ts', 'import', 'EXTRACTED', 'EXTRACTED'],
+    ]);
+  });
+
+  it('overriding methods are impacted: changing Base.area reaches Sub.area via overrides', async (t) => {
+    const { resolver } = relationResolver(SHAPE_RELATIONS);
+    const h = await world(t, { resolver });
+    await addShapes(h);
+
+    const envelope = await h.query().ask(impactRequest(h, { name: 'area', path: 'base.ts', depth: 1 }));
+
+    assert.equal(envelope.ok, true, JSON.stringify(envelope.diagnostics));
+    assert.deepEqual(dataOf(envelope).results.map(rowOf), [
+      [1, 'area', 'method', 'sub.ts', 'overrides', 'EXTRACTED', 'EXTRACTED'],
+      [1, 'box.ts', 'file', 'box.ts', 'import', 'EXTRACTED', 'EXTRACTED'],
+      [1, 'sub.ts', 'file', 'sub.ts', 'import', 'EXTRACTED', 'EXTRACTED'],
+    ]);
+    const [item] = dataOf(envelope).results;
+    const cited = envelope.citations?.find((citation) => citation.id === item?.citation);
+    assert.equal(cited?.path, 'sub.ts');
+    assert.equal(cited?.confidence, 'EXTRACTED');
+  });
+
+  it('a name-matched heritage use is still a reference when no relation names it', async (t) => {
+    // A resolver with a relations method that knows nothing: Widget extends Base stays a grammar-tier reference.
+    const { resolver } = relationResolver([]);
+    const h = await world(t, { resolver });
+    await addShapes(h);
+
+    const envelope = await h.query().ask(impactRequest(h, { name: 'Base', depth: 1 }));
+
+    assert.deepEqual(
+      dataOf(envelope).results.filter((item) => !item.kind.startsWith('file')).map(rowOf),
+      [
+        [1, 'Box', 'class', 'box.ts', 'reference', 'INFERRED', 'INFERRED'],
+        [1, 'Sub', 'class', 'sub.ts', 'reference', 'INFERRED', 'INFERRED'],
+      ],
+    );
+  });
+
+  it('phase 2 golden unchanged: the ADR worked example gives the same rows with a resolver that has a relations method', async (t) => {
+    const { resolver } = relationResolver(SHAPE_RELATIONS);
+    const h = await world(t, { resolver });
+    await adrExample(h);
+
+    const envelope = await h.query().ask(impactRequest(h, { name: 'parse', depth: 2 }));
+
+    assert.equal(envelope.ok, true, JSON.stringify(envelope.diagnostics));
+    assert.equal('degraded' in envelope, false, JSON.stringify(envelope.degraded));
+    assert.deepEqual(dataOf(envelope).results.map(rowOf), GOLDEN);
+    for (const item of dataOf(envelope).results) assert.ok(['import', 'call', 'reference'].includes(item.via), item.via);
+  });
+
+  it('relation hops respect the per-hop row cap: a hop cut to the cap is marked truncated with a hint', async (t) => {
+    const { resolver } = relationResolver(SHAPE_RELATIONS);
+    const h = await world(t, { resolver });
+    await addShapes(h);
+
+    const envelope = await h.query({ config: { impactRowCapPerHop: 1 } }).ask(impactRequest(h, { name: 'Base', depth: 1 }));
+
+    assert.equal(envelope.ok, true, JSON.stringify(envelope.diagnostics));
+    assert.deepEqual(dataOf(envelope).results.map((item) => item.name), ['Box']);
+    assert.equal(envelope.truncated, true);
+    assert.ok(envelope.hints?.some((hint) => /hop 1/i.test(hint)), JSON.stringify(envelope.hints));
+  });
+
+  it('relation hop degrades on timeout: the answer is the Phase 2 chain with resolver_timeout, and a later call has the relation hops', async (t) => {
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const { resolver } = relationResolver(SHAPE_RELATIONS, { before: () => gate });
+    const h = await world(t, { resolver });
+    await addShapes(h);
+    const query = h.query();
+    const request = impactRequest(h, { name: 'Base', depth: 1 });
+
+    const pending = query.ask(request);
+    await tick();
+    await h.clock.advance(1500);
+    const first = await pending;
+
+    assert.equal(first.ok, true, JSON.stringify(first.diagnostics));
+    assert.ok(first.degraded?.includes('resolver_timeout'), JSON.stringify(first.degraded));
+    assert.deepEqual(
+      dataOf(first).results.filter((item) => item.kind !== 'file').map(rowOf),
+      [
+        [1, 'Box', 'class', 'box.ts', 'reference', 'INFERRED', 'INFERRED'],
+        [1, 'Sub', 'class', 'sub.ts', 'reference', 'INFERRED', 'INFERRED'],
+      ],
+      'no relation hops while the compiler is late',
+    );
+
+    release();
+    await tick(50);
+    const second = await query.ask(request);
+
+    assert.equal('degraded' in second, false, JSON.stringify(second.degraded));
+    assert.deepEqual(
+      dataOf(second).results.filter((item) => item.kind !== 'file').map(rowOf),
+      [
+        [1, 'Box', 'class', 'box.ts', 'extends', 'EXTRACTED', 'EXTRACTED'],
+        [1, 'Sub', 'class', 'sub.ts', 'extends', 'EXTRACTED', 'EXTRACTED'],
+      ],
+    );
   });
 });

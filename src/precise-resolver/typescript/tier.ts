@@ -8,9 +8,9 @@
  */
 import type { CommandRunner } from '../../command-runner/index.ts';
 import { diagnostic } from '../../facts/index.ts';
-import type { DegradedCode, Diagnostic, NoticingResolverPort, PreciseFacts, ResolvedEdge } from '../../facts/index.ts';
+import type { DegradedCode, Diagnostic, NoticingResolverPort, PreciseFacts, RelationsPort, ResolvedEdge, ResolvedRelation } from '../../facts/index.ts';
 import { TYPESCRIPT_RESOLVER_ID, createTypeScriptResolver } from './client.ts';
-import type { PreciseLimits, TypeScriptResolver, WorkerInfo } from './client.ts';
+import type { PreciseLimits, RelationStats, TypeScriptResolver, WorkerInfo } from './client.ts';
 import { compilerFallbackText } from './compiler.ts';
 import { createStats } from './identity.ts';
 import type { KindStats, Stats } from './identity.ts';
@@ -26,6 +26,8 @@ export interface PreciseTier {
   explain(code: DegradedCode, facts: PreciseFacts | undefined): Diagnostic | undefined;
   /** Sites asked, edges produced and declarations dropped, summed over the tier's workers. */
   stats(): Stats;
+  /** Files asked, relations kept and relations dropped, summed over the tier's workers (plan 03-25). */
+  relationStats(): RelationStats;
   /** What each running worker reported about itself. */
   info(): readonly WorkerInfo[];
   /** End every worker. Safe to call twice. */
@@ -79,6 +81,10 @@ async function* nothing(): AsyncGenerator<ResolvedEdge, void, undefined> {
   // the provider is off: it resolves nothing
 }
 
+async function* noRelations(): AsyncGenerator<ResolvedRelation, void, undefined> {
+  // the provider is off: it has no relations
+}
+
 export function createTypeScriptTier(deps: TypeScriptTierDeps): PreciseTier {
   const disabled = deps.disabled === true;
   const resolvers = new Map<string, TypeScriptResolver>();
@@ -102,10 +108,17 @@ export function createTypeScriptTier(deps: TypeScriptTierDeps): PreciseTier {
     return resolver;
   }
 
-  const resolver: NoticingResolverPort = (sites, context, symbols, scope) => {
+  const edges: NoticingResolverPort = (sites, context, symbols, scope) => {
     if (disabled || closed || scope === undefined) return nothing();
     return resolverFor(scope.worktree).resolveScoped(scope.project.precise, scope.overlay, context, sites, symbols);
   };
+  // The relations of the same worker (plan 03-25). While the provider is off the port still carries the method, so the
+  // store derives the same tier state codes for relations as for edges; it just yields nothing.
+  const relations: RelationsPort = (files, context, symbols, scope) => {
+    if (disabled || closed || scope === undefined) return noRelations();
+    return resolverFor(scope.worktree).relationsScoped(scope.project.precise, scope.overlay, context, files, symbols);
+  };
+  const resolver: NoticingResolverPort = Object.assign(edges, { relations });
 
   return {
     id: TYPESCRIPT_RESOLVER_ID,
@@ -126,6 +139,17 @@ export function createTypeScriptTier(deps: TypeScriptTierDeps): PreciseTier {
     stats() {
       const total = createStats();
       for (const each of resolvers.values()) addStats(total, each.stats());
+      return total;
+    },
+    relationStats() {
+      const total: RelationStats = { files: { asked: 0, answered: 0 }, kept: 0, dropped: 0 };
+      for (const each of resolvers.values()) {
+        const part = each.relationStats();
+        total.files.asked += part.files.asked;
+        total.files.answered += part.files.answered;
+        total.kept += part.kept;
+        total.dropped += part.dropped;
+      }
       return total;
     },
     info() {

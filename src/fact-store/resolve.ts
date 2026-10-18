@@ -5,8 +5,9 @@
  * once the resolver integration lands). Internal; not exported from index.ts.
  */
 import { posix } from 'node:path';
-import { DEFAULT_PROJECT_CONTEXT, degradedCodeOf, isResolverNotice, symbolKey } from '../facts/index.ts';
+import { DEFAULT_PROJECT_CONTEXT, RELATION_KINDS, degradedCodeOf, isRelationKind, isResolverNotice, symbolKey } from '../facts/index.ts';
 import type {
+  Answer,
   Clock,
   DegradedCode,
   EmitLookup,
@@ -16,6 +17,7 @@ import type {
   RefSiteKey,
   ResolutionContext,
   ResolvedEdge,
+  ResolvedRelation,
   ResolveScope,
   Span,
   SymbolIdentity,
@@ -31,11 +33,16 @@ import {
   pruneEdges,
   readAsked,
   readEdges,
+  readRelationsAsked,
+  readRelationsFrom,
+  readRelationsTo,
   siteId,
   writeAsked,
   writeEdges,
+  writeRelations,
+  writeRelationsAsked,
 } from './cache.ts';
-import type { CachedEdge } from './cache.ts';
+import type { CachedEdge, CachedRelation } from './cache.ts';
 import { StoreClosed, UnknownWorktree } from './errors.ts';
 import { extractorOf } from './parts.ts';
 import type { StoreParts } from './parts.ts';
@@ -56,9 +63,20 @@ import {
   spanOf,
   str,
   symbolsIn,
+  toAnswer,
 } from './snapshot.ts';
 import type { FileSymbol, ImportRow, Snapshot, SnapshotRead } from './snapshot.ts';
-import type { CallerRecord, ImporterRecord, Provenance, RefRecord, ResolveOptions, WorktreeId } from './types.ts';
+import type {
+  CallerRecord,
+  ImporterRecord,
+  Provenance,
+  RefRecord,
+  RelationDirection,
+  RelationRecord,
+  RelationsOptions,
+  ResolveOptions,
+  WorktreeId,
+} from './types.ts';
 
 /** One reference site of the overlay, with the identity of the symbol that contains it. */
 export interface SiteHit {
@@ -519,7 +537,7 @@ export function prepareResolution(snap: Snapshot, sites: readonly RefSiteKey[], 
 export function readResolving<T>(
   parts: StoreParts,
   worktree: WorktreeId,
-  grammar: (snap: Snapshot) => T,
+  grammar: (snap: Snapshot, project: ProjectContext | null) => T,
   sitesOf: (value: T) => readonly RefSiteKey[],
 ): ResolvingRead<T> | Promise<ResolvingRead<T>> {
   const attempt = (n: number): ResolvingRead<T> | Promise<ResolvingRead<T>> => {
@@ -532,9 +550,11 @@ export function readResolving<T>(
         parts,
         worktree,
         (snap) => {
-          const value = grammar(snap);
           const moved = project !== null && snapshotIdOf(snap) !== seen.id;
-          return { grammar: value, input: prepareResolution(snap, sitesOf(value), moved ? null : project), moved };
+          // The project context the read may use: null when none could be had or when it belongs to another snapshot.
+          const usable = moved ? null : project;
+          const value = grammar(snap, usable);
+          return { grammar: value, input: prepareResolution(snap, sitesOf(value), usable), moved };
         },
         // The specifier rule asks the project's emit lookup (TSM-03); a snapshot that moved is read again.
         project?.emit,
@@ -589,10 +609,20 @@ interface Collected {
   readonly notices: ReadonlySet<DegradedCode>;
 }
 
-type Settled =
-  | { readonly kind: 'done'; readonly edges: readonly ResolvedEdge[]; readonly notices: ReadonlySet<DegradedCode> }
+type Settled<T> =
+  | { readonly kind: 'done'; readonly value: T }
   | { readonly kind: 'timeout' }
   | { readonly kind: 'failed'; readonly code: DegradedCode };
+
+/** The read-only lookup of the grammar tier's symbols a resolver is given (it never reads the store itself). */
+function symbolLookupOf(parts: StoreParts, worktree: WorktreeId): SymbolLookup {
+  return {
+    // Read back through the read-only connection, one short transaction per call (never held across an await).
+    find: async (name) =>
+      readSnapshot(parts, worktree, (snap) => findRecords(snap, name, { mode: 'exact' }).map((record) => record.identity)).value,
+    findIn: async (path, name) => readSnapshot(parts, worktree, (snap) => symbolsIn(snap, path, name)).value,
+  };
+}
 
 /**
  * Drain the resolver for `sites`, telling it where it resolves (`scope`) and giving it a read-only lookup of the
@@ -605,12 +635,7 @@ async function collectEdges(
   scope: ResolveScope,
 ): Promise<Collected> {
   const { worktree } = scope;
-  const lookup: SymbolLookup = {
-    // Read back through the read-only connection, one short transaction per call (never held across an await).
-    find: async (name) =>
-      readSnapshot(parts, worktree, (snap) => findRecords(snap, name, { mode: 'exact' }).map((record) => record.identity)).value,
-    findIn: async (path, name) => readSnapshot(parts, worktree, (snap) => symbolsIn(snap, path, name)).value,
-  };
+  const lookup = symbolLookupOf(parts, worktree);
   const edges: ResolvedEdge[] = [];
   const notices = new Set<DegradedCode>();
   for await (const item of parts.deps.resolver(sites, scope.project.context, lookup, scope)) {
@@ -621,11 +646,11 @@ async function collectEdges(
 }
 
 /** Race the resolver against the caller's timeout on the injected clock. The resolver keeps running after a timeout. */
-function settle(run: Promise<Collected>, clock: Clock, timeoutMs: number | undefined): Promise<Settled> {
-  return new Promise<Settled>((resolve) => {
+function settle<T>(run: Promise<T>, clock: Clock, timeoutMs: number | undefined): Promise<Settled<T>> {
+  return new Promise<Settled<T>>((resolve) => {
     let done = false;
     let cancel = (): void => {};
-    const finish = (outcome: Settled): void => {
+    const finish = (outcome: Settled<T>): void => {
       if (done) return;
       done = true;
       cancel();
@@ -638,7 +663,7 @@ function settle(run: Promise<Collected>, clock: Clock, timeoutMs: number | undef
     }
     run.then(
       (collected) => {
-        finish({ kind: 'done', edges: collected.edges, notices: collected.notices });
+        finish({ kind: 'done', value: collected });
       },
       (error: unknown) => {
         // A typed failure asks for its own code (`memory_budget`); anything else is `resolver_failed`.
@@ -772,11 +797,11 @@ export async function resolveSites(
     return { edges, degraded: withState(['resolver_timeout'], input, edges) };
   }
 
-  const accepted = validate(parts, worktree, asked, outcome.edges);
-  if (accepted === null) return { edges, degraded: withState([...outcome.notices], input, edges) };
+  const accepted = validate(parts, worktree, asked, outcome.value.edges);
+  if (accepted === null) return { edges, degraded: withState([...outcome.value.notices], input, edges) };
   groupBySite(accepted.edges, edges);
   const stored = store(parts, input, accepted.edges, pending, accepted.snapshotId);
-  return { edges, degraded: withState([...outcome.notices, ...(stored ? [] : ['cache_unavailable' as const])], input, edges) };
+  return { edges, degraded: withState([...outcome.value.notices, ...(stored ? [] : ['cache_unavailable' as const])], input, edges) };
 }
 
 /**
@@ -843,6 +868,358 @@ export function mergeRefs(
     out.push({ ...rest, extractor: `precise:${verdict.resolver}`, confidence: 'EXTRACTED', tier: 'precise' });
   }
   return out;
+}
+
+// ---------------------------------------------------------------------------------------------------------
+// Relations: extends, implements and overrides (plan 03-25, OQ1).
+//
+// A relation binds two grammar symbols and has no reference site, so it travels through the resolver's optional
+// `relations` method and is cached in its own table, keyed like an edge by overlay snapshot and resolution context and
+// settled per file (the file a relation's `from` symbol is declared in). The read has the same three phases as `refs`:
+// the plan and the cache inside one read transaction, the resolver outside any transaction within the caller's timeout,
+// and the records built from the validated rows in a last short read. A resolver without the method gives no relations
+// and no degraded code.
+// ---------------------------------------------------------------------------------------------------------
+
+/** What phase 1 of a relations read learned: whether the symbol exists, the files that can contribute and the cache. */
+interface RelationPlan {
+  readonly found: boolean;
+  /** The files whose relations can contribute, in code-unit order. */
+  readonly files: readonly string[];
+  /** The cached relations that may concern the symbol, before the direction is applied. */
+  readonly cached: readonly CachedRelation[];
+  /** The files, among `files`, that were asked before under this snapshot and context. */
+  readonly asked: ReadonlySet<string>;
+}
+
+/**
+ * The files that may declare a subtype of `target` (a class or an interface), and the types those references sit in. A
+ * subtype names its base in a heritage clause, so a heritage reference is the sign; so is any other reference that sits
+ * directly in a class or an interface and not in one of its members, because a heritage clause can be an expression the
+ * grammar tier does not tag (`extends Mixin(Base)`). A candidate that is not a subtype costs one extra file and never a
+ * wrong relation, because the compiler decides.
+ */
+function heritageOf(snap: Snapshot, target: SymbolIdentity): { readonly files: readonly string[]; readonly subtypes: readonly SymbolIdentity[] } {
+  const files = new Set<string>();
+  const subtypes: SymbolIdentity[] = [];
+  for (const hit of scopedRefs(snap, target)) {
+    const inType = hit.enclosing !== null && (hit.enclosing.kind === 'class' || hit.enclosing.kind === 'interface');
+    if (hit.kind !== 'heritage' && !inType) continue;
+    files.add(hit.path);
+    if (inType && hit.enclosing !== null) subtypes.push(hit.enclosing);
+  }
+  return { files: [...files], subtypes };
+}
+
+/**
+ * The files that import `filePath` and declare a class or an interface. A heritage clause the grammar tier does not tag
+ * (`extends ns.Base`, a namespace import's member) can only name a type that its file can reach, so these files are the
+ * candidates that no reference of the grammar tier shows. A candidate that is not a subtype costs one file.
+ */
+function typeFilesImporting(snap: Snapshot, filePath: string): string[] {
+  const out: string[] = [];
+  for (const edge of walkImporters(snap, filePath, 1)) {
+    const fileId = overlayView(snap).fileIds.get(edge.row.importer);
+    if (fileId === undefined || fileId === null) continue;
+    if (fileSymbols(snap, fileId).some((symbol) => symbol.kind === 'class' || symbol.kind === 'interface')) out.push(edge.row.importer);
+  }
+  return out;
+}
+
+/**
+ * The files that may declare a subtype of `root`, found from the grammar tier's heritage references and from the files that
+ * import the file of a type and declare classes or interfaces, followed `depth` levels down. This only chooses which files
+ * the compiler is asked about, so a candidate that turns out not to be a subtype costs one extra file and never a wrong
+ * relation.
+ */
+function subtypeFiles(snap: Snapshot, root: SymbolIdentity, depth: number): readonly string[] {
+  const files = new Set<string>();
+  const seen = new Set<string>([symbolKey(root)]);
+  let frontier: SymbolIdentity[] = [root];
+  for (let level = 1; level <= depth && frontier.length > 0; level += 1) {
+    const next: SymbolIdentity[] = [];
+    for (const type of frontier) {
+      const found = heritageOf(snap, type);
+      for (const file of found.files) files.add(file);
+      for (const file of typeFilesImporting(snap, type.path)) files.add(file);
+      for (const subtype of found.subtypes) {
+        const key = symbolKey(subtype);
+        if (seen.has(key)) continue;
+        seen.add(key);
+        next.push(subtype);
+      }
+    }
+    frontier = next;
+  }
+  return [...files];
+}
+
+/** The identity of the symbol that contains `symbol` (a method's class), or null for a top-level symbol. */
+function containerOf(snap: Snapshot, id: SymbolIdentity, found: { readonly file: { readonly id: number }; readonly symbol: FileSymbol }): SymbolIdentity | null {
+  if (found.symbol.parent === null) return null;
+  const parent = fileSymbols(snap, found.file.id).find((candidate) => candidate.ord === found.symbol.parent);
+  return parent === undefined ? null : identityOf(snap, id.path, parent);
+}
+
+/**
+ * Phase 1 of a relations read: the files whose relations can answer the question and what the cache holds for them. The
+ * supertypes of a symbol (`out`) come from its own file. Its subtypes (`in`) come from the files that refer to it in a
+ * heritage clause; for a member, the subtypes of its container, followed down the hierarchy, because a member is overridden
+ * by a subtype that need not be a direct one.
+ */
+function planRelations(snap: Snapshot, id: SymbolIdentity, direction: RelationDirection, project: ProjectContext | null): RelationPlan {
+  const located = findSymbol(snap, id);
+  if (located === null) return { found: false, files: [], cached: [], asked: new Set() };
+  const wanted = new Set<string>();
+  // Only a class, an interface or a member of one can have a supertype, and a type alias can also have implementers; for
+  // any other symbol (a function, a variable) there is nothing to ask, so a plain `code_refs` pays nothing for relations.
+  const container = containerOf(snap, id, located);
+  const hasSupertypes = container !== null || id.kind === 'class' || id.kind === 'interface';
+  const hasSubtypes = hasSupertypes || id.kind === 'type';
+  if (direction !== 'in' && hasSupertypes) wanted.add(id.path);
+  if (direction !== 'out' && hasSubtypes) {
+    for (const file of subtypeFiles(snap, container ?? id, container === null ? 1 : MAX_WALK_DEPTH)) wanted.add(file);
+  }
+  const files = [...wanted].sort(compareCodeUnits);
+  if (project === null || files.length === 0) return { found: true, files, cached: [], asked: new Set() };
+  const contextId = findContextId(snap.db, contextKey(project.context));
+  if (contextId === undefined) return { found: true, files, cached: [], asked: new Set() };
+  const snapshot = snapshotIdOf(snap);
+  const repo = snap.parts.repo;
+  const cached: CachedRelation[] = [];
+  if (direction !== 'out') cached.push(...readRelationsTo(snap.db, snapshot, contextId, id, repo));
+  if (direction !== 'in') cached.push(...readRelationsFrom(snap.db, snapshot, contextId, id.path, repo));
+  return { found: true, files, cached, asked: readRelationsAsked(snap.db, snapshot, contextId, files) };
+}
+
+const relationKey = (item: { readonly relation: string; readonly from: SymbolIdentity; readonly to: SymbolIdentity }): string =>
+  `${item.relation}\u0000${symbolKey(item.from)}\u0000${symbolKey(item.to)}`;
+
+/** The members of the class or interface `id` have the qualified name `id.qualifiedName` plus a dot and a name. */
+function isMemberOf(member: SymbolIdentity, container: SymbolIdentity): boolean {
+  return member.path === container.path && member.qualifiedName.startsWith(`${container.qualifiedName}.`);
+}
+
+/**
+ * The relations among `rows` that answer a question about `id` in `direction`: `in` the ones that end at it, `out` the ones
+ * that start at it and, for a class or an interface, the `overrides` that start at one of its members.
+ */
+function concerning(rows: readonly CachedRelation[], id: SymbolIdentity, direction: RelationDirection): CachedRelation[] {
+  const key = symbolKey(id);
+  return rows.filter((row) => {
+    const incoming = symbolKey(row.to) === key;
+    const outgoing = symbolKey(row.from) === key || (row.relation === 'overrides' && isMemberOf(row.from, id));
+    return direction === 'in' ? incoming : direction === 'out' ? outgoing : incoming || outgoing;
+  });
+}
+
+function isRelationShaped(value: unknown): value is ResolvedRelation {
+  const item = value as Partial<ResolvedRelation> | null | undefined;
+  const endpoint = (side: Partial<SymbolIdentity> | undefined): boolean =>
+    typeof side === 'object' && side !== null && typeof side.path === 'string' && typeof side.qualifiedName === 'string' && typeof side.kind === 'string';
+  return typeof item === 'object' && item !== null && endpoint(item.from) && endpoint(item.to) && isRelationKind(item.relation) && typeof item.resolver === 'string';
+}
+
+/**
+ * Keep the relations that start in a file we asked about and end at symbols the overlay holds (T-03-251), once each, and
+ * report the overlay's snapshot id as it is now. Null when the overlay or the store is gone.
+ */
+function validateRelations(
+  parts: StoreParts,
+  worktree: WorktreeId,
+  asked: ReadonlySet<string>,
+  fresh: readonly ResolvedRelation[],
+): { readonly relations: readonly ResolvedRelation[]; readonly snapshotId: string } | null {
+  try {
+    return readSnapshot(parts, worktree, (snap) => {
+      const seen = new Set<string>();
+      const relations: ResolvedRelation[] = [];
+      for (const item of fresh) {
+        if (!isRelationShaped(item) || !asked.has(item.from.path)) continue;
+        if (symbolKey(item.from) === symbolKey(item.to)) continue;
+        if (findSymbol(snap, item.from) === null || findSymbol(snap, item.to) === null) continue;
+        const key = relationKey(item);
+        if (seen.has(key)) continue;
+        seen.add(key);
+        relations.push(item);
+      }
+      return { relations, snapshotId: snapshotIdOf(snap) };
+    }).value;
+  } catch (error) {
+    if (error instanceof UnknownWorktree || error instanceof StoreClosed) return null;
+    throw error;
+  }
+}
+
+/**
+ * Write validated relations, and the asked marker of every file the completed call was asked about, in one transaction,
+ * when this process may and the overlay still has the contents they were computed for (the rules of {@link store}).
+ */
+function storeRelations(
+  parts: StoreParts,
+  input: ResolveInput,
+  relations: readonly ResolvedRelation[],
+  askedFiles: readonly string[],
+  currentSnapshotId: string,
+): boolean {
+  if (relations.length === 0 && askedFiles.length === 0) return true;
+  if (!parts.canCache()) return relations.length === 0;
+  if (currentSnapshotId !== input.snapshotId) return true;
+  try {
+    parts.writeDb.transaction(() => {
+      const live = liveSnapshotIds(parts.writeDb);
+      if (!live.has(input.snapshotId)) return;
+      const contextId = ensureContextId(parts.writeDb, input.contextKey);
+      writeRelations(parts.writeDb, input.snapshotId, contextId, relations);
+      writeRelationsAsked(parts.writeDb, input.snapshotId, contextId, askedFiles);
+      pruneEdges(parts.writeDb, live);
+    });
+    return true;
+  } catch (error) {
+    if (error instanceof DbError) return false;
+    throw error;
+  }
+}
+
+/** What one drained `relations` call produced: its relations, and the codes its notices asked the answer to carry. */
+interface CollectedRelations {
+  readonly relations: ResolvedRelation[];
+  readonly notices: ReadonlySet<DegradedCode>;
+}
+
+async function collectRelations(parts: StoreParts, files: readonly string[], scope: ResolveScope): Promise<CollectedRelations> {
+  const relations: ResolvedRelation[] = [];
+  const notices = new Set<DegradedCode>();
+  const resolver = parts.deps.resolver;
+  if (resolver.relations === undefined) return { relations, notices };
+  for await (const item of resolver.relations(files, scope.project.context, symbolLookupOf(parts, scope.worktree), scope)) {
+    if (isResolverNotice(item)) notices.add(item.degraded);
+    else relations.push(item);
+  }
+  return { relations, notices };
+}
+
+/**
+ * The codes a relations read carries because of the state of the precise tier, whether or not the resolver ran: the codes
+ * the project context names, `precise_unavailable` for a file that needs a config and has none, and `compiler_fallback`
+ * when relations are in use under the bundled compiler.
+ */
+function relationTierState(input: ResolveInput, files: readonly string[], anyRelation: boolean): DegradedCode[] {
+  if (files.length === 0 || input.unavailable === true) return [];
+  const codes = new Set<DegradedCode>(input.project.degraded ?? []);
+  const precise = input.project.precise;
+  if (precise !== undefined) {
+    if (files.some((file) => precise.requiresOwner(file) && precise.ownerOf(file) === undefined)) codes.add('precise_unavailable');
+    if (precise.compiler.source === 'bundled' && anyRelation) codes.add('compiler_fallback');
+  }
+  return [...codes];
+}
+
+/** The provenance-carrying records of the rows whose endpoints the snapshot holds, in the order relations are listed. */
+function relationRecords(snap: Snapshot, rows: readonly CachedRelation[], limit: number | undefined): RelationRecord[] {
+  const ranked: Array<{ readonly rank: number; readonly record: RelationRecord }> = [];
+  for (const row of rows) {
+    const from = findSymbol(snap, row.from);
+    const to = findSymbol(snap, row.to);
+    if (from === null || to === null) continue;
+    ranked.push({
+      rank: RELATION_KINDS.indexOf(row.relation),
+      record: {
+        source_path: row.from.path,
+        span: from.symbol.span,
+        extractor: `precise:${row.resolver}`,
+        content_hash: from.file.hash,
+        first_seen: from.file.firstSeen,
+        last_seen: from.file.lastSeen,
+        confidence: 'EXTRACTED',
+        debug: `rel/${row.relation}/${encodeURIComponent(row.from.path)}/${from.file.hash}/${String(from.symbol.ord)}/${encodeURIComponent(row.to.path)}/${String(to.symbol.ord)}`,
+        from: row.from,
+        to: row.to,
+        relation: row.relation,
+        tier: 'precise',
+      },
+    });
+  }
+  ranked.sort(
+    (a, b) =>
+      a.rank - b.rank ||
+      compareCodeUnits(a.record.source_path, b.record.source_path) ||
+      a.record.span.startLine - b.record.span.startLine ||
+      a.record.span.startColumn - b.record.span.startColumn ||
+      compareCodeUnits(a.record.to.path, b.record.to.path) ||
+      compareCodeUnits(a.record.to.qualifiedName, b.record.to.qualifiedName) ||
+      compareCodeUnits(a.record.debug, b.record.debug),
+  );
+  const cap = limit === undefined || Number.isNaN(limit) ? Number.POSITIVE_INFINITY : Math.max(0, Math.floor(limit));
+  return ranked.slice(0, cap).map((entry) => entry.record);
+}
+
+/**
+ * `Reader.relations`: the relations of `id` in `options.direction`, from the cache and the resolver. Phase 2 asks the
+ * resolver only for the files the cache has not settled, within `options.timeoutMs`; past it the answer carries what the
+ * cache holds and `resolver_timeout` while the run carries on in the background and fills the cache. A resolver that
+ * throws gives its own code (`resolver_failed` unless the error carries another). No resolver, or one without the
+ * method, gives the cached relations (none) and no code.
+ */
+export async function resolveRelations(
+  parts: StoreParts,
+  worktree: WorktreeId,
+  id: SymbolIdentity,
+  options: RelationsOptions | undefined,
+): Promise<Answer<readonly RelationRecord[]>> {
+  const direction = options?.direction ?? 'both';
+  const started = readResolving(parts, worktree, (snap, project) => planRelations(snap, id, direction, project), () => []);
+  const first = started instanceof Promise ? await started : started;
+  const { grammar: plan, input } = first.value;
+  if (!plan.found) return toAnswer(first, []);
+
+  const rows = new Map<string, CachedRelation>();
+  const take = (found: readonly CachedRelation[]): void => {
+    for (const row of concerning(found, id, direction)) rows.set(relationKey(row), row);
+  };
+  take(plan.cached);
+
+  const codes: DegradedCode[] = [];
+  if (parts.deps.resolver.relations !== undefined) {
+    const pending = plan.files.filter((file) => !plan.asked.has(file));
+    if (pending.length > 0) {
+      if (input.unavailable === true) {
+        // No project context for this snapshot: the resolver is not asked, and nothing is cached.
+        codes.push('resolver_failed');
+      } else {
+        const asked = new Set(pending);
+        const run = collectRelations(parts, pending, { worktree, overlay: input.overlay, project: input.project });
+        const outcome = await settle(run, parts.deps.clock, options?.timeoutMs);
+        if (outcome.kind === 'failed') {
+          codes.push(outcome.code);
+        } else if (outcome.kind === 'timeout') {
+          run.then(
+            (fresh) => {
+              try {
+                const accepted = validateRelations(parts, worktree, asked, fresh.relations);
+                if (accepted !== null) storeRelations(parts, input, accepted.relations, pending, accepted.snapshotId);
+              } catch {
+                // Background work has no caller to tell; the next call computes again.
+              }
+            },
+            () => undefined,
+          );
+          codes.push('resolver_timeout');
+        } else {
+          codes.push(...outcome.value.notices);
+          const accepted = validateRelations(parts, worktree, asked, outcome.value.relations);
+          if (accepted !== null) {
+            take(accepted.relations.map((item) => ({ from: item.from, to: item.to, relation: item.relation, resolver: item.resolver })));
+            if (!storeRelations(parts, input, accepted.relations, pending, accepted.snapshotId)) codes.push('cache_unavailable');
+          }
+        }
+      }
+    }
+    codes.push(...relationTierState(input, plan.files, rows.size > 0));
+  }
+
+  const final = readSnapshot(parts, worktree, (snap) => relationRecords(snap, [...rows.values()], options?.limit));
+  return toAnswer(final, final.value, [...new Set(codes)]);
 }
 
 /** The edges of a caller walk that precise edges leave standing. */

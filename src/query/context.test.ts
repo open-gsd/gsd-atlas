@@ -3,7 +3,7 @@ import { describe, it } from 'node:test';
 import type { TestContext } from 'node:test';
 import type { EmitLookup, Envelope, ProjectContextProvider, RefKind, Request } from '../facts/index.ts';
 import { estimateTokens } from './budget.ts';
-import { addCaller, defineFn, nameOf, where } from './fixtures.test.ts';
+import { SHAPE_RELATIONS, addCaller, addShapes, defineFn, nameOf, relationResolver, where } from './fixtures.test.ts';
 import { createHarness } from './harness.test.ts';
 import type { Harness } from './harness.test.ts';
 
@@ -325,5 +325,138 @@ describe('code_context: emittedAs (TSM-03)', () => {
     const none =await withProject.query().ask(contextRequest(withProject, { name: 'nothingCalledThis' }));
     assert.equal(none.ok, true, JSON.stringify(none.diagnostics));
     assert.ok(!('file' in dataOf(none)));
+  });
+});
+
+// ---------------------------------------------------------------------------------------------------------
+// Plan 03-25: supertypes and subtypes.
+// ---------------------------------------------------------------------------------------------------------
+
+interface RelationItem {
+  readonly relation: string;
+  readonly name: string;
+  readonly kind: string;
+  readonly path: string;
+  readonly line: number;
+  readonly col: number;
+  readonly confidence: string;
+  readonly citation: string;
+}
+
+interface RelationData {
+  readonly results: readonly ContextItem[];
+  readonly supertypes?: readonly RelationItem[];
+  readonly subtypes?: readonly RelationItem[];
+}
+
+const relationsData = (envelope: Envelope): RelationData => envelope.data as RelationData;
+const shortOf = (items: readonly RelationItem[] | undefined): string[] | undefined => items?.map((item) => `${item.relation} ${item.name} ${item.path}`);
+
+async function shapesWorld(t: TestContext, relations = SHAPE_RELATIONS, options: { readonly before?: () => Promise<void> } = {}): Promise<Harness> {
+  const { resolver } = relationResolver(relations, options);
+  const h = await createHarness({ resolver });
+  t.after(() => h.cleanup());
+  await addShapes(h);
+  return h;
+}
+
+describe('code_context relations: supertypes and subtypes', () => {
+  it('supertypes and subtypes: a class lists the classes that extend it and the interfaces it implements, each with its relation and a citation', async (t) => {
+    const h = await shapesWorld(t);
+
+    const envelope = await h.query().ask(contextRequest(h, { name: 'Base', path: 'base.ts' }));
+
+    assert.equal(envelope.ok, true, JSON.stringify(envelope.diagnostics));
+    const data = relationsData(envelope);
+    assert.deepEqual(shortOf(data.supertypes), ['implements Shape shape.ts']);
+    assert.deepEqual(shortOf(data.subtypes), ['extends Box box.ts', 'extends Sub sub.ts']);
+    for (const item of [...(data.supertypes ?? []), ...(data.subtypes ?? [])]) {
+      assert.equal(item.confidence, 'EXTRACTED');
+      const cited = envelope.citations?.find((citation) => citation.id === item.citation);
+      assert.equal(cited?.path, item.path, item.name);
+      assert.equal(cited?.confidence, 'EXTRACTED');
+    }
+    const sub = data.subtypes?.find((item) => item.name === 'Sub');
+    assert.equal(sub?.kind, 'class');
+    assert.equal(sub?.line, 3, 'cited at the subclass definition');
+    assert.ok(sectionsOf(envelope).includes('definition'), 'the ordinary sections are unchanged');
+    assert.ok(!sectionsOf(envelope).includes('supertype') && !sectionsOf(envelope).includes('subtype'), 'relations are not in results');
+  });
+
+  it('a subclass lists its base class and the members it overrides', async (t) => {
+    const h = await shapesWorld(t);
+
+    const envelope = await h.query().ask(contextRequest(h, { name: 'Sub' }));
+
+    assert.equal(envelope.ok, true, JSON.stringify(envelope.diagnostics));
+    const data = relationsData(envelope);
+    assert.deepEqual(shortOf(data.supertypes), ['extends Base base.ts', 'overrides area base.ts', 'overrides name base.ts']);
+    assert.ok(!('subtypes' in data), 'nothing extends Sub, so there is no subtypes key');
+  });
+
+  it('no empty relation arrays: a symbol with no relations, a library subclass and a store without relations have neither key', async (t) => {
+    const h = await shapesWorld(t);
+    const query = h.query();
+
+    const boom = await query.ask(contextRequest(h, { name: 'Boom' }));
+    const unknown = await query.ask(contextRequest(h, { name: 'nothingCalledThis' }));
+
+    for (const envelope of [boom, unknown]) {
+      assert.equal(envelope.ok, true, JSON.stringify(envelope.diagnostics));
+      assert.ok(!('supertypes' in relationsData(envelope)));
+      assert.ok(!('subtypes' in relationsData(envelope)));
+      assert.ok(!JSON.stringify(envelope.data).includes('"supertypes"'));
+    }
+
+    const plain = await createHarness();
+    t.after(() => plain.cleanup());
+    await addShapes(plain);
+    const without = await plain.query().ask(contextRequest(plain, { name: 'Base', path: 'base.ts' }));
+    assert.equal(without.ok, true, JSON.stringify(without.diagnostics));
+    assert.ok(!('supertypes' in relationsData(without)));
+    assert.ok(!('subtypes' in relationsData(without)));
+    assert.equal('degraded' in without, false, JSON.stringify(without.degraded));
+  });
+
+  it('the relation lists follow the budget and the cursor like the other sections: nothing is lost or repeated across pages', async (t) => {
+    const h = await shapesWorld(t);
+    const query = h.query();
+    const names = { supertypes: [] as string[], subtypes: [] as string[] };
+    let more: string | undefined;
+    let pages = 0;
+    do {
+      const page = await query.ask(contextRequest(h, { name: 'Base', path: 'base.ts', limit: 2, ...(more === undefined ? {} : { more }) }));
+      assert.equal(page.ok, true, JSON.stringify(page.diagnostics));
+      const data = relationsData(page);
+      names.supertypes.push(...(data.supertypes ?? []).map((item) => item.name));
+      names.subtypes.push(...(data.subtypes ?? []).map((item) => item.name));
+      more = page.more;
+      pages += 1;
+      assert.ok(pages <= 20, 'paging must end');
+    } while (more !== undefined);
+
+    assert.ok(pages > 1, 'a limit of 2 needs more than one page');
+    assert.deepEqual(names.supertypes, ['Shape']);
+    assert.deepEqual(names.subtypes, ['Box', 'Sub']);
+  });
+
+  it('a relations timeout degrades the answer and leaves the lists out', async (t) => {
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const h = await shapesWorld(t, SHAPE_RELATIONS, { before: () => gate });
+    const pending = h.query().ask(contextRequest(h, { name: 'Base', path: 'base.ts' }));
+    for (let turn = 0; turn < 20; turn += 1) await new Promise<void>((resolve) => setImmediate(resolve));
+    await h.clock.advance(1500);
+    for (let turn = 0; turn < 20; turn += 1) await new Promise<void>((resolve) => setImmediate(resolve));
+    await h.clock.advance(1500);
+    const envelope = await pending;
+    release();
+
+    assert.equal(envelope.ok, true, JSON.stringify(envelope.diagnostics));
+    assert.ok(envelope.degraded?.includes('resolver_timeout'), JSON.stringify(envelope.degraded));
+    assert.ok(!('supertypes' in relationsData(envelope)));
+    assert.ok(!('subtypes' in relationsData(envelope)));
   });
 });

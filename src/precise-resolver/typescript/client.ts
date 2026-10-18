@@ -24,6 +24,7 @@ import type {
   RefSiteKey,
   ResolutionContext,
   ResolvedEdge,
+  ResolvedRelation,
   ResolverNotice,
   SymbolIdentity,
   SymbolLookup,
@@ -91,6 +92,16 @@ export interface WorkerInfo {
   readonly rssMb: number;
 }
 
+/** What the relations path counted (plan 03-25). */
+export interface RelationStats {
+  /** Files sent to the worker, and files for which it returned at least one relation. */
+  files: { asked: number; answered: number };
+  /** Relations whose two ends mapped to exactly one grammar symbol each. */
+  kept: number;
+  /** Relations dropped because an end did not. */
+  dropped: number;
+}
+
 export interface TypeScriptResolver extends PreciseResolver {
   /**
    * Resolve under the facts the store computed for this snapshot. Yields edges in request order, preceded by notices
@@ -103,6 +114,19 @@ export interface TypeScriptResolver extends PreciseResolver {
     sites: readonly RefSiteKey[],
     symbols?: SymbolLookup,
   ): AsyncIterable<ResolvedEdge | ResolverNotice>;
+  /**
+   * Resolve the relations of the classes and interfaces declared in `files` under the facts the store computed for this
+   * snapshot (plan 03-25). Yields relations in request order, preceded by the same notices as `resolveScoped`.
+   */
+  relationsScoped(
+    project: PreciseFacts | undefined,
+    overlay: OverlaySnapshot,
+    context: ResolutionContext,
+    files: readonly string[],
+    symbols?: SymbolLookup,
+  ): AsyncIterable<ResolvedRelation | ResolverNotice>;
+  /** Files asked and answered, relations kept and relations dropped because an end mapped to no single grammar symbol. */
+  relationStats(): RelationStats;
   /** Sites asked, edges produced and declarations dropped, per compiler declaration kind. */
   stats(): Stats;
   /** The running worker's own report, or undefined when none runs. */
@@ -123,7 +147,8 @@ interface Live {
   readonly configs: ReadonlySet<string>;
   readonly compilerDir: string | null;
   readonly expectedSource: 'project' | 'bundled';
-  readonly listeners: Map<number, (message: Response) => void>;
+  /** One listener per request in flight; it is given each message of the request and the size of its line in bytes. */
+  readonly listeners: Map<number, (message: Response, bytes: number) => void>;
   readonly exitWaiters: Set<(info: ExitInfo) => void>;
   readonly ready: Promise<void>;
   readonly signal: { resolve(): void; reject(error: Error): void };
@@ -195,7 +220,7 @@ export function createTypeScriptResolver(deps: TypeScriptResolverDeps): TypeScri
       else violation(candidate, 'the worker reported an error that belongs to no request');
       return;
     }
-    candidate.listeners.get(message.id)?.(message);
+    candidate.listeners.get(message.id)?.(message, Buffer.byteLength(line, 'utf8'));
   }
 
   function violation(candidate: Live, _why: string): void {
@@ -308,12 +333,20 @@ export function createTypeScriptResolver(deps: TypeScriptResolverDeps): TypeScri
     return started;
   }
 
-  /** One request and its edges, until `done`. Rejects when the worker exits, breaks the protocol or is too slow. */
-  function ask(
+  /**
+   * One request and its items (edges or relations), until `done`. Rejects when the worker exits, breaks the protocol or is
+   * too slow. A worker that sends more items than `maxItems`, or more bytes of them than `maxBytes`, or an item of the other
+   * kind, is broken or hostile and is stopped (T-03-232, T-03-233, T-03-251).
+   */
+  function ask<K extends 'edge' | 'relation'>(
     candidate: Live,
     build: (id: number) => Request,
-    onEdge: (message: Extract<Response, { t: 'edge' }>) => void,
-    maxEdges: number,
+    expect: {
+      readonly kind: K;
+      readonly onItem: (message: Extract<Response, { t: K }>) => void;
+      readonly maxItems: number;
+      readonly maxBytes: number;
+    },
   ): Promise<{ asked: number; answered: number }> {
     return new Promise((resolve, reject) => {
       if (candidate.exit !== undefined) {
@@ -339,17 +372,23 @@ export function createTypeScriptResolver(deps: TypeScriptResolverDeps): TypeScri
       timer.unref();
       candidate.exitWaiters.add(onExit);
       let received = 0;
-      candidate.listeners.set(id, (message) => {
-        if (message.t === 'edge') {
-          // One edge per site at most: a worker that sends more is broken or hostile, and is stopped (T-03-232, T-03-233).
+      let receivedBytes = 0;
+      candidate.listeners.set(id, (message, bytes) => {
+        if (message.t === expect.kind) {
+          // One edge per site at most, and a bounded volume of relations: a worker that sends more is stopped.
           received += 1;
-          if (received > maxEdges) {
+          receivedBytes += bytes;
+          if (received > expect.maxItems || receivedBytes > expect.maxBytes) {
             finish();
             candidate.stream.kill();
-            reject(new ResolverFailure('resolver_failed', 'the compiler worker answered more sites than it was asked'));
+            reject(new ResolverFailure('resolver_failed', 'the compiler worker answered more than it was asked'));
             return;
           }
-          onEdge(message);
+          expect.onItem(message as Extract<Response, { t: K }>);
+        } else if (message.t === 'edge' || message.t === 'relation') {
+          finish();
+          candidate.stream.kill();
+          reject(new ResolverFailure('resolver_failed', 'the compiler worker answered with the wrong kind of item'));
         } else if (message.t === 'done') {
           finish();
           resolve({ asked: message.asked, answered: message.answered });
@@ -419,14 +458,14 @@ export function createTypeScriptResolver(deps: TypeScriptResolverDeps): TypeScri
         for (const [config, members] of groups) {
           for (let at = 0; at < members.length; at += limits.sitesPerRequest) {
             const chunk = members.slice(at, at + limits.sitesPerRequest);
-            const counts = await ask(
-              candidate,
-              (id) => ({ t: 'resolve', id, config, sites: chunk.map((member) => member.wire) }),
-              (message) => {
+            const counts = await ask(candidate, (id) => ({ t: 'resolve', id, config, sites: chunk.map((member) => member.wire) }), {
+              kind: 'edge',
+              onItem: (message) => {
                 answers.set(siteKey(message.site.path, message.site.row, message.site.col, message.site.name), message.targets);
               },
-              chunk.length,
-            );
+              maxItems: chunk.length,
+              maxBytes: Number.POSITIVE_INFINITY,
+            });
             stats.sites.asked += counts.asked;
             stats.sites.answered += counts.answered;
           }
@@ -475,6 +514,100 @@ export function createTypeScriptResolver(deps: TypeScriptResolverDeps): TypeScri
     }
   }
 
+  /** Files grouped by owner config, and the notice for a TypeScript file that no config owns (the relations counterpart of `plan`). */
+  function planFiles(project: PreciseFacts | undefined, files: readonly string[]) {
+    const groups = new Map<string, string[]>();
+    const notices = new Set<DegradedCode>();
+    const seen = new Set<string>();
+    for (const file of files) {
+      if (!COMPILER_FILE.test(file) || seen.has(file)) continue;
+      seen.add(file);
+      const owner = project?.ownerOf(file);
+      if (project === undefined || owner === undefined || !project.configs.includes(owner)) {
+        if (project === undefined ? TYPESCRIPT_FILE.test(file) : project.requiresOwner(file)) notices.add('precise_unavailable');
+        continue;
+      }
+      const group = groups.get(owner) ?? [];
+      group.push(file);
+      groups.set(owner, group);
+    }
+    return { groups, notices };
+  }
+
+  async function* runRelations(
+    project: PreciseFacts | undefined,
+    files: readonly string[],
+    symbols: SymbolLookup | undefined,
+  ): AsyncGenerator<ResolvedRelation | ResolverNotice, void, undefined> {
+    try {
+      if (closed || files.length === 0) return;
+      const { groups, notices } = planFiles(project, files);
+      for (const code of notices) yield { kind: 'notice', degraded: code };
+      if (project === undefined || groups.size === 0 || symbols === undefined) return;
+
+      const received: Array<Extract<Response, { t: 'relation' }>> = [];
+      const fallback = await serial(async () => {
+        const candidate = await ensure(project);
+        for (const [config, members] of groups) {
+          for (let at = 0; at < members.length; at += limits.sitesPerRequest) {
+            const chunk = members.slice(at, at + limits.sitesPerRequest);
+            const counts = await ask(candidate, (id) => ({ t: 'relations', id, config, files: chunk }), {
+              kind: 'relation',
+              onItem: (message) => {
+                received.push(message);
+              },
+              maxItems: Number.POSITIVE_INFINITY,
+              maxBytes: limits.maxLineBytes,
+            });
+            relationStats.files.asked += counts.asked;
+            relationStats.files.answered += counts.answered;
+          }
+        }
+        return candidate.info?.compiler.source !== candidate.expectedSource || project.compiler.source === 'bundled';
+      });
+      if (fallback) yield { kind: 'notice', degraded: 'compiler_fallback' };
+
+      // Request order, then the worker's own order: the files as they appear in `files`, each file's relations as found.
+      const order = new Map<string, number>();
+      files.forEach((file, index) => {
+        if (!order.has(file)) order.set(file, index);
+      });
+      const ranked = received
+        .map((message, arrival) => ({ message, arrival, rank: order.get(message.from.path) ?? Number.MAX_SAFE_INTEGER }))
+        .sort((a, b) => a.rank - b.rank || a.arrival - b.arrival);
+
+      // Both ends must map to exactly one grammar symbol, or the relation is dropped and counted (never guessed).
+      const mapped = new Map<string, Promise<SymbolIdentity | null>>();
+      const identityOf = (target: Target): Promise<SymbolIdentity | null> => {
+        const key = siteKey(target.path, target.row, target.col, target.name);
+        let pending = mapped.get(key);
+        if (pending === undefined) {
+          pending = mapTarget(target, symbols);
+          mapped.set(key, pending);
+        }
+        return pending;
+      };
+      const yielded = new Set<string>();
+      for (const { message } of ranked) {
+        const from = await identityOf(message.from);
+        const to = from === null ? null : await identityOf(message.to);
+        if (from === null || to === null) {
+          relationStats.dropped += 1;
+          continue;
+        }
+        const key = `${message.relation}\u0000${symbolKey(from)}\u0000${symbolKey(to)}`;
+        if (yielded.has(key)) continue;
+        yielded.add(key);
+        relationStats.kept += 1;
+        yield { from, to, relation: message.relation, resolver: TYPESCRIPT_RESOLVER_ID };
+      }
+    } finally {
+      deps.onCleanup?.();
+    }
+  }
+
+  const relationStats: RelationStats = { files: { asked: 0, answered: 0 }, kept: 0, dropped: 0 };
+
   return {
     id: TYPESCRIPT_RESOLVER_ID,
     resolve(_overlay, _context, sites, symbols) {
@@ -486,6 +619,16 @@ export function createTypeScriptResolver(deps: TypeScriptResolverDeps): TypeScri
     resolveScoped(project, _overlay, _context, sites, symbols) {
       return run(project, sites, symbols);
     },
+    relations(_overlay, _context, files, symbols) {
+      const scoped = runRelations(deps.project?.(), files, symbols);
+      return (async function* () {
+        for await (const item of scoped) if (!isResolverNotice(item)) yield item;
+      })();
+    },
+    relationsScoped(project, _overlay, _context, files, symbols) {
+      return runRelations(project, files, symbols);
+    },
+    relationStats: () => structuredClone(relationStats),
     stats: () => structuredClone(stats),
     info: () => live?.info,
     async close() {

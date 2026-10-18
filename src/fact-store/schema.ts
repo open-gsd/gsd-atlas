@@ -34,8 +34,8 @@ export type FileState = (typeof FILE_STATES)[number];
  * bytes of a file.
  *
  * Plan 02-11 adds `names_fts` (the fuzzy-name index), `resolution_contexts` and `resolved_edges` to this same
- * unreleased version; plan 03-20 adds `resolved_asked`, derived cache data, the same way. Safe to run on an
- * existing store: every statement is `IF NOT EXISTS`.
+ * unreleased version; plan 03-20 adds `resolved_asked`, derived cache data, the same way, and plan 03-25 adds
+ * `resolved_relations` and `relations_asked`. Safe to run on an existing store: every statement is `IF NOT EXISTS`.
  */
 export function createSchema(db: Db, fuzzy: FuzzyIndex): void {
   db.exec(`
@@ -206,6 +206,38 @@ CREATE TABLE IF NOT EXISTS resolved_asked (
   end_column INTEGER NOT NULL,
   name TEXT NOT NULL,
   PRIMARY KEY (snapshot, context_id, site_path, start_line, start_column, end_line, end_column, name)
+) WITHOUT ROWID;
+
+-- Symbol-to-symbol relations from the precise tier (plan 03-25, OQ1): extends, implements and overrides. A relation
+-- binds two grammar symbols, so it has no site; it is valid for exactly the overlay contents (snapshot) and the
+-- configuration (context) it was computed under, like an edge. Derived data, created with IF NOT EXISTS, so a store made
+-- before this table existed gains it on the next open and the schema version does not move.
+CREATE TABLE IF NOT EXISTS resolved_relations (
+  snapshot TEXT NOT NULL,
+  context_id INTEGER NOT NULL,
+  from_path TEXT NOT NULL,
+  from_qualified_name TEXT NOT NULL,
+  from_kind TEXT NOT NULL,
+  from_discriminator TEXT NOT NULL DEFAULT '',
+  to_path TEXT NOT NULL,
+  to_qualified_name TEXT NOT NULL,
+  to_kind TEXT NOT NULL,
+  to_discriminator TEXT NOT NULL DEFAULT '',
+  relation TEXT NOT NULL CHECK (relation IN ('extends', 'implements', 'overrides')),
+  resolver TEXT NOT NULL,
+  PRIMARY KEY (snapshot, context_id, from_path, from_qualified_name, from_kind, from_discriminator,
+               to_path, to_qualified_name, to_kind, to_discriminator, relation)
+) WITHOUT ROWID;
+CREATE INDEX IF NOT EXISTS resolved_relations_by_to ON resolved_relations (snapshot, context_id, to_path, to_qualified_name);
+
+-- The per-file marker of relations: the resolver was asked for the relations whose \`from\` is declared in this file,
+-- with or without any answer. A file with a marker is settled until the snapshot or the context changes. Written only
+-- when the resolver's call completed, so a timeout or a failure never settles a file.
+CREATE TABLE IF NOT EXISTS relations_asked (
+  snapshot TEXT NOT NULL,
+  context_id INTEGER NOT NULL,
+  file_path TEXT NOT NULL,
+  PRIMARY KEY (snapshot, context_id, file_path)
 ) WITHOUT ROWID;
 `);
   createFuzzyIndex(db, fuzzy);

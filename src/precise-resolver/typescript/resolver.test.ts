@@ -789,6 +789,87 @@ describe('an untrusted worker (T-03-232, T-03-233)', () => {
   });
 });
 
+describe('an untrusted worker: relations (T-03-251)', () => {
+  const FAKE_RELATIONS = [
+    "import readline from 'node:readline';",
+    'const mode = __MODE__;',
+    'const rl = readline.createInterface({ input: process.stdin });',
+    'const send = (o) => process.stdout.write(JSON.stringify(o) + "\\n");',
+    'const base = { path: "src/lib.cts", row: 4, col: 13, name: "Base", kind: "ClassDeclaration" };',
+    'const sub = { path: "src/user.cts", row: 5, col: 13, name: "Sub", kind: "ClassDeclaration" };',
+    'rl.on("line", (line) => {',
+    '  const m = JSON.parse(line);',
+    '  if (m.t === "init") return send({ t: "ready", compiler: { version: "6.0.3", source: "bundled" }, rssMb: 1, pid: process.pid });',
+    '  if (m.t !== "relations") return;',
+    '  const done = (answered) => send({ t: "done", id: m.id, asked: m.files.length, answered });',
+    '  if (mode === "ok") { send({ t: "relation", id: m.id, from: sub, to: base, relation: "extends" }); return done(1); }',
+    '  if (mode === "wrong-kind") { send({ t: "edge", id: m.id, site: { path: "src/user.cts", row: 0, col: 0, name: "x" }, targets: [] }); return done(0); }',
+    '  if (mode === "flood") { for (let i = 0; i < 50; i += 1) send({ t: "relation", id: m.id, from: sub, to: base, relation: "extends" }); return done(50); }',
+    '  if (mode === "escape") { send({ t: "relation", id: m.id, from: sub, to: { ...base, path: "../../etc/passwd" }, relation: "extends" }); return done(1); }',
+    '});',
+    'rl.on("close", () => process.exit(0));',
+    '',
+  ].join('\n');
+
+  function resolverWith(t: TestContext, mode: string, limits: Record<string, number> = {}): TypeScriptResolver {
+    const tmp = makeTempDir();
+    t.after(() => tmp.cleanup());
+    const fake = path.join(tmp.path, `fake-relations-${mode}.mjs`);
+    fs.writeFileSync(fake, FAKE_RELATIONS.replace('__MODE__', JSON.stringify(mode)));
+    const project = writeProject(FIXTURE);
+    t.after(() => project.cleanup());
+    const runner = createRealRunner({ builtinShapes: [compilerWorkerShape({ execPath: process.execPath, workerPath: fake })] });
+    const resolver = createTypeScriptResolver({ runner, worktree: project.dir, project: () => factsFor(), execPath: process.execPath, workerPath: fake, limits });
+    t.after(() => resolver.close());
+    return resolver;
+  }
+
+  const anyLookup: SymbolLookup = {
+    find: async () => [],
+    findIn: async (p, name) => [{ repo: 'r', path: p, qualifiedName: name, kind: 'class', span: span(0, 0, 1000, 0) }],
+  };
+
+  async function drain(resolver: TypeScriptResolver, lookup: SymbolLookup = anyLookup): Promise<unknown[]> {
+    const out: unknown[] = [];
+    for await (const item of resolver.relationsScoped(factsFor(), NO_OVERLAY, CONTEXT, ['src/user.cts'], lookup)) out.push(item);
+    return out;
+  }
+
+  it('a well-formed relation is mapped on both ends and yielded with the resolver id', async (t) => {
+    const resolver = resolverWith(t, 'ok');
+    const out = (await drain(resolver)).filter((item) => (item as { kind?: string }).kind !== 'notice') as Array<{ from: { qualifiedName: string }; to: { qualifiedName: string }; relation: string; resolver: string }>;
+    assert.deepEqual(out.map((item) => [item.relation, item.from.qualifiedName, item.to.qualifiedName, item.resolver]), [['extends', 'Sub', 'Base', 'typescript']]);
+    assert.deepEqual(resolver.relationStats(), { files: { asked: 1, answered: 1 }, kept: 1, dropped: 0 });
+  });
+
+  it('an item of the wrong kind stops the worker and fails the call with resolver_failed', async (t) => {
+    const resolver = resolverWith(t, 'wrong-kind');
+    await assert.rejects(drain(resolver), (error: unknown) => (error as { degradedCode?: string }).degradedCode === 'resolver_failed');
+  });
+
+  it('a flood of relations beyond the response budget stops the worker and fails the call', async (t) => {
+    const resolver = resolverWith(t, 'flood', { maxLineBytes: 2000 });
+    await assert.rejects(drain(resolver), (error: unknown) => (error as { degradedCode?: string }).degradedCode === 'resolver_failed');
+  });
+
+  it('a relation with a path that leaves the repository is dropped and counted, and the store is never asked about the path', async (t) => {
+    const resolver = resolverWith(t, 'escape');
+    const asked: string[] = [];
+    const watching: SymbolLookup = {
+      find: async () => [],
+      findIn: async (p, name) => {
+        asked.push(p);
+        return anyLookup.findIn(p, name);
+      },
+    };
+    const out = (await drain(resolver, watching)).filter((item) => (item as { kind?: string }).kind !== 'notice');
+    assert.deepEqual(out, []);
+    assert.ok(!asked.includes('../../etc/passwd'), JSON.stringify(asked));
+    assert.equal(resolver.relationStats().dropped, 1);
+    assert.equal(resolver.relationStats().kept, 0);
+  });
+});
+
 describe('the manifest and the worker source', () => {
   it('the TypeScript module names tiers grammar and precise and the typescript adapter', () => {
     const manifest = JSON.parse(fs.readFileSync(path.join(MODULES, 'typescript', 'atlas-lang.json'), 'utf8')) as { tiers: string[]; precise: { adapter: string } };
@@ -819,5 +900,295 @@ describe('the manifest and the worker source', () => {
       const text = fs.readFileSync(path.join(dir, name), 'utf8');
       assert.doesNotMatch(text, /(?:from|import|require)\s*\(?\s*['"]typescript(?:\/[^'"]*)?['"]/, `${name} imports the compiler`);
     }
+  });
+});
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Plan 03-25: extends, implements and overrides from the real compiler worker, read through code_refs.
+// ---------------------------------------------------------------------------------------------------------------------
+
+export const SHAPES_SOURCE = [
+  'export interface Shape {', //                      line 1
+  '  area(): number;', //                             2
+  '}', //                                             3
+  '', //                                              4
+  'export abstract class Base implements Shape {', // 5
+  '  abstract area(): number;', //                    6
+  '  name(): string {', //                            7
+  "    return 'base';", //                            8
+  '  }', //                                           9
+  '}', //                                             10
+  '', //                                              11
+  'export class Sub extends Base {', //               12
+  '  area(): number {', //                            13
+  '    return 1;', //                                 14
+  '  }', //                                           15
+  '  name(): string {', //                            16
+  "    return 'sub';", //                             17
+  '  }', //                                           18
+  '}', //                                             19
+  '', //                                              20
+  'export class Boom extends Error {}', //            21
+  '', //                                              22
+  'export interface Square extends Shape {}', //      23
+  '', //                                              24
+  'export abstract class Box<T> extends Base {', //   25
+  '  value?: T;', //                                  26
+  '}', //                                             27
+  '',
+].join('\n');
+
+export const SHAPES_FIXTURE: Readonly<Record<string, string>> = { 'tsconfig.json': TSCONFIG, 'src/shapes.cts': SHAPES_SOURCE };
+
+interface EdgeRow extends RefRow {
+  readonly edge?: string;
+  readonly enclosing: string | null;
+  readonly target: string;
+  readonly kind: string | null;
+}
+
+const edgeRows = (envelope: Envelope): EdgeRow[] => (envelope.data as { results: EdgeRow[] }).results;
+const targetsOf = (envelope: Envelope): Array<{ name: string; kind: string; path: string; line: number; handle: string }> =>
+  (envelope.data as { targets: Array<{ name: string; kind: string; path: string; line: number; handle: string }> }).targets;
+
+describe('relations from the real compiler worker (TSM-01)', () => {
+  it('worker relations: extends and implements label the heritage sites of a fixture, Boom extends Error is dropped by the worker', async (t) => {
+    const world = await makeWorld(t, SHAPES_FIXTURE, { hook: true });
+    assert.equal((await world.build()).ok, true);
+
+    const base = (await refsSettled(world, { name: 'Base', kind: 'class' })).envelope;
+    assert.equal(base.ok, true, JSON.stringify(base.diagnostics));
+    assert.deepEqual(
+      edgeRows(base).filter((row) => row.kind === 'heritage').map((row) => [row.enclosing, row.edge, row.tier, row.confidence, row.line]),
+      [
+        ['Sub', 'extends', 'precise', 'EXTRACTED', 12],
+        ['Box', 'extends', 'precise', 'EXTRACTED', 25],
+      ],
+      JSON.stringify(edgeRows(base)),
+    );
+
+    const shape = (await refsSettled(world, { name: 'Shape', kind: 'interface' })).envelope;
+    assert.deepEqual(
+      edgeRows(shape).filter((row) => row.kind === 'heritage').map((row) => [row.enclosing, row.edge, row.tier]),
+      [
+        ['Base', 'implements', 'precise'],
+        ['Square', 'extends', 'precise'],
+      ],
+      JSON.stringify(edgeRows(shape)),
+    );
+
+    // `Boom extends Error`: the base is a library class, so no relation exists and nothing refers to Boom.
+    const boom = (await refsSettled(world, { name: 'Boom' })).envelope;
+    assert.deepEqual(edgeRows(boom), []);
+    assert.equal((boom.degraded ?? []).includes('resolver_failed'), false);
+  });
+
+  it('worker relations: the overriding methods are listed for the base method and an implemented interface method is not an override', async (t) => {
+    const world = await makeWorld(t, SHAPES_FIXTURE, { hook: true });
+    assert.equal((await world.build()).ok, true);
+
+    const area = (await refsSettled(world, { name: 'area', path: 'src/shapes.cts', kind: 'method' })).envelope;
+    assert.equal(area.ok, true, JSON.stringify(area.diagnostics));
+    const targets = targetsOf(area);
+    const baseArea = targets.find((target) => target.line === 6);
+    const shapeArea = targets.find((target) => target.line === 2);
+    assert.ok(baseArea !== undefined && shapeArea !== undefined, JSON.stringify(targets));
+    const overrides = edgeRows(area).filter((row) => row.edge === 'overrides');
+    assert.deepEqual(
+      overrides.map((row) => [row.enclosing, row.target, row.tier, row.confidence, row.line]),
+      [['Sub.area', baseArea.handle, 'precise', 'EXTRACTED', 13]],
+      JSON.stringify(edgeRows(area)),
+    );
+    assert.equal(overrides.some((row) => row.target === shapeArea.handle), false, 'Base.area implements Shape.area at class level only');
+
+    const name = (await refsSettled(world, { name: 'name', path: 'src/shapes.cts', kind: 'method' })).envelope;
+    assert.deepEqual(
+      edgeRows(name).filter((row) => row.edge === 'overrides').map((row) => [row.enclosing, row.line]),
+      [['Sub.name', 16]],
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Plan 03-25, Task 2: generics, mixins, an `any` base, override chains and interface methods.
+// ---------------------------------------------------------------------------------------------------------------------
+
+const GENERICS_SOURCE = [
+  'export class A<T> {',
+  '  m(): T | undefined {',
+  '    return undefined;',
+  '  }',
+  '}',
+  '',
+  'export class B<T> extends A<T> {}',
+  '',
+  'export class C extends B<string> {',
+  '  m(): string | undefined {',
+  '    return undefined;',
+  '  }',
+  '}',
+  '',
+  'export interface I<T> {',
+  '  v: T;',
+  '}',
+  'export interface J<T> extends I<T> {}',
+  'export class K implements I<string> {',
+  "  v = 'k';",
+  '}',
+  '',
+  'export interface Runner {',
+  '  run(): void;',
+  '}',
+  'export class R implements Runner {',
+  '  run(): void {}',
+  '}',
+  '',
+  'type Ctor<T = object> = new (...args: any[]) => T;',
+  'function Mixin<TBase extends Ctor>(Base: TBase) {',
+  '  return class Mixed extends Base {};',
+  '}',
+  'export class P {}',
+  'export class M extends Mixin(P) {}',
+  '',
+  'declare const anything: any;',
+  'export class Z extends anything {}',
+  '',
+].join('\n');
+
+/** The 1-based line of the first line of `GENERICS_SOURCE` that contains `needle`. */
+const genericsLine = (needle: string): number => GENERICS_SOURCE.split('\n').findIndex((line) => line.includes(needle)) + 1;
+
+describe('relations: generics, mixins, any, override chains and interface methods (TSM-01)', () => {
+  const GENERICS_FIXTURE = { 'tsconfig.json': TSCONFIG, 'src/generics.cts': GENERICS_SOURCE };
+
+  it('generic extends: class B<T> extends A<T>, interface J<T> extends I<T> and implements I<string> give the relation to the declared type', async (t) => {
+    const world = await makeWorld(t, GENERICS_FIXTURE, { hook: true });
+    assert.equal((await world.build()).ok, true);
+
+    const a = (await refsSettled(world, { name: 'A', kind: 'class' })).envelope;
+    assert.deepEqual(
+      edgeRows(a).filter((row) => row.edge !== undefined && row.kind === 'heritage').map((row) => [row.enclosing, row.edge, row.line]),
+      [['B', 'extends', genericsLine('class B<T>')]],
+      JSON.stringify(edgeRows(a)),
+    );
+    const i = (await refsSettled(world, { name: 'I', kind: 'interface' })).envelope;
+    assert.deepEqual(
+      edgeRows(i).filter((row) => row.kind === 'heritage').map((row) => [row.enclosing, row.edge]),
+      [
+        ['J', 'extends'],
+        ['K', 'implements'],
+      ],
+      JSON.stringify(edgeRows(i)),
+    );
+  });
+
+  it('mixin extends: a class that extends a call returning a class has the relation to the declared class', async (t) => {
+    const world = await makeWorld(t, GENERICS_FIXTURE, { hook: true });
+    assert.equal((await world.build()).ok, true);
+
+    const p = (await refsSettled(world, { name: 'P', kind: 'class' })).envelope;
+    const extending = edgeRows(p).filter((row) => row.edge === 'extends');
+    assert.deepEqual(
+      extending.map((row) => [row.enclosing, row.tier, row.confidence, row.line]),
+      [['M', 'precise', 'EXTRACTED', genericsLine('class M extends')]],
+      JSON.stringify(edgeRows(p)),
+    );
+  });
+
+  it('any base gives no relation: extending a value the checker cannot resolve to a declaration adds nothing and fails nothing', async (t) => {
+    const world = await makeWorld(t, GENERICS_FIXTURE, { hook: true });
+    assert.equal((await world.build()).ok, true);
+
+    const z = (await refsSettled(world, { name: 'Z', kind: 'class' })).envelope;
+    const anything = (await refsSettled(world, { name: 'anything' })).envelope;
+
+    for (const envelope of [z, anything]) {
+      assert.equal(envelope.ok, true, JSON.stringify(envelope.diagnostics));
+      assert.equal((envelope.degraded ?? []).includes('resolver_failed'), false, JSON.stringify(envelope.degraded));
+      assert.equal(edgeRows(envelope).some((row) => row.edge === 'extends' || row.edge === 'implements' || row.edge === 'overrides'), false);
+    }
+    assert.deepEqual(edgeRows(z), [], 'nothing refers to Z');
+  });
+
+  it('override chain: C extends B extends A with m declared in A and C gives C.m overrides A.m, and B has none', async (t) => {
+    const world = await makeWorld(t, GENERICS_FIXTURE, { hook: true });
+    assert.equal((await world.build()).ok, true);
+
+    const m = (await refsSettled(world, { name: 'm', path: 'src/generics.cts', kind: 'method' })).envelope;
+    const targets = targetsOf(m);
+    const aM = targets.find((target) => target.line === genericsLine('  m(): T | undefined'));
+    assert.ok(aM !== undefined, JSON.stringify(targets));
+    const overrides = edgeRows(m).filter((row) => row.edge === 'overrides');
+    assert.deepEqual(
+      overrides.map((row) => [row.enclosing, row.target, row.line]),
+      [['C.m', aM.handle, genericsLine('  m(): string | undefined')]],
+      JSON.stringify(edgeRows(m)),
+    );
+  });
+
+  it('interface method is not an override: a class method that implements an interface method has the class-level implements only', async (t) => {
+    const world = await makeWorld(t, GENERICS_FIXTURE, { hook: true });
+    assert.equal((await world.build()).ok, true);
+
+    const run = (await refsSettled(world, { name: 'run', path: 'src/generics.cts', kind: 'method' })).envelope;
+    const runner = (await refsSettled(world, { name: 'Runner', kind: 'interface' })).envelope;
+    const v = (await refsSettled(world, { name: 'v', path: 'src/generics.cts' })).envelope;
+
+    assert.deepEqual(edgeRows(run).filter((row) => row.edge === 'overrides'), []);
+    assert.deepEqual(edgeRows(v).filter((row) => row.edge === 'overrides'), []);
+    assert.deepEqual(
+      edgeRows(runner).filter((row) => row.kind === 'heritage').map((row) => [row.enclosing, row.edge]),
+      [['R', 'implements']],
+    );
+  });
+
+  it('a namespace-qualified heritage clause is found: class Qual extends ns.Base, which the grammar tier does not tag, is an extends item (relations-check regression)', async (t) => {
+    // gsd-core: `interface ManifestSection extends sectionManifest.SelectableSection` in src/init.cts.
+    const world = await makeWorld(
+      t,
+      {
+        'tsconfig.json': TSCONFIG,
+        'src/base.cts': ['export class Base {', '  v = 1;', '}', ''].join('\n'),
+        'src/qual.cts': ["import * as ns from './base.cjs';", '', 'export class Qual extends ns.Base {}', ''].join('\n'),
+      },
+      { hook: true },
+    );
+    assert.equal((await world.build()).ok, true);
+
+    const base = (await refsSettled(world, { name: 'Base', kind: 'class' })).envelope;
+
+    assert.equal(base.ok, true, JSON.stringify(base.diagnostics));
+    assert.deepEqual(
+      edgeRows(base).filter((row) => row.edge === 'extends').map((row) => [row.enclosing, row.path, row.tier, row.kind]),
+      [['Qual', 'src/qual.cts', 'precise', 'heritage']],
+      JSON.stringify(edgeRows(base)),
+    );
+  });
+
+  it('an edit makes a new snapshot: the relations are asked of the worker again and are not served from the old cache (T-03-254)', async (t) => {
+    const world = await makeWorld(t, SHAPES_FIXTURE, { hook: true });
+    assert.equal((await world.build()).ok, true);
+    const before = (await refsSettled(world, { name: 'Base', kind: 'class' })).envelope;
+    assert.deepEqual(edgeRows(before).filter((row) => row.edge === 'extends').map((row) => row.enclosing), ['Sub', 'Box']);
+    const tier = world.tier();
+    assert.ok(tier !== undefined);
+    const askedBefore = tier.relationStats().files.asked;
+    assert.ok(askedBefore > 0, 'the first read asked the worker for relations');
+    await refsSettled(world, { name: 'Base', kind: 'class' });
+    assert.equal(tier.relationStats().files.asked, askedBefore, 'a second read over the same snapshot is served from the cache');
+
+    // The file changes; `fresh` makes the answer read the edit, as an agent that just saved the file would. The new overlay
+    // is a new snapshot, so the cache is not reused. (The worker's own program is refreshed by the incremental update of
+    // plan 03-29; this plan guarantees only that a relation is never served for a snapshot it was not computed for.)
+    world.repo.write('src/shapes.cts', SHAPES_SOURCE.replace('export abstract class Box<T> extends Base {', 'export abstract class Box<T> {'));
+    let after: Envelope | undefined;
+    for (let read = 0; read < 12; read += 1) {
+      after = await world.host.handle({ protocol: PROTOCOL_VERSION, kind: 'code_refs', args: { name: 'Base', kind: 'class' }, fresh: ['src/shapes.cts'] });
+      if (!(after.degraded ?? []).includes('resolver_timeout')) break;
+      await sleep(300);
+    }
+    assert.ok(after !== undefined);
+    assert.equal(after.ok, true, JSON.stringify(after.diagnostics));
+    assert.ok(tier.relationStats().files.asked > askedBefore, 'the new snapshot asked the worker again');
   });
 });

@@ -12,7 +12,7 @@
  * a project model says so; it is absent otherwise.
  */
 import { UnknownWorktree } from '../fact-store/index.ts';
-import type { Reader, SymbolRecord } from '../fact-store/index.ts';
+import type { Reader, RelationRecord, SymbolRecord } from '../fact-store/index.ts';
 import type { DegradedCode, Envelope, ExportSite, FileFacts, ImportSite, LocalSymbol, Span, SymbolIdentity } from '../facts/index.ts';
 import { okEnvelope, symbolKey } from '../facts/index.ts';
 import { cleanField, createCitations, memoLineText } from './cite.ts';
@@ -35,6 +35,8 @@ export const MAX_ALTERNATIVES = 5;
 export const MAX_CONTEXT_REFERENCES = 10;
 
 export const REFS_CAPPED_HINT = 'Only the ten highest-ranked references are shown. Use code_refs to list them all.';
+
+export const RELATIONS_CAPPED_HINT = 'More relations exist than one answer lists. Use code_refs or code_impact to follow them.';
 
 type SymbolSection = 'definition' | 'parent' | 'child';
 
@@ -67,7 +69,20 @@ interface ReferenceEntry {
   readonly item: RefItem;
 }
 
-type Entry = SymbolEntry | ImportEntry | ExportEntry | ReferenceEntry;
+/**
+ * A compiler relation of the definition (plan 03-25): a supertype (what the symbol extends or implements, or the member it
+ * overrides) or a subtype (what extends or implements it, or the member that overrides it). It is cited at the other
+ * symbol's definition, and is paged like any other entry but rendered under `data.supertypes` or `data.subtypes`.
+ */
+interface RelationEntry {
+  readonly key: SortKey;
+  readonly section: 'supertype' | 'subtype';
+  readonly record: RelationRecord;
+  /** The symbol on the other end of the relation, and where its definition is. */
+  readonly other: { readonly identity: SymbolIdentity; readonly kind: string; readonly path: string; readonly span: Span };
+}
+
+type Entry = SymbolEntry | ImportEntry | ExportEntry | ReferenceEntry | RelationEntry;
 
 const lastSegment = (qualifiedName: string): string => {
   const dot = qualifiedName.lastIndexOf('.');
@@ -191,6 +206,7 @@ export async function runContext(ctx: FindContext, input: CodeContextInput): Pro
     const degraded = new Set<DegradedCode>([...ctx.fresh.degraded, ...search.degraded]);
     let entries: Entry[] = [];
     let refsCapped = false;
+    let relationsCapped = false;
     /** What the project's compiler writes for the defining file (TSM-03); empty when it says nothing. */
     let emittedAs: readonly string[] = [];
     if (best !== undefined) {
@@ -215,6 +231,32 @@ export async function runContext(ctx: FindContext, input: CodeContextInput): Pro
           item,
         });
       });
+
+      // The compiler's relations of the definition: both what it extends, implements or overrides and what does so to it.
+      const related = await reader.relations(best.identity, { direction: 'both', timeoutMs: config.resolveTimeoutMs, limit: config.maxLimit });
+      watermark = laterOf(watermark, related.watermark);
+      for (const code of related.degraded ?? []) degraded.add(code);
+      relationsCapped = related.data.length >= config.maxLimit;
+      const bestKey = symbolKey(best.identity);
+      const ordinals = { supertype: 0, subtype: 0 };
+      for (const record of related.data) {
+        const subtype = symbolKey(record.to) === bestKey;
+        const section = subtype ? 'subtype' : 'supertype';
+        // A subtype is cited where it is defined, which is where the relation is written; a supertype at its own definition.
+        const other = subtype ? undefined : await reader.symbol(record.to);
+        if (!subtype && (other === undefined || other.data === null)) continue;
+        const entryOther = subtype
+          ? { identity: record.from, kind: record.from.kind, path: record.source_path, span: record.span }
+          : { identity: record.to, kind: record.to.kind, path: other?.data?.source_path ?? record.to.path, span: other?.data?.span ?? record.span };
+        if (other !== undefined) watermark = laterOf(watermark, other.watermark);
+        entries.push({
+          key: contextKeyOf(section, ordinals[section], entryOther.path, entryOther.span.startLine, entryOther.span.startColumn),
+          section,
+          record,
+          other: entryOther,
+        });
+        ordinals[section] += 1;
+      }
     }
     entries.sort((a, b) => compareRanked(a.key, b.key));
 
@@ -233,8 +275,26 @@ export async function runContext(ctx: FindContext, input: CodeContextInput): Pro
     const render = async (kept: readonly Entry[], state: PageState): Promise<Envelope> => {
       const cites = createCitations(ctx.nonce, config.lineTextMaxChars);
       const results: Record<string, unknown>[] = [];
+      const supertypes: Record<string, unknown>[] = [];
+      const subtypes: Record<string, unknown>[] = [];
       for (const entry of kept) {
         const section: ContextSection = entry.section;
+        if (entry.section === 'supertype' || entry.section === 'subtype') {
+          const line = await textOf(entry, entry.other.path, entry.other.span);
+          const id = cites.add({ path: entry.other.path, span: entry.other.span, confidence: 'EXTRACTED', debug: entry.record.debug, line });
+          const item = {
+            relation: entry.record.relation,
+            name: cleanField(lastSegment(entry.other.identity.qualifiedName)),
+            kind: cleanField(entry.other.kind),
+            path: cleanField(entry.other.path),
+            line: entry.other.span.startLine + 1,
+            col: entry.other.span.startColumn + 1,
+            confidence: 'EXTRACTED',
+            citation: id,
+          };
+          (entry.section === 'supertype' ? supertypes : subtypes).push(item);
+          continue;
+        }
         if (entry.section === 'definition' || entry.section === 'parent' || entry.section === 'child') {
           const handle = await handleFor(entry);
           if (handle === null) continue; // the symbol vanished between the two reads
@@ -301,6 +361,7 @@ export async function runContext(ctx: FindContext, input: CodeContextInput): Pro
             confidence: ref.confidence,
             ambiguous: candidates > 1,
             candidates,
+            ...(entry.item.edge === undefined ? {} : { edge: entry.item.edge }),
             citation: id,
           });
         }
@@ -312,21 +373,25 @@ export async function runContext(ctx: FindContext, input: CodeContextInput): Pro
       if (best === undefined) hints.push(NO_DEFINITION_HINT);
       if (state.cut) hints.push(state.more === null ? CURSOR_TOO_LONG_HINT : TRUNCATED_HINT);
       if (refsCapped) hints.push(REFS_CAPPED_HINT);
+      if (relationsCapped) hints.push(RELATIONS_CAPPED_HINT);
       if (search.capped) hints.push(TARGETS_CAPPED_HINT);
 
       // `file` is there only when the compiler's emit mapping names an output: a file in no project, or a repository with
       // no project model, has no `file` and no empty `emittedAs`. The paths come from a repository's configuration, so
       // they are cleaned like every other repository string.
+      // `supertypes` and `subtypes` are there only when the compiler reported a relation that is on this page, never empty.
       const data = {
         results,
         alternatives,
         ...(emittedAs.length === 0 ? {} : { file: { path: cleanField(filePath), emittedAs: emittedAs.map(cleanField) } }),
+        ...(supertypes.length === 0 ? {} : { supertypes }),
+        ...(subtypes.length === 0 ? {} : { subtypes }),
       };
       const envelope = okEnvelope(CODE_CONTEXT_SCHEMA, data, ctx.fresh.diagnostics, {
         ...(cites.citations.length === 0 ? {} : { citations: cites.citations }),
         watermark,
         ...(cites.entries.length === 0 ? {} : { untrusted_text: { nonce: ctx.nonce, entries: cites.entries } }),
-        ...(state.cut || refsCapped || search.capped ? { truncated: true } : {}),
+        ...(state.cut || refsCapped || relationsCapped || search.capped ? { truncated: true } : {}),
         ...(state.more === null ? {} : { more: state.more }),
         ...(hints.length === 0 ? {} : { hints }),
       });

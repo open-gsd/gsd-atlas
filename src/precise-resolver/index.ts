@@ -1,8 +1,8 @@
-import type { OverlaySnapshot, RefSiteKey, ResolutionContext, ResolvedEdge, SymbolLookup } from '../facts/index.ts';
+import type { OverlaySnapshot, RefSiteKey, ResolutionContext, ResolvedEdge, ResolvedRelation, SymbolLookup } from '../facts/index.ts';
 
 export { asStoreResolver } from './store-adapter.ts';
 export { createScriptedResolver } from './stub.ts';
-export type { ScriptedEdge, ScriptedResolverOptions } from './stub.ts';
+export type { ScriptedEdge, ScriptedRelation, ScriptedResolverOptions } from './stub.ts';
 export {
   BUNDLED_TYPESCRIPT_VERSION,
   PRECISE_DEFAULTS,
@@ -24,6 +24,7 @@ export type {
   KindStats,
   PreciseLimits,
   PreciseTier,
+  RelationStats,
   Stats,
   TypeScriptResolver,
   TypeScriptResolverDeps,
@@ -70,4 +71,19 @@ export interface PreciseResolver {
     sites: readonly RefSiteKey[],
     symbols?: SymbolLookup,
   ): AsyncIterable<ResolvedEdge>;
+
+  /**
+   * Optional (plan 03-25, OQ1): the symbol-to-symbol relations (`extends`, `implements`, `overrides`) of the classes,
+   * interfaces and members declared in `files`, repository-relative POSIX paths of `overlay`. A relation names its
+   * `from` symbol (the subtype, or the overriding member) in one of those files and its `to` symbol (the base) anywhere
+   * in the repository; a base outside it (a library class) is not reported. Only relations of the requested files are
+   * yielded, in a deterministic order, with the same cleanup rule as `resolve`. A resolver without this method simply
+   * has no relations; the Phase 2 contract is unchanged.
+   */
+  relations?(
+    overlay: OverlaySnapshot,
+    context: ResolutionContext,
+    files: readonly string[],
+    symbols?: SymbolLookup,
+  ): AsyncIterable<ResolvedRelation>;
 }

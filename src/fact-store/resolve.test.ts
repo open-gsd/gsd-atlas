@@ -15,8 +15,10 @@ import type {
   ResolveScope,
   Span,
   SymbolIdentity,
+  SymbolLookup,
 } from '../facts/index.ts';
 import { asStoreResolver, createScriptedResolver } from '../precise-resolver/index.ts';
+import type { ScriptedRelation } from '../precise-resolver/index.ts';
 import { openDatabase } from '../sqlite/index.ts';
 import type { Db, DriverName } from '../sqlite/index.ts';
 import { FakeClock, makeTempDir } from '../test-kit/index.ts';
@@ -1331,6 +1333,279 @@ for (const driver of DRIVERS) {
         assert.deepStrictEqual((await reader.refs(RUN)).degraded, ['precise_unavailable']);
         writer.release();
       }, { projectContext: off }, resolver);
+    });
+  });
+}
+
+// ---------------------------------------------------------------------------------------------------------
+// Plan 03-25: extends, implements and overrides through the optional `relations` method of the resolver.
+// ---------------------------------------------------------------------------------------------------------
+
+const SHAPES = 'src/shapes.ts';
+const shapeId = (qualifiedName: string, kind = 'class'): SymbolIdentity => identity(SHAPES, qualifiedName, kind);
+const SHAPE = shapeId('Shape', 'interface');
+const BASE = shapeId('Base');
+const BASE_AREA = shapeId('Base.area', 'method');
+const SUB = shapeId('Sub');
+const SUB_AREA = shapeId('Sub.area', 'method');
+const BOX = shapeId('Box');
+const SQUARE = shapeId('Square', 'interface');
+
+/**
+ * src/shapes.ts: interface Shape { area }, abstract class Base implements Shape { area }, class Sub extends Base { area },
+ * class Box extends Base, interface Square extends Shape and class Boom extends Error (a base outside the repository).
+ */
+async function seedShapes(writer: Writer, worktree = 'main'): Promise<void> {
+  await writer.commitFile({
+    worktree,
+    path: SHAPES,
+    hash: H(10),
+    facts: fileOf(SHAPES, 10, {
+      symbols: [
+        { name: 'Shape', kind: 'interface', span: span(0, 0, 2, 1), exported: true },
+        { name: 'area', kind: 'method', qualifiedName: 'Shape.area', span: span(1, 2, 1, 17), parent: 0 },
+        { name: 'Base', kind: 'class', span: span(3, 0, 5, 1), exported: true },
+        { name: 'area', kind: 'method', qualifiedName: 'Base.area', span: span(4, 2, 4, 26), parent: 2 },
+        { name: 'Sub', kind: 'class', span: span(6, 0, 8, 1), exported: true },
+        { name: 'area', kind: 'method', qualifiedName: 'Sub.area', span: span(7, 2, 7, 31), parent: 4 },
+        { name: 'Box', kind: 'class', span: span(9, 0, 9, 32), exported: true },
+        { name: 'Square', kind: 'interface', span: span(10, 0, 10, 40), exported: true },
+        { name: 'Boom', kind: 'class', span: span(11, 0, 11, 35), exported: true },
+      ],
+      refSites: [
+        { name: 'Shape', span: span(3, 36, 3, 41), kind: 'heritage', enclosing: 2 },
+        { name: 'Base', span: span(6, 26, 6, 30), kind: 'heritage', enclosing: 4 },
+        { name: 'Base', span: span(9, 26, 9, 30), kind: 'heritage', enclosing: 6 },
+        { name: 'Shape', span: span(10, 33, 10, 38), kind: 'heritage', enclosing: 7 },
+        { name: 'Error', span: span(11, 25, 11, 30), kind: 'heritage', enclosing: 8 },
+      ],
+    }),
+  });
+}
+
+const SHAPE_RELATIONS: readonly ScriptedRelation[] = [
+  { from: SUB, to: BASE, relation: 'extends' },
+  { from: BOX, to: BASE, relation: 'extends' },
+  { from: SQUARE, to: SHAPE, relation: 'extends' },
+  { from: BASE, to: SHAPE, relation: 'implements' },
+  { from: SUB_AREA, to: BASE_AREA, relation: 'overrides' },
+];
+
+/** A store resolver with scripted relations that records the files each `relations` call was asked about. */
+function relating(relations: readonly ScriptedRelation[]): { readonly resolver: Resolver; readonly calls: string[][] } {
+  const inner = asStoreResolver(createScriptedResolver({ id: 'scripted', edges: [], relations }));
+  const calls: string[][] = [];
+  const port: Resolver = (sites, context, symbols, scope) => inner(sites, context, symbols, scope);
+  const resolver: Resolver = Object.assign(port, {
+    relations: async function* (files: readonly string[], context: ResolutionContext, symbols: SymbolLookup, scope?: ResolveScope) {
+      calls.push([...files]);
+      if (inner.relations !== undefined) yield* inner.relations(files, context, symbols, scope);
+    },
+  });
+  return { resolver, calls };
+}
+
+/** A resolver with no edges and the given `relations` method, as a fresh function (the shared one is never touched). */
+function withRelationsMethod(method: { readonly relations: NonNullable<Resolver['relations']> }): Resolver {
+  const port: Resolver = async function* () {
+    // no edges
+  };
+  return Object.assign(port, method);
+}
+
+const brief = (records: ReadonlyArray<{ readonly relation: string; readonly from: SymbolIdentity; readonly to: SymbolIdentity }>): string[] =>
+  records.map((record) => `${record.relation} ${record.from.qualifiedName} -> ${record.to.qualifiedName}`);
+
+for (const driver of DRIVERS) {
+  describe(`relations: extends, implements and overrides (${driver})`, () => {
+    it('relations in: the subtypes of a class and the implementers and extenders of an interface, precise and cited', async () => {
+      const { resolver } = relating(SHAPE_RELATIONS);
+      await withRig(driver, async (rig) => {
+        const writer = rig.store.writer();
+        await seedShapes(writer);
+        const reader = rig.store.at('main');
+        const base = await reader.relations(BASE, { direction: 'in' });
+        assert.deepStrictEqual(brief(base.data), ['extends Sub -> Base', 'extends Box -> Base']);
+        for (const record of base.data) {
+          assert.equal(record.tier, 'precise');
+          assert.equal(record.confidence, 'EXTRACTED');
+          assert.equal(record.extractor, 'precise:scripted');
+          assert.equal(record.source_path, SHAPES, 'the relation is cited at the subtype');
+          assert.equal(record.content_hash, H(10));
+          assert.match(record.debug, /^rel\//);
+        }
+        assert.deepStrictEqual(base.data[0]?.span, span(6, 0, 8, 1), 'the span is the subtype definition');
+        assert.equal(base.degraded, undefined);
+        const shape = await reader.relations(SHAPE, { direction: 'in' });
+        assert.deepStrictEqual(brief(shape.data), ['extends Square -> Shape', 'implements Base -> Shape']);
+        writer.release();
+      }, {}, resolver);
+    });
+
+    it('relations out: the supertypes of a class, with the overrides of its members', async () => {
+      const { resolver } = relating(SHAPE_RELATIONS);
+      await withRig(driver, async (rig) => {
+        const writer = rig.store.writer();
+        await seedShapes(writer);
+        const reader = rig.store.at('main');
+        assert.deepStrictEqual(brief((await reader.relations(SUB, { direction: 'out' })).data), [
+          'extends Sub -> Base',
+          'overrides Sub.area -> Base.area',
+        ]);
+        assert.deepStrictEqual(brief((await reader.relations(SUB_AREA, { direction: 'out' })).data), ['overrides Sub.area -> Base.area']);
+        assert.deepStrictEqual(brief((await reader.relations(BASE_AREA, { direction: 'in' })).data), ['overrides Sub.area -> Base.area']);
+        assert.deepStrictEqual(brief((await reader.relations(BASE, { direction: 'both' })).data), [
+          'extends Sub -> Base',
+          'extends Box -> Base',
+          'implements Base -> Shape',
+        ]);
+        assert.deepStrictEqual(brief((await reader.relations(BASE, { direction: 'in', limit: 1 })).data), ['extends Sub -> Base']);
+        writer.release();
+      }, {}, resolver);
+    });
+
+    it('relations cached: a second call over the same snapshot does not call the resolver, the files asked are remembered', async () => {
+      const { resolver, calls } = relating(SHAPE_RELATIONS);
+      await withRig(driver, async (rig) => {
+        const writer = rig.store.writer();
+        await seedShapes(writer);
+        const peek = await rig.peek();
+        const reader = rig.store.at('main');
+        const first = await reader.relations(BASE, { direction: 'in' });
+        assert.deepStrictEqual(calls, [[SHAPES]]);
+        const second = await reader.relations(BASE, { direction: 'in' });
+        assert.deepStrictEqual(second.data, first.data);
+        await reader.relations(SHAPE, { direction: 'in' });
+        await reader.relations(SUB, { direction: 'out' });
+        assert.deepStrictEqual(calls, [[SHAPES]], 'the file was asked once, whatever symbol the next question is about');
+        assert.equal(count(peek, 'relations_asked'), 1);
+        assert.equal(count(peek, 'resolved_relations'), SHAPE_RELATIONS.length);
+        writer.release();
+      }, {}, resolver);
+    });
+
+    it('stale relations are never served: an edit gives a new snapshot, so the resolver is asked again', async () => {
+      const { resolver, calls } = relating(SHAPE_RELATIONS);
+      await withRig(driver, async (rig) => {
+        const writer = rig.store.writer();
+        await seedShapes(writer);
+        const reader = rig.store.at('main');
+        await reader.relations(BASE, { direction: 'in' });
+        await addNoise(writer, 1);
+        await reader.relations(BASE, { direction: 'in' });
+        assert.deepStrictEqual(calls, [[SHAPES], [SHAPES]]);
+        writer.release();
+      }, {}, resolver);
+    });
+
+    it('resolver without relations: empty data and no degraded code, and the other reads are unchanged', async () => {
+      const scripted = asStoreResolver(createScriptedResolver({ id: 'scripted', edges: [] }));
+      assert.equal('relations' in scripted && scripted.relations !== undefined, false, 'the port carries relations only when the resolver defines them');
+      await withRig(driver, async (rig) => {
+        const writer = rig.store.writer();
+        await seedShapes(writer);
+        const reader = rig.store.at('main');
+        const answer = await reader.relations(BASE, { direction: 'in' });
+        assert.deepStrictEqual(answer.data, []);
+        assert.equal(answer.degraded, undefined);
+        assert.equal((await reader.refs(BASE)).data.length, 2, 'the grammar references are still there');
+        writer.release();
+      }, {}, scripted);
+    });
+
+    it('relations failure degrades: the answer is empty with resolver_failed, nothing is cached and the next call asks again', async () => {
+      let attempts = 0;
+      const failing: Resolver = withRelationsMethod({
+        relations: async function* () {
+          attempts += 1;
+          throw new Error('the compiler exploded');
+        },
+      });
+      await withRig(driver, async (rig) => {
+        const writer = rig.store.writer();
+        await seedShapes(writer);
+        const peek = await rig.peek();
+        const reader = rig.store.at('main');
+        for (let call = 1; call <= 2; call += 1) {
+          const answer = await reader.relations(BASE, { direction: 'in' });
+          assert.deepStrictEqual(answer.data, []);
+          assert.deepStrictEqual(answer.degraded, ['resolver_failed']);
+          assert.equal(attempts, call);
+        }
+        assert.equal(count(peek, 'relations_asked'), 0);
+        assert.equal((await reader.refs(BASE)).data.length, 2);
+        writer.release();
+      }, {}, failing);
+    });
+
+    it('a typed failure keeps its own code', async () => {
+      const oom: Resolver = withRelationsMethod({
+        relations: async function* () {
+          throw new ResolverFailure('memory_budget', 'out of memory');
+        },
+      });
+      await withRig(driver, async (rig) => {
+        const writer = rig.store.writer();
+        await seedShapes(writer);
+        assert.deepStrictEqual((await rig.store.at('main').relations(BASE, { direction: 'in' })).degraded, ['memory_budget']);
+        writer.release();
+      }, {}, oom);
+    });
+
+    it('forged relations are dropped: an endpoint the overlay does not hold, a file nobody asked about and an unknown kind', async () => {
+      const forged: Resolver = withRelationsMethod({
+        relations: async function* () {
+          yield { from: SUB, to: BASE, relation: 'extends', resolver: 'forged' } as const;
+          yield { from: SUB, to: shapeId('Ghost'), relation: 'extends', resolver: 'forged' } as const;
+          yield { from: identity('src/use.ts', 'main'), to: BASE, relation: 'extends', resolver: 'forged' } as const;
+          yield { from: BOX, to: BASE, relation: 'rules', resolver: 'forged' } as never;
+        },
+      });
+      await withRig(driver, async (rig) => {
+        const writer = rig.store.writer();
+        await seed(writer);
+        await seedShapes(writer);
+        const peek = await rig.peek();
+        const answer = await rig.store.at('main').relations(BASE, { direction: 'in' });
+        assert.deepStrictEqual(brief(answer.data), ['extends Sub -> Base']);
+        assert.equal(count(peek, 'resolved_relations'), 1);
+        writer.release();
+      }, {}, forged);
+    });
+
+    it('a subtype whose heritage clause the grammar tier does not tag is found through the files that import the base (extends ns.Base)', async () => {
+      const qual = identity('src/qual.ts', 'Qual', 'class');
+      const { resolver, calls } = relating([...SHAPE_RELATIONS, { from: qual, to: BASE, relation: 'extends' }]);
+      await withRig(driver, async (rig) => {
+        const writer = rig.store.writer();
+        await seedShapes(writer);
+        // src/qual.ts imports the module as a namespace and extends `ns.Base`: no heritage reference is recorded for it.
+        await writer.commitFile({
+          worktree: 'main',
+          path: 'src/qual.ts',
+          hash: H(11),
+          facts: fileOf('src/qual.ts', 11, {
+            symbols: [{ name: 'Qual', kind: 'class', span: span(1, 0, 1, 40), exported: true }],
+            imports: [{ path: './shapes', span: span(0, 0, 0, 34), style: 'es', bindings: [{ imported: '*', local: 'ns' }] }],
+          }),
+        });
+        const answer = await rig.store.at('main').relations(BASE, { direction: 'in' });
+        assert.deepStrictEqual(brief(answer.data), ['extends Qual -> Base', 'extends Sub -> Base', 'extends Box -> Base']);
+        assert.deepStrictEqual(calls, [['src/qual.ts', SHAPES]]);
+        writer.release();
+      }, {}, resolver);
+    });
+
+    it('a symbol the overlay does not hold has no relations and asks nothing', async () => {
+      const { resolver, calls } = relating(SHAPE_RELATIONS);
+      await withRig(driver, async (rig) => {
+        const writer = rig.store.writer();
+        await seedShapes(writer);
+        const answer = await rig.store.at('main').relations(shapeId('Ghost'), { direction: 'both' });
+        assert.deepStrictEqual(answer.data, []);
+        assert.deepStrictEqual(calls, []);
+        writer.release();
+      }, {}, resolver);
     });
   });
 }

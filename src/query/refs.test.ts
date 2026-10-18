@@ -4,7 +4,7 @@ import type { TestContext } from 'node:test';
 import type { Resolver } from '../fact-store/index.ts';
 import type { Envelope, RefKind, Request } from '../facts/index.ts';
 import { estimateTokens } from './budget.ts';
-import { addCaller, defineFn, nameOf, where } from './fixtures.test.ts';
+import { SHAPE_RELATIONS, addCaller, addShapes, defineFn, nameOf, relationResolver, shapeAt, where } from './fixtures.test.ts';
 import { createHarness } from './harness.test.ts';
 import type { Harness, HarnessOptions } from './harness.test.ts';
 import type { Query, QueryConfig } from './index.ts';
@@ -450,4 +450,208 @@ describe('cross-tool determinism: the four code tools share one envelope discipl
       }
     });
   }
+});
+
+// ---------------------------------------------------------------------------------------------------------
+// Plan 03-25: extends, implements and overrides labels in code_refs.
+// ---------------------------------------------------------------------------------------------------------
+
+interface LabelledResult extends RefResult {
+  readonly edge?: string;
+}
+
+const labelled = (envelope: Envelope): LabelledResult[] => (dataOf(envelope).results as readonly LabelledResult[]).slice();
+
+describe('code_refs relations: the edge a precise item names', () => {
+  it('heritage site carries extends: the sites that name Base in a class heritage clause are precise extends items', async (t) => {
+    const { resolver } = relationResolver(SHAPE_RELATIONS);
+    const h = await world(t, { resolver });
+    await addShapes(h);
+
+    const envelope = await h.query().ask(refsRequest(h, { name: 'Base', kind: 'class' }));
+
+    assert.equal(envelope.ok, true, JSON.stringify(envelope.diagnostics));
+    const results = labelled(envelope);
+    assert.deepEqual(
+      results.map((result) => [result.path, result.kind, result.edge, result.tier, result.confidence, result.enclosing]),
+      [
+        ['box.ts', 'heritage', 'extends', 'precise', 'EXTRACTED', 'Box'],
+        ['sub.ts', 'heritage', 'extends', 'precise', 'EXTRACTED', 'Sub'],
+      ],
+    );
+    const subItem = results.find((result) => result.path === 'sub.ts');
+    const line = shapeAt('sub.ts', 'extends Base', 'extends '.length);
+    assert.equal(subItem?.line, line.line + 1);
+    assert.equal(subItem?.col, line.col + 1);
+    const citation = envelope.citations?.find((candidate) => candidate.id === subItem?.citation);
+    assert.equal(citation?.confidence, 'EXTRACTED');
+    assert.equal(envelope.degraded, undefined);
+  });
+
+  it('heritage site carries implements: a class that implements an interface and an interface that extends it', async (t) => {
+    const { resolver } = relationResolver(SHAPE_RELATIONS);
+    const h = await world(t, { resolver });
+    await addShapes(h);
+
+    const envelope = await h.query().ask(refsRequest(h, { name: 'Shape', kind: 'interface' }));
+
+    assert.equal(envelope.ok, true, JSON.stringify(envelope.diagnostics));
+    assert.deepEqual(
+      labelled(envelope).map((result) => [result.path, result.edge, result.tier, result.enclosing]),
+      [
+        ['base.ts', 'implements', 'precise', 'Base'],
+        ['square.ts', 'extends', 'precise', 'Square'],
+      ],
+    );
+  });
+
+  it('overriding method listed: the methods of subclasses that override Base.area appear as overrides items cited at their name', async (t) => {
+    const { resolver } = relationResolver(SHAPE_RELATIONS);
+    const h = await world(t, { resolver });
+    await addShapes(h);
+
+    const envelope = await h.query().ask(refsRequest(h, { name: 'area', path: 'base.ts', kind: 'method' }));
+
+    assert.equal(envelope.ok, true, JSON.stringify(envelope.diagnostics));
+    const { targets } = dataOf(envelope);
+    assert.deepEqual(targets.map((target) => [target.path, target.kind]), [['base.ts', 'method']]);
+    const results = labelled(envelope);
+    assert.equal(results.length, 1, JSON.stringify(results));
+    const [item] = results;
+    assert.equal(item?.edge, 'overrides');
+    assert.equal(item?.path, 'sub.ts');
+    assert.equal(item?.tier, 'precise');
+    assert.equal(item?.confidence, 'EXTRACTED');
+    assert.equal(item?.enclosing, 'Sub.area');
+    assert.equal(item?.target, targets[0]?.handle);
+    const name = shapeAt('sub.ts', 'area');
+    assert.equal(item?.line, name.line + 1);
+    assert.equal(item?.col, name.col + 1);
+    const citation = envelope.citations?.find((candidate) => candidate.id === item?.citation);
+    assert.equal(citation?.path, 'sub.ts');
+    const text = envelope.untrusted_text?.entries.find((entry) => entry.ref === citation?.text_ref)?.text ?? '';
+    assert.ok(text.includes('area(): number { return 1; }'), text);
+  });
+
+  it('a class method that implements an interface method is not listed as an override of it', async (t) => {
+    const { resolver } = relationResolver(SHAPE_RELATIONS);
+    const h = await world(t, { resolver });
+    await addShapes(h);
+
+    const envelope = await h.query().ask(refsRequest(h, { name: 'area', path: 'shape.ts', kind: 'method' }));
+
+    assert.equal(envelope.ok, true, JSON.stringify(envelope.diagnostics));
+    assert.deepEqual(labelled(envelope).filter((result) => result.edge === 'overrides'), []);
+  });
+
+  it('library base is absent: a class that extends a library class has no relation, and the library name has no definition', async (t) => {
+    const { resolver } = relationResolver(SHAPE_RELATIONS);
+    const h = await world(t, { resolver });
+    await addShapes(h);
+    const query = h.query();
+
+    const base = await query.ask(refsRequest(h, { name: 'Base', kind: 'class' }));
+    const error = await query.ask(refsRequest(h, { name: 'Error' }));
+    const boom = await query.ask(refsRequest(h, { name: 'Boom' }));
+
+    assert.equal(labelled(base).some((result) => result.path === 'boom.ts'), false);
+    assert.deepEqual(dataOf(error).targets, [], 'nothing in the repository defines Error');
+    assert.deepEqual(labelled(boom), [], 'Boom is extended by nothing');
+  });
+
+  it('name-matched item has no edge label: a site no relation names keeps the grammar tier and carries no edge key', async (t) => {
+    // The compiler knows Sub only; Box extends Base in the text, but the relation list does not name it.
+    const { resolver } = relationResolver(SHAPE_RELATIONS.filter((relation) => relation.from.path === 'sub.ts'));
+    const h = await world(t, { resolver });
+    await addShapes(h);
+    await defineFn(h, 'lib.ts', 'work');
+    await addCaller(h, 'use.ts', './lib', 'work', 'useWork');
+
+    const heritage = labelled(await h.query().ask(refsRequest(h, { name: 'Base', kind: 'class' })));
+    const calls = labelled(await h.query().ask(refsRequest(h, { name: 'work' })));
+
+    const box = heritage.find((result) => result.path === 'box.ts');
+    assert.equal(box?.tier, 'grammar');
+    assert.equal(box?.confidence, 'INFERRED');
+    assert.equal('edge' in (box ?? {}), false, 'a name-matched item is never labelled extends');
+    assert.equal(heritage.find((result) => result.path === 'sub.ts')?.edge, 'extends');
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0]?.tier, 'grammar');
+    assert.equal('edge' in (calls[0] ?? {}), false);
+  });
+
+  it('a precise call site is labelled calls and a precise read site references', async (t) => {
+    const precise: Resolver = async function* (sites) {
+      for (const site of sites) {
+        if ((site.path === 'z.ts' || site.path === 'y.ts') && site.name === 'parse') {
+          yield { site, target: { repo: 'toy', path: 'a.ts', qualifiedName: 'parse', kind: 'function' }, confidence: 'EXTRACTED', resolver: 'scripted' };
+        }
+      }
+    };
+    const h = await world(t, { resolver: precise });
+    await defineFn(h, 'a.ts', 'parse');
+    await addCaller(h, 'z.ts', './a', 'parse', 'viaZ');
+    const content = '// y.ts\nimport { parse } from "./a";\nexport const keep = parse;\n';
+    const read = where(content, 'parse;');
+    await h.addFileWith('y.ts', content, {
+      symbols: [{ name: 'keep', kind: 'variable', line: 2, col: 13, exported: true }],
+      refs: [{ name: 'parse', line: read.line, col: read.col, kind: 'read', enclosing: 0 }],
+      imports: [{ path: './a', line: 1, style: 'es', bindings: [{ imported: 'parse', local: 'parse' }] }],
+    });
+
+    const results = labelled(await h.query().ask(refsRequest(h, { name: 'parse' })));
+
+    assert.deepEqual(
+      results.map((result) => [result.path, result.tier, result.edge]),
+      [
+        ['z.ts', 'precise', 'calls'],
+        ['y.ts', 'precise', 'references'],
+      ],
+    );
+  });
+});
+
+describe('code_refs relations: degradation', () => {
+  it('relations failure degrades: the heritage items stay grammar-tier and the answer says resolver_failed', async (t) => {
+    const { resolver } = relationResolver(SHAPE_RELATIONS, {
+      before: async () => {
+        throw new Error('the compiler exploded');
+      },
+    });
+    const h = await world(t, { resolver });
+    await addShapes(h);
+
+    const envelope = await h.query().ask(refsRequest(h, { name: 'Base', kind: 'class' }));
+
+    assert.equal(envelope.ok, true, JSON.stringify(envelope.diagnostics));
+    assert.deepEqual(envelope.degraded, ['resolver_failed']);
+    assert.deepEqual(
+      labelled(envelope).map((result) => [result.path, result.tier, result.edge]),
+      [
+        ['box.ts', 'grammar', undefined],
+        ['sub.ts', 'grammar', undefined],
+      ],
+    );
+  });
+
+  it('a resolver without relations leaves the heritage items grammar-tier and adds no degraded code', async (t) => {
+    const plain: Resolver = async function* () {
+      // edges only: this resolver has no relations method
+    };
+    const h = await world(t, { resolver: plain });
+    await addShapes(h);
+
+    const envelope = await h.query().ask(refsRequest(h, { name: 'Base', kind: 'class' }));
+
+    assert.equal(envelope.ok, true, JSON.stringify(envelope.diagnostics));
+    assert.equal('degraded' in envelope, false, JSON.stringify(envelope.degraded));
+    assert.deepEqual(
+      labelled(envelope).map((result) => [result.path, result.tier]),
+      [
+        ['box.ts', 'grammar'],
+        ['sub.ts', 'grammar'],
+      ],
+    );
+    assert.ok(labelled(envelope).every((result) => !('edge' in result)));
+  });
 });

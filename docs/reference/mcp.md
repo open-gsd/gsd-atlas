@@ -85,7 +85,9 @@ Description: `List the places that refer to a symbol, each with its confidence. 
 Result `data`:
 
 - `targets[]`: the definitions followed (at most 5): `name`, `kind`, `path`, `line`, `handle`.
-- `results[]`: `target` (a target handle), `path`, `line`, `col`, `kind` (`call`, `new`, `read`, `type`, `heritage` or `member`), `enclosing`, `tier`, `confidence`, `ambiguous`, `candidates` (the number of definitions the site could point at), `citation`.
+- `results[]`: `target` (a target handle), `path`, `line`, `col`, `kind` (`call`, `new`, `read`, `type`, `heritage` or `member`), `enclosing`, `tier`, `confidence`, `ambiguous`, `candidates` (the number of definitions the site could point at), `citation`; plus `edge` on a precise item only (see below).
+
+`edge` names the relation the compiler found: `calls` and `references` for a site resolved by the compiler, `extends` and `implements` for a heritage clause that names the target (the item is cited at the subclass), and `overrides` for a member that overrides the target method (the item is cited at the overriding member, and its `enclosing` is that member). An item from the grammar tier has no `edge` key: a name match is never presented as one of these. A class that extends a library class has no relation, because its base is not in the repository.
 
 ### code_context
 
@@ -103,6 +105,7 @@ Result `data`:
 - `results[]`: one ordered list for the best-ranked definition. Each item has a `section`: `definition`, `parent`, `child`, `import`, `export` or `reference`. The definition comes first, and a cut removes the lowest-priority items first. At most 10 references are shown.
 - `alternatives[]`: the other definitions of the name (at most 5).
 - `file`: present only when the project's compiler configuration says what the defining file compiles to: `{ path, emittedAs[] }`, with `emittedAs` the repository-relative output paths (for example `src/lib.cts` to `out/lib.cjs`). Absent for a file in no TypeScript project, and for a repository with no tsconfig.
+- `supertypes[]` and `subtypes[]`: present only when the compiler reported a relation of the best-ranked definition, and never empty. A supertype is what the symbol extends or implements, or the base member it overrides (a class lists the `overrides` of its members too); a subtype is what extends or implements it, or the member that overrides it. Each item has `relation` (`extends`, `implements` or `overrides`), `name`, `kind`, `path`, `line`, `col`, `confidence` (always `EXTRACTED`) and `citation`, which points at the other symbol's definition. They count against `limit` and `budget_tokens` and continue with `more` like the items of `results[]`.
 
 ### code_impact
 
@@ -119,9 +122,9 @@ Description: `Walk outward from a symbol through its callers, referrers and impo
 Result `data`:
 
 - `seeds[]`: the matching definitions: `name`, `kind`, `path`, `line`, `handle`.
-- `results[]`: `hop`, `via` (`call`, `reference` or `import`), `kind` (`file` for a file), `name`, `path`, `line`, `col`, `confidence` (of this edge), `chain_confidence` (of the whole chain from the seed), `handle`, `from` (the seed handle), `citation`.
+- `results[]`: `hop`, `via` (`call`, `reference`, `import`, `extends`, `implements` or `overrides`), `kind` (`file` for a file), `name`, `path`, `line`, `col`, `confidence` (of this edge), `chain_confidence` (of the whole chain from the seed), `handle`, `from` (the seed handle), `citation`.
 
-Each item is reported once per seed, at the smallest hop that reaches it. A hop keeps at most 200 items per seed; anything cut is reported with `truncated` and a hint. With `depth` 0 the answer is empty with the hint `Depth 0 follows no hops. Pass a depth of 1 or more.`
+The `extends`, `implements` and `overrides` hops come from the compiler's relations: a subclass or implementer of the seed, or a member that overrides a seed method, with confidence `EXTRACTED`. When the compiler is late the answer is the grammar-tier chain with `resolver_timeout`, and a later call includes them. Each item is reported once per seed, at the smallest hop that reaches it. A hop keeps at most 200 items per seed; anything cut is reported with `truncated` and a hint. With `depth` 0 the answer is empty with the hint `Depth 0 follows no hops. Pass a depth of 1 or more.`
 
 ### atlas_status
 
