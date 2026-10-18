@@ -340,6 +340,44 @@ test('read-only routing: no shell fences, no instruction to trust or run reposit
   }
 });
 
+/**
+ * Every file path that occurs in the items of the registered answer keys (T-03-332). The skill is part of the scored atlas
+ * arm; text that named one of these files would be a hint to an answer, so no skill may contain any of them.
+ */
+function answerKeyPaths(): string[] {
+  const file = path.join(root, 'scripts', 'eval', 'questions', 'gsd-core.answers.json');
+  const keys = JSON.parse(readFileSync(file, 'utf8').replace(/^﻿/, '')) as { answers: Array<{ items: Array<{ file: string }> }> };
+  return [...new Set(keys.answers.flatMap((answer) => answer.items.map((item) => item.file)))].sort();
+}
+
+/** The key paths a text names (a path counts only when it is not the tail of a longer path or name). */
+function keyPathsNamedIn(text: string, paths: readonly string[]): string[] {
+  return paths.filter((keyPath) => {
+    let from = text.indexOf(keyPath);
+    while (from >= 0) {
+      const before = from === 0 ? '' : (text[from - 1] as string);
+      const after = text[from + keyPath.length] ?? '';
+      if (!/[A-Za-z0-9_./-]/.test(before) && !/[A-Za-z0-9_/-]/.test(after)) return true;
+      from = text.indexOf(keyPath, from + 1);
+    }
+    return false;
+  });
+}
+
+test('no answer key item is named in the skill', () => {
+  const paths = answerKeyPaths();
+  assert.ok(paths.length > 50, `the answer keys name ${paths.length} files; the check must be reading the real keys`);
+  for (const skill of allSkills()) {
+    assert.deepEqual(keyPathsNamedIn(skill.text, paths), [], `skills/${skill.folder} names a file of the answer keys`);
+  }
+  // The check can fail: a sample that names a key file is found, and a path that only ends the same way is not.
+  const sampleKey = paths[0] as string;
+  assert.deepEqual(keyPathsNamedIn(`Look in ${sampleKey}:12 first.`, paths), [sampleKey]);
+  assert.deepEqual(keyPathsNamedIn(`See \`${sampleKey}\`.`, paths), [sampleKey]);
+  assert.deepEqual(keyPathsNamedIn(`See not-${sampleKey} and ${sampleKey}x.`, paths).filter((p) => p === sampleKey), [], 'longer names are not the key path');
+  assert.deepEqual(keyPathsNamedIn('Where is parseConfig defined? src/config.ts:6', paths), [], 'the skill\'s own examples name no key file');
+});
+
 test('author skill writes only inside the module folder', () => {
   // D-24: the module author skill never sends an agent outside the module folder or around a hook.
   const author = skillNamed(AUTHOR);
