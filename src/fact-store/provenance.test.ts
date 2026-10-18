@@ -14,7 +14,6 @@ import { openFactStore } from './open.ts';
 import type { OpenFactStoreOptions } from './open.ts';
 import { MAX_HANDLE_CHARS, formatHandle, parseHandle } from './provenance.ts';
 import type { Handle } from './provenance.ts';
-import { STORE_FILE_NAME } from './schema.ts';
 import type { FactExplanation, FactStore, Resolver, Writer } from './types.ts';
 
 const DRIVERS: readonly DriverName[] = ['node:sqlite', 'better-sqlite3'];
@@ -172,7 +171,6 @@ async function withStore(
     await store.close();
     tmp.cleanup();
   }
-  void STORE_FILE_NAME;
 }
 
 const explanation = (data: FactExplanation | 'stale' | null): FactExplanation => {
@@ -323,6 +321,58 @@ for (const driver of DRIVERS) {
         assert.equal(marked.overlay.stalePaths, 2);
         writer.release();
       });
+    });
+
+    it('a relation handle: precise and EXTRACTED, with the resolver and the other end once the relation is stored; before that no resolver is named', async () => {
+      const BASE: SymbolIdentity = { repo: 'repo', path: 'src/base.ts', qualifiedName: 'Base', kind: 'class' };
+      const SUB: SymbolIdentity = { repo: 'repo', path: 'src/sub.ts', qualifiedName: 'Sub', kind: 'class' };
+      const scripted = createScriptedResolver({ id: 'typescript', edges: [], relations: [{ from: SUB, to: BASE, relation: 'extends' }] });
+      await withStore(
+        driver,
+        async (store) => {
+          const writer = store.writer();
+          await writer.commitFile({
+            worktree: 'main',
+            path: 'src/base.ts',
+            hash: H(11),
+            facts: fileOf('src/base.ts', 11, { symbols: [{ name: 'Base', kind: 'class', span: span(0, 0, 2, 1), exported: true }] }),
+          });
+          await writer.commitFile({
+            worktree: 'main',
+            path: 'src/sub.ts',
+            hash: H(12),
+            facts: fileOf('src/sub.ts', 12, { symbols: [{ name: 'Sub', kind: 'class', span: span(1, 0, 4, 1), exported: true }] }),
+          });
+          const reader = store.at('main');
+          const handle = formatHandle({ kind: 'rel', relation: 'extends', path: 'src/sub.ts', hash: H(12), ord: 0, toPath: 'src/base.ts', toOrd: 0 });
+
+          const before = explanation((await reader.provenance(handle)).data);
+          assert.equal(before.kind, 'relation');
+          assert.equal(before.fact.tier, 'precise');
+          assert.equal(before.fact.extractor, 'precise');
+          assert.equal(before.resolution?.cache, 'not_asked');
+          assert.equal(before.resolution?.resolver, undefined);
+
+          const related = await reader.relations(SUB, { direction: 'out' });
+          assert.equal(related.data[0]?.debug, handle, 'the handle the store issues is the one this grammar parses');
+          const after = explanation((await reader.provenance(handle)).data);
+          assert.equal(after.fact.extractor, 'precise:typescript');
+          assert.equal(after.fact.confidence, 'EXTRACTED');
+          assert.equal(after.fact.path, 'src/sub.ts');
+          assert.equal(after.resolution?.cache, 'hit');
+          assert.equal(after.resolution?.resolver, 'typescript');
+          assert.deepStrictEqual(after.resolution?.target, { name: 'Base', kind: 'class', path: 'src/base.ts' });
+
+          // The other end must be a symbol of the overlay; an ordinal that is none, or another relation kind, is not the relation.
+          const missing = formatHandle({ kind: 'rel', relation: 'extends', path: 'src/sub.ts', hash: H(12), ord: 0, toPath: 'src/base.ts', toOrd: 5 });
+          assert.equal((await reader.provenance(missing)).data, null);
+          const other = explanation((await reader.provenance(formatHandle({ kind: 'rel', relation: 'implements', path: 'src/sub.ts', hash: H(12), ord: 0, toPath: 'src/base.ts', toOrd: 0 }))).data);
+          assert.equal(other.resolution?.cache, 'not_asked', 'an implements relation was never stored');
+          writer.release();
+        },
+        {},
+        asStoreResolver(scripted),
+      );
     });
 
     it('never asks the resolver and never writes: a precise store answers from what the cache holds', async () => {
