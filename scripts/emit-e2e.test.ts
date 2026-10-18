@@ -210,3 +210,77 @@ describe('a .cjs requirer of the built output is a user of the .cts source (TSM-
     });
   });
 });
+
+// ---------------------------------------------------------------------------------------------
+// Task 3: a tracked build output gets no facts, a hand-written file beside it keeps its facts, emittedAs.
+
+const TRACKED_OUTPUT_FILES: Readonly<Record<string, string>> = {
+  'tsconfig.json': JSON.stringify({ compilerOptions: { rootDir: 'src', outDir: 'lib', module: 'nodenext' }, include: ['src/**/*.cts'] }, null, 2),
+  'src/a.cts': 'export function alpha(): number {\n  return 1;\n}\n',
+  'lib/a.cjs': '"use strict";\nfunction alpha() {\n  return 1;\n}\nexports.alpha = alpha;\n',
+  'lib/vendor.cjs': 'function vendorThing() {\n  return 2;\n}\nmodule.exports = { vendorThing };\n',
+};
+
+describe('a tracked build output gets no facts; hand-written files under the output directory keep theirs (OQ3)', () => {
+  it('after build, find alpha returns the .cts definition and not the .cjs output, vendorThing is still found, and the file counts agree', async () => {
+    await withEmitFixture(TRACKED_OUTPUT_FILES, {}, async (fixture) => {
+      const built = await fixture.cli(['build', '--repo', fixture.dir]);
+      assert.equal(built.code, 0, built.stderr);
+      assert.equal((built.envelope.data as { files: number }).files, 2, 'src/a.cts and lib/vendor.cjs; lib/a.cjs is an output');
+
+      const alpha = await fixture.cli(['find', 'alpha', '--repo', fixture.dir]);
+      assert.equal(alpha.code, 0, alpha.stderr);
+      assert.deepEqual(rows(alpha.envelope).map((row) => row.path), ['src/a.cts']);
+
+      const vendor = await fixture.cli(['find', 'vendorThing', '--repo', fixture.dir]);
+      assert.deepEqual(rows(vendor.envelope).map((row) => row.path), ['lib/vendor.cjs']);
+
+      const health = await fixture.cli(['health', '--repo', fixture.dir]);
+      assert.equal(health.code, 0, health.stderr);
+      const store = (health.envelope.data as { store: { worktrees: Array<{ files: number }> } }).store;
+      assert.equal(store.worktrees[0]?.files, 2, 'the index-health count leaves out the output and keeps the hand-written file');
+    });
+
+    await withEmitFixture(TRACKED_OUTPUT_FILES, { withoutProjectBlock: true }, async (fixture) => {
+      await fixture.cli(['build', '--repo', fixture.dir]);
+      const alpha = await fixture.cli(['find', 'alpha', '--repo', fixture.dir]);
+      assert.deepEqual(rows(alpha.envelope).map((row) => row.path).sort(), ['lib/a.cjs', 'src/a.cts'], 'the control (Phase 2) indexes the output too');
+    });
+  });
+});
+
+describe('code_context emittedAs over the CLI and MCP (TSM-03)', () => {
+  it('names the output of the file that defines the symbol, identically on both surfaces, and is absent for a .cjs symbol', async () => {
+    await withEmitFixture(BASE_FILES, BUILT, async (fixture) => {
+      const built = await fixture.cli(['build', '--repo', fixture.dir]);
+      assert.equal(built.code, 0, built.stderr);
+      const context = await fixture.cli(['context', 'compute', '--repo', fixture.dir, '--path', 'src/lib.cts']);
+      assert.equal(context.code, 0, context.stderr);
+      assert.deepEqual((context.envelope.data as { file?: unknown }).file, { path: 'src/lib.cts', emittedAs: ['out/lib.cjs'] });
+      const plain = await fixture.cli(['context', 'run', '--repo', fixture.dir, '--path', 'consumer.cjs']);
+      assert.equal(plain.code, 0, plain.stderr);
+      assert.ok(!('file' in (plain.envelope.data as object)), 'a JavaScript file with no project model has no emittedAs');
+      const find = await fixture.cli(['find', 'compute', '--repo', fixture.dir]);
+
+      const server = fixture.mcp();
+      await server.initialize();
+      const viaMcp = await server.callTool('code_context', { name: 'compute', path: 'src/lib.cts', repo: fixture.dir });
+      assert.equal(maskNonce(context.stdout.trimEnd()), maskNonce(viaMcp.result.content[0]?.text ?? ''), 'code_context: the CLI line equals the MCP text');
+      assert.deepEqual((viaMcp.envelope.data as { file?: unknown }).file, { path: 'src/lib.cts', emittedAs: ['out/lib.cjs'] });
+      const findViaMcp = await server.callTool('code_find', { name: 'compute', repo: fixture.dir });
+      assert.equal(maskNonce(find.stdout.trimEnd()), maskNonce(findViaMcp.result.content[0]?.text ?? ''), 'code_find: the CLI line equals the MCP text');
+      const exit = await server.close();
+      assert.equal(exit.exitCode, 0, server.stderrText());
+    });
+  });
+
+  it('a repository with no tsconfig has no emittedAs', async () => {
+    const { 'tsconfig.json': _config, ...withoutConfig } = BASE_FILES;
+    await withEmitFixture(withoutConfig, BUILT, async (fixture) => {
+      await fixture.cli(['build', '--repo', fixture.dir]);
+      const context = await fixture.cli(['context', 'compute', '--repo', fixture.dir, '--path', 'src/lib.cts']);
+      assert.equal(context.code, 0, context.stderr);
+      assert.ok(!('file' in (context.envelope.data as object)));
+    });
+  });
+});

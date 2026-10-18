@@ -8,7 +8,17 @@ import path from 'node:path';
 import { allowAll, createRealRunner } from '../command-runner/index.ts';
 import { openFactStore } from '../fact-store/index.ts';
 import type { FactStore, Resolver, Writer } from '../fact-store/index.ts';
-import type { ExportSite, FileFacts, ImportBinding, ImportSite, ImportStyle, LocalSymbol, RefKind, RefSite } from '../facts/index.ts';
+import type {
+  ExportSite,
+  FileFacts,
+  ImportBinding,
+  ImportSite,
+  ImportStyle,
+  LocalSymbol,
+  ProjectContextProvider,
+  RefKind,
+  RefSite,
+} from '../facts/index.ts';
 import { createSourceTree } from '../source-tree/index.ts';
 import type { SourceTree } from '../source-tree/index.ts';
 import { FakeClock, createTempGitRepo, makeTempDir } from '../test-kit/index.ts';
@@ -83,6 +93,8 @@ export interface FactsSpec {
 export interface HarnessOptions {
   /** The store's precise resolver. Default: one that resolves nothing. */
   readonly resolver?: Resolver;
+  /** The store's project context provider (TSM-03). Default: none, the grammar-tier context of Phase 2. */
+  readonly projectContext?: ProjectContextProvider;
 }
 
 export interface Harness {
@@ -171,7 +183,7 @@ export async function createHarness(options: HarnessOptions = {}): Promise<Harne
   const store = await openFactStore(
     path.join(tmp.path, 'store'),
     { resolver: options.resolver ?? noResolver, clock, gitHas: () => Promise.resolve(true) },
-    { repo: 'toy', version: 'test' },
+    { repo: 'toy', version: 'test', ...(options.projectContext === undefined ? {} : { projectContext: options.projectContext }) },
   );
   const tree = createSourceTree({ runner: createRealRunner(), repoDir: repo.dir, envOverlay: repo.envOverlay });
   const writer = store.writer();

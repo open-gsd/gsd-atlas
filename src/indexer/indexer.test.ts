@@ -17,7 +17,7 @@ import type { SourceTree } from '../source-tree/index.ts';
 import { FakeClock, createTempGitRepo, makeTempDir } from '../test-kit/index.ts';
 import type { TempGitRepo } from '../test-kit/index.ts';
 import { DEFAULT_INDEXER_CONFIG, IndexerError, createIndexer, createManualEventSource } from './index.ts';
-import type { EventSource, Indexer, IndexerConfig, IndexerNotice } from './index.ts';
+import type { EventSource, Indexer, IndexerConfig, IndexerNotice, OutputFilter } from './index.ts';
 
 const { debounceMs } = DEFAULT_INDEXER_CONFIG;
 
@@ -128,6 +128,8 @@ interface WorldOptions {
   /** Where the language modules are looked up. Default: the toy fixture module. */
   readonly builtinDir?: string | null;
   readonly onNotice?: (notice: IndexerNotice) => void;
+  /** Keeps emit outputs out of the index (TSM-03, OQ3). */
+  readonly outputFilter?: OutputFilter;
 }
 
 interface World {
@@ -179,6 +181,7 @@ async function makeWorld(t: TestContext, options: WorldOptions): Promise<World> 
       clock,
       ...(options.config === undefined ? {} : { config: options.config }),
       ...(options.onNotice === undefined ? {} : { onNotice: options.onNotice }),
+      ...(options.outputFilter === undefined ? {} : { outputFilter: options.outputFilter }),
     });
     created.push(indexer);
     return indexer;
@@ -814,6 +817,149 @@ describe('Indexer.refresh: a forced re-extract of stale files (STO-10)', () => {
       world.indexer.refresh(path.join(world.dir, 'nowhere')),
       (error: unknown) => error instanceof IndexerError && error.code === 'unknown_worktree',
     );
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// TSM-03 / OQ3: no fact points under an emit output of an included source (plan 03-22).
+
+/** A filter whose set of outputs a test edits; it records what it was asked. */
+class EditableOutputs implements OutputFilter {
+  readonly outputs = new Set<string>();
+  readonly excludeCalls: string[][] = [];
+  async exclude(_worktree: string, paths: Iterable<string>): Promise<ReadonlySet<string>> {
+    const all = [...paths];
+    this.excludeCalls.push(all);
+    return new Set(all.filter((p) => this.outputs.has(p)));
+  }
+  isOutput(_worktree: string, p: string): boolean {
+    return this.outputs.has(p);
+  }
+}
+
+/** src/a.toy is the source, lib/a.toy its tracked build output, lib/vendor.toy hand-written under the same directory. */
+const EMIT_FILES = {
+  'src/a.toy': 'fn compute {\n}\n',
+  'lib/a.toy': 'fn built {\n}\n',
+  'lib/vendor.toy': 'fn vendorThing {\n}\n',
+  'README.md': '# toy repository\n',
+};
+
+describe('Indexer output filter: an emit output of an included source gets no facts (TSM-03, OQ3)', () => {
+  it('tracked output gets no facts: a build leaves it out of the overlay and keeps the source and the hand-written file', async (t) => {
+    const filter = new EditableOutputs();
+    filter.outputs.add('lib/a.toy');
+    const world = await makeWorld(t, { files: EMIT_FILES, outputFilter: filter });
+    const result = await world.indexer.build(world.dir);
+
+    assert.equal(result.files, 2, 'the overlay maps src/a.toy and lib/vendor.toy');
+    assert.equal(result.parsed, 2);
+    assert.deepEqual(result.failed, []);
+    assert.equal(filter.excludeCalls.length, 1, 'asked once for the whole run, before the overlay is written');
+    assert.deepEqual(filter.excludeCalls[0], ['lib/a.toy', 'lib/vendor.toy', 'src/a.toy'], 'with every path the source set holds, sorted');
+    assert.equal((await world.reader.find('built')).data.length, 0, 'nothing is defined in the build output');
+    assert.equal((await world.reader.fileFacts('lib/a.toy')).data, null);
+    assert.deepEqual((await world.reader.find('compute')).data.map((r) => r.source_path), ['src/a.toy']);
+    assert.ok(
+      result.skipped.some((d) => d.code === 'emit_output_not_indexed' && d.severity === 'info'),
+      'one aggregated note says how many files were left out',
+    );
+  });
+
+  it('hand-written file under outDir keeps facts: it matches no source, so it is not an output', async (t) => {
+    const filter = new EditableOutputs();
+    filter.outputs.add('lib/a.toy');
+    const world = await makeWorld(t, { files: EMIT_FILES, outputFilter: filter });
+    await world.indexer.build(world.dir);
+    const found = await world.reader.find('vendorThing');
+    assert.deepEqual(found.data.map((r) => r.source_path), ['lib/vendor.toy']);
+    assert.equal((await world.reader.fileFacts('lib/vendor.toy')).data?.symbols[0]?.name, 'vendorThing');
+  });
+
+  it('without a filter nothing changes: the output is indexed like any file', async (t) => {
+    const world = await makeWorld(t, { files: EMIT_FILES });
+    const result = await world.indexer.build(world.dir);
+    assert.equal(result.files, 3);
+    assert.equal((await world.reader.find('built')).data.length, 1);
+    assert.ok(!result.skipped.some((d) => d.code === 'emit_output_not_indexed'));
+  });
+
+  it('a filter that throws fails open: everything is indexed and the build succeeds', async (t) => {
+    const throwing: OutputFilter = {
+      exclude: () => Promise.reject(new Error('cannot describe the project')),
+      isOutput: () => {
+        throw new Error('cannot describe the project');
+      },
+    };
+    const world = await makeWorld(t, { files: EMIT_FILES, outputFilter: throwing });
+    const result = await world.indexer.build(world.dir);
+    assert.equal(result.files, 3);
+    assert.equal((await world.reader.find('built')).data.length, 1);
+    assert.equal((await world.indexer.ensureFresh(world.dir, ['lib/a.toy'])).complete, true);
+  });
+
+  it('watcher event for an output: touching lib/a.toy produces no facts for it, touching lib/vendor.toy indexes it', async (t) => {
+    const log = newLog();
+    const filter = new EditableOutputs();
+    filter.outputs.add('lib/a.toy');
+    const world = await makeWorld(t, { files: EMIT_FILES, outputFilter: filter, wrapTree: recordingTree(log), clock: new SpyClock(1000) });
+    await world.indexer.build(world.dir);
+    const manual = createManualEventSource();
+    await world.indexer.attach(manual.source, [world.dir]);
+    log.hashPaths.length = 0;
+
+    world.repo.write('lib/a.toy', 'fn rebuilt {\n}\n');
+    world.repo.write('lib/vendor.toy', 'fn vendorThing {\n}\nfn vendorMore {\n}\n');
+    manual.emit(world.dir, 'lib/a.toy');
+    manual.emit(world.dir, 'lib/vendor.toy');
+    await world.clock.advance(debounceMs);
+    await eventually(async () => (await world.reader.find('vendorMore')).data.length === 1, 'the hand-written file to be indexed');
+    assert.equal((await world.reader.find('rebuilt')).data.length, 0, 'the output got no facts');
+    assert.deepEqual(log.hashPaths.flat(), ['lib/vendor.toy'], 'the output was not even hashed');
+    assert.equal((await world.reader.fileFacts('lib/a.toy')).data, null);
+  });
+
+  it('ensureFresh of an output answers complete and indexes nothing', async (t) => {
+    const filter = new EditableOutputs();
+    filter.outputs.add('lib/a.toy');
+    const world = await makeWorld(t, { files: EMIT_FILES, outputFilter: filter });
+    await world.indexer.build(world.dir);
+    world.repo.write('lib/a.toy', 'fn rebuilt {\n}\n');
+    const fresh = await world.indexer.ensureFresh(world.dir, ['lib/a.toy']);
+    assert.equal(fresh.complete, true);
+    assert.equal((await world.reader.find('rebuilt')).data.length, 0);
+  });
+
+  it('a path that becomes an output while indexed leaves the overlay at its next event', async (t) => {
+    const filter = new EditableOutputs();
+    const world = await makeWorld(t, { files: EMIT_FILES, outputFilter: filter });
+    await world.indexer.build(world.dir);
+    assert.equal((await world.reader.find('built')).data.length, 1);
+    filter.outputs.add('lib/a.toy');
+    const fresh = await world.indexer.ensureFresh(world.dir, ['lib/a.toy']);
+    assert.equal(fresh.complete, true);
+    assert.equal((await world.reader.fileFacts('lib/a.toy')).data, null, 'the facts it had are gone');
+    assert.equal((await world.reader.find('built')).data.length, 0);
+  });
+
+  it('reconcile follows tsconfig change: a path stops being an output and appears, and the reverse removes it', async (t) => {
+    const filter = new EditableOutputs();
+    filter.outputs.add('lib/a.toy');
+    const world = await makeWorld(t, { files: EMIT_FILES, outputFilter: filter });
+    await world.indexer.build(world.dir);
+    assert.equal((await world.reader.find('built')).data.length, 0);
+
+    filter.outputs.clear(); // the config changed: lib/a.toy is hand-written now
+    const appeared = await world.indexer.reconcile(world.dir);
+    assert.equal(appeared.parsed, 1);
+    assert.deepEqual((await world.reader.find('built')).data.map((r) => r.source_path), ['lib/a.toy']);
+
+    filter.outputs.add('lib/a.toy'); // and back
+    const gone = await world.indexer.reconcile(world.dir);
+    assert.ok(gone.removed >= 1, 'the overlay is replaced wholesale, so the path leaves it');
+    assert.equal((await world.reader.find('built')).data.length, 0);
+    assert.equal((await world.reader.fileFacts('lib/a.toy')).data, null);
+    assert.equal((await world.reader.find('compute')).data.length, 1);
   });
 });
 
