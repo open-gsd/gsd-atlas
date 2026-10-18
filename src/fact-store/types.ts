@@ -13,11 +13,11 @@ import type {
   Diagnostic,
   FileFacts,
   ImportStyle,
+  NoticingResolverPort,
   ProjectContextProvider,
   RefKind,
   RefSiteKey,
   ResolutionContext,
-  ResolverPort,
   Span,
   SymbolIdentity,
 } from '../facts/index.ts';
@@ -380,10 +380,12 @@ export interface FactStore {
  * The injected resolver port: binds reference sites to target definitions. It reads symbols back through the
  * read-only `SymbolLookup` the store passes in, never through the store itself, and is told where it resolves
  * through the optional fourth `scope` argument (worktree, overlay snapshot, project context). Yields
- * `EXTRACTED` edges. It is the kernel's `ResolverPort`; a resolver written for the earlier three-argument shape
- * is assignable to it and keeps working.
+ * `EXTRACTED` edges, and may yield notices among them: a `{ kind: 'notice', degraded }` adds that code to the answer
+ * without failing the read (plan 03-23), and an error thrown with a `degradedCode` makes the answer carry that code
+ * instead of `resolver_failed`. It is the kernel's `NoticingResolverPort`; every `ResolverPort`, including a resolver
+ * written for the earlier three-argument shape, is assignable to it and keeps working.
  */
-export type Resolver = ResolverPort;
+export type Resolver = NoticingResolverPort;
 
 /** Injected dependencies. Each has a production adapter and a test adapter. */
 export interface StoreDeps {

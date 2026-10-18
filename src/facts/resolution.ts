@@ -1,3 +1,5 @@
+import { isDegradedCode } from './degraded.ts';
+import type { DegradedCode } from './degraded.ts';
 import type { Span } from './span.ts';
 
 /**
@@ -80,6 +82,39 @@ export interface EmitLookup {
 }
 
 /**
+ * The compiler a precise resolver should load for a project, as plain data (the shape of the ProjectModel's
+ * `CompilerChoice`, repeated here because the kernel imports nothing). `dir` is repository-relative.
+ */
+export interface CompilerFacts {
+  readonly source: 'project' | 'bundled';
+  readonly version: string;
+  /** The project's package directory, repository-relative, only when `source` is `project`. */
+  readonly dir?: string;
+  /** Why the bundled compiler was chosen, one of a fixed set of strings; absent for a project compiler. */
+  readonly reason?: string;
+  /** The install case the choice came from (`none`, `project-6`, `project-7-unstable`, ...). */
+  readonly case: string;
+}
+
+/**
+ * What a compiler-backed resolver needs to know about the project (plan 03-23): which config owns a path, which
+ * compiler to load and the configs that exist. Data and pure lookups only; nothing here reads a file.
+ */
+export interface PreciseFacts {
+  /** The repository-relative path of the one config that owns `path`, or undefined when no config covers it. */
+  ownerOf(path: string): string | undefined;
+  /**
+   * True for a path the compiler resolves only under a config (a TypeScript file); false for one it may resolve without
+   * (a JavaScript file) or does not handle. A path that requires an owner and has none makes an answer
+   * `precise_unavailable`.
+   */
+  requiresOwner(path: string): boolean;
+  readonly compiler: CompilerFacts;
+  /** Repository-relative paths of the configs that were read, in lexical order. */
+  readonly configs: readonly string[];
+}
+
+/**
  * What a resolver learns about the configuration it resolves under, besides the `ResolutionContext` that keys
  * the cache. Nothing else belongs in it without a plan.
  */
@@ -87,6 +122,13 @@ export interface ProjectContext {
   readonly context: ResolutionContext;
   /** Where the project's compiler writes its output; absent for a store with no project model or no config. */
   readonly emit?: EmitLookup;
+  /** What a compiler-backed resolver needs (plan 03-23); absent for a store with no project model or no config. */
+  readonly precise?: PreciseFacts;
+  /**
+   * Codes every read that has reference sites to resolve carries under this context, whether or not a resolver ran:
+   * the state of the precise tier (for example `precise_unavailable` while the provider is turned off), not an event.
+   */
+  readonly degraded?: readonly DegradedCode[];
 }
 
 /** The context of a store with no project model: the grammar tier, no configuration hashes. */
@@ -115,6 +157,40 @@ export interface ResolveScope {
 }
 
 /**
+ * A condition a resolver reports without failing the read (plan 03-23): the answer keeps the edges it has and gains
+ * the code. It travels in the same stream as the edges, so a resolver that never yields one is unchanged.
+ */
+export interface ResolverNotice {
+  readonly kind: 'notice';
+  readonly degraded: DegradedCode;
+}
+
+/** True when a thing a resolver yielded is a {@link ResolverNotice} and not an edge. */
+export function isResolverNotice(value: ResolvedEdge | ResolverNotice): value is ResolverNotice {
+  return (value as { readonly kind?: unknown }).kind === 'notice';
+}
+
+/**
+ * The error a resolver throws when it fails for a reason that has its own degraded code (for example `memory_budget`
+ * when its compiler worker ran out of memory). The store answers with that code instead of `resolver_failed`.
+ */
+export class ResolverFailure extends Error {
+  readonly degradedCode: DegradedCode;
+
+  constructor(degradedCode: DegradedCode, message: string) {
+    super(message);
+    this.name = 'ResolverFailure';
+    this.degradedCode = degradedCode;
+  }
+}
+
+/** The degraded code a thrown resolver error asks for; `resolver_failed` for any error without a known code. */
+export function degradedCodeOf(error: unknown): DegradedCode {
+  const code = (error as { readonly degradedCode?: unknown } | null | undefined)?.degradedCode;
+  return typeof code === 'string' && isDegradedCode(code) ? code : 'resolver_failed';
+}
+
+/**
  * The injected resolver port: binds reference sites to target definitions. It reads symbols back through the
  * read-only `SymbolLookup` the store passes in, never through the store itself. Yields `EXTRACTED` edges. The
  * `scope` is the fourth argument so a resolver written for the earlier three-argument shape keeps working.
@@ -125,6 +201,17 @@ export type ResolverPort = (
   symbols: SymbolLookup,
   scope?: ResolveScope,
 ) => AsyncIterable<ResolvedEdge>;
+
+/**
+ * A {@link ResolverPort} that may also yield {@link ResolverNotice}s among its edges (plan 03-23). It is what the Fact
+ * Store accepts: every `ResolverPort` is one, so a resolver that never yields a notice is unchanged.
+ */
+export type NoticingResolverPort = (
+  sites: readonly RefSiteKey[],
+  context: ResolutionContext,
+  symbols: SymbolLookup,
+  scope?: ResolveScope,
+) => AsyncIterable<ResolvedEdge | ResolverNotice>;
 
 const SEPARATOR = '\u0000';
 

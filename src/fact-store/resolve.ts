@@ -5,7 +5,7 @@
  * once the resolver integration lands). Internal; not exported from index.ts.
  */
 import { posix } from 'node:path';
-import { DEFAULT_PROJECT_CONTEXT, symbolKey } from '../facts/index.ts';
+import { DEFAULT_PROJECT_CONTEXT, isResolverNotice, symbolKey } from '../facts/index.ts';
 import type {
   Clock,
   DegradedCode,
@@ -605,7 +605,9 @@ async function collectEdges(
     findIn: async (path, name) => readSnapshot(parts, worktree, (snap) => symbolsIn(snap, path, name)).value,
   };
   const out: ResolvedEdge[] = [];
-  for await (const edge of parts.deps.resolver(sites, scope.project.context, lookup, scope)) out.push(edge);
+  for await (const item of parts.deps.resolver(sites, scope.project.context, lookup, scope)) {
+    if (!isResolverNotice(item)) out.push(item);
+  }
   return out;
 }
 

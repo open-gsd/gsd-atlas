@@ -11,7 +11,7 @@
 import { existsSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { createRealRunner, decide } from '../command-runner/index.ts';
+import { compilerWorkerShape, createRealRunner, decide } from '../command-runner/index.ts';
 import type { CommandRunner } from '../command-runner/index.ts';
 import { SchemaTooNew, findExistingStore, probeStore } from '../fact-store/index.ts';
 import type { ResolveStoreLocationInput } from '../fact-store/index.ts';
@@ -22,6 +22,8 @@ import type { Governor, JobClass } from '../governor/index.ts';
 import { createModuleHost } from '../indexer/index.ts';
 import type { IndexerConfig, ModuleHost } from '../indexer/index.ts';
 import { resolveModules } from '../lang/index.ts';
+import { resolveWorkerPath } from '../precise-resolver/index.ts';
+import type { PreciseTier } from '../precise-resolver/index.ts';
 import { ERROR_SCHEMA, TOOL_NAMES, errorEnvelope } from '../query/index.ts';
 import { createSourceTree } from '../source-tree/index.ts';
 import type { SourceTree } from '../source-tree/index.ts';
@@ -33,6 +35,7 @@ import { HOST_DEFAULTS } from './defaults.ts';
 import { DIAGNOSTICS_KIND, factsFromStatus, handleDiagnostics, platformFactsOf } from './diagnostics.ts';
 import type { DiagnosticsDeps, RepoFacts } from './diagnostics.ts';
 import { HISTORY_KIND, runHistory } from './history.ts';
+import { createTier } from './tiers.ts';
 import type { HistoryDeps } from './history.ts';
 import { createIdleRegistry } from './idle-registry.ts';
 import { LANG_KINDS, handleLang } from './lang.ts';
@@ -94,7 +97,13 @@ export function createHost(options: HostOptions): Host {
   // unless the person started it with `--allow-build`; a Host given its own runner was composed with the same rule.
   const origin = options.origin ?? 'cli';
   const permissions = permissionsFor(origin, options.allowBuild === true, config.permissions);
-  const getRunner = (): CommandRunner => (runner ??= createRealRunner(permissions === undefined ? {} : { user: permissions }));
+  // The compiler worker is started only through the runner's exact built-in shape (plan 03-19), built here from the running
+  // Node and the package's own worker file. A Host given its own runner was composed with the same shape.
+  const getRunner = (): CommandRunner =>
+    (runner ??= createRealRunner({
+      builtinShapes: [compilerWorkerShape({ execPath: process.execPath, workerPath: resolveWorkerPath() })],
+      ...(permissions === undefined ? {} : { user: permissions }),
+    }));
   const getGovernor = (): Governor => (governor ??= createGovernor({ clock }));
 
   const makeTree = (repoDir: string): SourceTree =>
@@ -132,6 +141,23 @@ export function createHost(options: HostOptions): Host {
     };
   }
 
+  /**
+   * The precise adapters this composition knows, and the user's switch (SEC-02). A tier is built only for a known id, from
+   * this Host's own table and runner, and a tier the user turned off starts nothing (plan 03-23).
+   */
+  const knownAdapters: readonly string[] = options.knownAdapters ?? [];
+  const disabledProviders: readonly string[] = config.providers?.disabled ?? [];
+  function tierFor(id: string): PreciseTier | undefined {
+    if (!knownAdapters.includes(id)) return undefined;
+    const tier = createTier(id, {
+      runner: getRunner(),
+      disabled: disabledProviders,
+      ...(options.precise === undefined ? {} : { tuning: options.precise }),
+    });
+    if (tier !== undefined) options.tierHook?.(tier);
+    return tier;
+  }
+
   function tenantFor(resolved: Resolved): Promise<Tenant> {
     const key = resolved.identity.storeId;
     const known = tenants.get(key);
@@ -148,8 +174,11 @@ export function createHost(options: HostOptions): Host {
       ...storeSettings(),
       ...(indexer === undefined ? {} : { indexer }),
       ...(config.gc?.graceMs === undefined ? {} : { graceMs: config.gc.graceMs }),
-      // SEC-02: the user's list of first-party providers to turn off (plan 03-23 reads it; nothing does yet).
+      // SEC-02: the user's list of first-party providers to turn off; the tier table below reads it.
       ...(config.providers === undefined ? {} : { providers: config.providers }),
+      tiers: tierFor,
+      knownAdapters,
+      ...(options.resolverFactory === undefined ? {} : { resolverFactory: options.resolverFactory }),
       ...(options.version === undefined ? {} : { version: options.version }),
       ...(options.metrics === undefined ? {} : { metrics: options.metrics }),
       ...(options.eventSource === undefined ? {} : { eventSource: options.eventSource }),

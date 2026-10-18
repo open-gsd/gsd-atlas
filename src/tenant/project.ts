@@ -15,7 +15,7 @@
  */
 import { createHash } from 'node:crypto';
 import { DEFAULT_PROJECT_CONTEXT } from '../facts/index.ts';
-import type { Diagnostic, EmitLookup, ProjectContext, ProjectContextProvider } from '../facts/index.ts';
+import type { Diagnostic, EmitLookup, PreciseFacts, ProjectContext, ProjectContextProvider } from '../facts/index.ts';
 import type { OutputFilter } from '../indexer/index.ts';
 import { readManifest, resolveModules } from '../lang/index.ts';
 import type { Roots } from '../lang/index.ts';
@@ -31,6 +31,8 @@ export interface ProjectProvider extends ProjectContextProvider {
   isOutput(worktree: string, path: string): boolean;
   /** What the last description of the worktree reported (fixed words and paths). */
   diagnostics(worktree: string): readonly Diagnostic[];
+  /** The precise-tier facts of the last description of the worktree, or undefined before there is one (plan 03-23). */
+  precise(worktree: string): PreciseFacts | undefined;
 }
 
 export interface ProjectProviderDeps {
@@ -72,12 +74,38 @@ function keyOf(paths: readonly string[]): string {
   return hash.digest('hex');
 }
 
+/** A TypeScript source (not JavaScript): a file the compiler resolves only under a config. */
+const TYPESCRIPT_FILE = /\.(?:[cm]?ts|tsx)$/i;
+
+/**
+ * What a compiler-backed resolver needs from a description (plan 03-23). Only the `typescript` model has a resolver
+ * today; any other model gives none. The lookups close over the description, so they answer for the path set it read.
+ */
+function preciseFactsOf(modelId: string, description: ProjectDescription): PreciseFacts | undefined {
+  if (modelId !== 'typescript') return undefined;
+  const { compiler } = description;
+  return {
+    ownerOf: (p) => description.ownerOf(p),
+    requiresOwner: (p) => TYPESCRIPT_FILE.test(p),
+    compiler: {
+      source: compiler.source,
+      version: compiler.version,
+      ...(compiler.dir === undefined ? {} : { dir: compiler.dir }),
+      ...(compiler.reason === undefined ? {} : { reason: compiler.reason }),
+      case: compiler.case,
+    },
+    configs: description.configs.map((config) => config.path),
+  };
+}
+
 /** Several models at once: the contexts side by side, the emit lookups asked in id order. Today there is one. */
 function combine(parts: readonly ProjectContext[]): ProjectContext {
   const [only] = parts;
   if (parts.length === 1 && only !== undefined) return only;
   const lookups = parts.map((part) => part.emit).filter((emit): emit is EmitLookup => emit !== undefined);
+  const precise = parts.find((part) => part.precise !== undefined)?.precise;
   return {
+    ...(precise === undefined ? {} : { precise }),
     context: {
       id: parts.map((part) => part.context.id).join('+'),
       configHashes: parts.flatMap((part) => part.context.configHashes).sort(compareCodeUnits),
@@ -145,6 +173,7 @@ export function createProjectContextProvider(deps: ProjectProviderDeps): Project
     const contexts: ProjectContext[] = [];
     const described: Described[] = [];
     const diagnostics: Diagnostic[] = [];
+    let bare: PreciseFacts | undefined;
     for (const model of used) {
       const description: ProjectDescription = await model.describe({ overlayPaths: paths, fs });
       diagnostics.push(...description.diagnostics, ...description.emit.diagnostics);
@@ -154,10 +183,19 @@ export function createProjectContextProvider(deps: ProjectProviderDeps): Project
         candidates: description.configProbe.candidates,
         present: new Set(description.configProbe.present),
       });
-      // A project with no config is not a project: the store keeps the grammar-tier context of Phase 2.
-      if (description.configs.length > 0) contexts.push({ context: description.context, emit: description.emit });
+      const precise = preciseFactsOf(model.id, description);
+      // A project with no config is not a project: the store keeps the grammar-tier context of Phase 2, plus the precise
+      // facts that say no config covers anything, so a TypeScript file in it is answered `precise_unavailable`.
+      if (description.configs.length > 0) {
+        contexts.push({ context: description.context, emit: description.emit, ...(precise === undefined ? {} : { precise }) });
+      } else if (precise !== undefined) {
+        bare = precise;
+      }
     }
-    return { context: contexts.length === 0 ? DEFAULT_PROJECT_CONTEXT : combine(contexts), described, diagnostics };
+    if (contexts.length === 0) {
+      return { context: bare === undefined ? DEFAULT_PROJECT_CONTEXT : { ...DEFAULT_PROJECT_CONTEXT, precise: bare }, described, diagnostics };
+    }
+    return { context: combine(contexts), described, diagnostics };
   }
 
   /** The description of `paths` for `worktree`: the remembered one while it is still true, else a fresh one (shared by concurrent callers). */
@@ -204,6 +242,9 @@ export function createProjectContextProvider(deps: ProjectProviderDeps): Project
     diagnostics(worktree: string): readonly Diagnostic[] {
       return memo.get(worktree)?.built.diagnostics ?? [];
     },
+    precise(worktree: string): PreciseFacts | undefined {
+      return memo.get(worktree)?.built.context.precise;
+    },
   });
 }
 
@@ -237,6 +278,22 @@ export function modelIdsByExtension(roots: Roots): ReadonlyMap<string, string> {
     }
   }
   return byExtension;
+}
+
+/**
+ * The precise adapter ids the manifests of the modules that serve at least one extension name through `precise.adapter`,
+ * sorted. Read once, from manifests only: an id is data that picks from the Host's own table, and nothing a manifest names
+ * is started, resolved or imported (T-03-235).
+ */
+export function preciseAdapterIds(roots: Roots): readonly string[] {
+  const ids = new Set<string>();
+  for (const entry of resolveModules(roots).modules) {
+    if (entry.extensions.every((extension) => entry.inactiveExtensions.includes(extension))) continue;
+    const read = readManifest(entry.dir);
+    const precise = read.ok ? read.manifest.precise : undefined;
+    if (precise !== undefined && 'adapter' in precise) ids.add(precise.adapter);
+  }
+  return [...ids].sort(compareCodeUnits);
 }
 
 /** The provider for a Tenant: the models the manifests name, or undefined when none does (Phase 2 behaviour, untouched). */
