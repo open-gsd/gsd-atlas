@@ -30,12 +30,14 @@ import type {
   SymbolLookup,
 } from '../../facts/index.ts';
 import type { PreciseResolver } from '../index.ts';
+import { MEMORY_DEFAULTS, deriveBudget } from './budget.ts';
 import { bundledCompilerDir, compilerForRequest } from './compiler.ts';
 import type { CompilerRequest } from './compiler.ts';
 import { countDeclaration, createStats, mapTarget } from './identity.ts';
 import type { Stats } from './identity.ts';
 import { PRECISE_LIMITS, PROTOCOL_VERSION, encodeRequest, parseResponse } from './protocol.ts';
 import type { Request, Response, Target } from './protocol.ts';
+import { MARKER_PATTERN } from './sampler.ts';
 import { resolveWorkerPath } from './worker-url.ts';
 
 /** The resolver id stamped on every edge. */
@@ -53,18 +55,23 @@ export const PRECISE_DEFAULTS = Object.freeze({
   maxStdoutBytes: 9_007_199_254_740_991,
   maxLineBytes: PRECISE_LIMITS.maxLineBytes,
   sitesPerRequest: PRECISE_LIMITS.sitesPerRequest,
-  /** `precise.memoryBudgetPercent` and `precise.heapShareOfBudget`: the plan 03-27 budget, used here only to size the heap flag. */
-  memoryBudgetPercent: 25,
-  heapShareOfBudget: 0.8,
-  minHeapMb: 256,
+  /** `precise.memoryBudgetPercent`, `precise.heapShareOfBudget`, `precise.rssSampleMs`, `precise.minBudgetMb` (plan 03-27, budget.ts owns the values). */
+  memoryBudgetPercent: MEMORY_DEFAULTS.percent,
+  heapShareOfBudget: MEMORY_DEFAULTS.heapShare,
+  rssSampleMs: MEMORY_DEFAULTS.sampleMs,
+  minBudgetMb: MEMORY_DEFAULTS.minMb,
 });
 
 export type PreciseLimits = { -readonly [K in keyof typeof PRECISE_DEFAULTS]: number };
 
-/** The V8 heap flag of a worker: the heap share of the memory budget of this machine, never below `minHeapMb`. */
-export function defaultHeapMb(totalMemoryBytes: number = os.totalmem(), limits: Pick<PreciseLimits, 'memoryBudgetPercent' | 'heapShareOfBudget' | 'minHeapMb'> = PRECISE_DEFAULTS): number {
-  const budgetMb = (totalMemoryBytes / 1_048_576) * (limits.memoryBudgetPercent / 100);
-  return Math.max(limits.minHeapMb, Math.floor(budgetMb * limits.heapShareOfBudget));
+/** What this machine allows a worker (plan 03-27): the heap flag, the RSS limit and whether the budget reaches the floor at all. */
+export function budgetFor(totalMemoryBytes: number = os.totalmem(), limits: Pick<PreciseLimits, 'memoryBudgetPercent' | 'heapShareOfBudget' | 'minBudgetMb'> = PRECISE_DEFAULTS) {
+  return deriveBudget({ totalMemBytes: totalMemoryBytes, percent: limits.memoryBudgetPercent, heapShare: limits.heapShareOfBudget, minMb: limits.minBudgetMb });
+}
+
+/** The V8 heap flag of a worker: the heap share of the memory budget of this machine. */
+export function defaultHeapMb(totalMemoryBytes: number = os.totalmem(), limits: Pick<PreciseLimits, 'memoryBudgetPercent' | 'heapShareOfBudget' | 'minBudgetMb'> = PRECISE_DEFAULTS): number {
+  return budgetFor(totalMemoryBytes, limits).heapMb;
 }
 
 export interface TypeScriptResolverDeps {
@@ -78,8 +85,17 @@ export interface TypeScriptResolverDeps {
   readonly workerPath?: string;
   /** The directory of the bundled compiler. Default: the installed `typescript` package of this package. */
   readonly bundledDir?: string;
-  /** The V8 heap limit passed to the worker, in megabytes. Default: {@link defaultHeapMb}. */
+  /** The V8 heap limit passed to the worker, in megabytes. Default: derived from this machine's RAM ({@link budgetFor}). */
   readonly heapMb?: number;
+  /**
+   * The RSS limit of the worker's own sampler thread, in megabytes. Default: derived from this machine's RAM. `null` runs
+   * the worker with the V8 heap flag alone (a test of that backstop); production never passes it.
+   */
+  readonly rssLimitMb?: number | null;
+  /** The sampler's period in milliseconds. Default: `precise.rssSampleMs`. */
+  readonly sampleMs?: number;
+  /** The machine's RAM in bytes. Default: `os.totalmem()`; a test injects it. */
+  readonly totalMemBytes?: number;
   readonly limits?: Partial<PreciseLimits>;
   /** TEST HOOK. Called once each time a resolve iteration ends, whether it finished, was abandoned or threw. */
   readonly onCleanup?: () => void;
@@ -90,6 +106,8 @@ export interface WorkerInfo {
   readonly pid: number | undefined;
   readonly compiler: { readonly version: string; readonly source: 'project' | 'bundled' };
   readonly rssMb: number;
+  /** True when the worker's RSS sampler thread is running. */
+  readonly sampler: boolean;
 }
 
 /** What the relations path counted (plan 03-25). */
@@ -131,6 +149,11 @@ export interface TypeScriptResolver extends PreciseResolver {
   stats(): Stats;
   /** The running worker's own report, or undefined when none runs. */
   info(): WorkerInfo | undefined;
+  /**
+   * Forget a memory stop: the next read starts a worker again even when the project context did not change (an explicit
+   * `maintain resolve`; the Host restart does the same by building a new resolver).
+   */
+  clearMemoryStop(): void;
   /** End the worker: close its stdin, wait `killGraceMs`, then kill. Safe to call twice. */
   close(): Promise<void>;
 }
@@ -166,13 +189,17 @@ const WINDOWS_ABORT_CODES = new Set([3, 134, 3221226505]);
 
 const decoder = new TextDecoder('utf-8');
 
+/** What a memory stop is remembered under: the resolution context (its id and the hashes of the configs it derives from). */
+const contextKeyOf = (context: ResolutionContext): string => `${context.id}\u0001${context.configHashes.join(',')}`;
+
 const siteKey = (path: string, row: number, col: number, name: string): string => `${path}\u0000${String(row)}\u0000${String(col)}\u0000${name}`;
 
 function classifyExit(code: number | null, signal: string | null, stderr: Uint8Array, denied: boolean, spawnError: boolean): ExitInfo {
   if (denied) return { memory: false, how: 'the runner refused to start the worker' };
   if (spawnError) return { memory: false, how: 'the worker could not be started' };
   const text = decoder.decode(stderr);
-  const memory = MEMORY_ABORT.test(text) || signal === 'SIGABRT' || (code !== null && code >= 128 && WINDOWS_ABORT_CODES.has(code));
+  // The sampler's marker line (plan 03-27) or a V8 abort: a memory stop. A SIGKILL without the marker is a crash.
+  const memory = MARKER_PATTERN.test(text) || MEMORY_ABORT.test(text) || signal === 'SIGABRT' || (code !== null && code >= 128 && WINDOWS_ABORT_CODES.has(code));
   return { memory, how: signal !== null ? `signal ${signal}` : `exit code ${String(code)}` };
 }
 
@@ -187,11 +214,22 @@ export function createTypeScriptResolver(deps: TypeScriptResolverDeps): TypeScri
   const execPath = deps.execPath ?? process.execPath;
   const workerPath = deps.workerPath ?? resolveWorkerPath();
   const bundledDir = deps.bundledDir ?? bundledCompilerDir();
-  const heapMb = deps.heapMb ?? defaultHeapMb(os.totalmem(), limits);
+  // What this machine allows (plan 03-27). Production passes none of the overrides: the heap flag AND the sampler limit are
+  // both derived from the budget, so no worker runs without both. A budget below the floor starts nothing at all.
+  const machine = budgetFor(deps.totalMemBytes ?? os.totalmem(), limits);
+  const heapMb = deps.heapMb ?? machine.heapMb;
+  const rssLimitMb: number | undefined = deps.rssLimitMb === null ? undefined : (deps.rssLimitMb ?? machine.rssLimitMb);
+  const sampleMs = deps.sampleMs ?? limits.rssSampleMs;
+  const belowFloor = deps.heapMb === undefined && deps.rssLimitMb === undefined && !machine.usable;
   const stats = createStats();
 
   let live: Live | undefined;
   let closed = false;
+  // The memory-stop latch (T-03-272): the context key of the read a worker was stopped for memory under. While it matches,
+  // the answer is `memory_budget` without starting a worker. A different key (a config or compiler change), `clearMemoryStop`
+  // or a new resolver (a Host restart) is a new question. No timer: a project too large costs one failed start.
+  let memoryStop: string | undefined;
+  let currentKey = '';
   let nextId = 1;
   let lock: Promise<unknown> = Promise.resolve();
 
@@ -210,7 +248,7 @@ export function createTypeScriptResolver(deps: TypeScriptResolverDeps): TypeScri
     }
     const message = parsed.value;
     if (message.t === 'ready') {
-      candidate.info = { pid: message.pid, compiler: message.compiler, rssMb: message.rssMb };
+      candidate.info = { pid: message.pid, compiler: message.compiler, rssMb: message.rssMb, sampler: message.sampler === true };
       candidate.signal.resolve();
       return;
     }
@@ -250,6 +288,7 @@ export function createTypeScriptResolver(deps: TypeScriptResolverDeps): TypeScri
     const result = await candidate.stream.result;
     const info = classifyExit(result.exitCode, result.signal, result.stderr, result.denied !== undefined, result.spawnError !== undefined);
     candidate.exit = info;
+    if (info.memory) memoryStop = currentKey;
     candidate.signal.reject(exitFailure(info));
     for (const waiter of [...candidate.exitWaiters]) waiter(info);
     candidate.exitWaiters.clear();
@@ -296,15 +335,23 @@ export function createTypeScriptResolver(deps: TypeScriptResolverDeps): TypeScri
       bundledDir: request.bundledDir,
       configs: [...configs],
       heapMb,
+      ...(rssLimitMb === undefined ? {} : { rssLimitMb, sampleMs }),
     };
     input.push(encodeRequest(init));
     return started;
   }
 
   /** The worker for `project`, started (and waited for) when none runs or the one running was started for other inputs. */
-  async function ensure(project: PreciseFacts): Promise<Live> {
+  async function ensure(project: PreciseFacts, contextId: string): Promise<Live> {
     const request = compilerForRequest(project.compiler, deps.worktree, bundledDir);
     const expectedSource = request.compilerDir === null ? 'bundled' : 'project';
+    const key = `${contextId}\u0000${request.compilerDir ?? ''}`;
+    currentKey = key;
+    if (belowFloor) throw new ResolverFailure('memory_budget', 'the memory budget of this machine is below the floor');
+    if (memoryStop !== undefined) {
+      if (memoryStop === key) throw new ResolverFailure('memory_budget', 'the compiler worker was stopped for memory under this project context');
+      memoryStop = undefined;
+    }
     if (live !== undefined && live.exit === undefined) {
       const sameCompiler = live.compilerDir === request.compilerDir;
       const knowsConfigs = project.configs.every((config) => live?.configs.has(config) === true);
@@ -443,6 +490,7 @@ export function createTypeScriptResolver(deps: TypeScriptResolverDeps): TypeScri
 
   async function* run(
     project: PreciseFacts | undefined,
+    contextId: string,
     sites: readonly RefSiteKey[],
     symbols: SymbolLookup | undefined,
   ): AsyncGenerator<ResolvedEdge | ResolverNotice, void, undefined> {
@@ -454,7 +502,7 @@ export function createTypeScriptResolver(deps: TypeScriptResolverDeps): TypeScri
 
       const answers = new Map<string, Target[]>();
       const fallback = await serial(async () => {
-        const candidate = await ensure(project);
+        const candidate = await ensure(project, contextId);
         for (const [config, members] of groups) {
           for (let at = 0; at < members.length; at += limits.sitesPerRequest) {
             const chunk = members.slice(at, at + limits.sitesPerRequest);
@@ -536,6 +584,7 @@ export function createTypeScriptResolver(deps: TypeScriptResolverDeps): TypeScri
 
   async function* runRelations(
     project: PreciseFacts | undefined,
+    contextId: string,
     files: readonly string[],
     symbols: SymbolLookup | undefined,
   ): AsyncGenerator<ResolvedRelation | ResolverNotice, void, undefined> {
@@ -547,7 +596,7 @@ export function createTypeScriptResolver(deps: TypeScriptResolverDeps): TypeScri
 
       const received: Array<Extract<Response, { t: 'relation' }>> = [];
       const fallback = await serial(async () => {
-        const candidate = await ensure(project);
+        const candidate = await ensure(project, contextId);
         for (const [config, members] of groups) {
           for (let at = 0; at < members.length; at += limits.sitesPerRequest) {
             const chunk = members.slice(at, at + limits.sitesPerRequest);
@@ -610,27 +659,30 @@ export function createTypeScriptResolver(deps: TypeScriptResolverDeps): TypeScri
 
   return {
     id: TYPESCRIPT_RESOLVER_ID,
-    resolve(_overlay, _context, sites, symbols) {
-      const scoped = run(deps.project?.(), sites, symbols);
+    resolve(_overlay, context, sites, symbols) {
+      const scoped = run(deps.project?.(), contextKeyOf(context), sites, symbols);
       return (async function* () {
         for await (const item of scoped) if (!isResolverNotice(item)) yield item;
       })();
     },
-    resolveScoped(project, _overlay, _context, sites, symbols) {
-      return run(project, sites, symbols);
+    resolveScoped(project, _overlay, context, sites, symbols) {
+      return run(project, contextKeyOf(context), sites, symbols);
     },
-    relations(_overlay, _context, files, symbols) {
-      const scoped = runRelations(deps.project?.(), files, symbols);
+    relations(_overlay, context, files, symbols) {
+      const scoped = runRelations(deps.project?.(), contextKeyOf(context), files, symbols);
       return (async function* () {
         for await (const item of scoped) if (!isResolverNotice(item)) yield item;
       })();
     },
-    relationsScoped(project, _overlay, _context, files, symbols) {
-      return runRelations(project, files, symbols);
+    relationsScoped(project, _overlay, context, files, symbols) {
+      return runRelations(project, contextKeyOf(context), files, symbols);
     },
     relationStats: () => structuredClone(relationStats),
     stats: () => structuredClone(stats),
     info: () => live?.info,
+    clearMemoryStop() {
+      memoryStop = undefined;
+    },
     async close() {
       closed = true;
       const candidate = live;

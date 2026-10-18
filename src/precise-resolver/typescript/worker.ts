@@ -14,10 +14,12 @@
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import type ts from 'typescript';
+import { MEMORY_DEFAULTS } from './budget.ts';
 import { lineStarts, offsetOf, positionOf, stripBom } from './positions.ts';
 import { PRECISE_LIMITS, encodeResponse, parseRequest } from './protocol.ts';
 import type { Request, Response, Site, Target } from './protocol.ts';
 import { collectRelations } from './relations.ts';
+import { startSampler } from './sampler.ts';
 
 /** The compiler API. Exported as a type only, so `relations.ts` can derive its types from it without loading the compiler. */
 export type Compiler = typeof ts;
@@ -50,6 +52,7 @@ let rootDir = '';
 let rootPosix = '';
 let known = new Set<string>();
 const programs = new Map<string, ProgramEntry>();
+let samplerRunning = false;
 
 const send = (message: Response): void => {
   process.stdout.write(encodeResponse(message));
@@ -76,6 +79,13 @@ function init(message: Extract<Request, { t: 'init' }>): void {
   rootDir = path.resolve(message.worktreeRoot);
   rootPosix = toPosix(rootDir);
   known = new Set(message.configs);
+  // The memory watch (plan 03-27, D-21): a thread of this process that ends it past the RSS limit. It starts before the
+  // compiler loads, so loading a compiler into a budget that cannot hold it is stopped too; the V8 heap flag of the exact
+  // worker shape is the backstop. Absent only for a worker started by a test that wants the heap flag alone.
+  if (message.rssLimitMb !== undefined && !samplerRunning) {
+    startSampler({ rssLimitMb: message.rssLimitMb, sampleMs: message.sampleMs ?? MEMORY_DEFAULTS.sampleMs });
+    samplerRunning = true;
+  }
   let source: 'project' | 'bundled' = 'bundled';
   let loaded: Compiler | undefined;
   if (message.compilerDir !== null) {
@@ -88,7 +98,7 @@ function init(message: Extract<Request, { t: 'init' }>): void {
     return;
   }
   compiler = loaded;
-  send({ t: 'ready', compiler: { version: loaded.version, source }, rssMb: process.memoryUsage().rss / 1_048_576, pid: process.pid });
+  send({ t: 'ready', compiler: { version: loaded.version, source }, rssMb: process.memoryUsage().rss / 1_048_576, pid: process.pid, sampler: samplerRunning });
 }
 
 function createEntry(config: string): ProgramEntry | undefined {

@@ -30,6 +30,8 @@ export interface PreciseTier {
   relationStats(): RelationStats;
   /** What each running worker reported about itself. */
   info(): readonly WorkerInfo[];
+  /** Forget every memory stop: the next read of a project that was stopped for memory starts a worker again (plan 03-27). */
+  clearMemoryStop(): void;
   /** End every worker. Safe to call twice. */
   close(): Promise<void>;
 }
@@ -38,6 +40,12 @@ export interface PreciseTier {
 export interface TypeScriptTierTuning {
   /** The V8 heap limit of a worker, in megabytes. */
   readonly heapMb?: number;
+  /** The RSS limit of a worker's sampler thread in megabytes; `null` runs the V8 heap flag alone (a test of that backstop). */
+  readonly rssLimitMb?: number | null;
+  /** The sampler's period in milliseconds. */
+  readonly sampleMs?: number;
+  /** The machine's RAM in bytes (default `os.totalmem()`). */
+  readonly totalMemBytes?: number;
   readonly limits?: Partial<PreciseLimits>;
   /** The Node binary and worker file the runner's built-in shape names. */
   readonly execPath?: string;
@@ -100,6 +108,9 @@ export function createTypeScriptTier(deps: TypeScriptTierDeps): PreciseTier {
         ...(deps.workerPath === undefined ? {} : { workerPath: deps.workerPath }),
         ...(deps.bundledDir === undefined ? {} : { bundledDir: deps.bundledDir }),
         ...(deps.heapMb === undefined ? {} : { heapMb: deps.heapMb }),
+        ...(deps.rssLimitMb === undefined ? {} : { rssLimitMb: deps.rssLimitMb }),
+        ...(deps.sampleMs === undefined ? {} : { sampleMs: deps.sampleMs }),
+        ...(deps.totalMemBytes === undefined ? {} : { totalMemBytes: deps.totalMemBytes }),
         ...(deps.limits === undefined ? {} : { limits: deps.limits }),
         ...(deps.onCleanup === undefined ? {} : { onCleanup: deps.onCleanup }),
       });
@@ -157,6 +168,9 @@ export function createTypeScriptTier(deps: TypeScriptTierDeps): PreciseTier {
         const info = each.info();
         return info === undefined ? [] : [info];
       });
+    },
+    clearMemoryStop() {
+      for (const each of resolvers.values()) each.clearMemoryStop();
     },
     async close() {
       closed = true;

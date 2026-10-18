@@ -5,12 +5,11 @@
  * only scripted parts are the fixture that spins and a project compiler that kills itself.
  */
 import assert from 'node:assert/strict';
-import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { after, describe, it } from 'node:test';
 import type { TestContext } from 'node:test';
-import { allowAll, compilerWorkerShape, createRealRunner } from '../../command-runner/index.ts';
+import { COMPILER_WORKER_ID, allowAll, compilerWorkerShape, createAsyncQueue, createRealRunner } from '../../command-runner/index.ts';
 import type { CommandRunner, CommandSpec } from '../../command-runner/index.ts';
 import { PROTOCOL_VERSION, ResolverFailure } from '../../facts/index.ts';
 import type { Envelope, OverlaySnapshot, PreciseFacts, RefSiteKey, ResolutionContext, ResolvedEdge, ResolverNotice, SymbolLookup } from '../../facts/index.ts';
@@ -138,33 +137,48 @@ async function waitGone(pid: number, timeoutMs = 8000): Promise<void> {
 
 describe('the RSS sampler thread (OQ2, research Pitfall 4)', () => {
   it('sampler ends a spinning worker: the main thread never yields, the process is gone quickly, the marker line is on stderr', async () => {
-    const child = spawn(process.execPath, ['--max-old-space-size=512', SPIN_FIXTURE, '80', '50'], { stdio: ['ignore', 'pipe', 'pipe'] });
-    let stderr = '';
-    child.stderr.setEncoding('utf8');
-    child.stderr.on('data', (chunk: string) => {
-      stderr += chunk;
-    });
+    // The fixture is started as the exact worker shape, through the runner, like every other process.
+    const runner = createRealRunner({ builtinShapes: [compilerWorkerShape({ execPath: process.execPath, workerPath: SPIN_FIXTURE })] });
+    const input = createAsyncQueue<string>();
+    const stream = runner.stream(
+      {
+        executable: process.execPath,
+        args: ['--max-old-space-size=512', SPIN_FIXTURE],
+        builtinId: COMPILER_WORKER_ID,
+        env: { GSD_ATLAS_WORKER: '1' },
+        cwd: import.meta.dirname,
+        stdin: input,
+        maxStdoutBytes: 1_000_000,
+      },
+      { repo: import.meta.dirname },
+    );
     let spinningAt = 0;
-    child.stdout.setEncoding('utf8');
-    child.stdout.on('data', (chunk: string) => {
-      if (spinningAt === 0 && chunk.includes('spinning')) spinningAt = Date.now();
-    });
-    const pid = child.pid;
-    assert.ok(pid !== undefined);
-    const exit = await new Promise<{ code: number | null; signal: NodeJS.Signals | null; at: number }>((resolve) => {
-      const guard = setTimeout(() => {
-        child.kill('SIGKILL');
-      }, 20_000);
-      child.on('close', (code, signal) => {
-        clearTimeout(guard);
-        resolve({ code, signal, at: Date.now() });
-      });
-    });
+    let pid: number | undefined;
+    const reading = (async () => {
+      const decoder = new TextDecoder();
+      for await (const chunk of stream.stdout) {
+        const match = /spinning ([0-9]+)/.exec(decoder.decode(chunk));
+        if (match !== null && spinningAt === 0) {
+          spinningAt = Date.now();
+          pid = Number(match[1]);
+        }
+      }
+    })();
+    input.push('80 50\n');
+    // A guard so a sampler that failed cannot leave a runaway allocator behind.
+    const guard = setTimeout(() => {
+      stream.kill();
+    }, 20_000);
+    const result = await stream.result;
+    const endedAt = Date.now();
+    clearTimeout(guard);
+    await reading;
+    const stderr = new TextDecoder().decode(result.stderr);
     assert.match(stderr, /^GSD_ATLAS_MEMORY_LIMIT rss=[0-9]+ limit=83886080$/m, stderr);
-    if (process.platform === 'win32') assert.notEqual(exit.code, 0);
-    else assert.equal(exit.signal, 'SIGKILL', `signal ${String(exit.signal)} code ${String(exit.code)}`);
-    assert.ok(spinningAt > 0, 'the fixture reported that it was spinning');
-    assert.ok(exit.at - spinningAt < 1000, `the process lived ${String(exit.at - spinningAt)} ms after it started spinning`);
+    if (process.platform === 'win32') assert.notEqual(result.exitCode, 0);
+    else assert.equal(result.signal, 'SIGKILL', `signal ${String(result.signal)} code ${String(result.exitCode)}`);
+    assert.ok(spinningAt > 0 && pid !== undefined, 'the fixture reported that it was spinning');
+    assert.ok(endedAt - spinningAt < 1000, `the process lived ${String(endedAt - spinningAt)} ms after it started spinning`);
     assert.equal(alive(pid), false, 'no orphan after a kill');
   });
 });
@@ -362,8 +376,11 @@ describe('a read over a project that does not fit (TSM-05, D-21)', () => {
     assert.ok((second.degraded ?? []).includes('memory_budget'));
     assert.equal(world.runner.workers.length, 1);
 
-    // A config change is a changed context: the project gets one more attempt.
-    world.write('tsconfig.json', TSCONFIG.replace('"strict": true', '"strict": false'));
+    // A config change (here a changed `include`) is a changed context: the project gets one more attempt.
+    world.write('tsconfig.json', TSCONFIG.replace('"src"', '"src", "extra"'));
+    // A config is not an indexed file, so a source edit moves the snapshot and the context is read afresh.
+    world.write('src/lib.cts', `// edited\n${LIB}`);
+    expectOk(await world.ask('maintain', { task: 'reconcile' }));
     const third = await world.ask('code_refs', { name: 'compute', path: 'src/lib.cts' });
     assert.ok((third.degraded ?? []).includes('memory_budget'));
     assert.equal(world.runner.workers.length, 2);
