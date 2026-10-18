@@ -1,5 +1,9 @@
 /**
- * node scripts/project-model-differential.ts --corpus gsd-core|gsd-pi [--dir <prepared checkout>] [--keep]
+ * node scripts/project-model-differential.ts --corpus gsd-core|gsd-pi [--dir <prepared checkout>] [--keep] [--emit]
+ *
+ * With `--emit` the comparison is of where each source is written (TSM-03, plan 03-22): the model's emit map against
+ * `ts.getOutputFileNames`, and, per output directory, how many tracked files below it are not the output of any
+ * source (they keep their facts). See `compareEmit`.
  *
  * The corpus differential for the compiler-free ProjectModel (TSM-07, plan 03-18): on a pinned checkout, for every
  * `tsconfig*.json` / `jsconfig*.json` git tracks, the model's `matches(config, path)` is compared with the compiler's
@@ -169,6 +173,117 @@ export function formatReport(corpus: string, report: DifferentialReport): string
 }
 
 // ---------------------------------------------------------------------------------------------
+// The emit comparison (--emit, TSM-03)
+
+export interface EmitOutDirReport {
+  /** Repo-relative output directory, as the compiler resolves it. */
+  readonly dir: string;
+  /** Tracked paths below it. */
+  readonly tracked: number;
+  /** Of those, the ones the model says are the emit output of an included source. */
+  readonly outputs: number;
+  /** Tracked and hand-written: they match no source, keep their facts. */
+  readonly notOutputs: number;
+}
+
+export interface EmitReport {
+  readonly dir: string;
+  readonly tracked: number;
+  /** Files the emitting configs list, declaration files included: every one is compared. */
+  readonly sources: number;
+  /** Of those, the ones the compiler gives at least one output (declaration files give none). */
+  readonly withOutput: number;
+  /** Sources the model and the compiler place differently, as `source: model [...] vs compiler [...]`. */
+  readonly disagreements: readonly string[];
+  readonly outDirs: readonly EmitOutDirReport[];
+  /** Configs that made the compiler or the model throw, as `path: message`. */
+  readonly crashes: readonly string[];
+}
+
+const posixRelative = (root: string, p: string): string => path.relative(root, p).split(path.sep).join('/');
+
+/**
+ * Compares where the model says each source is written with `ts.getOutputFileNames`, over every config of the
+ * checkout. The compiler's answers are united over the configs, source maps and a file's own path left out; a config
+ * with `noEmit` and no `outDir` is left out, as it is in the model, because it never writes the `.js` beside its
+ * sources. `ts.getOutputFileNames` itself ignores `noEmit`, which is why a typecheck config that extends the build
+ * config (gsd-core) lists the build's outputs. Then, for each output directory, how many tracked files below it are
+ * not the output of any source.
+ */
+export async function compareEmit(dir: string, options: CompareOptions = {}): Promise<EmitReport> {
+  const root = path.resolve(dir);
+  const tracked = trackedPaths(root);
+  const base = directoryProjectFs(root);
+  const projectFs = options.wrapFs === undefined ? base : options.wrapFs(base);
+  const model = createTypeScriptProjectModel(projectFs);
+  const extraConfigs = tracked.filter((p) => CONFIG_NAME.test(p.slice(p.lastIndexOf('/') + 1)));
+  const description = await model.describe({ overlayPaths: tracked, fs: projectFs, extraConfigs });
+
+  const compilerBySource = new Map<string, Set<string>>();
+  /** Every file the emitting configs list, declaration files included. */
+  const listed = new Set<string>();
+  const outDirs = new Set<string>();
+  const crashes: string[] = [];
+  const host: ts.ParseConfigFileHost = {
+    ...ts.sys,
+    useCaseSensitiveFileNames: true,
+    onUnRecoverableConfigFileDiagnostic: (d) => {
+      throw new Error(ts.flattenDiagnosticMessageText(d.messageText, '\n'));
+    },
+  };
+  for (const config of description.configs) {
+    try {
+      const parsed = ts.getParsedCommandLineOfConfigFile(path.join(root, ...config.path.split('/')), {}, host);
+      if (parsed === undefined) throw new Error('the compiler could not read the config');
+      if (parsed.options.outFile !== undefined) continue;
+      const outDir = parsed.options.outDir === undefined ? undefined : posixRelative(root, parsed.options.outDir);
+      if (parsed.options.noEmit === true && outDir === undefined) continue;
+      if (outDir !== undefined) outDirs.add(outDir);
+      for (const file of parsed.fileNames) {
+        const source = posixRelative(root, file);
+        listed.add(source);
+        const outputs = ts
+          .getOutputFileNames(parsed, file, false)
+          .map((o) => posixRelative(root, o))
+          .filter((o) => !o.endsWith('.map') && o !== source);
+        if (outputs.length === 0) continue;
+        const known = compilerBySource.get(source) ?? new Set<string>();
+        for (const o of outputs) known.add(o);
+        compilerBySource.set(source, known);
+      }
+    } catch (error) {
+      crashes.push(`${config.path}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  const disagreements: string[] = [];
+  const sorted = (items: Iterable<string>): string[] => [...items].sort();
+  for (const p of tracked) {
+    const mine = sorted(description.emit.sourceToOutputs(p));
+    const theirs = sorted(compilerBySource.get(p) ?? []);
+    if (JSON.stringify(mine) !== JSON.stringify(theirs)) disagreements.push(`${p}: model ${JSON.stringify(mine)} vs compiler ${JSON.stringify(theirs)}`);
+  }
+  const reports: EmitOutDirReport[] = [...outDirs].sort().map((outDir) => {
+    const below = tracked.filter((p) => p.startsWith(`${outDir}/`));
+    const outputs = below.filter((p) => description.emit.isOutput(p)).length;
+    return { dir: outDir, tracked: below.length, outputs, notOutputs: below.length - outputs };
+  });
+  return { dir: root, tracked: tracked.length, sources: listed.size, withOutput: compilerBySource.size, disagreements, outDirs: reports, crashes };
+}
+
+export function formatEmitReport(corpus: string, report: EmitReport): string {
+  const lines: string[] = [];
+  const summary = `sources=${String(report.sources)} with output=${String(report.withOutput)} disagreements=${String(report.disagreements.length)} crashes=${String(report.crashes.length)}`;
+  lines.push(`emit: ${summary}`);
+  for (const d of report.disagreements.slice(0, SHOWN_DISAGREEMENTS)) lines.push(`  ${d}`);
+  if (report.disagreements.length > SHOWN_DISAGREEMENTS) lines.push(`  ... and ${String(report.disagreements.length - SHOWN_DISAGREEMENTS)} more`);
+  for (const o of report.outDirs) lines.push(`outDir ${o.dir}: tracked=${String(o.tracked)} outputs=${String(o.outputs)} not an output=${String(o.notOutputs)}`);
+  for (const crash of report.crashes) lines.push(`CRASH ${crash}`);
+  lines.push(`${corpus}: emit ${summary}`);
+  return `${lines.join('\n')}\n`;
+}
+
+// ---------------------------------------------------------------------------------------------
 // Command line
 
 export interface CliIo {
@@ -181,7 +296,7 @@ export interface CliDeps extends CompareOptions {
   readonly prepare?: (corpus: string) => string;
 }
 
-const USAGE = 'usage: node scripts/project-model-differential.ts --corpus gsd-core|gsd-pi [--dir <prepared checkout>] [--keep]\n';
+const USAGE = 'usage: node scripts/project-model-differential.ts --corpus gsd-core|gsd-pi [--dir <prepared checkout>] [--keep] [--emit]\n';
 
 /** Fetches and prepares the pinned corpus through `scripts/eval/prepare-corpus.ts`; returns the checkout and a remover. */
 function prepareCorpus(corpus: string): { dir: string; remove(): void } {
@@ -203,11 +318,11 @@ function prepareCorpus(corpus: string): { dir: string; remove(): void } {
 
 /** Exit codes: 0 no disagreement, 1 a disagreement or crash (or the checkout could not be prepared), 2 usage. */
 export async function runCli(argv: readonly string[], io: CliIo, deps: CliDeps = {}): Promise<number> {
-  let values: { corpus?: string; dir?: string; keep?: boolean };
+  let values: { corpus?: string; dir?: string; keep?: boolean; emit?: boolean };
   try {
     values = parseArgs({
       args: [...argv],
-      options: { corpus: { type: 'string' }, dir: { type: 'string' }, keep: { type: 'boolean' } },
+      options: { corpus: { type: 'string' }, dir: { type: 'string' }, keep: { type: 'boolean' }, emit: { type: 'boolean' } },
       allowPositionals: false,
       strict: true,
     }).values;
@@ -233,7 +348,13 @@ export async function runCli(argv: readonly string[], io: CliIo, deps: CliDeps =
         else io.stderr.write(`project-model-differential: keeping ${prepared.dir}\n`);
       }
     }
-    const report = await compareCheckout(dir, deps.wrapFs === undefined ? {} : { wrapFs: deps.wrapFs });
+    const compareOptions = deps.wrapFs === undefined ? {} : { wrapFs: deps.wrapFs };
+    if (values.emit === true) {
+      const emitReport = await compareEmit(dir, compareOptions);
+      io.stdout.write(formatEmitReport(corpus, emitReport));
+      return emitReport.disagreements.length > 0 || emitReport.crashes.length > 0 ? 1 : 0;
+    }
+    const report = await compareCheckout(dir, compareOptions);
     io.stdout.write(formatReport(corpus, report));
     return report.disagreements > 0 || report.crashes.length > 0 ? 1 : 0;
   } catch (error) {

@@ -1,20 +1,56 @@
+import { diagnostic } from '../facts/index.ts';
 import type { Diagnostic } from '../facts/index.ts';
 import { resolveRepoPath } from './globs.ts';
+import { PROJECT_MODEL_CODES } from './types.ts';
 import type { ConfigInfo, EmitMap, EmitOutput } from './types.ts';
 
-/** The extension a compiler gives the code it writes for a source, by the source's extension. */
-const JS_EXTENSION: Readonly<Record<string, string>> = { '.ts': '.js', '.mts': '.mjs', '.cts': '.cjs' };
+/**
+ * Where the configs write the output of the overlay's sources (TSM-03), by TypeScript's own rules. The model is a
+ * re-statement of `ts.getOutputFileNames` (checked against it by the emit tests and by `--emit` in
+ * `scripts/project-model-differential.ts`): the extension map, `rootDir`, `outDir`, `declarationDir`, declaration
+ * files that never emit, and JavaScript inputs under `allowJs`. Source maps and build info are not outputs here.
+ *
+ * All path arithmetic is on repo-relative POSIX strings through `resolveRepoPath`, so a Windows backslash never
+ * enters a key.
+ */
 
 const compareCodeUnits = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
 
-/** `path` with its last extension replaced, or undefined when it is not a source this rule maps. */
-function emittedName(path: string): string | undefined {
-  if (/\.d\.[cm]?ts$/.test(path)) return undefined; // declaration files never emit
+/** A declaration file never emits: `.d.ts`, `.d.cts`, `.d.mts` and the arbitrary-extension form `.d.<ext>.ts`. */
+const DECLARATION_FILE = /\.d\.(?:[cm]?ts|[^./]+\.ts)$/;
+
+const SOURCE_EXTENSIONS: ReadonlySet<string> = new Set(['.ts', '.tsx', '.mts', '.cts', '.js', '.jsx', '.mjs', '.cjs']);
+
+/** The longest list of sources a diagnostic message names. */
+const NAMED_SOURCES = 4;
+
+interface Parts {
+  /** The path without its last extension. */
+  readonly stem: string;
+  readonly extension: string;
+}
+
+function partsOf(path: string): Parts | undefined {
+  if (DECLARATION_FILE.test(path)) return undefined;
   const dot = path.lastIndexOf('.');
-  const slash = path.lastIndexOf('/');
-  if (dot <= slash + 1) return undefined; // no extension, or a dot file
-  const mapped = JS_EXTENSION[path.slice(dot)];
-  return mapped === undefined ? undefined : path.slice(0, dot) + mapped;
+  if (dot <= path.lastIndexOf('/') + 1) return undefined; // no extension, or a dot file
+  const extension = path.slice(dot);
+  return SOURCE_EXTENSIONS.has(extension) ? { stem: path.slice(0, dot), extension } : undefined;
+}
+
+/** `ts.getOutputExtension`: what the code a source compiles to is called. */
+function codeExtension(extension: string, preserveJsx: boolean): string {
+  if (preserveJsx && (extension === '.jsx' || extension === '.tsx')) return '.jsx';
+  if (extension === '.mts' || extension === '.mjs') return '.mjs';
+  if (extension === '.cts' || extension === '.cjs') return '.cjs';
+  return '.js';
+}
+
+/** `ts.getDeclarationEmitExtensionForPath`: what the declaration file of a source is called. */
+function declarationExtension(extension: string): string {
+  if (extension === '.mts' || extension === '.mjs') return '.d.mts';
+  if (extension === '.cts' || extension === '.cjs') return '.d.cts';
+  return '.d.ts';
 }
 
 /** `p` below the repo-relative directory `dir` ('' is the root), or undefined when it is not below it. */
@@ -29,8 +65,8 @@ const dirOfPath = (p: string): string => (p.lastIndexOf('/') === -1 ? '' : p.sli
 const asDir = (dir: string | undefined): string | undefined => (dir === undefined ? undefined : dir === '.' ? '' : dir);
 
 /**
- * Where the configs write the output of the overlay's sources (TSM-03). `matches` says whether a path belongs to a
- * config's file set. The map is a pure function of the configs, the overlay paths and `matches`.
+ * `matches` says whether a path belongs to a config's file set. The map is a pure function of the configs, the
+ * overlay paths and `matches`, and never depends on a content hash.
  */
 export function buildEmitMap(
   configs: readonly ConfigInfo[],
@@ -38,42 +74,88 @@ export function buildEmitMap(
   matches: (configPath: string, path: string) => boolean,
 ): EmitMap {
   const bySource = new Map<string, EmitOutput[]>();
-  const outputToSource = new Map<string, string>();
+  const claimants = new Map<string, Set<string>>();
   const diagnostics: Diagnostic[] = [];
 
   for (const config of configs) {
-    if (config.outFile) continue;
+    if (config.outFile) continue; // one bundle, not one file per source
+    if (config.emitEscapes) {
+      diagnostics.push(
+        diagnostic(PROJECT_MODEL_CODES.emitOutsideRepo, 'warning', 'rootDir, outDir or declarationDir leaves the repository, so none of this config\'s outputs is mapped', config.path),
+      );
+      continue;
+    }
     // TypeScript 6 roots the output tree at the config's directory when `rootDir` is not set.
     const root = asDir(config.rootDir) ?? dirOfPath(config.path);
     const outDir = asDir(config.outDir);
+    const declarationDir = asDir(config.declarationDir) ?? outDir;
     // `ts.getOutputFileNames` ignores `noEmit`, and a typecheck config that extends the build config (gsd-core's
     // `tsconfig.json`) is how the build's outDir is found when nothing references the build config. So a noEmit config
     // places its outputs by its outDir; one with no outDir would only claim `.js` files beside its sources, which it
     // never writes, so it maps nothing.
     if (config.noEmit && outDir === undefined) continue;
+    const preserveJsx = config.jsx?.toLowerCase() === 'preserve';
+
+    /** The stem of `source`'s output below `dir` (`undefined` dir: beside the source), or undefined when it is outside `root`. */
+    const stemIn = (dir: string | undefined, source: string, stem: string): string | undefined => {
+      if (dir === undefined) return stem;
+      const relative = below(root, stem);
+      return relative === undefined ? undefined : resolveRepoPath(dir, relative);
+    };
+
     for (const source of overlayPaths) {
-      const name = emittedName(source);
-      if (name === undefined || !matches(config.path, source)) continue;
-      let output: string;
-      if (outDir === undefined) output = name;
-      else {
-        const relative = below(root, name);
-        if (relative === undefined) continue;
-        output = resolveRepoPath(outDir, relative);
+      const parts = partsOf(source);
+      if (parts === undefined || !matches(config.path, source)) continue;
+      const outputs: EmitOutput[] = [];
+      if (!config.emitDeclarationOnly) {
+        const stem = stemIn(outDir, source, parts.stem);
+        if (stem !== undefined) outputs.push({ path: stem + codeExtension(parts.extension, preserveJsx), kind: 'js' });
       }
-      if (output === source) continue;
-      if (!outputToSource.has(output)) outputToSource.set(output, source);
-      const list = bySource.get(source) ?? [];
-      if (!list.some((known) => known.path === output)) list.push({ path: output, kind: 'js' });
-      bySource.set(source, list);
+      if (config.declaration) {
+        const stem = stemIn(declarationDir, source, parts.stem);
+        if (stem !== undefined) outputs.push({ path: stem + declarationExtension(parts.extension), kind: 'declaration' });
+      }
+      for (const output of outputs) {
+        if (output.path === source) continue; // it would overwrite its own input (TS5055): not an output
+        const known = bySource.get(source) ?? [];
+        if (!known.some((each) => each.path === output.path)) known.push(output);
+        bySource.set(source, known);
+        const claimed = claimants.get(output.path) ?? new Set<string>();
+        claimed.add(source);
+        claimants.set(output.path, claimed);
+      }
     }
   }
 
+  // An output that is also a source of some config stays a source: it is never dropped from the index (T-03-221).
+  const overlay = new Set(overlayPaths);
+  for (const output of [...claimants.keys()].sort(compareCodeUnits)) {
+    if (!overlay.has(output) || !configs.some((config) => matches(config.path, output))) continue;
+    claimants.delete(output);
+    diagnostics.push(
+      diagnostic(PROJECT_MODEL_CODES.emitOverlapsSource, 'warning', 'this path is a source of a config and also the output of another source; it stays a source', output),
+    );
+  }
+  // Two sources writing one output: the inverse says nothing and the plain specifier rule applies (T-03-222).
+  for (const [output, sources] of [...claimants].sort(([a], [b]) => compareCodeUnits(a, b))) {
+    if (sources.size < 2) continue;
+    const named = [...sources].sort(compareCodeUnits);
+    const shown = named.slice(0, NAMED_SOURCES).join(', ');
+    const more = named.length > NAMED_SOURCES ? ` and ${String(named.length - NAMED_SOURCES)} more` : '';
+    diagnostics.push(diagnostic(PROJECT_MODEL_CODES.emitAmbiguous, 'warning', `these sources emit to this path, so it maps to none of them: ${shown}${more}`, output));
+  }
+
+  const order = { js: 0, declaration: 1 } as const;
   return {
-    outputToSource: (path) => outputToSource.get(path),
+    outputToSource(path) {
+      const sources = claimants.get(path);
+      if (sources === undefined || sources.size !== 1) return undefined;
+      return sources.values().next().value as string;
+    },
     sourceToOutputs: (path) => (bySource.get(path) ?? []).map((output) => output.path).sort(compareCodeUnits),
-    isOutput: (path) => outputToSource.has(path),
-    outputsOf: (path) => bySource.get(path) ?? [],
+    isOutput: (path) => claimants.has(path),
+    outputsOf: (path) =>
+      [...(bySource.get(path) ?? [])].sort((a, b) => order[a.kind] - order[b.kind] || compareCodeUnits(a.path, b.path)),
     diagnostics,
   };
 }

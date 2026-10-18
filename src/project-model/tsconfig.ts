@@ -336,6 +336,15 @@ function resolveList(
   return out;
 }
 
+/** True when the path option `key` is absolute or climbs above the repository root, read against the config that set it. */
+function optionEscapes(node: ConfigNode, key: string): boolean {
+  const option = node.options.get(key);
+  if (option === undefined || typeof option.value !== 'string' || option.value === '') return false;
+  const value = option.value.replace(/\\/g, '/');
+  if (value.startsWith(CONFIG_DIR_TEMPLATE)) return climbsAboveRoot(node.dir, value.slice(CONFIG_DIR_TEMPLATE.length).replace(/^\/+/, ''));
+  return isAbsoluteSpec(value) || climbsAboveRoot(option.dir, value);
+}
+
 function optionPath(node: ConfigNode, key: string): string | undefined {
   const option = node.options.get(key);
   if (option === undefined || typeof option.value !== 'string' || option.value === '') return undefined;
@@ -388,6 +397,7 @@ export function effectiveConfig(ctx: ReadContext, node: ConfigNode): EffectiveCo
       declaration: flag('declaration') || flag('composite'),
       emitDeclarationOnly: flag('emitDeclarationOnly'),
       outFile,
+      emitEscapes: ['rootDir', 'outDir', 'declarationDir'].some((key) => optionEscapes(node, key)),
       references: node.references,
     },
   };

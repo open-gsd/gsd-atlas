@@ -356,8 +356,9 @@ describe('emit map: rootDir, outDir and where they come from (TSM-03)', () => {
 
 describe('emit map: ambiguity and overlap (T-03-221, T-03-222)', () => {
   it('ambiguous output: two sources emitting to one path make the inverse ambiguous, with a diagnostic naming both', async () => {
+    // A wildcard include keeps only the higher-priority `a.ts`, so both are named as literal `files`.
     const { emit } = await describeTree({
-      'tsconfig.json': config(SRC_OUT, { include: ['src'] }),
+      'tsconfig.json': config(SRC_OUT, { files: ['src/a.ts', 'src/a.tsx', 'src/b.ts'] }),
       'src/a.ts': 'export {};\n',
       'src/a.tsx': 'export {};\n',
       'src/b.ts': 'export {};\n',

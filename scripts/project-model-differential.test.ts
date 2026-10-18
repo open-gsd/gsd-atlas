@@ -142,9 +142,9 @@ test('differential script --emit: the model maps every source like the compiler 
     const c = capture();
     const code = await runCli(['--corpus', 'gsd-core', '--dir', dir, '--emit'], c.io);
     assert.equal(code, 0, c.out() + c.err());
-    assert.match(c.out(), /^emit: sources=3 disagreements=0 crashes=0$/m, 'a.cts, b.mts and c.ts; the declaration file has no output');
+    assert.match(c.out(), /^emit: sources=4 with output=3 disagreements=0 crashes=0$/m, 'a.cts, b.mts, c.ts and types.d.ts are compared; the declaration file has no output');
     assert.match(c.out(), /^outDir out: tracked=2 outputs=0 not an output=2$/m);
-    assert.match(c.out(), /^gsd-core: emit sources=3 disagreements=0 crashes=0$/m);
+    assert.match(c.out(), /^gsd-core: emit sources=4 with output=3 disagreements=0 crashes=0$/m);
   });
 });
 
@@ -161,7 +161,7 @@ test('differential script --emit: a model that places outputs elsewhere exits 1 
       }),
     });
     assert.equal(code, 1, c.out());
-    assert.match(c.out(), /disagreements=3 /);
+    assert.match(c.out(), / disagreements=3 /);
     assert.match(c.out(), /src\/a\.cts: model \["elsewhere\/a\.cjs"\] vs compiler \["out\/a\.cjs"\]/);
   });
 });

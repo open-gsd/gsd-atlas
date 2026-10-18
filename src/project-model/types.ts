@@ -75,6 +75,11 @@ export interface ConfigInfo {
   readonly emitDeclarationOnly: boolean;
   /** `outFile` (or the old `out`): one bundle is written instead of one file per source; no per-source output is mapped. */
   readonly outFile: boolean;
+  /**
+   * `rootDir`, `outDir` or `declarationDir` is absolute or climbs above the repository root. The directory fields
+   * above are then not to be trusted, and the config's outputs are not mapped (T-03-223).
+   */
+  readonly emitEscapes: boolean;
   /** Repo-relative paths of the referenced project configs (this config's own `references`; TypeScript does not inherit them). */
   readonly references: readonly string[];
 }

@@ -70,7 +70,7 @@ export interface EmitLookup {
    * one source emits to (nothing is guessed) or a path that is itself a source.
    */
   outputToSource(path: string): string | undefined;
-  /** The output paths of an included source (code first, then declarations), in a fixed order; empty for any other path. */
+  /** The output paths of an included source (code and declaration files), in code-unit order; empty for any other path. */
   sourceToOutputs(path: string): readonly string[];
   /**
    * True when `path` is the emit output of an included source, even an ambiguous one. A path that is a source of any
