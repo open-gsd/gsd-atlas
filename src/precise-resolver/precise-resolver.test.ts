@@ -1,11 +1,14 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
+import { isResolverNotice } from '../facts/index.ts';
 import type {
   OverlaySnapshot,
   RefSiteKey,
   ResolutionContext,
   ResolvedEdge,
+  ResolvedRelation,
+  ResolverNotice,
   ResolveScope,
   SymbolIdentity,
   SymbolLookup,
@@ -13,7 +16,7 @@ import type {
 import { definePreciseResolverContract } from './contract.ts';
 import type { PreciseResolverSubject } from './contract.ts';
 import { asStoreResolver, createScriptedResolver } from './index.ts';
-import type { PreciseResolver, ScriptedEdge } from './index.ts';
+import type { PreciseResolver, ScriptedEdge, ScriptedRelation } from './index.ts';
 
 const overlay: OverlaySnapshot = { id: 'overlay-1', pathToHash: new Map([['src/a.ts', 'h1']]) };
 const context: ResolutionContext = { id: 'ctx-1', configHashes: ['c1'] };
@@ -191,5 +194,81 @@ describe('asStoreResolver', () => {
       break;
     }
     assert.equal(closes, 1);
+  });
+});
+
+describe('optional relations (plan 03-25)', () => {
+  const lookup: SymbolLookup = { find: async () => [], findIn: async () => [] };
+  const scope: ResolveScope = { worktree: 'wt', overlay, project: { context } };
+  const identity = (path: string, qualifiedName: string, kind = 'class'): SymbolIdentity => ({ repo: 'r', path, qualifiedName, kind });
+  const SUB = identity('src/sub.ts', 'Sub');
+  const BASE = identity('src/base.ts', 'Base');
+  const OTHER = identity('src/other.ts', 'Other');
+  const RELATIONS: readonly ScriptedRelation[] = [
+    { from: SUB, to: BASE, relation: 'extends' },
+    { from: OTHER, to: BASE, relation: 'implements' },
+  ];
+
+  async function relationsOf(iterable: AsyncIterable<ResolvedRelation | ResolverNotice>): Promise<ResolvedRelation[]> {
+    const out: ResolvedRelation[] = [];
+    for await (const item of iterable) if (!isResolverNotice(item as never)) out.push(item as ResolvedRelation);
+    return out;
+  }
+
+  it('the scripted resolver has no relations method unless it is given relations', () => {
+    assert.equal('relations' in createScriptedResolver({ id: 'plain', edges: [] }), false);
+    assert.equal(typeof createScriptedResolver({ id: 'with', edges: [], relations: RELATIONS }).relations, 'function');
+  });
+
+  it('yields the relations declared in the files asked, stamped with its own id', async () => {
+    const resolver = createScriptedResolver({ id: 'mine', edges: [], relations: RELATIONS });
+    const relations = await relationsOf(resolver.relations?.(overlay, context, ['src/sub.ts']) ?? (async function* () {})());
+    assert.deepEqual(
+      relations.map((relation) => [relation.relation, relation.from.qualifiedName, relation.to.qualifiedName, relation.resolver]),
+      [['extends', 'Sub', 'Base', 'mine']],
+    );
+  });
+
+  it('asStoreResolver carries relations only when the resolver has them, and hands over overlay, context, files and lookup', async () => {
+    const plain = asStoreResolver(createScriptedResolver({ id: 'plain', edges: [] }));
+    assert.equal(plain.relations, undefined);
+
+    const calls: unknown[][] = [];
+    const resolver: PreciseResolver = {
+      id: 'recording',
+      async *resolve() {
+        // no edges
+      },
+      async *relations(...args) {
+        calls.push(args);
+        yield { from: SUB, to: BASE, relation: 'extends', resolver: 'recording' };
+      },
+    };
+    const port = asStoreResolver(resolver);
+    assert.equal(typeof port.relations, 'function');
+    const relations = await relationsOf(port.relations?.(['src/sub.ts'], context, lookup, scope) ?? (async function* () {})());
+    assert.equal(relations.length, 1);
+    const [receivedOverlay, receivedContext, receivedFiles, receivedSymbols] = calls[0] ?? [];
+    assert.equal(receivedOverlay, overlay);
+    assert.equal(receivedContext, context);
+    assert.deepEqual(receivedFiles, ['src/sub.ts']);
+    assert.equal(receivedSymbols, lookup);
+  });
+
+  it('asStoreResolver relations yield nothing and never call the resolver when the store passes no scope', async () => {
+    let called = 0;
+    const resolver: PreciseResolver = {
+      id: 'recording',
+      async *resolve() {
+        // no edges
+      },
+      async *relations() {
+        called += 1;
+        yield { from: SUB, to: BASE, relation: 'extends', resolver: 'recording' };
+      },
+    };
+    const port = asStoreResolver(resolver);
+    assert.deepEqual(await relationsOf(port.relations?.(['src/sub.ts'], context, lookup) ?? (async function* () {})()), []);
+    assert.equal(called, 0);
   });
 });

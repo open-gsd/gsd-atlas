@@ -821,3 +821,109 @@ describe('the manifest and the worker source', () => {
     }
   });
 });
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Plan 03-25: extends, implements and overrides from the real compiler worker, read through code_refs.
+// ---------------------------------------------------------------------------------------------------------------------
+
+export const SHAPES_SOURCE = [
+  'export interface Shape {', //                      line 1
+  '  area(): number;', //                             2
+  '}', //                                             3
+  '', //                                              4
+  'export abstract class Base implements Shape {', // 5
+  '  abstract area(): number;', //                    6
+  '  name(): string {', //                            7
+  "    return 'base';", //                            8
+  '  }', //                                           9
+  '}', //                                             10
+  '', //                                              11
+  'export class Sub extends Base {', //               12
+  '  area(): number {', //                            13
+  '    return 1;', //                                 14
+  '  }', //                                           15
+  '  name(): string {', //                            16
+  "    return 'sub';", //                             17
+  '  }', //                                           18
+  '}', //                                             19
+  '', //                                              20
+  'export class Boom extends Error {}', //            21
+  '', //                                              22
+  'export interface Square extends Shape {}', //      23
+  '', //                                              24
+  'export abstract class Box<T> extends Base {', //   25
+  '  value?: T;', //                                  26
+  '}', //                                             27
+  '',
+].join('\n');
+
+export const SHAPES_FIXTURE: Readonly<Record<string, string>> = { 'tsconfig.json': TSCONFIG, 'src/shapes.cts': SHAPES_SOURCE };
+
+interface EdgeRow extends RefRow {
+  readonly edge?: string;
+  readonly enclosing: string | null;
+  readonly target: string;
+  readonly kind: string | null;
+}
+
+const edgeRows = (envelope: Envelope): EdgeRow[] => (envelope.data as { results: EdgeRow[] }).results;
+const targetsOf = (envelope: Envelope): Array<{ name: string; kind: string; path: string; line: number; handle: string }> =>
+  (envelope.data as { targets: Array<{ name: string; kind: string; path: string; line: number; handle: string }> }).targets;
+
+describe('relations from the real compiler worker (TSM-01)', () => {
+  it('worker relations: extends and implements label the heritage sites of a fixture, Boom extends Error is dropped by the worker', async (t) => {
+    const world = await makeWorld(t, SHAPES_FIXTURE, { hook: true });
+    assert.equal((await world.build()).ok, true);
+
+    const base = (await refsSettled(world, { name: 'Base', kind: 'class' })).envelope;
+    assert.equal(base.ok, true, JSON.stringify(base.diagnostics));
+    assert.deepEqual(
+      edgeRows(base).filter((row) => row.kind === 'heritage').map((row) => [row.enclosing, row.edge, row.tier, row.confidence, row.line]),
+      [
+        ['Sub', 'extends', 'precise', 'EXTRACTED', 12],
+        ['Box', 'extends', 'precise', 'EXTRACTED', 25],
+      ],
+      JSON.stringify(edgeRows(base)),
+    );
+
+    const shape = (await refsSettled(world, { name: 'Shape', kind: 'interface' })).envelope;
+    assert.deepEqual(
+      edgeRows(shape).filter((row) => row.kind === 'heritage').map((row) => [row.enclosing, row.edge, row.tier]),
+      [
+        ['Base', 'implements', 'precise'],
+        ['Square', 'extends', 'precise'],
+      ],
+      JSON.stringify(edgeRows(shape)),
+    );
+
+    // `Boom extends Error`: the base is a library class, so no relation exists and nothing refers to Boom.
+    const boom = (await refsSettled(world, { name: 'Boom' })).envelope;
+    assert.deepEqual(edgeRows(boom), []);
+    assert.equal((boom.degraded ?? []).includes('resolver_failed'), false);
+  });
+
+  it('worker relations: the overriding methods are listed for the base method and an implemented interface method is not an override', async (t) => {
+    const world = await makeWorld(t, SHAPES_FIXTURE, { hook: true });
+    assert.equal((await world.build()).ok, true);
+
+    const area = (await refsSettled(world, { name: 'area', path: 'src/shapes.cts', kind: 'method' })).envelope;
+    assert.equal(area.ok, true, JSON.stringify(area.diagnostics));
+    const targets = targetsOf(area);
+    const baseArea = targets.find((target) => target.line === 6);
+    const shapeArea = targets.find((target) => target.line === 2);
+    assert.ok(baseArea !== undefined && shapeArea !== undefined, JSON.stringify(targets));
+    const overrides = edgeRows(area).filter((row) => row.edge === 'overrides');
+    assert.deepEqual(
+      overrides.map((row) => [row.enclosing, row.target, row.tier, row.confidence, row.line]),
+      [['Sub.area', baseArea.handle, 'precise', 'EXTRACTED', 13]],
+      JSON.stringify(edgeRows(area)),
+    );
+    assert.equal(overrides.some((row) => row.target === shapeArea.handle), false, 'Base.area implements Shape.area at class level only');
+
+    const name = (await refsSettled(world, { name: 'name', path: 'src/shapes.cts', kind: 'method' })).envelope;
+    assert.deepEqual(
+      edgeRows(name).filter((row) => row.edge === 'overrides').map((row) => [row.enclosing, row.line]),
+      [['Sub.name', 16]],
+    );
+  });
+});
