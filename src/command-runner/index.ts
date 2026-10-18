@@ -19,6 +19,8 @@ export type {
 } from './spec.ts';
 export { COMMAND_CODES, DEFAULT_MAX_STDERR_BYTES, DEFAULT_MAX_STDOUT_BYTES } from './spec.ts';
 export { allowAll, decide } from './decide.ts';
+export { canonicalCommand, commandHash } from './hash.ts';
+export type { HashableCommand } from './hash.ts';
 export { createRealRunner } from './real.ts';
 export type { RealRunnerOptions } from './real.ts';
 export { createRecordingRunner } from './fake.ts';

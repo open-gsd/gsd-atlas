@@ -106,6 +106,12 @@ export interface UserPermissions {
     readonly executable: string;
     /** When present, the spec's arguments must start with exactly these. */
     readonly argsPrefix?: readonly string[];
+    /**
+     * When present (64 lower-case hex characters), the entry binds to ONE exact command: the sha256 of the
+     * canonical command (executable, arguments, working directory relative to the repository), see `hash.ts`.
+     * It can only narrow a match; `argsPrefix`, when also present, must match too (D-15).
+     */
+    readonly sha256?: string;
   }>;
 }
 
