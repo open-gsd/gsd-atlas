@@ -101,6 +101,28 @@ export interface ExportSite {
   readonly from?: string;
 }
 
+/** The most ADR citations stored for one file version (the approved constant `adr.maxCitationsPerFile`). */
+export const MAX_CITATIONS_PER_FILE = 200;
+
+/**
+ * One ADR mention found in a code comment (plan 03-24, D-19; the `cites_adr` local fact). Only the integer, a
+ * short section detail and the span of the mention itself are kept: the comment text never leaves the extractor,
+ * so repository prose cannot reach an answer through this path.
+ */
+export interface CitationSite {
+  /** The ADR number: a positive safe integer, compared by value (`ADR-1`, `adr-0001` and `ADR #1` are one number). */
+  readonly number: number;
+  /** The optional section suffix, `§` plus a short token (`§3`, `§3.2`); at most 32 characters. */
+  readonly detail?: string;
+  /** The mention itself (`ADR-2143 §3`), not the comment around it. */
+  readonly span: Span;
+  /**
+   * Index into `FileFacts.symbols` of the symbol the mention belongs to: the innermost symbol that contains it,
+   * else the symbol a leading doc comment documents; absent for a file-level mention.
+   */
+  readonly enclosing?: number;
+}
+
 /**
  * Local facts of one file, keyed by content hash. This is the only value that crosses from the
  * Grammar Engine to the Fact Store; `validateFileFacts` must pass before the writer commits it.
@@ -115,6 +137,8 @@ export interface FileFacts {
   readonly imports: readonly ImportSite[];
   /** The file's exports (optional, Phase 2). */
   readonly exports?: readonly ExportSite[];
+  /** ADR mentions in the file's comments (optional, Phase 3, at most `MAX_CITATIONS_PER_FILE`). */
+  readonly citations?: readonly CitationSite[];
   readonly parse: { readonly errorBytes: number; readonly totalBytes: number };
 }
 

@@ -156,6 +156,29 @@ function unquote(text: string): string {
 }
 
 // ---------------------------------------------------------------------------------------------
+// ADR mentions in comments (tags query capture `comment`)
+
+/** One ADR mention found in the text of a comment: where it starts and ends in that text, its number and detail. */
+export interface AdrMention {
+  readonly index: number;
+  readonly end: number;
+  readonly number: number;
+  readonly detail?: string;
+}
+
+/** A step counter a test passes in to prove the scan is linear: it counts every character the scan looks at. */
+export interface ScanProbe {
+  steps: number;
+}
+
+/** Red scaffold: finds nothing yet. */
+export function scanAdrMentions(text: string, probe?: ScanProbe): AdrMention[] {
+  void text;
+  void probe;
+  return [];
+}
+
+// ---------------------------------------------------------------------------------------------
 // Definitions (tags query)
 
 interface SymbolDraft {

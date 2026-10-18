@@ -13,6 +13,13 @@ export const GRAMMAR_LIMITS = {
   manifestBytes: 64 * 1024,
   /** Longest captured node whose text is kept, in UTF-16 code units; a longer node yields an empty string (T-02-21). */
   captureTextChars: 256,
+  /**
+   * The same bound for a capture named `comment` (the tags query's ADR mention filter, plan 03-24): a comment that
+   * mentions an ADR is prose, longer than a name, so 256 would blank it. An internal size bound like the others in
+   * this file, not a timeout, queue bound or gate threshold; a longer comment yields an empty string and the
+   * extractor counts it as `citation_comment_too_long`.
+   */
+  commentTextChars: 4096,
   /** The largest `matchLimit` web-tree-sitter 0.27.1 documents for a query (QueryOptions.matchLimit: > 0 and <= 65536). */
   matchLimitMax: 65536,
 } as const;
