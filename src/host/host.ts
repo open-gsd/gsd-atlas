@@ -31,6 +31,8 @@ import { DEFAULT_TENANT_TUNING, FLIGHT_FILE, FLIGHT_PREVIOUS_FILE, createFlightR
 import type { Tenant } from '../tenant/index.ts';
 import { ALLOW_KIND, handleAllow, needsApprovalFrom, permissionsFor } from './allow.ts';
 import type { AllowDeps } from './allow.ts';
+import { BUG_KIND, createBugState, handleBug } from './bug.ts';
+import type { BugDeps } from './bug.ts';
 import { HOST_DEFAULTS } from './defaults.ts';
 import { DIAGNOSTICS_KIND, factsFromStatus, handleDiagnostics, platformFactsOf } from './diagnostics.ts';
 import type { DiagnosticsDeps, RepoFacts } from './diagnostics.ts';
@@ -65,6 +67,8 @@ const NO_REPOSITORY = '.diagnostics-no-repository';
 
 const DIAGNOSTICS_FORBIDDEN =
   'Diagnostics are controlled only by a person at a terminal with "gsd-atlas diagnostics"; this server cannot change or build them.';
+
+const BUG_FORBIDDEN = 'Bug bundles are made only by a person at a terminal with "gsd-atlas bug"; this server cannot make or write one.';
 
 /** Envelope schema of an `index_state` reply (internal, plan 02-44). */
 export const INDEX_STATE_SCHEMA = 'gsd-atlas.index-state/1';
@@ -535,6 +539,27 @@ export function createHost(options: HostOptions): Host {
     return handleDiagnostics(request, deps);
   }
 
+  /**
+   * `bug` (SKL-04): the two-step bundle request. Its state (collected bundles waiting for their digest, written digests) is
+   * this Host's own. It writes under the Host's cache root, never into a repository.
+   */
+  const bugState = createBugState();
+  function bugRequest(request: Request): Promise<Envelope> {
+    const deps: BugDeps = {
+      version: options.version ?? '0.0.0',
+      catalogDir: options.diagnostics?.catalogDir,
+      io: options.diagnostics?.io,
+      cacheRoot,
+      clock,
+      state: bugState,
+      excerptEvents: options.bug?.excerptEvents,
+      bundleMaxBytes: options.bug?.bundleMaxBytes,
+      random: options.bug?.random,
+    };
+    // Like `diagnostics`, not wrapped in a Governor slot of its own: the part that reads a repository takes the repository's slot.
+    return handleBug(request, deps);
+  }
+
   async function dispatch(request: Request): Promise<Envelope> {
     if (request.protocol !== PROTOCOL_VERSION) {
       return errorEnvelope(
@@ -576,6 +601,8 @@ export function createHost(options: HostOptions): Host {
     if (request.kind === DIAGNOSTICS_KIND) {
       return origin === 'mcp' ? errorEnvelope('diagnostics_forbidden', DIAGNOSTICS_FORBIDDEN) : diagnosticsRequest(request);
     }
+    // SKL-04: a bug bundle is a person's. An agent's server refuses the whole kind, whatever the arguments, before reading them.
+    if (request.kind === BUG_KIND) return origin === 'mcp' ? errorEnvelope('bug_forbidden', BUG_FORBIDDEN) : bugRequest(request);
     // D-16: users rate, agents do not. There is no MCP tool for it; a Host started for MCP also refuses the request kind itself.
     if (request.kind === 'rate' && origin === 'mcp') return errorEnvelope('rate_forbidden', RATE_FORBIDDEN);
     if (isRepoKind(request.kind)) return repoRequest(request, request.kind);

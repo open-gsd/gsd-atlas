@@ -14,6 +14,7 @@ import { parseArgs } from 'node:util';
 import { INDEX_STATE_SCHEMA, PROTOCOL_VERSION } from '../host-client/index.ts';
 import type { Envelope, HostClient, IndexStateData, Request } from '../host-client/index.ts';
 import { runAllow } from './allow.ts';
+import { runBug } from './bug.ts';
 import { runDiagnostics } from './diagnostics.ts';
 import { EXIT_FAILURE, EXIT_LEASE_HELD, EXIT_OK, EXIT_USAGE, exitCodeFor } from './exit.ts';
 import { INIT_SCHEMA, runInit } from './init.ts';
@@ -38,9 +39,9 @@ export interface CliIo {
   readonly init?: InitEnvironment;
   /** The working directory relative `--repo` and `--cwd` values are resolved against. Default: this process's. */
   readonly cwd?: string;
-  /** True when standard input and the stream the person reads are a terminal. Only `allow` needs one; absent means none. */
+  /** True when standard input and the stream the person reads are a terminal. Only `allow`, `diagnostics` and `bug` use one; absent means none. */
   readonly isTTY?: boolean;
-  /** Asks one question on the terminal and resolves to the line typed. Only `allow` asks. */
+  /** Asks one question on the terminal and resolves to the line typed. Only `allow`, `diagnostics` and `bug` ask. */
   readonly prompt?: (question: string) => Promise<string>;
 }
 
@@ -232,6 +233,31 @@ export async function runCli(argv: readonly string[], io: CliIo): Promise<number
         module: moduleName,
         argv: moduleName === undefined ? toApprove : undefined,
       });
+    }
+    case 'bug': {
+      if (rest.length > 0) {
+        return usageError(io, 'bug takes no arguments, only flags');
+      }
+      const base = io.cwd ?? path.resolve('.');
+      const text = (value: string | boolean | string[] | undefined): string | undefined => (typeof value === 'string' ? value : undefined);
+      return runBug(
+        io,
+        {
+          repo: typeof values.repo === 'string' ? path.resolve(base, values.repo) : undefined,
+          cwd: typeof values.cwd === 'string' ? path.resolve(base, values.cwd) : undefined,
+          what: text(values.what),
+          expected: text(values.expected),
+          steps: text(values.steps),
+          feature: text(values.feature),
+          rating: text(values.rating),
+          answer: text(values.answer),
+          include: text(values.include),
+          mode: text(values.mode),
+          confirmRaw: values['confirm-raw'] === true,
+          clear: values.clear === true,
+        },
+        (message) => usageError(io, message),
+      );
     }
     case 'diagnostics': {
       const [sub, ...others] = rest;

@@ -17,3 +17,25 @@ export { REPORTS_MAX, STATE_FOLDER, formatSavedReport, listReports, removeState,
 export type { RemovedState, ReportEntry, SaveReportResult, SavedReport } from './reports.ts';
 export type { RenderInput, Report } from './preview.ts';
 export { NOTE_CUT_MARKER, NOTE_MAX_CHARS, REMOVED, scrubNote } from './scrub.ts';
+export { BUG_DEFAULTS, BUG_TYPES, BUG_TYPE_INFO, BUNDLE_FORMAT, RAW_BANNER, buildBundle, renderPreview } from './bundle.ts';
+export type {
+  BugInput,
+  BugType,
+  BugTypeInfo,
+  BuiltBundle,
+  ConfigFacts,
+  FactSummary,
+  FailingData,
+  HealthData,
+  ModuleVersion,
+  PreviewInput,
+  ProblemInput,
+  RecorderData,
+  RecorderEvent,
+  TypeScriptVersion,
+  VersionsData,
+} from './bundle.ts';
+export { HASH_TOKEN_PATTERN, createHasher } from './hash.ts';
+export type { Hasher, RandomSource } from './hash.ts';
+export { LEAF_KINDS, MODES, SanitizeError, leaf, sanitize } from './sanitize.ts';
+export type { Json, Leaf, LeafKind, Mode, Tree } from './sanitize.ts';

@@ -46,6 +46,13 @@ export const FLAGS = {
   note: { type: 'string' },
   rating: { type: 'string' },
   save: { type: 'boolean' },
+  what: { type: 'string' },
+  expected: { type: 'string' },
+  steps: { type: 'string' },
+  answer: { type: 'string' },
+  include: { type: 'string' },
+  'confirm-raw': { type: 'boolean' },
+  clear: { type: 'boolean' },
 } as const;
 
 export type FlagName = keyof typeof FLAGS;
@@ -81,6 +88,13 @@ const DEFAULT_SINCE = '7d';
  */
 export type Positional = 'name' | 'task' | 'tool name' | 'value' | 'handle' | 'none';
 
+/**
+ * The data types and modes of `bug` (SKL-04), as the Host reads them. Kept here because an adapter imports nothing but the
+ * host-client seam; scripts/bug-e2e.test.ts checks these lists against the diagnostics module's.
+ */
+export const BUG_INCLUDE = ['problem', 'versions', 'health', 'recorder', 'failing'] as const;
+export const BUG_MODES = ['hashed', 'redacted', 'raw'] as const;
+
 /** The code tools `history` can answer as of a commit (the Host's `HISTORY_TOOLS`, kept here because an adapter imports only the host-client seam). */
 export const HISTORY_TOOLS = ['find', 'refs', 'context', 'impact'] as const;
 
@@ -88,7 +102,7 @@ export interface Command {
   /** What the user types; `lang list` and `lang test` have two words. */
   readonly name: string;
   /** `tool`: an MCP tool's twin. `index`: a Host request with no MCP tool. `history`: a code tool as of a commit. `lang`, `init`, `allow` and `diagnostics` have their own handlers. */
-  readonly kind: 'tool' | 'index' | 'history' | 'lang' | 'init' | 'allow' | 'diagnostics';
+  readonly kind: 'tool' | 'index' | 'history' | 'lang' | 'init' | 'allow' | 'diagnostics' | 'bug';
   /** The MCP tool whose schema and request builder this command shares. */
   readonly tool?: ToolName;
   /** The Host request kind an `index` command sends. */
@@ -215,6 +229,15 @@ export const COMMANDS: readonly Command[] = [
     flags: [...SELECTION, 'note', 'rating', 'feature', 'save'],
     usage:
       'gsd-atlas diagnostics enable|types|preview|disable|history   (user-controlled diagnostics, off by default: enable walks through each data type and asks; types [<type>...] changes approvals; preview [--note <text>] [--rating up|meh|down] [--feature <name>] [--save] shows the exact report from approved types, and --save keeps it on this machine; disable turns everything off and removes local reports; history lists saved reports. Nothing is ever sent by this version)',
+  },
+  {
+    name: 'bug',
+    kind: 'bug',
+    request: 'bug',
+    positional: 'none',
+    flags: [...SELECTION, 'what', 'expected', 'steps', 'feature', 'rating', 'answer', 'include', 'mode', 'confirm-raw', 'clear'],
+    usage:
+      'gsd-atlas bug [--what <text>] [--expected <text>] [--steps <text>] [--feature <name>] [--rating up|meh|down] [--answer <id>] [--include problem,versions,health,recorder,failing] [--mode hashed|redacted|raw] [--confirm-raw] [--clear] [--repo <dir>] [--cwd <dir>]   (make a LOCAL bundle for a bug report: at a terminal it asks about each data type, which all start denied; names and paths are hashed unless --mode says otherwise; it shows exactly what it writes and never uploads; --clear empties the flight recorder)',
   },
   {
     name: 'lang list',

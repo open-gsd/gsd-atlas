@@ -5,6 +5,7 @@
  */
 export { ALLOW_KIND, ALLOW_SCHEMA, addAllowEntry, applyAllow, needsApprovalFrom, permissionsFor, previewAllow } from './allow.ts';
 export type { AddResult, AllowDeps, AllowEntry, AllowInput, AllowPreview, AllowResult, AllowWritten } from './allow.ts';
+export { BUG_KIND, BUG_REPORTS_PATH, BUG_SCHEMA, BUNDLE_FILE, PREVIEW_FILE } from './bug.ts';
 export { loadUserConfig } from './config.ts';
 export { DIAGNOSTICS_KIND, DIAGNOSTICS_SCHEMA } from './diagnostics.ts';
 export { defaultStateDir, platformFactsOf } from './diagnostics.ts';

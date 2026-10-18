@@ -3,7 +3,7 @@
  * routing and the tenants; adapters only call `host.handle(request)`, through the HostClient seam.
  */
 import type { CommandRunner, UserPermissions } from '../command-runner/index.ts';
-import type { DiagnosticsFs, PlatformFacts } from '../diagnostics/index.ts';
+import type { DiagnosticsFs, PlatformFacts, RandomSource } from '../diagnostics/index.ts';
 import type { Resolver } from '../fact-store/index.ts';
 import type { Clock, Envelope, Request } from '../facts/index.ts';
 import type { Governor } from '../governor/index.ts';
@@ -127,6 +127,16 @@ export interface HostOptions {
     readonly io?: DiagnosticsFs;
     readonly platform?: PlatformFacts;
     readonly agentHost?: string;
+  };
+  /**
+   * TEST HOOK. Tuning of `gsd-atlas bug` (SKL-04): the recorder events copied into a bundle (`bug.excerptEvents`), the
+   * largest bundle written (`bug.bundleMaxBytes`; both in 03-CONSTANTS.md, production omits them) and the source of the
+   * per-bundle hashing key, so a test can pin a token.
+   */
+  readonly bug?: {
+    readonly excerptEvents?: number;
+    readonly bundleMaxBytes?: number;
+    readonly random?: RandomSource;
   };
 }
 
