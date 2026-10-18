@@ -471,6 +471,210 @@ describe('keys command', () => {
   });
 });
 
+const ORACLE_CLI = path.join(import.meta.dirname, 'oracle.ts');
+
+function cli(args: string[]) {
+  return spawnSync(process.execPath, [ORACLE_CLI, ...args], { encoding: 'utf8', env: cleanGitEnv() });
+}
+
+function headOf(dir: string): string {
+  return run(dir, 'git', ['rev-parse', 'HEAD']).trim();
+}
+
+function writeQuestions(file: string, sha: string): void {
+  fs.writeFileSync(
+    file,
+    JSON.stringify({
+      corpusId: 'fixture',
+      corpusSha: sha,
+      questions: [
+        { id: 'q-1', category: 'callers', text: 'Who calls compute?', key: callersOfCompute() },
+        { id: 'q-2', category: 'adr', text: 'Which files cite ADR 2?', key: { kind: 'adr-citers', number: 2, ...REF } },
+        { id: 'q-3', category: 'emit', text: 'Who requires the emitted lib?', key: { kind: 'emit-consumers', source: 'src/lib.cts', ...REF } },
+        { id: 'q-4', category: 'abstain', text: 'Where is the missing thing?', key: { kind: 'abstain', probe: { symbol: 'doesNotExistAnywhere' }, ...FILE } },
+      ],
+    }),
+  );
+}
+
+describe('independence', () => {
+  test('independence: the oracle and the question shapes import only the compiler, zod and Node built-ins', () => {
+    const allowed = (specifier: string): boolean =>
+      specifier.startsWith('node:') || specifier === 'typescript' || specifier === 'zod' || specifier === './questions.ts';
+    for (const name of ['oracle.ts', 'questions.ts']) {
+      const text = fs.readFileSync(path.join(import.meta.dirname, name), 'utf8');
+      const specifiers = [...text.matchAll(/(?:\bfrom\s+|\bimport\s*\(\s*|\brequire\s*\(\s*|\bimport\s+)['"]([^'"]+)['"]/g)].map(
+        (match) => match[1],
+      );
+      assert.ok(specifiers.length > 0, `${name}: no import found, the check would be vacuous`);
+      for (const specifier of specifiers) {
+        assert.ok(allowed(specifier), `${name} imports ${specifier}`);
+        assert.ok(!specifier.includes('src/'), `${name} imports from src/: ${specifier}`);
+        assert.ok(!specifier.includes('web-tree-sitter'), `${name} imports web-tree-sitter`);
+        assert.ok(!specifier.endsWith('/index.ts'), `${name} imports an index module: ${specifier}`);
+      }
+      for (const forbidden of ['.gsd-atlas', 'facts.db', 'gsd-atlas-mcp']) {
+        assert.ok(!text.includes(forbidden), `${name} names ${forbidden}`);
+      }
+    }
+  });
+});
+
+describe('encoding', () => {
+  test('CRLF and BOM: the same lines as the LF fixture for callers, ADR citers and emit consumers', async () => {
+    const lf = fixtureCtx();
+    const repo = tempRepo((_rel, text) => `﻿${text.replace(/\n/g, '\r\n')}`);
+    try {
+      const specs: KeySpec[] = [
+        callersOfCompute(),
+        { kind: 'adr-citers', number: 1, ...REF },
+        { kind: 'adr-citers', number: 2, ...REF },
+        { kind: 'adr-citers', number: 3, ...REF },
+        { kind: 'emit-consumers', source: 'src/lib.cts', ...REF },
+        { kind: 'references', symbol: 'compute', definedIn: 'src/lib.cts', ...REF },
+      ];
+      for (const spec of specs) {
+        const expected = await computeAnswerKey(spec, lf);
+        const actual = await computeAnswerKey(spec, repo.ctx);
+        assert.deepEqual(actual.items, expected.items, `${spec.kind}`);
+        assert.deepEqual(actual.unexplained, []);
+      }
+    } finally {
+      repo.cleanup();
+    }
+  });
+
+  test('U+2028 is not a line break: the line of a call is the editor line', async () => {
+    const baseline = await computeAnswerKey(callersOfCompute(), fixtureCtx());
+    const repo = tempRepo((rel, text) =>
+      rel === 'src/user.cts' ? text.replace('// The require below', `export const sep = \`a b\`;\n// The require below`) : text,
+    );
+    try {
+      const shifted = await computeAnswerKey(callersOfCompute(), repo.ctx);
+      assert.deepEqual(
+        shifted.items.map((item) => `${item.file}:${item.line}`),
+        baseline.items.map((item) => `${item.file}:${(item.line as number) + (item.file === 'src/user.cts' ? 1 : 0)}`),
+      );
+    } finally {
+      repo.cleanup();
+    }
+  });
+
+  test('U+2028 inside a string literal before a call does not move the call', async () => {
+    const baseline = await computeAnswerKey(callersOfCompute(), fixtureCtx());
+    const repo = tempRepo((rel, text) =>
+      rel === 'src/user.cts' ? text.replace('// The require below', `export const sep = "a b";\n// The require below`) : text,
+    );
+    try {
+      const shifted = await computeAnswerKey(callersOfCompute(), repo.ctx);
+      const userLines = (answer: typeof baseline) =>
+        answer.items.filter((item) => item.file === 'src/user.cts').map((item) => item.line as number);
+      assert.deepEqual(
+        userLines(shifted),
+        userLines(baseline).map((line) => line + 1),
+      );
+    } finally {
+      repo.cleanup();
+    }
+  });
+
+  test('comment detection: // inside a string, a regular expression or a template is not a comment', async () => {
+    const repo = tempRepo(undefined, {
+      'src/tricky.cts':
+        "export const url = 'http://example.invalid/ADR-7'; // ADR-8 trailing\n" +
+        'export const pattern = /\\/\\/ ADR-6/;\n' +
+        'export const tpl = `// ADR-5 ${1}`;\n' +
+        '/* ADR-4\n   spans lines, ADR-4 §2 */\n',
+    });
+    try {
+      const cites = async (number: number) =>
+        (await computeAnswerKey({ kind: 'adr-citers', number, ...REF }, repo.ctx));
+      assert.deepEqual((await cites(8)).items, [{ file: 'src/tricky.cts', line: 1 }]);
+      assert.deepEqual((await cites(7)).items, []);
+      assert.equal((await cites(7)).notes.excludedNonComment, 1);
+      assert.deepEqual((await cites(6)).items, []);
+      assert.deepEqual((await cites(5)).items, []);
+      assert.equal((await cites(5)).notes.excludedNonComment, 1);
+      assert.deepEqual((await cites(4)).items, [
+        { file: 'src/tricky.cts', line: 4 },
+        { file: 'src/tricky.cts', line: 5, detail: '§2' },
+      ]);
+    } finally {
+      repo.cleanup();
+    }
+  });
+});
+
+describe('command line', () => {
+  test('check mode: exits 0 on unchanged input, 1 with the question id after a fixture line changes', () => {
+    const repo = tempRepo();
+    const scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'oracle-check-'));
+    try {
+      const questions = path.join(scratch, 'questions.json');
+      const answers = path.join(scratch, 'answers.json');
+      writeQuestions(questions, headOf(repo.dir));
+      const base = ['--repo', repo.dir, '--tsconfig', 'tsconfig.json', '--questions', questions];
+      assert.equal(cli(['keys', ...base, '--out', answers]).status, 0);
+      assert.equal(cli(['check', ...base, '--answers', answers]).status, 0);
+
+      const user = path.join(repo.dir, 'src', 'user.cts');
+      fs.writeFileSync(user, `// one more line at the top\n${fs.readFileSync(user, 'utf8')}`);
+      const changed = cli(['check', ...base, '--answers', answers]);
+      assert.equal(changed.status, 1);
+      assert.match(changed.stderr, /q-1: item (removed|added)/);
+      assert.match(changed.stderr, /q-2: item (removed|added)/);
+      assert.ok(!/q-4/.test(changed.stderr), 'an unchanged question is not reported');
+    } finally {
+      fs.rmSync(scratch, { recursive: true, force: true });
+      repo.cleanup();
+    }
+  });
+
+  test('check mode without arguments prints a usage message and exits 2', () => {
+    const result = cli(['check']);
+    assert.equal(result.status, 2);
+    assert.match(result.stderr, /usage/);
+    assert.equal(cli([]).status, 2);
+  });
+
+  test('deterministic output: two runs of keys write byte-identical files without absolute paths', () => {
+    const repo = tempRepo();
+    const scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'oracle-det-'));
+    try {
+      const questions = path.join(scratch, 'questions.json');
+      writeQuestions(questions, headOf(repo.dir));
+      const base = ['--repo', repo.dir, '--tsconfig', 'tsconfig.json', '--questions', questions];
+      const first = path.join(scratch, 'first.json');
+      const second = path.join(scratch, 'second.json');
+      assert.equal(cli(['keys', ...base, '--out', first]).status, 0);
+      assert.equal(cli(['keys', ...base, '--out', second]).status, 0);
+      const bytes = fs.readFileSync(first);
+      assert.ok(bytes.equals(fs.readFileSync(second)));
+      const parsed = AnswerFileSchema.parse(JSON.parse(bytes.toString('utf8')));
+      assert.equal(parsed.repoSha, headOf(repo.dir));
+      assert.ok(!bytes.toString('utf8').includes(repo.dir), 'no absolute path of the checkout in the output');
+      assert.ok(!/\d{4}-\d{2}-\d{2}T/.test(bytes.toString('utf8')), 'no timestamp in the output');
+    } finally {
+      fs.rmSync(scratch, { recursive: true, force: true });
+      repo.cleanup();
+    }
+  });
+
+  test('a directory outside a git work tree is refused with a clear error', async () => {
+    const dir = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'oracle-nogit-')));
+    try {
+      fs.writeFileSync(path.join(dir, 'tsconfig.json'), '{ "include": ["a.ts"] }');
+      fs.writeFileSync(path.join(dir, 'a.ts'), 'export const a = 1;\n');
+      await assert.rejects(
+        computeAnswerKey({ kind: 'definition', symbol: 'a', definedIn: 'a.ts', ...REF }, { repoDir: dir, tsconfig: 'tsconfig.json' }),
+        (error: unknown) => error instanceof OracleError && error.code === 'NOT_A_GIT_WORK_TREE',
+      );
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
 describe('safety', () => {
   test('a tsconfig whose extends leaves the repository is refused', async () => {
     const repo = tempRepo((rel, text) =>
