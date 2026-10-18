@@ -240,3 +240,11 @@ Files in the store directory:
 | --- | --- |
 | `lease.db` | The lock. The holder keeps a connection open with an exclusive transaction; whoever cannot take it is a follower. |
 | `lease.json` | Diagnostics only, never used to decide ownership: `pid`, `startedAt` (milliseconds since the epoch), `version`. Present while a process holds the lease. |
+
+## See also
+
+- [gsd-atlas command-line reference](cli.md)
+- [How to register the MCP server with Claude Code, Cursor and Codex](../how-to/register-the-mcp-server.md)
+- [How to keep the store healthy](../how-to/keep-the-store-healthy.md)
+- [About how freshness and the writer lease work](../explanation/how-freshness-and-the-writer-lease-work.md)
+- [MCP tool contract and CLI parity](../adr/13-mcp-contract.md): the decision record

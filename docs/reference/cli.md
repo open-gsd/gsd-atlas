@@ -374,3 +374,14 @@ A file that is larger than the cap, cannot be read, is not valid JSON or has a w
 By default the store is the folder `gsd-atlas` inside the repository's git common directory, shared by every worktree of the repository; nothing is written to the working tree. The folder holds `facts.db`, `lease.db`, `metrics.db` and, while a process holds the writer lease, `lease.json`.
 
 The store moves to `<cache root>/gsd-atlas/<store id>` when the git common directory is missing, not writable, inside a synced folder (iCloud Drive, Dropbox, OneDrive, Google Drive), on a network mount, or when `gsd-atlas` there is itself a symbolic link. A `store.dir` or `GSD_ATLAS_STORE_DIR` setting wins over all of this and puts the store at `<dir>/<store id>`. Only `build` creates a store.
+
+## See also
+
+- [Index a repository and ask it questions](../tutorials/index-and-ask.md): a first lesson
+- [How to register the MCP server with Claude Code, Cursor and Codex](../how-to/register-the-mcp-server.md)
+- [How to answer a question about an older commit](../how-to/answer-a-question-about-an-older-commit.md)
+- [How to keep the store healthy](../how-to/keep-the-store-healthy.md)
+- [How to run the measured gates locally](../how-to/run-the-measured-gates-locally.md)
+- [How to contribute a change](../how-to/contribute-a-change.md)
+- [gsd-atlas MCP reference](mcp.md)
+- [About how freshness and the writer lease work](../explanation/how-freshness-and-the-writer-lease-work.md)
