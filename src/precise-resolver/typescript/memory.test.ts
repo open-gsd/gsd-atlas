@@ -62,7 +62,8 @@ const NO_OVERLAY: OverlaySnapshot = { id: 'overlay-1', pathToHash: new Map() };
 const contextOf = (id: string): ResolutionContext => ({ id, configHashes: [] });
 const everything: SymbolLookup = {
   find: async () => [],
-  findIn: async (p, name) => [{ repo: 'r', path: p, qualifiedName: name, kind: 'function', span: span(0, 0, 1000, 0) }],
+  // `compute` of LIB, as the grammar tier stores it: the declaration without its `export`, to the closing brace.
+  findIn: async (p, name) => [{ repo: 'r', path: p, qualifiedName: name, kind: 'function', span: span(0, 7, 2, 1) }],
 };
 /** `compute(1)` in `src/user.cts`: row 3 (0-based), column 9. */
 const SITE: RefSiteKey = { path: 'src/user.cts', span: span(3, 9, 3, 16), name: 'compute' };

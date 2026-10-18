@@ -11,7 +11,7 @@ import type { TestContext } from 'node:test';
 import { allowAll, compilerWorkerShape, createRealRunner } from '../../command-runner/index.ts';
 import type { CommandRunner, CommandSpec } from '../../command-runner/index.ts';
 import { PROTOCOL_VERSION } from '../../facts/index.ts';
-import type { Envelope, OverlaySnapshot, PreciseFacts, RefSiteKey, ResolutionContext, ResolvedEdge, SymbolLookup } from '../../facts/index.ts';
+import type { Envelope, LocatedSymbol, OverlaySnapshot, PreciseFacts, RefSiteKey, ResolutionContext, ResolvedEdge, SymbolLookup } from '../../facts/index.ts';
 import { createGrammarEngine } from '../../grammar-engine/index.ts';
 import { createHost } from '../../host/index.ts';
 import { createManualEventSource } from '../../indexer/index.ts';
@@ -55,10 +55,45 @@ const OTHER = 'export function twice(n: number): number {\n  return n * 2;\n}\n'
 const FIXTURE: Readonly<Record<string, string>> = { 'tsconfig.json': TSCONFIG, 'src/lib.cts': LIB, 'src/user.cts': USER, 'src/other.cts': OTHER };
 
 const span = (startLine: number, startColumn: number, endLine: number, endColumn: number) => ({ startLine, startColumn, endLine, endColumn });
-const everything: SymbolLookup = {
-  find: async () => [],
-  findIn: async (p, name) => [{ repo: 'r', path: p, qualifiedName: name, kind: 'function', span: span(0, 0, 1000, 0) }],
-};
+
+/**
+ * The store's lookup for the project on disk: each `function name(...) { ... }` of a file with the extent the grammar tier stores
+ * (from the keyword `function`, which leaves out `export`, to the closing brace). A symbol that is not the declaration maps to
+ * nothing, so a lookup that claims a span for everything would hide the answers these tests are about.
+ */
+function functionsOn(dir: string): SymbolLookup {
+  return {
+    find: async () => [],
+    findIn: async (p, name) => {
+      const file = path.join(dir, p);
+      if (!fs.existsSync(file)) return [];
+      const text = fs.readFileSync(file, 'utf8');
+      const found: LocatedSymbol[] = [];
+      const keyword = new RegExp(`function\\s+${name}\\b`, 'g');
+      for (let match = keyword.exec(text); match !== null; match = keyword.exec(text)) {
+        const open = text.indexOf('{', match.index);
+        let depth = 0;
+        let close = open;
+        for (let at = open; at < text.length; at += 1) {
+          if (text[at] === '{') depth += 1;
+          if (text[at] === '}') depth -= 1;
+          if (depth === 0) {
+            close = at;
+            break;
+          }
+        }
+        const position = (offset: number): [number, number] => {
+          const before = text.slice(0, offset).split('\n');
+          return [before.length - 1, (before[before.length - 1] ?? '').length];
+        };
+        const [startLine, startColumn] = position(match.index);
+        const [endLine, endColumn] = position(close + 1);
+        found.push({ repo: 'r', path: p, qualifiedName: name, kind: 'function', span: span(startLine, startColumn, endLine, endColumn) });
+      }
+      return found;
+    },
+  };
+}
 
 /** The site of the first `name(` call in `file`'s text: row, column of the identifier. */
 function siteIn(file: string, text: string, name: string): RefSiteKey {
@@ -136,7 +171,7 @@ function rig(files: Readonly<Record<string, string>> = FIXTURE, deps: Partial<Ty
     async read(sites, context = contextOf('ctx-1'), given = facts) {
       const overlay: OverlaySnapshot = { id: `overlay-${String((version += 1))}`, pathToHash: new Map(hashes) };
       const targets = new Map<string, string[]>();
-      for await (const item of resolver.resolveScoped(given, overlay, context, sites, everything)) {
+      for await (const item of resolver.resolveScoped(given, overlay, context, sites, functionsOn(project.dir))) {
         if ('kind' in item && item.kind === 'notice') continue;
         const edge = item as ResolvedEdge;
         const list = targets.get(edge.site.name) ?? [];

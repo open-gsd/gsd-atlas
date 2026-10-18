@@ -4,7 +4,8 @@
  * Parent to worker: `init`, `resolve`, `relations`, `update`, `ping`. Worker to parent: `ready`, `edge`, `relation`, `done`,
  * `error`. A site is the
  * grammar tier's position (0-based row counted on LF only, UTF-16 column, BOM stripped); a target is a declaration's
- * name token as a repository-relative POSIX path plus its position and the compiler's name for the declaration's kind.
+ * name token as a repository-relative POSIX path plus its position, the compiler's name for the declaration's kind and the
+ * extent of the declaration node.
  *
  * Nothing the validators report quotes the input: a message names the field and the kind of problem only, because the
  * line came from a process that runs repository-influenced code and may carry file text.
@@ -40,6 +41,15 @@ const Target = z.strictObject({
   col: row,
   name: z.string().min(1).max(MAX_NAME_CHARS),
   kind: z.string().min(1).max(128),
+  /**
+   * The extent of the declaration node itself (the grammar tier's position model, end exclusive): where its first token
+   * (a modifier, a decorator or the name) starts and where its last token ends. The host uses it to tell the grammar symbol
+   * that IS the declaration from a symbol that only holds its name token (identity.ts).
+   */
+  startRow: row,
+  startCol: row,
+  endRow: row,
+  endCol: row,
 });
 
 const Id = z.int().min(0).max(Number.MAX_SAFE_INTEGER);

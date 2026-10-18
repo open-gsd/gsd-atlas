@@ -380,11 +380,13 @@ const lookupOf = (symbols: readonly LocatedSymbol[]): SymbolLookup => ({
 });
 
 describe('identity mapping', () => {
-  const target = { path: 'src/lib.cts', row: 4, col: 8, name: 'run', kind: 'MethodDeclaration' };
+  // `  run() {` ... `  }` of a class `Box`: the name at (4, 8), the declaration from (4, 2) to (6, 3).
+  const target = { path: 'src/lib.cts', row: 4, col: 8, name: 'run', kind: 'MethodDeclaration', startRow: 4, startCol: 2, endRow: 6, endCol: 3 };
 
-  it('identity innermost: a declaration inside two overlapping grammar symbols maps to the innermost one', async () => {
-    const outer = located('run', span(0, 0, 10, 1));
-    const inner = located('Box.run', span(3, 2, 6, 3), 'method');
+  it('identity innermost: of two symbols of the right kind that hold the name token, the one that is the declaration wins', async () => {
+    // The class method is the declaration; a method named like it that spans the whole class holds the token without being it.
+    const outer = located('run', span(0, 0, 10, 1), 'method');
+    const inner = located('Box.run', span(4, 2, 6, 3), 'method');
     const identity = await mapTarget(target, lookupOf([outer, inner]));
     assert.equal(identity?.qualifiedName, 'Box.run');
     assert.equal(identity?.kind, 'method');
@@ -392,19 +394,25 @@ describe('identity mapping', () => {
   });
 
   it('two equally tight symbols are ambiguous and map to nothing', async () => {
-    const a = located('run', span(3, 2, 6, 3));
-    const b = located('Other.run', span(3, 2, 6, 3), 'method');
+    const a = located('run', span(4, 2, 6, 3), 'method');
+    const b = located('Other.run', span(4, 2, 6, 3), 'method');
     assert.equal(await mapTarget(target, lookupOf([a, b])), null);
   });
 
   it('a declaration outside every symbol, or with no symbol of that name, maps to nothing', async () => {
-    assert.equal(await mapTarget(target, lookupOf([located('run', span(0, 0, 2, 1))])), null);
+    assert.equal(await mapTarget(target, lookupOf([located('run', span(0, 0, 2, 1), 'method')])), null);
     assert.equal(await mapTarget(target, lookupOf([])), null);
   });
 
-  it('a symbol that ends exactly at the name token does not contain it (the end is exclusive)', async () => {
-    assert.equal(await mapTarget(target, lookupOf([located('run', span(0, 0, 4, 8))])), null);
-    assert.notEqual(await mapTarget(target, lookupOf([located('run', span(0, 0, 4, 9))])), null);
+  it('a symbol that starts after the name token, or ends at it, does not contain it (the end is exclusive)', async () => {
+    // A variable's declarator starts at the name: a start at the token holds it. A start after it does not.
+    const variable = { path: 'src/lib.cts', row: 4, col: 8, name: 'run', kind: 'VariableDeclaration', startRow: 4, startCol: 8, endRow: 4, endCol: 20 };
+    assert.notEqual(await mapTarget(variable, lookupOf([located('run', span(4, 8, 4, 20), 'constant')])), null);
+    assert.equal(await mapTarget(variable, lookupOf([located('run', span(4, 9, 4, 20), 'constant')])), null);
+    // A symbol that ends exactly at the name token is out, though a declaration this short is only the name itself.
+    const bare = { ...variable, endCol: 11 };
+    assert.equal(await mapTarget(bare, lookupOf([located('run', span(4, 8, 4, 8), 'constant')])), null);
+    assert.notEqual(await mapTarget(bare, lookupOf([located('run', span(4, 8, 4, 11), 'constant')])), null);
   });
 });
 
@@ -484,7 +492,8 @@ function contractSubject(): PreciseResolverSubject {
   live.push(resolver);
   const everything: SymbolLookup = {
     find: async () => [],
-    findIn: async (p, name) => [{ repo: 'r', path: p, qualifiedName: name, kind: 'function', span: span(0, 0, 1000, 0) }],
+    // `compute` of lib.cts and of other.cts, as the grammar tier stores it: the declaration without its `export`.
+    findIn: async (p, name) => [{ repo: 'r', path: p, qualifiedName: name, kind: 'function', span: span(0, 7, 2, 1) }],
   };
   return {
     // The subject's environment supplies the lookup the store would pass, whatever the contract passes.
@@ -795,7 +804,7 @@ describe('an untrusted worker (T-03-232, T-03-233)', () => {
     '  if (m.t === "init") return send({ t: "ready", compiler: { version: "6.0.3", source: "bundled" }, rssMb: 1, pid: process.pid });',
     '  if (m.t !== "resolve") return;',
     '  const s = m.sites[0];',
-    '  const target = { path: "src/lib.cts", row: 0, col: 16, name: "compute", kind: "FunctionDeclaration" };',
+    '  const target = { path: "src/lib.cts", row: 0, col: 16, name: "compute", kind: "FunctionDeclaration", startRow: 0, startCol: 7, endRow: 2, endCol: 1 };',
     '  if (mode === "flood") { for (let i = 0; i < 3; i += 1) send({ t: "edge", id: m.id, site: s, targets: [target] }); return send({ t: "done", id: m.id, asked: 1, answered: 3 }); }',
     '  if (mode === "garbage") return process.stdout.write("this is not json\\n");',
     '  if (mode === "escape") { send({ t: "edge", id: m.id, site: s, targets: [{ ...target, path: "../../etc/passwd" }] }); return send({ t: "done", id: m.id, asked: 1, answered: 1 }); }',
@@ -822,7 +831,7 @@ describe('an untrusted worker (T-03-232, T-03-233)', () => {
   const SITE = site('src/user.cts', 6, 9, 'compute');
   const anyLookup: SymbolLookup = {
     find: async () => [],
-    findIn: async (p, name) => [{ repo: 'r', path: p, qualifiedName: name, kind: 'function', span: span(0, 0, 1000, 0) }],
+    findIn: async (p, name) => [{ repo: 'r', path: p, qualifiedName: name, kind: 'function', span: span(0, 7, 2, 1) }],
   };
 
   async function drain(resolver: TypeScriptResolver): Promise<unknown[]> {
@@ -872,8 +881,8 @@ describe('an untrusted worker: relations (T-03-251)', () => {
     'const mode = __MODE__;',
     'const rl = readline.createInterface({ input: process.stdin });',
     'const send = (o) => process.stdout.write(JSON.stringify(o) + "\\n");',
-    'const base = { path: "src/lib.cts", row: 4, col: 13, name: "Base", kind: "ClassDeclaration" };',
-    'const sub = { path: "src/user.cts", row: 5, col: 13, name: "Sub", kind: "ClassDeclaration" };',
+    'const base = { path: "src/lib.cts", row: 4, col: 13, name: "Base", kind: "ClassDeclaration", startRow: 4, startCol: 0, endRow: 8, endCol: 1 };',
+    'const sub = { path: "src/user.cts", row: 5, col: 13, name: "Sub", kind: "ClassDeclaration", startRow: 5, startCol: 0, endRow: 9, endCol: 1 };',
     'rl.on("line", (line) => {',
     '  const m = JSON.parse(line);',
     '  if (m.t === "init") return send({ t: "ready", compiler: { version: "6.0.3", source: "bundled" }, rssMb: 1, pid: process.pid });',
@@ -901,9 +910,10 @@ describe('an untrusted worker: relations (T-03-251)', () => {
     return resolver;
   }
 
+  // The two classes of the fake worker, each with the extent its target names (a symbol that is not the declaration maps to nothing).
   const anyLookup: SymbolLookup = {
     find: async () => [],
-    findIn: async (p, name) => [{ repo: 'r', path: p, qualifiedName: name, kind: 'class', span: span(0, 0, 1000, 0) }],
+    findIn: async (p, name) => [{ repo: 'r', path: p, qualifiedName: name, kind: 'class', span: name === 'Base' ? span(4, 0, 8, 1) : span(5, 0, 9, 1) }],
   };
 
   async function drain(resolver: TypeScriptResolver, lookup: SymbolLookup = anyLookup): Promise<unknown[]> {

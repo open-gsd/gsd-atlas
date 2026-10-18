@@ -287,7 +287,21 @@ function targetOfDeclaration(api: Compiler, entry: ProgramEntry, declaration: ts
   const start = nameNode.getStart(file) - info.shift;
   if (start < 0) return undefined;
   const { row, col } = positionOf(info.starts, start);
-  return { path: repoPath, row, col, name: nameNode.text, kind: api.SyntaxKind[declaration.kind] ?? 'Unknown' };
+  // The node's own extent (JSDoc excluded, modifiers and decorators included): the host needs it to tell the grammar symbol that
+  // is this declaration from one that only holds the name token (identity.ts).
+  const from = positionOf(info.starts, Math.max(0, declaration.getStart(file) - info.shift));
+  const to = positionOf(info.starts, Math.max(0, declaration.getEnd() - info.shift));
+  return {
+    path: repoPath,
+    row,
+    col,
+    name: nameNode.text,
+    kind: api.SyntaxKind[declaration.kind] ?? 'Unknown',
+    startRow: from.row,
+    startCol: from.col,
+    endRow: to.row,
+    endCol: to.col,
+  };
 }
 
 function targetsOf(api: Compiler, entry: ProgramEntry, symbol: ts.Symbol): Target[] {
