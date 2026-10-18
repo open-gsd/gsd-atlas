@@ -86,13 +86,14 @@ interface CallResult {
 }
 
 describe('buildMcpServer: the default profile (D-07, QRY-06)', () => {
-  it('registers exactly the six shared tools, each read-only with a strict schema, and nothing else', async () => {
+  it('registers exactly the seven shared tools, each read-only with a strict schema, and nothing else', async () => {
     const mcp = await connect(recordingClient(CANNED));
     try {
       const listed = await mcp.request('tools/list');
       const tools = (listed.result as { tools: ListedTool[] }).tools;
       assert.deepEqual(tools.map((tool) => tool.name).sort(), [...TOOL_NAMES].sort());
-      assert.equal(tools.length, 6);
+      assert.equal(tools.length, 7);
+      assert.ok(tools.some((tool) => tool.name === 'code_explain'), 'code_explain is the seventh tool (QRY-07)');
       for (const tool of tools) {
         assert.equal(tool.annotations?.readOnlyHint, true, `${tool.name} is read-only`);
         assert.equal(tool.inputSchema?.additionalProperties, false, `${tool.name} refuses unknown arguments`);
@@ -114,7 +115,9 @@ describe('buildMcpServer: the default profile (D-07, QRY-06)', () => {
         assert.doesNotMatch(tool.name, /rat(e|ing)/, tool.name);
         const schema = JSON.stringify(tool.inputSchema);
         assert.doesNotMatch(schema, /"(up|meh|down)"/, `${tool.name} offers no rating value`);
-        assert.doesNotMatch(schema, /"(value|rating|scope|answer_id)"\s*:/, `${tool.name} takes no rating argument`);
+        assert.doesNotMatch(schema, /"(value|rating|scope)"\s*:/, `${tool.name} takes no rating argument`);
+        // `code_explain` names an earlier answer by its id to explain it (plan 03-26); that rates nothing, and no other tool takes an id.
+        if (tool.name !== 'code_explain') assert.doesNotMatch(schema, /"answer_id"\s*:/, `${tool.name} takes no answer id`);
       }
       const called = await mcp.call('rate', { value: 'up', scope: 'answer' });
       const result = called.result as CallResult | undefined;
@@ -169,7 +172,7 @@ describe('buildMcpServer: tool calls', () => {
     }
   });
 
-  it('every one of the six tools builds its request with buildRequest', async () => {
+  it('every one of the seven tools builds its request with buildRequest', async () => {
     const client = recordingClient(CANNED);
     const mcp = await connect(client);
     try {
@@ -180,6 +183,7 @@ describe('buildMcpServer: tool calls', () => {
         code_impact: { name: 'x', depth: 1 },
         atlas_status: { repo: '/r' },
         lang_list: {},
+        code_explain: { handle: 'sym/src%2Fa.ts/0000000000000000000000000000000000000001/0', repo: '/r' },
       };
       for (const name of TOOL_NAMES) await mcp.call(name, inputs[name] as Record<string, unknown>);
       assert.deepEqual(
@@ -239,7 +243,7 @@ describe('buildMcpServer: tool calls', () => {
       assert.doesNotMatch(failed.content[0]?.text ?? '', /secret detail|private/, 'the thrown text never reaches the agent');
       assert.equal(reported.length, 1, 'the cause goes to the operator through onError');
       const again = await send(3, 'tools/list', {});
-      assert.equal((again.result as { tools: unknown[] }).tools.length, 6);
+      assert.equal((again.result as { tools: unknown[] }).tools.length, 7);
     } finally {
       await clientSide.close();
       await server.close();

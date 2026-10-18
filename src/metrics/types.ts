@@ -19,6 +19,7 @@ export const TOOL_NAMES = [
   'code_impact',
   'atlas_status',
   'lang_list',
+  'code_explain',
 ] as const;
 export type ToolName = (typeof TOOL_NAMES)[number];
 

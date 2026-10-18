@@ -70,6 +70,7 @@ const readerShape = {
   importers: async () => ({ data: [], watermark: { seq: 0, stalePaths: [] } }),
   emittedAs: async () => ({ data: [], watermark: { seq: 0, stalePaths: [] } }),
   relations: async () => ({ data: [], watermark: { seq: 0, stalePaths: [] } }),
+  provenance: async () => ({ data: null, watermark: { seq: 0, stalePaths: [] } }),
 } satisfies Reader;
 
 describe('fact-store interface', () => {
@@ -82,10 +83,11 @@ describe('fact-store interface', () => {
     assert.equal(open, undefined);
   });
 
-  it('exports the four error classes, openFactStore, the store-location functions and the specifier rule as values, and nothing else (no fake store)', async () => {
+  it('exports the four error classes, openFactStore, the store-location functions, the specifier rule and the handle grammar as values, and nothing else (no fake store)', async () => {
     const mod = await import('./index.ts');
     assert.deepStrictEqual(Object.keys(mod).sort(), [
       'IDLE_MAINTENANCE',
+      'MAX_HANDLE_CHARS',
       'SchemaTooNew',
       'StoreClosed',
       'UnknownWorktree',
@@ -94,8 +96,10 @@ describe('fact-store interface', () => {
       'decideStoreLocation',
       'defaultCacheRoot',
       'findExistingStore',
+      'formatHandle',
       'isSyncedFolderPath',
       'openFactStore',
+      'parseHandle',
       'probeStore',
       'resolveSpecifier',
       'resolveStoreLocation',

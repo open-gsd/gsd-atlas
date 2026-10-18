@@ -13,6 +13,7 @@ export const CODE_REFS_SCHEMA = 'gsd-atlas.code-refs/1';
 export const CODE_CONTEXT_SCHEMA = 'gsd-atlas.code-context/1';
 export const CODE_IMPACT_SCHEMA = 'gsd-atlas.code-impact/1';
 export const ATLAS_STATUS_SCHEMA = 'gsd-atlas.atlas-status/1';
+export const CODE_EXPLAIN_SCHEMA = 'gsd-atlas.code-explain/1';
 
 /** An error envelope with one diagnostic. `message` must not carry unnormalized repo text. */
 export function errorEnvelope(code: string, message: string, extras?: EnvelopeExtras): Envelope {

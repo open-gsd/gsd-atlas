@@ -6,7 +6,7 @@
  * the hooks are adapters that hand it a `Request` and return the `Envelope` unchanged.
  */
 import type { FactStore, Reader, StoreStatus } from '../fact-store/index.ts';
-import type { Clock, Envelope, Request } from '../facts/index.ts';
+import type { Clock, DegradedCode, Envelope, Request } from '../facts/index.ts';
 import type { GovernorStatus } from '../governor/index.ts';
 import type { SourceTree } from '../source-tree/index.ts';
 
@@ -102,9 +102,64 @@ export interface StatusPort {
   policy(): PolicyMode;
 }
 
+/** The state of the precise tier as `code_explain` reports it (plan 03-26). All are fixed words. */
+export type PreciseState = 'active' | 'degraded' | 'inactive' | 'needs_approval' | 'disabled';
+
+/**
+ * What a Tenant says about the precise tier of one worktree, from state it already holds (the module registry, the user's
+ * `providers` setting, the project description and what the last answers reported): it never probes the compiler and never
+ * starts a worker. Every string is a fixed sentence; the compiler's name, version, source and case are data of a closed set.
+ */
+export interface TierInfo {
+  readonly precise: PreciseState;
+  /** A fixed sentence that says why the tier is not `active`. */
+  readonly reason?: string;
+  /** `degraded` only: the degraded code the worker's last failure carried. */
+  readonly code?: DegradedCode;
+  /** The compiler the tier resolves with, when it has one: the project's own (`project`) or the bundled one (`bundled`). */
+  readonly compiler?: {
+    readonly name: string;
+    readonly version: string;
+    readonly source: 'project' | 'bundled';
+    /** The install case (`none`, `project-6`, `project-7-unstable`, ...). */
+    readonly case: string;
+    /** The fixed reason a bundled compiler was used instead of the project's; absent for a project compiler. */
+    readonly reason?: string;
+  };
+}
+
+/** One answer the flight recorder remembers, as `code_explain` needs it (the Tenant maps its recorder events to this). */
+export interface RecordedAnswer {
+  readonly id: string;
+  readonly tool: string;
+  readonly outcome: string;
+  /** The latency bucket label (`le50`, `inf`). */
+  readonly ms: string;
+  readonly degraded: readonly string[];
+  readonly count: number;
+  /** The citation handles of the answer, at most the recorder's cap. */
+  readonly handles: readonly string[];
+}
+
+/**
+ * The state `code_explain` reads beyond the Fact Store, through ports the Tenant injects (the same pattern as
+ * {@link StatusPort}): the tier information of a worktree, the answers the flight recorder holds, and the grammar version a
+ * module reports now. Absent, `code_explain` still explains the facts, with the tier `inactive`, no answer lookup and no
+ * grammar comparison.
+ */
+export interface ExplainPort {
+  tierInfo(worktree: string): Promise<TierInfo>;
+  /** The recorded answer with this id, or null when the recorder does not hold it (it is capped and per repository). */
+  answer(id: string): RecordedAnswer | null;
+  /** The grammar version the loaded module reports now, or undefined when it is not loaded. */
+  grammarVersion(module: string): string | undefined;
+}
+
 export interface QueryDeps {
   /** Reads only: Query asks for a Reader per request and never writes. */
   readonly store: Pick<FactStore, 'at'>;
+  /** Absent: `code_explain` reports the precise tier as inactive and cannot look an answer id up. */
+  readonly explain?: ExplainPort;
   /** Absent: `atlas_status` answers `unavailable`. */
   readonly status?: StatusPort;
   /** The only way Query sees file text: confined to the worktree, no symlink escape, size capped. */

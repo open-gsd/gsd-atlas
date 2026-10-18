@@ -9,15 +9,20 @@ export { HEALTH_REASONS, POLICY_OFF } from './status.ts';
 export type { HealthReason, StatusSnapshot } from './status.ts';
 export { TOOLS, TOOL_NAMES, buildRequest } from './tools.ts';
 export type { ToolDefinition, ToolName } from './tools.ts';
+export { EXPLAIN_MESSAGES, MAX_ANSWER_FACTS } from './explain.ts';
 export type {
   Edge,
+  ExplainPort,
   FreshPort,
   FreshReport,
   IndexerStatusLike,
   PolicyMode,
+  PreciseState,
   Query,
   QueryConfig,
   QueryDeps,
+  RecordedAnswer,
   StatusPort,
   TierActive,
+  TierInfo,
 } from './types.ts';

@@ -87,9 +87,45 @@ describe('refs, context and impact: request equality with buildRequest', () => {
 
   it('every tool command has a tool definition in TOOLS, so the schema it validates against is the MCP one', () => {
     const names = TOOLS.map((tool) => tool.name);
-    for (const name of ['code_find', 'code_refs', 'code_context', 'code_impact', 'atlas_status']) {
+    for (const name of ['code_find', 'code_refs', 'code_context', 'code_impact', 'atlas_status', 'code_explain']) {
       assert.ok(names.includes(name as (typeof names)[number]), name);
     }
+  });
+});
+
+describe('explain (QRY-07): the CLI twin of code_explain', () => {
+  const HANDLE = `ref/src%2Fa.cts/${'ab'.repeat(20)}/16`;
+
+  it('explain <handle> sends the request buildRequest(code_explain) builds, with the handle as handle and the repo and directory mapped', async () => {
+    const h = harness(okReply('gsd-atlas.code-explain/1'));
+    assert.equal(await h.run(['explain', HANDLE, '--repo', REPO, '--cwd', SUB]), 0);
+    assert.deepEqual(h.requests, [buildRequest('code_explain', { handle: HANDLE, repo: REPO, cwd: SUB })]);
+    assert.equal(h.requests[0]?.kind, 'code_explain');
+    assert.equal(h.requests[0]?.worktree, REPO);
+    assert.equal(h.stdout.length, 1);
+    assert.deepEqual(h.stderr, []);
+  });
+
+  it('an argument shaped like an answer id is sent as answer_id', async () => {
+    const h = harness(okReply('gsd-atlas.code-explain/1'));
+    assert.equal(await h.run(['explain', 'a_0123456789abcdef']), 0);
+    assert.deepEqual(h.requests, [buildRequest('code_explain', { answer_id: 'a_0123456789abcdef' })]);
+    assert.deepEqual(h.requests[0]?.args, { answer_id: 'a_0123456789abcdef' });
+  });
+
+  it('explain needs exactly one argument and takes no paging flags; a refusal never reaches the host', async () => {
+    for (const argv of [['explain'], ['explain', HANDLE, 'a_0123456789abcdef'], ['explain', HANDLE, '--budget', '5'], ['explain', HANDLE, '--limit', '5'], ['explain', HANDLE, '--path', 'a.ts']]) {
+      const h = harness(okReply('gsd-atlas.x/1'));
+      assert.equal(await h.run(argv), 1, `argv ${JSON.stringify(argv)}`);
+      assert.deepEqual(h.requests, []);
+      assert.match(h.stderr.join(''), /^gsd-atlas: [^\n]*\nUsage: gsd-atlas/);
+    }
+  });
+
+  it('explain appears in the usage text', async () => {
+    const h = harness(okReply('gsd-atlas.x/1'));
+    assert.equal(await h.run(['--help']), 0);
+    assert.match(h.stdout.join(''), /gsd-atlas explain <handle \| answer id>/);
   });
 });
 

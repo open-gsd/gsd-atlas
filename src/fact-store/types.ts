@@ -121,6 +121,65 @@ export interface RelationRecord extends Provenance {
   readonly tier: 'precise';
 }
 
+/** What kind of fact a handle names (plan 03-26): a definition, a reference site, an import or export statement, or a compiler relation. */
+export type FactKind = 'symbol' | 'reference' | 'import' | 'export' | 'relation';
+
+/**
+ * What the resolved-edge cache says about a reference site (or a relation) under the current overlay snapshot and resolution
+ * context: a precise edge is stored (`hit`), the resolver was asked and found none (`asked_no_edge`), it could be asked and
+ * was not yet (`not_asked`), or no resolver can answer for it (`not_applicable`).
+ */
+export type CacheState = 'hit' | 'asked_no_edge' | 'not_asked' | 'not_applicable';
+
+/**
+ * The explanation of one fact (plan 03-26, QRY-07). Every string is a fixed word, a version, a hash, a count or fact data
+ * (a path, a name, a kind); nothing in it is repository prose.
+ */
+export interface FactExplanation {
+  /** The handle in its canonical form. */
+  readonly handle: string;
+  readonly kind: FactKind;
+  readonly fact: {
+    /** The extractor that produced it: `grammar:<module>@<version>`, or `precise:<resolver>`. */
+    readonly extractor: string;
+    readonly tier: 'grammar' | 'precise';
+    readonly confidence: Confidence;
+    readonly module: string;
+    /** The grammar version the file's facts were extracted at. */
+    readonly grammarVersion: string;
+    /** The grammar version the module reports now, when it differs from `grammarVersion`; set by Query, never by the store. */
+    readonly currentGrammarVersion?: string;
+    /** True when a newer grammar replaced the one that extracted this file (its facts still serve, flagged stale). */
+    readonly stale: boolean;
+    readonly path: string;
+    /** Git blob id of the file version. */
+    readonly contentHash: string;
+    readonly firstSeen: number;
+    readonly lastSeen: number;
+    readonly span: Span;
+  };
+  /** The resolution under which a reference or relation was looked up; null for a definition, an import and an export. */
+  readonly resolution: {
+    readonly contextId: string;
+    readonly configHashCount: number;
+    /** The id of the overlay snapshot (a hash of the sorted path and content hash pairs) the cache was read under. */
+    readonly snapshot: string;
+    readonly cache: CacheState;
+    /** The resolver that produced a stored edge or relation. */
+    readonly resolver?: string;
+    /** Where a stored edge or relation points. */
+    readonly target?: { readonly name: string; readonly kind: string; readonly path: string };
+  } | null;
+  readonly overlay: {
+    /** The base name of the worktree: never its absolute path. */
+    readonly worktree: string;
+    /** The overlay's watermark sequence number. */
+    readonly seq: number;
+    /** How many paths of the overlay are pending or hold facts a newer grammar replaced. */
+    readonly stalePaths: number;
+  };
+}
+
 /** Which relations of a symbol a read returns. */
 export type RelationDirection = 'in' | 'out' | 'both';
 
@@ -211,6 +270,15 @@ export interface Reader {
 
   /** One symbol by identity; `data` is null when it does not exist in this overlay. */
   symbol(id: SymbolIdentity): Promise<Answer<SymbolRecord | null>>;
+
+  /**
+   * Why a fact is what it is (plan 03-26, QRY-07): the explanation of the fact a `debug` handle names. The handle is parsed
+   * here and nowhere else, and looked up by (path, file content hash, ordinal) in this overlay only. `data` is null for a
+   * handle that is malformed, longer than 2,048 characters, for a path the overlay does not hold, or for an ordinal that is
+   * not a fact of that file; it is `'stale'` for a path the overlay holds at another file version. It reads what is already
+   * stored (the file row, the fact row, the resolved-edge and relation caches): it never runs a resolver and never writes.
+   */
+  provenance(handle: string): Promise<Answer<FactExplanation | 'stale' | null>>;
 
   /** The local facts of one file as the overlay sees it; `data` is null when the path is not in the overlay. */
   fileFacts(path: string): Promise<Answer<FileFacts | null>>;

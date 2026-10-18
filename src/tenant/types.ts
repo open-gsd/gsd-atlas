@@ -11,6 +11,7 @@ import type { EventSource, Indexer, IndexerConfig, IndexerDeps, IndexerStatus } 
 import type { Roots } from '../lang/index.ts';
 import type { Metrics, MetricsStatus } from '../metrics/index.ts';
 import type { PreciseTier } from '../precise-resolver/index.ts';
+import type { TierInfo } from '../query/index.ts';
 import type { SourceTree, SourceTreeIdentity } from '../source-tree/index.ts';
 import type { FlightEvent } from './flight.ts';
 import type { RateInput } from './rate.ts';
@@ -151,6 +152,13 @@ export interface Tenant {
   maintain(task: MaintainTask, options: MaintainOptions): Promise<Envelope>;
   /** The status snapshot. */
   status(): Promise<TenantStatus>;
+  /**
+   * The state of the precise tier for `worktree` (plan 03-26, QRY-07): `active`, `degraded` (with the code of the worker's last
+   * failure), `inactive` (with a fixed reason), `needs_approval` or `disabled`, and the compiler the tier resolves with. It reads
+   * state the Tenant already holds (the module registry, the user's `providers` setting, the last project description and what
+   * recent answers reported); it never probes the compiler and never starts a worker.
+   */
+  tierInfo(worktree: string): Promise<TierInfo>;
   /** The `status` reply: the Metrics report for the last `sinceMs` milliseconds plus the snapshot. */
   statusEnvelope(sinceMs: number): Promise<Envelope>;
   /**

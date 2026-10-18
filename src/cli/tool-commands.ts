@@ -11,7 +11,7 @@
  */
 import path from 'node:path';
 
-import { PROTOCOL_VERSION, RATING_FEATURES, RATING_VALUES, TOOLS, buildRequest } from '../host-client/index.ts';
+import { ANSWER_ID_PATTERN, PROTOCOL_VERSION, RATING_FEATURES, RATING_VALUES, TOOLS, buildRequest } from '../host-client/index.ts';
 import type { Request, ToolName } from '../host-client/index.ts';
 
 /**
@@ -75,8 +75,11 @@ const SINCE = /^[1-9][0-9]{0,3}[mhd]$/;
 /** The window `status` shows when `--since` is not given. */
 const DEFAULT_SINCE = '7d';
 
-/** How a command takes its positional arguments. `tool name` is `history`'s pair: the code tool, then the symbol. `value` is `rate`'s up, meh or down. */
-export type Positional = 'name' | 'task' | 'tool name' | 'value' | 'none';
+/**
+ * How a command takes its positional arguments. `tool name` is `history`'s pair: the code tool, then the symbol. `value` is
+ * `rate`'s up, meh or down. `handle` is `explain`'s one argument: a fact handle, or an answer id (told apart by its shape).
+ */
+export type Positional = 'name' | 'task' | 'tool name' | 'value' | 'handle' | 'none';
 
 /** The code tools `history` can answer as of a commit (the Host's `HISTORY_TOOLS`, kept here because an adapter imports only the host-client seam). */
 export const HISTORY_TOOLS = ['find', 'refs', 'context', 'impact'] as const;
@@ -128,6 +131,15 @@ export const COMMANDS: readonly Command[] = [
     positional: 'name',
     flags: [...SELECTION, ...PAGING, 'path', 'depth'],
     usage: 'gsd-atlas impact <name> [--path <file>] [--depth <hops>] [selection and paging flags]',
+  },
+  {
+    name: 'explain',
+    kind: 'tool',
+    tool: 'code_explain',
+    positional: 'handle',
+    flags: [...SELECTION],
+    usage:
+      'gsd-atlas explain <handle | answer id> [--repo <dir>] [--cwd <dir>]   (why atlas said something: the handle is the debug value of a citation, the answer id is the answer_id of an answer; the extractor, tier, grammar version, resolution context, overlay and compiler behind it; reads only, runs no resolver)',
   },
   {
     name: 'history',
@@ -294,6 +306,11 @@ export function inputFromFlags(
     if (at === undefined) return refuse(`${command.name} needs --at <revision>`);
     if (at === '' || at.startsWith('-')) return refuse('--at must be a revision name or commit id, not an option');
     input['at'] = at;
+  } else if (command.positional === 'handle') {
+    const [given, ...extra] = positionals;
+    if (given === undefined || extra.length > 0) return refuse(`${command.name} needs exactly one handle or answer id`);
+    // An answer id has one fixed shape; anything else is a handle, which the store alone parses.
+    input[ANSWER_ID_PATTERN.test(given) ? 'answer_id' : 'handle'] = given;
   } else if (command.positional === 'value') {
     const value = positionals[0];
     if (positionals.length !== 1 || value === undefined || !(RATING_VALUES as readonly string[]).includes(value)) {

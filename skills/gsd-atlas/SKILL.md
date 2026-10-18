@@ -17,6 +17,7 @@ Use atlas when the question names a symbol:
 - What breaks if I change or remove it? Use `code_impact`, before the edit.
 - Is the index current enough to trust? Use `atlas_status`.
 - Which language modules are loaded? Use `lang_list`.
+- Why did atlas say that, and how sure is it? Use `code_explain` with a citation's `debug` handle, or an answer's `answer_id`.
 
 Use grep or a direct read when:
 
@@ -26,7 +27,7 @@ Use grep or a direct read when:
 
 ## The tools
 
-All six tools only read. None writes to the repository or to the index.
+All seven tools only read. None writes to the repository or to the index.
 
 | Tool | Question it answers |
 | --- | --- |
@@ -36,6 +37,7 @@ All six tools only read. None writes to the repository or to the index.
 | `code_impact` | Which callers, referrers and importing files are reached from it? |
 | `atlas_status` | How current is the index? |
 | `lang_list` | Which language modules can be loaded? |
+| `code_explain` | Which extractor, tier, grammar and compiler produced this fact or answer? |
 
 Name the repository with `repo` or `cwd` when you are not in it. Pass `path` to tell same-named symbols apart. Pass `kind` (for example `function` or `class`) to narrow a name. If an answer says `truncated`, pass its `more` cursor unchanged to get the next page, or narrow the query.
 

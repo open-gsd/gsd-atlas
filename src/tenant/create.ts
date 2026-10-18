@@ -12,14 +12,15 @@ import path from 'node:path';
 import { IDLE_MAINTENANCE, StoreClosed, UnknownWorktree, WriterBusy, openFactStore, resolveStoreLocation } from '../fact-store/index.ts';
 import type { FactStore, MaintenanceResult, Resolver } from '../fact-store/index.ts';
 import { createAnswerId, createSessionId, okEnvelope } from '../facts/index.ts';
-import type { Diagnostic, Envelope, ProjectContextProvider, Request } from '../facts/index.ts';
+import type { DegradedCode, Diagnostic, Envelope, ProjectContextProvider, Request } from '../facts/index.ts';
 import { DEFAULT_INDEXER_CONFIG, IndexerError, createIndexer, createModuleHost } from '../indexer/index.ts';
 import type { BuildResult, Indexer, IndexerNotice, ModuleHost } from '../indexer/index.ts';
+import { resolveModules } from '../lang/index.ts';
 import { createNoopMetrics, openMetrics } from '../metrics/index.ts';
 import type { Metrics } from '../metrics/index.ts';
 import type { PreciseTier } from '../precise-resolver/index.ts';
 import { createQuery, errorEnvelope } from '../query/index.ts';
-import type { FreshPort } from '../query/index.ts';
+import type { ExplainPort, FreshPort, TierInfo } from '../query/index.ts';
 import { DEFAULT_TENANT_TUNING } from './defaults.ts';
 import { createFollowerFresh } from './follower-overlay.ts';
 import { createFlightRecorder } from './flight.ts';
@@ -356,11 +357,89 @@ export async function createTenant(deps: TenantDeps): Promise<Tenant> {
     },
   };
 
+  /**
+   * The code of the precise tier's last failure (plan 03-26): set when an answer that resolves carried `resolver_failed` or
+   * `memory_budget`, cleared by the next such answer that carried neither. It is what `tierInfo` reports as `degraded`; nothing
+   * is probed and no worker is started to find out.
+   */
+  const FAILURE_CODES: readonly DegradedCode[] = ['resolver_failed', 'memory_budget'];
+  const RESOLVING_KINDS: ReadonlySet<string> = new Set(['code_refs', 'code_context', 'code_impact']);
+  let preciseFailure: DegradedCode | undefined;
+
+  const moduleRegistry = (): ReturnType<typeof resolveModules> =>
+    resolveModules(roots, {
+      ...(deps.knownAdapters === undefined ? {} : { knownAdapters: deps.knownAdapters }),
+      ...(deps.providers?.disabled === undefined ? {} : { disabledAdapters: deps.providers.disabled }),
+    });
+
+  /** The fixed sentences of `tierInfo`: nothing from the repository, the registry's manifests or an error is copied into them. */
+  const TIER_TEXT = {
+    disabled: 'the typescript provider is turned off in the user configuration',
+    needsApproval: 'the precise command of a language module is not approved for this repository',
+    none: 'no language module declares a precise tier',
+    unavailable: 'the precise adapter a language module names is not available in this installation',
+    noProject: 'no TypeScript project configuration was found in this repository',
+    failed: 'the compiler worker failed on its last use; answers fall back to grammar facts',
+    memory: 'the compiler worker reached its memory limit on its last use; answers fall back to grammar facts',
+  } as const;
+
+  function tierInfoFor(worktree: string): TierInfo {
+    const precise = moduleRegistry().modules.flatMap((entry) => entry.tiers.filter((each) => each.tier === 'precise'));
+    const facts = projectProvider?.precise(worktree);
+    const compiler =
+      facts === undefined
+        ? undefined
+        : {
+            name: 'typescript',
+            version: facts.compiler.version,
+            source: facts.compiler.source,
+            case: facts.compiler.case,
+            ...(facts.compiler.reason === undefined ? {} : { reason: facts.compiler.reason }),
+          };
+    if ((tier !== undefined && !tier.active) || precise.some((each) => each.reason === 'provider_disabled')) {
+      return { precise: 'disabled', reason: TIER_TEXT.disabled };
+    }
+    if (!precise.some((each) => each.active)) {
+      if (precise.some((each) => each.reason === 'command_not_approved')) return { precise: 'needs_approval', reason: TIER_TEXT.needsApproval };
+      return { precise: 'inactive', reason: precise.length === 0 ? TIER_TEXT.none : TIER_TEXT.unavailable };
+    }
+    if (facts !== undefined && facts.configs.length === 0) return { precise: 'inactive', reason: TIER_TEXT.noProject };
+    if (preciseFailure !== undefined) {
+      return {
+        precise: 'degraded',
+        reason: preciseFailure === 'memory_budget' ? TIER_TEXT.memory : TIER_TEXT.failed,
+        code: preciseFailure,
+        ...(compiler === undefined ? {} : { compiler }),
+      };
+    }
+    return { precise: 'active', ...(compiler === undefined ? {} : { compiler }) };
+  }
+
+  /** What `code_explain` reads beyond the Fact Store (plan 03-26): the tier, the flight recorder and the module's grammar version. */
+  const explainPort: ExplainPort = {
+    tierInfo: async (worktree) => tierInfoFor(worktree),
+    answer: (id) => {
+      const found = flight?.recent(tuning.flightMaxEvents, 'answer').find((event) => event.id === id);
+      if (found === undefined) return null;
+      return {
+        id: found.id,
+        tool: found.tool ?? '',
+        outcome: found.outcome ?? '',
+        ms: found.ms ?? '',
+        degraded: found.degraded ?? [],
+        count: found.count ?? 0,
+        handles: found.handles ?? [],
+      };
+    },
+    grammarVersion: (module) => moduleRegistry().modules.find((entry) => entry.name === module)?.version,
+  };
+
   let query: ReturnType<typeof createQuery>;
   try {
     query = createQuery({
       store,
       text: tree,
+      explain: explainPort,
       fresh,
       status: createStatusPort({
         store,
@@ -672,6 +751,10 @@ export async function createTenant(deps: TenantDeps): Promise<Tenant> {
           : answered;
       const envelope = explained(lagging, worktree);
       const elapsed = clock.now() - started;
+      // The last failure of the precise tier, for `tierInfo`: an answer that resolves either names one or clears it.
+      if (envelope.ok && RESOLVING_KINDS.has(request.kind)) {
+        preciseFailure = FAILURE_CODES.find((code) => (envelope.degraded ?? []).includes(code));
+      }
       // The answer id is added once the answer exists (D-16); it holds no content. The same id goes to the recorder.
       const id = isAnsweredKind(request.kind) ? createAnswerId() : undefined;
       const stamped = id === undefined ? envelope : { ...envelope, answer_id: id };
@@ -728,6 +811,8 @@ export async function createTenant(deps: TenantDeps): Promise<Tenant> {
     },
 
     status: snapshot,
+
+    tierInfo: async (worktree: string): Promise<TierInfo> => tierInfoFor(worktree),
 
     async statusEnvelope(sinceMs: number): Promise<Envelope> {
       const until = clock.now();

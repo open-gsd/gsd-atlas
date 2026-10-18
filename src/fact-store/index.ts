@@ -11,13 +11,18 @@ export { openFactStore } from './open.ts';
 export type { OpenFactStoreOptions, StoreOpenOptions } from './open.ts';
 export { probeStore } from './probe.ts';
 export type { ProbeOptions, StoreProbe } from './probe.ts';
+export { MAX_HANDLE_CHARS, formatHandle, parseHandle } from './provenance.ts';
+export type { Handle, HandleKind } from './provenance.ts';
 export { candidatePaths, resolveSpecifier } from './specifier.ts';
 export type {
+  CacheState,
   CallerRecord,
   CallersOptions,
   CheckResult,
   CommitFileInput,
   CommitResult,
+  FactExplanation,
+  FactKind,
   FactStore,
   FindMode,
   FindOptions,
