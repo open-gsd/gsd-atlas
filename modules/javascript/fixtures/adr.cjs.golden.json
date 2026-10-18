@@ -1,0 +1,296 @@
+{
+  "schema": 1,
+  "fixture": "adr.cjs",
+  "convention": "0-based line, 0-based UTF-16 column, end exclusive",
+  "hadBom": false,
+  "captures": [
+    {
+      "query": "tags",
+      "name": "comment",
+      "startLine": 0,
+      "startColumn": 0,
+      "endLine": 0,
+      "endColumn": 70,
+      "text": "// Strict-mode header. Decision record: ADR-2143 §3 covers the loader."
+    },
+    {
+      "query": "tags",
+      "name": "comment",
+      "startLine": 3,
+      "startColumn": 0,
+      "endLine": 5,
+      "endColumn": 3,
+      "text": "/**\n * Loads the data. See ADR #3473 for the format.\n */"
+    },
+    {
+      "query": "tags",
+      "name": "definition.function",
+      "startLine": 6,
+      "startColumn": 0,
+      "endLine": 12,
+      "endColumn": 1,
+      "text": "function load() {\n  /* Retry rules follow the\n     adr-0001 decision and\n     stay unchanged. */\n  const value = 1; // see ADR 12\n  return value;\n}"
+    },
+    {
+      "query": "tags",
+      "name": "name",
+      "startLine": 6,
+      "startColumn": 9,
+      "endLine": 6,
+      "endColumn": 13,
+      "text": "load"
+    },
+    {
+      "query": "tags",
+      "name": "comment",
+      "startLine": 7,
+      "startColumn": 2,
+      "endLine": 9,
+      "endColumn": 23,
+      "text": "/* Retry rules follow the\n     adr-0001 decision and\n     stay unchanged. */"
+    },
+    {
+      "query": "tags",
+      "name": "comment",
+      "startLine": 10,
+      "startColumn": 19,
+      "endLine": 10,
+      "endColumn": 32,
+      "text": "// see ADR 12"
+    },
+    {
+      "query": "refs",
+      "name": "reference.read",
+      "startLine": 11,
+      "startColumn": 9,
+      "endLine": 11,
+      "endColumn": 14,
+      "text": "value"
+    },
+    {
+      "query": "tags",
+      "name": "comment",
+      "startLine": 14,
+      "startColumn": 0,
+      "endLine": 14,
+      "endColumn": 37,
+      "text": "// ADR-7 and ADR-8 cover both halves."
+    },
+    {
+      "query": "tags",
+      "name": "name",
+      "startLine": 15,
+      "startColumn": 6,
+      "endLine": 15,
+      "endColumn": 10,
+      "text": "note"
+    },
+    {
+      "query": "tags",
+      "name": "definition.constant",
+      "startLine": 15,
+      "startColumn": 6,
+      "endLine": 15,
+      "endColumn": 20,
+      "text": "note = 'ADR-9'"
+    },
+    {
+      "query": "tags",
+      "name": "value.plain",
+      "startLine": 15,
+      "startColumn": 13,
+      "endLine": 15,
+      "endColumn": 20,
+      "text": "'ADR-9'"
+    },
+    {
+      "query": "tags",
+      "name": "name",
+      "startLine": 16,
+      "startColumn": 6,
+      "endLine": 16,
+      "endColumn": 10,
+      "text": "memo"
+    },
+    {
+      "query": "tags",
+      "name": "definition.constant",
+      "startLine": 16,
+      "startColumn": 6,
+      "endLine": 16,
+      "endColumn": 29,
+      "text": "memo = `ADR-10 ${note}`"
+    },
+    {
+      "query": "tags",
+      "name": "value.plain",
+      "startLine": 16,
+      "startColumn": 13,
+      "endLine": 16,
+      "endColumn": 29,
+      "text": "`ADR-10 ${note}`"
+    },
+    {
+      "query": "refs",
+      "name": "reference.read",
+      "startLine": 16,
+      "startColumn": 23,
+      "endLine": 16,
+      "endColumn": 27,
+      "text": "note"
+    },
+    {
+      "query": "tags",
+      "name": "comment",
+      "startLine": 18,
+      "startColumn": 0,
+      "endLine": 18,
+      "endColumn": 36,
+      "text": "// ADR-5057 Phase 10 is the history."
+    },
+    {
+      "query": "imports",
+      "name": "cjs.object",
+      "startLine": 20,
+      "startColumn": 0,
+      "endLine": 20,
+      "endColumn": 6,
+      "text": "module"
+    },
+    {
+      "query": "imports",
+      "name": "cjs.object",
+      "startLine": 20,
+      "startColumn": 0,
+      "endLine": 20,
+      "endColumn": 6,
+      "text": "module"
+    },
+    {
+      "query": "imports",
+      "name": "cjs.object",
+      "startLine": 20,
+      "startColumn": 0,
+      "endLine": 20,
+      "endColumn": 6,
+      "text": "module"
+    },
+    {
+      "query": "refs",
+      "name": "reference.read",
+      "startLine": 20,
+      "startColumn": 0,
+      "endLine": 20,
+      "endColumn": 6,
+      "text": "module"
+    },
+    {
+      "query": "imports",
+      "name": "export",
+      "startLine": 20,
+      "startColumn": 0,
+      "endLine": 20,
+      "endColumn": 37,
+      "text": "module.exports = { load, note, memo }"
+    },
+    {
+      "query": "imports",
+      "name": "export",
+      "startLine": 20,
+      "startColumn": 0,
+      "endLine": 20,
+      "endColumn": 37,
+      "text": "module.exports = { load, note, memo }"
+    },
+    {
+      "query": "imports",
+      "name": "export",
+      "startLine": 20,
+      "startColumn": 0,
+      "endLine": 20,
+      "endColumn": 37,
+      "text": "module.exports = { load, note, memo }"
+    },
+    {
+      "query": "imports",
+      "name": "cjs.property",
+      "startLine": 20,
+      "startColumn": 7,
+      "endLine": 20,
+      "endColumn": 14,
+      "text": "exports"
+    },
+    {
+      "query": "imports",
+      "name": "cjs.property",
+      "startLine": 20,
+      "startColumn": 7,
+      "endLine": 20,
+      "endColumn": 14,
+      "text": "exports"
+    },
+    {
+      "query": "imports",
+      "name": "cjs.property",
+      "startLine": 20,
+      "startColumn": 7,
+      "endLine": 20,
+      "endColumn": 14,
+      "text": "exports"
+    },
+    {
+      "query": "imports",
+      "name": "export.name",
+      "startLine": 20,
+      "startColumn": 19,
+      "endLine": 20,
+      "endColumn": 23,
+      "text": "load"
+    },
+    {
+      "query": "refs",
+      "name": "reference.read",
+      "startLine": 20,
+      "startColumn": 19,
+      "endLine": 20,
+      "endColumn": 23,
+      "text": "load"
+    },
+    {
+      "query": "imports",
+      "name": "export.name",
+      "startLine": 20,
+      "startColumn": 25,
+      "endLine": 20,
+      "endColumn": 29,
+      "text": "note"
+    },
+    {
+      "query": "refs",
+      "name": "reference.read",
+      "startLine": 20,
+      "startColumn": 25,
+      "endLine": 20,
+      "endColumn": 29,
+      "text": "note"
+    },
+    {
+      "query": "imports",
+      "name": "export.name",
+      "startLine": 20,
+      "startColumn": 31,
+      "endLine": 20,
+      "endColumn": 35,
+      "text": "memo"
+    },
+    {
+      "query": "refs",
+      "name": "reference.read",
+      "startLine": 20,
+      "startColumn": 31,
+      "endLine": 20,
+      "endColumn": 35,
+      "text": "memo"
+    }
+  ]
+}

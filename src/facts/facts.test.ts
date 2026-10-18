@@ -7,6 +7,7 @@ import {
   DEGRADED_CODES,
   FACT_PREDICATES,
   IMPORT_STYLES,
+  MAX_CITATIONS_PER_FILE,
   PROTOCOL_VERSION,
   REF_KINDS,
   createAnswerId,
@@ -773,5 +774,62 @@ describe('resolution contracts', () => {
     const seen: string[] = [];
     for await (const edge of old([site], project.context, lookup)) seen.push(edge.resolver);
     assert.deepEqual(seen, ['ts:6']);
+  });
+});
+
+describe('validateFileFacts: ADR citations (plan 03-24, D-19)', () => {
+  const withCitations = (citations: unknown): unknown => ({ ...goodFacts(), citations });
+  const site = (over: Record<string, unknown> = {}): Record<string, unknown> => ({
+    number: 2143,
+    span: span(0, 3, 0, 14),
+    ...over,
+  });
+  const problems = (citations: unknown) => validateFileFacts(withCitations(citations));
+
+  it('the per-file cap is the approved 200', () => {
+    assert.equal(MAX_CITATIONS_PER_FILE, 200);
+  });
+
+  it('accepts a Phase 2 shaped value without the field', () => {
+    assert.deepEqual(validateFileFacts(goodFacts()), []);
+    assert.deepEqual(problems([]), []);
+  });
+
+  it('accepts a number, a short detail, a span and an enclosing symbol', () => {
+    assert.deepEqual(problems([site(), site({ detail: '§3.2', enclosing: 1 }), site({ number: 1, detail: 'a'.repeat(32) })]), []);
+  });
+
+  it('rejects a number that is zero, negative, fractional, a string or beyond the safe integers', () => {
+    for (const number of [0, -3, 1.5, '12', Number.NaN, Number.MAX_SAFE_INTEGER + 1, null, undefined]) {
+      assert.notDeepEqual(problems([site({ number })]), [], `number ${String(number)}`);
+    }
+  });
+
+  it('rejects a detail of 33 characters, with a control character, a space or another symbol, or an empty one', () => {
+    for (const detail of ['a'.repeat(33), '§\n3', '§ 3', '§3\t', '', '§3;drop', 'x\u0000', 5]) {
+      assert.notDeepEqual(problems([site({ detail })]), [], `detail ${JSON.stringify(detail)}`);
+    }
+  });
+
+  it('rejects an enclosing index outside the symbols array, a negative or a fractional one', () => {
+    for (const enclosing of [2, 99, -1, 0.5, '0']) {
+      assert.notDeepEqual(problems([site({ enclosing })]), [], `enclosing ${String(enclosing)}`);
+    }
+  });
+
+  it('rejects a missing span and a span whose end precedes its start', () => {
+    assert.ok(problems([{ number: 3 }]).some((d) => d.code === 'span_missing'));
+    assert.ok(problems([site({ span: span(2, 5, 2, 1) })]).some((d) => d.code === 'span_invalid'));
+  });
+
+  it('rejects a field that is not an array and an entry that is not an object', () => {
+    assert.notDeepEqual(problems('ADR-1'), []);
+    assert.notDeepEqual(problems({ length: 1 }), []);
+    assert.notDeepEqual(problems([7]), []);
+  });
+
+  it('accepts exactly 200 citations and rejects 201', () => {
+    assert.deepEqual(problems(Array.from({ length: 200 }, () => site())), []);
+    assert.notDeepEqual(problems(Array.from({ length: 201 }, () => site())), []);
   });
 });

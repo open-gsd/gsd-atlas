@@ -108,7 +108,7 @@ describe('probeStore', () => {
 
   it('newer schema: reported so the tenant can answer schema_too_new', async () => {
     await inPlace(async (place) => {
-      await makeStore(place, { schemaVersion: 2 });
+      await makeStore(place, { schemaVersion: 3 }); // one above the build's schema version 2 (plan 03-24)
       assert.equal(await probeStore(place.location), 'newer_schema');
     });
   });

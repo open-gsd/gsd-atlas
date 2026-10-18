@@ -504,6 +504,62 @@ describe('toCapture: bounded capture text', () => {
     assert.deepEqual(capture.span, span(0, 0, 0, 257));
     assert.equal(GRAMMAR_LIMITS.captureTextChars, 256);
   });
+
+  it('gives a capture named comment the internal bound of 32,768 units and every other capture 256 (size bound, not a gate)', () => {
+    const bound = GRAMMAR_LIMITS.commentTextChars;
+    const source = 'x'.repeat(bound + 10);
+    assert.equal(bound, 32768);
+    assert.equal(toCapture('tags', 'comment', nodeOf(bound - 1), source, 1).text, 'x'.repeat(bound - 1));
+    assert.equal(toCapture('tags', 'comment', nodeOf(bound), source, 1).text, 'x'.repeat(bound));
+    assert.equal(toCapture('tags', 'comment', nodeOf(257), source, 1).text, 'x'.repeat(257));
+    const over = toCapture('tags', 'comment', nodeOf(bound + 1), source, 1);
+    assert.equal(over.text, '');
+    assert.deepEqual(over.span, span(0, 0, 0, bound + 1), 'the span stays exact');
+    assert.equal(toCapture('tags', 'name', nodeOf(257), source, 1).text, '');
+    assert.equal(toCapture('tags', 'definition.comment', nodeOf(257), source, 1).text, '');
+  });
+
+  it('the fake engine bounds a scripted comment capture the same way', async () => {
+    const source = 'scripted comment';
+    const engine = createFakeGrammarEngine({
+      abi: lock.abi,
+      results: new Map([
+        [
+          source,
+          {
+            hadBom: false,
+            errorBytes: 0,
+            totalBytes: 16,
+            missingNodes: 0,
+            captures: [
+              {
+                query: 'tags' as const,
+                name: 'comment',
+                span: span(0, 0, 0, GRAMMAR_LIMITS.commentTextChars),
+                text: 'a'.repeat(GRAMMAR_LIMITS.commentTextChars),
+              },
+              {
+                query: 'tags' as const,
+                name: 'comment',
+                span: span(1, 0, 1, GRAMMAR_LIMITS.commentTextChars + 1),
+                text: 'b'.repeat(GRAMMAR_LIMITS.commentTextChars + 1),
+              },
+            ],
+          },
+        ],
+      ]),
+    });
+    const grammar = await engine.load(toyInput());
+    try {
+      const captures = (await grammar.run(source)).captures;
+      assert.deepEqual(
+        captures.map((c) => c.text.length),
+        [GRAMMAR_LIMITS.commentTextChars, 0],
+      );
+    } finally {
+      await engine.dispose();
+    }
+  });
 });
 
 describe('fake engine: scripted match indexes', () => {

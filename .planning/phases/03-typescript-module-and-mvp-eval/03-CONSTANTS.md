@@ -37,6 +37,7 @@ A consuming plan reads its value from the table below instead of inventing a num
 | `bug.bundleMaxBytes` | 1048576 | 03-32 | planner-added: largest bundle written |
 | `adr.listMaxEntries` | 5000 | 03-28 | planner-added: most directory entries read from an ADR directory |
 | `adr.maxCitationsPerFile` | 200 | 03-24 | planner-added: most ADR citations stored for one file version |
+| `adr.maxCommentUnits` | 32768 (UTF-16 code units; behaviour: skip, the whole comment is blanked and counted, never clipped) | 03-24 | `GRAMMAR_LIMITS.commentTextChars` in `src/grammar-engine/limits.ts`; the plan's 4,096 lost real citations and the executor's 65,536 was never registered. Approved by the user's reply `approve` to the review in `.planning/research/COMMENT-BOUND.md` (see Approvals). Evidence, gsd-core 10ac3a7: longest ADR-mentioning comment 17,881 units (gsd-pi bb86b6c: 1,429); 16,384 misses 8 of 3,245 oracle citations, 32,768 and above miss none attributable to the bound. |
 | `eval.marginPoints` | 5 | 03-05, 03-16 | D-04, locked |
 | `eval.runsPerCell` | 3 | 03-10, 03-16 | D-03 and ROADMAP criterion 5, locked |
 | `eval.minQuestions` | 50 | 03-09, 03-16 | EVL-02, locked |
@@ -187,3 +188,9 @@ and, when asked whether the replies conflicted:
 > both unless they conflict and you didn't tell me
 
 Meaning: the replies do not conflict and both apply, resolved as `approve` with `stricter oq4=point_estimate`. The pre-registration (including its Run configuration) is approved as written, and that approval covers `DEFAULT_RETRY_DELAY_MS` = 60000 (infrastructure failures only, at most 2 retries), recorded in the `eval.retryDelayMs` row above. `scripts/eval/arms.ts` is not edited. No other constant changed.
+
+Plan 03-24 (ADR citations), after the adversarial review of the comment text bound (`.planning/research/COMMENT-BOUND.md`), was answered by the user on 2026-10-18. Reply, verbatim:
+
+> approve
+
+Meaning: exactly five changes are approved. (1) `adr.maxCommentUnits`, the comment text bound `GRAMMAR_LIMITS.commentTextChars`, is 32768 UTF-16 code units (it was 65536; the plan wrote 4096), and the behaviour stays skip: a longer comment is blanked whole and counted, never clipped, so `ADR-123` can never become `ADR-1`. (2) The dropped-comment note `citation_comment_too_long` is reported by the Indexer, as one counted note with fixed text in a run's `skipped` diagnostics. (3) The citation scan stops once 200 citations (`adr.maxCitationsPerFile`) are held, with the same output as the cut after a full scan. (4) This row and this entry. (5) The tests that pin the bound. No other constant changed.

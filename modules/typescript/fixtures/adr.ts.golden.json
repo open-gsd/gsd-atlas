@@ -1,0 +1,161 @@
+{
+  "schema": 1,
+  "fixture": "adr.ts",
+  "convention": "0-based line, 0-based UTF-16 column, end exclusive",
+  "hadBom": false,
+  "captures": [
+    {
+      "query": "tags",
+      "name": "comment",
+      "startLine": 0,
+      "startColumn": 0,
+      "endLine": 0,
+      "endColumn": 50,
+      "text": "// Decision record: ADR-2143 §3 covers the loader."
+    },
+    {
+      "query": "tags",
+      "name": "comment",
+      "startLine": 2,
+      "startColumn": 0,
+      "endLine": 4,
+      "endColumn": 3,
+      "text": "/**\n * Loads the data. See ADR #3473 for the format.\n */"
+    },
+    {
+      "query": "tags",
+      "name": "export",
+      "startLine": 5,
+      "startColumn": 0,
+      "endLine": 11,
+      "endColumn": 1,
+      "text": "export function load(): number {\n  /* Retry rules follow the\n     adr-0001 decision and\n     stay unchanged. */\n  const value = 1; // see ADR 12\n  return value;\n}"
+    },
+    {
+      "query": "tags",
+      "name": "definition.function",
+      "startLine": 5,
+      "startColumn": 7,
+      "endLine": 11,
+      "endColumn": 1,
+      "text": "function load(): number {\n  /* Retry rules follow the\n     adr-0001 decision and\n     stay unchanged. */\n  const value = 1; // see ADR 12\n  return value;\n}"
+    },
+    {
+      "query": "tags",
+      "name": "name",
+      "startLine": 5,
+      "startColumn": 16,
+      "endLine": 5,
+      "endColumn": 20,
+      "text": "load"
+    },
+    {
+      "query": "tags",
+      "name": "comment",
+      "startLine": 6,
+      "startColumn": 2,
+      "endLine": 8,
+      "endColumn": 23,
+      "text": "/* Retry rules follow the\n     adr-0001 decision and\n     stay unchanged. */"
+    },
+    {
+      "query": "tags",
+      "name": "comment",
+      "startLine": 9,
+      "startColumn": 19,
+      "endLine": 9,
+      "endColumn": 32,
+      "text": "// see ADR 12"
+    },
+    {
+      "query": "refs",
+      "name": "reference.read",
+      "startLine": 10,
+      "startColumn": 9,
+      "endLine": 10,
+      "endColumn": 14,
+      "text": "value"
+    },
+    {
+      "query": "tags",
+      "name": "comment",
+      "startLine": 13,
+      "startColumn": 0,
+      "endLine": 13,
+      "endColumn": 37,
+      "text": "// ADR-7 and ADR-8 cover both halves."
+    },
+    {
+      "query": "tags",
+      "name": "name",
+      "startLine": 14,
+      "startColumn": 6,
+      "endLine": 14,
+      "endColumn": 10,
+      "text": "note"
+    },
+    {
+      "query": "tags",
+      "name": "definition.constant",
+      "startLine": 14,
+      "startColumn": 6,
+      "endLine": 14,
+      "endColumn": 20,
+      "text": "note = \"ADR-9\""
+    },
+    {
+      "query": "tags",
+      "name": "value.plain",
+      "startLine": 14,
+      "startColumn": 13,
+      "endLine": 14,
+      "endColumn": 20,
+      "text": "\"ADR-9\""
+    },
+    {
+      "query": "tags",
+      "name": "name",
+      "startLine": 15,
+      "startColumn": 6,
+      "endLine": 15,
+      "endColumn": 10,
+      "text": "memo"
+    },
+    {
+      "query": "tags",
+      "name": "definition.constant",
+      "startLine": 15,
+      "startColumn": 6,
+      "endLine": 15,
+      "endColumn": 29,
+      "text": "memo = `ADR-10 ${note}`"
+    },
+    {
+      "query": "tags",
+      "name": "value.plain",
+      "startLine": 15,
+      "startColumn": 13,
+      "endLine": 15,
+      "endColumn": 29,
+      "text": "`ADR-10 ${note}`"
+    },
+    {
+      "query": "refs",
+      "name": "reference.read",
+      "startLine": 15,
+      "startColumn": 23,
+      "endLine": 15,
+      "endColumn": 27,
+      "text": "note"
+    },
+    {
+      "query": "tags",
+      "name": "comment",
+      "startLine": 17,
+      "startColumn": 0,
+      "endLine": 17,
+      "endColumn": 36,
+      "text": "// ADR-5057 Phase 10 is the history."
+    }
+  ]
+}

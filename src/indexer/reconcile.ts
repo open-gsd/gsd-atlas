@@ -20,6 +20,7 @@ import { UnknownWorktree } from '../fact-store/index.ts';
 import type { Writer } from '../fact-store/index.ts';
 import { diagnostic } from '../facts/index.ts';
 import type { Diagnostic } from '../facts/index.ts';
+import { CITATION_COMMENT_TOO_LONG } from '../grammar-engine/index.ts';
 import { SOURCE_TREE_CODES } from '../source-tree/index.ts';
 import { compareCodeUnits, emitOutputsAmong, processBatch, runJob } from './process.ts';
 import type { PathResult, ProcessContext } from './process.ts';
@@ -164,6 +165,9 @@ export async function reconcileWorktree(
     ...results.filter((r) => r.outcome === 'failed').map((r) => ({ worktree, path: r.path, code: r.code ?? 'internal_error' })),
     ...oversize.map((path) => ({ worktree, path, code: SOURCE_TREE_CODES.sourceTooLarge })),
   ];
+  // Comments over the comment size bound are skipped whole, so the citations in them are missing: one counted note,
+  // fixed text, no path and no repository text, says so (the extractor's per-file diagnostic is not kept).
+  const commentFiles = results.filter((r) => r.commentsTooLong === true).length;
   const skipped: Diagnostic[] = [
     ...snapshot.diagnostics,
     ...source.skipped.filter((d) => d.code !== SOURCE_TREE_CODES.sourceTooLarge),
@@ -174,6 +178,15 @@ export async function reconcileWorktree(
             EMIT_OUTPUT_NOT_INDEXED,
             'info',
             `${String(excluded.size)} ${excluded.size === 1 ? 'file is' : 'files are'} the emit output of an included source and ${excluded.size === 1 ? 'is' : 'are'} not indexed`,
+          ),
+        ]),
+    ...(commentFiles === 0
+      ? []
+      : [
+          diagnostic(
+            CITATION_COMMENT_TOO_LONG,
+            'info',
+            `${String(commentFiles)} ${commentFiles === 1 ? 'file has' : 'files have'} comments that mention an ADR but are over the comment size bound; their citations are not indexed`,
           ),
         ]),
   ];

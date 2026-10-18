@@ -33,8 +33,9 @@ export interface Capture {
   readonly span: Span;
   /**
    * The captured source text, or an empty string when the node is longer than
-   * `GRAMMAR_LIMITS.captureTextChars` UTF-16 code units, so a whole function body never crosses a
-   * worker boundary as text. The span is always exact.
+   * `GRAMMAR_LIMITS.captureTextChars` UTF-16 code units (`GRAMMAR_LIMITS.commentTextChars` for a
+   * capture named `comment`), so a whole function body never crosses a worker boundary as text. The
+   * span is always exact.
    */
   readonly text: string;
 }

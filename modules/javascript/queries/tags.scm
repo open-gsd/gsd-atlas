@@ -12,6 +12,17 @@
 ; - `export default <declaration>` is defined here WITHOUT `@export` (imports.scm exports it as `default`);
 ; - everything else is matched by its parent: the program or a block.
 ; Blocks are separated by blank lines and each block holds one construct.
+;
+; ADR mentions (plan 03-24, D-19): a comment that mentions an ADR is captured as `@comment`, alone in its match, with
+; the same predicate as the typescript module. It is a JavaScript regular expression without flags, written with
+; explicit letter classes: a word boundary before ADR (the start of the text or a character that is not a letter,
+; digit or underscore), then one of the separators `-`, `#`, ` #` or a space, then a digit. It has no nested
+; quantifier, so it runs in linear time. The extractor reads the number and the section detail from the text; a
+; string, template or regular expression is not a `comment` node and is never captured.
+
+; --- comment: ADR mention filter ---
+((comment) @comment
+  (#match? @comment "(^|[^A-Za-z0-9_])[Aa][Dd][Rr](-|#| #| )[0-9]"))
 
 ; --- function: declarations and generators ---
 (program
