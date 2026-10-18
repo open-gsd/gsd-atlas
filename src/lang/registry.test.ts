@@ -461,6 +461,49 @@ describe('resolveModules: a precise command or adapter is data, never run (T-01-
     assert.deepEqual(asked, [], 'the callback is not even asked about an adapter');
   });
 
+  it('known adapters: a precise.adapter the composition root lists is active, one it does not list is "unknown precise adapter"', () => {
+    const w = makeWorld();
+    w.place('repo', 'toy', (m) => {
+      m['tiers'] = ALL_TIERS;
+      m['precise'] = { adapter: 'typescript' };
+    });
+    const known = resolveModules(w.roots, { knownAdapters: ['typescript'] });
+    assert.deepEqual(known.modules[0]!.tiers[1], { tier: 'precise', active: true });
+    assert.deepEqual(known.diagnostics, [], 'a built-in adapter is not "declared but not run"');
+    const one = resolveModule(w.roots, 'toy', { knownAdapters: ['typescript'] });
+    assert.deepEqual(one.entry!.tiers[1], { tier: 'precise', active: true });
+
+    const unknown = resolveModules(w.roots, { knownAdapters: ['something-else'] });
+    assert.deepEqual(unknown.modules[0]!.tiers[1], { tier: 'precise', active: false, reason: 'unknown precise adapter' });
+    assert.deepEqual(unknown.diagnostics.map((d) => d.code), ['precise_command_inactive']);
+    assert.deepEqual(resolveModules(w.roots, { knownAdapters: [] }).modules[0]!.tiers[1], { tier: 'precise', active: false, reason: 'unknown precise adapter' });
+    // Without the option no adapter is known, exactly as before.
+    assert.deepEqual(resolveModules(w.roots).modules[0]!.tiers[1], { tier: 'precise', active: false, reason: 'adapter_not_available' });
+  });
+
+  it('known adapters: one the user turned off is inactive with the reason provider_disabled', () => {
+    const w = makeWorld();
+    w.place('repo', 'toy', (m) => {
+      m['tiers'] = ALL_TIERS;
+      m['precise'] = { adapter: 'typescript' };
+    });
+    const off = resolveModules(w.roots, { knownAdapters: ['typescript'], disabledAdapters: ['typescript'] });
+    assert.deepEqual(off.modules[0]!.tiers[1], { tier: 'precise', active: false, reason: 'provider_disabled' });
+    // An id the root does not know stays unknown, whatever the user's list says.
+    const stray = resolveModules(w.roots, { knownAdapters: [], disabledAdapters: ['typescript'] });
+    assert.deepEqual(stray.modules[0]!.tiers[1], { tier: 'precise', active: false, reason: 'unknown precise adapter' });
+  });
+
+  it('known adapters never apply to a precise.command', () => {
+    const w = makeWorld();
+    w.place('repo', 'toy', (m) => {
+      m['tiers'] = ALL_TIERS;
+      m['precise'] = { command: ['typescript'] };
+    });
+    const toy = resolveModules(w.roots, { knownAdapters: ['typescript'] }).modules[0]!;
+    assert.deepEqual(toy.tiers[1], { tier: 'precise', active: false, reason: 'command_not_approved' });
+  });
+
   it('keeps a module with a precise command usable: it is still listed and its grammar tier is active', () => {
     const w = makeWorld();
     w.place('user', 'toy', (m) => {

@@ -9,7 +9,7 @@ import path from 'node:path';
 import { after, describe, it } from 'node:test';
 import type { TestContext } from 'node:test';
 import { allowAll, compilerWorkerShape, createRealRunner } from '../../command-runner/index.ts';
-import type { CommandRunner } from '../../command-runner/index.ts';
+import type { CommandRunner, CommandSpec } from '../../command-runner/index.ts';
 import { PROTOCOL_VERSION } from '../../facts/index.ts';
 import type { Envelope, LocatedSymbol, OverlaySnapshot, PreciseFacts, RefSiteKey, ResolutionContext, SymbolLookup } from '../../facts/index.ts';
 import { createGrammarEngine } from '../../grammar-engine/index.ts';
@@ -20,7 +20,7 @@ import { createTempGitRepo, makeTempDir, realPath } from '../../test-kit/index.t
 import type { TempDir, TempGitRepo } from '../../test-kit/index.ts';
 import { definePreciseResolverContract } from '../contract.ts';
 import type { PreciseResolverSubject } from '../contract.ts';
-import { createTypeScriptResolver, createTypeScriptTier, mapTarget, resolveWorkerPath } from './index.ts';
+import { bundledCompilerDir, createTypeScriptResolver, createTypeScriptTier, mapTarget, resolveWorkerPath } from './index.ts';
 import type { PreciseTier, TypeScriptResolver } from './index.ts';
 
 const MODULES = path.resolve(import.meta.dirname, '..', '..', '..', 'modules');
@@ -88,6 +88,8 @@ export interface WorldOptions {
   readonly runner?: CommandRunner;
   /** Files written to the working tree after the commit (a string edits or adds, null deletes). */
   readonly working?: Readonly<Record<string, string | null>>;
+  /** Repo-relative paths kept out of the commit and the index (a trailing slash makes it a directory). */
+  readonly ignored?: readonly string[];
   /**
    * Wire the tier through the test-only `resolverFactory` hook instead of the module manifest (the tracer of Task 1): the
    * Host's tier table is not involved. Default false: the manifest names the adapter and the Host builds the tier.
@@ -104,7 +106,14 @@ export function workerRunner(env?: Readonly<Record<string, string | undefined>>)
 
 /** A real repository, a Host over it with the TypeScript tier known, and everything cleaned up when the test ends. */
 export async function makeWorld(t: TestContext, files: Readonly<Record<string, string>> = FIXTURE, options: WorldOptions = {}): Promise<World> {
-  const repo = await createTempGitRepo({ runner: setupRunner, world: { committed: files, ...(options.working === undefined ? {} : { working: options.working }) } });
+  const repo = await createTempGitRepo({
+    runner: setupRunner,
+    world: {
+      committed: files,
+      ...(options.working === undefined ? {} : { working: options.working }),
+      ...(options.ignored === undefined ? {} : { ignored: options.ignored }),
+    },
+  });
   const tmp = makeTempDir();
   const engine = createGrammarEngine();
   const runner = options.runner ?? workerRunner();
@@ -421,5 +430,306 @@ definePreciseResolverContract('typescript adapter (real worker)', contractSubjec
 describe('contract suite', () => {
   it('contract suite ran against the real worker: every subject started its own resolver', () => {
     assert.ok(live.length >= 10, `${String(live.length)} subjects`);
+  });
+});
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Task 2: compiler selection, typed failures, memory, notices, no owner, providers off, the manifest.
+// ---------------------------------------------------------------------------------------------------------------------
+
+/** A runner that records what it was asked to start, then delegates. */
+export interface CountingRunner extends CommandRunner {
+  /** Every worker start (a spec that claims the compiler worker built-in). */
+  readonly workers: CommandSpec[];
+  /** Every other spec the Host ran (git). */
+  readonly others: CommandSpec[];
+}
+
+export function countingRunner(env?: Readonly<Record<string, string | undefined>>): CountingRunner {
+  const inner = workerRunner(env);
+  const workers: CommandSpec[] = [];
+  const others: CommandSpec[] = [];
+  const note = (spec: CommandSpec): void => {
+    (spec.builtinId === 'typescript-resolver' ? workers : others).push(spec);
+  };
+  return {
+    workers,
+    others,
+    run: (spec, ctx) => {
+      note(spec);
+      return inner.run(spec, ctx);
+    },
+    stream: (spec, ctx) => {
+      note(spec);
+      return inner.stream(spec, ctx);
+    },
+  };
+}
+
+const FIXED = {
+  none: 'the project has no TypeScript compiler; the bundled 6.0.3 was used',
+  unstable: 'the project TypeScript is 7.x with the unstable API; the bundled 6.0.3 was used',
+  sync: 'the project TypeScript is 7.x with the sync API; the bundled 6.0.3 was used',
+  unknown: 'the project TypeScript is 7.x with an unknown layout; the bundled 6.0.3 was used',
+} as const;
+
+const diagnosticsOf = (envelope: Envelope, code: string): string[] => envelope.diagnostics.filter((entry) => entry.code === code).map((entry) => entry.message);
+
+/**
+ * The files of a project `typescript` package under `node_modules` (written after the commit, and ignored), whose main file
+ * is `code`. The package re-exports the bundled compiler so that a run with it behaves like a real 6.x.
+ */
+function projectCompiler(version: string, code: string, exportsField?: Record<string, unknown>): Record<string, string> {
+  return {
+    'node_modules/typescript/package.json': JSON.stringify({ name: 'typescript', version, main: './lib/typescript.js', ...(exportsField === undefined ? {} : { exports: exportsField }) }),
+    'node_modules/typescript/lib/typescript.js': code,
+  };
+}
+
+const requireBundled = `const ts = require(${JSON.stringify(path.join(bundledCompilerDir(), 'lib', 'typescript.js'))});\n`;
+
+function precise(envelope: Envelope): boolean {
+  const rows = at(refRows(envelope), 'src/user.cts');
+  return rows.length === 2 && rows.every((row) => row.tier === 'precise');
+}
+
+describe('compiler selection (D-12, D-13, TSM-02)', () => {
+  it('no project compiler uses bundled: compiler_fallback and one fixed diagnostic', async (t) => {
+    const world = await makeWorld(t);
+    assert.equal((await world.build()).ok, true);
+    const { envelope } = await refsSettled(world, { name: 'compute', path: 'src/lib.cts' });
+    assert.ok(precise(envelope), JSON.stringify(refRows(envelope)));
+    assert.deepStrictEqual(envelope.degraded, ['compiler_fallback']);
+    assert.deepStrictEqual(diagnosticsOf(envelope, 'compiler_fallback'), [FIXED.none]);
+    const [info] = world.tier()?.info() ?? [];
+    assert.equal(info?.compiler.source, 'bundled');
+    assert.equal(info?.compiler.version, '6.0.3');
+    // A later read, served from the cache, still says it (the cache does not hide a fallback).
+    const again = await world.ask('code_refs', { name: 'compute', path: 'src/lib.cts' });
+    assert.deepStrictEqual(again.degraded, ['compiler_fallback']);
+    assert.deepStrictEqual(diagnosticsOf(again, 'compiler_fallback'), [FIXED.none]);
+  });
+
+  it('project 6.x compiler used and env is minimal: no fallback, no secret, no NODE_OPTIONS in the worker', async (t) => {
+    const tmp = makeTempDir();
+    t.after(() => tmp.cleanup());
+    const marker = path.join(tmp.path, 'env.log');
+    const code = `${requireBundled}require('node:fs').appendFileSync(${JSON.stringify(marker)}, JSON.stringify(Object.keys(process.env)) + '\\n');\nmodule.exports = ts;\n`;
+    const runner = countingRunner({
+      ...process.env,
+      NODE_OPTIONS: '--no-warnings',
+      MY_API_TOKEN: 'secret-one',
+      AWS_ACCESS_KEY_ID: 'secret-two',
+      UNRELATED_NAME: 'x',
+      DYLD_INSERT_LIBRARIES: '',
+    });
+    const world = await makeWorld(t, { ...FIXTURE, '.gitignore': 'node_modules/\n' }, { runner, working: projectCompiler('6.0.2', code), ignored: ['node_modules/'] });
+    assert.equal((await world.build()).ok, true);
+    const { envelope } = await refsSettled(world, { name: 'compute', path: 'src/lib.cts' });
+    assert.ok(precise(envelope), JSON.stringify(refRows(envelope)));
+    assert.equal(envelope.degraded, undefined, 'a project 6.x compiler is no fallback');
+    const [info] = world.tier()?.info() ?? [];
+    assert.equal(info?.compiler.source, 'project');
+    assert.ok(fs.existsSync(marker), 'the project compiler file was loaded by the worker');
+    const keys = fs
+      .readFileSync(marker, 'utf8')
+      .trim()
+      .split('\n')
+      .flatMap((line) => JSON.parse(line) as string[]);
+    assert.ok(keys.includes('GSD_ATLAS_WORKER'), 'the worker marker variable is present');
+    for (const key of keys) {
+      assert.ok(!/TOKEN|SECRET|KEY|PASSWORD|CREDENTIAL/i.test(key), `a secret-looking variable reached the worker: ${key}`);
+    }
+    for (const forbidden of ['NODE_OPTIONS', 'NODE_PATH', 'PATH', 'UNRELATED_NAME', 'DYLD_INSERT_LIBRARIES', 'MY_API_TOKEN', 'AWS_ACCESS_KEY_ID']) {
+      assert.ok(!keys.includes(forbidden), `${forbidden} reached the worker`);
+    }
+    // The worker was started as the exact built-in: Node, a heap flag, the worker file, one environment key.
+    assert.equal(runner.workers.length, 1);
+    const [spec] = runner.workers;
+    assert.deepStrictEqual(Object.keys(spec?.env ?? {}), ['GSD_ATLAS_WORKER']);
+    assert.match(spec?.args[0] ?? '', /^--max-old-space-size=\d+$/);
+    assert.equal(spec?.args[1], WORKER);
+    assert.ok(!spec?.args.some((arg) => arg.includes('node_modules')), 'the compiler location is data in the first message, not an argument');
+  });
+
+  for (const [label, version, exportsField, text] of [
+    ['7.x unstable falls back', '7.0.2', { '.': './lib/typescript.js', './unstable/sync': './lib/sync.js' }, FIXED.unstable],
+    ['7.x sync falls back', '7.1.0', { '.': './lib/typescript.js', './sync': './lib/sync.js' }, FIXED.sync],
+    ['unknown layout falls back', '7.2.0', { '.': './lib/typescript.js' }, FIXED.unknown],
+  ] as const) {
+    it(`${label}: the bundled compiler is used, the project's file is never loaded`, async (t) => {
+      const tmp = makeTempDir();
+      t.after(() => tmp.cleanup());
+      const marker = path.join(tmp.path, 'loaded.log');
+      const code = `require('node:fs').writeFileSync(${JSON.stringify(marker)}, 'loaded');\n${requireBundled}module.exports = ts;\n`;
+      const world = await makeWorld(t, { ...FIXTURE, '.gitignore': 'node_modules/\n' }, { working: projectCompiler(version, code, exportsField), ignored: ['node_modules/'] });
+      assert.equal((await world.build()).ok, true);
+      const { envelope } = await refsSettled(world, { name: 'compute', path: 'src/lib.cts' });
+      assert.ok(precise(envelope), JSON.stringify(refRows(envelope)));
+      assert.deepStrictEqual(envelope.degraded, ['compiler_fallback']);
+      assert.deepStrictEqual(diagnosticsOf(envelope, 'compiler_fallback'), [text]);
+      assert.equal(fs.existsSync(marker), false, 'the project compiler was never loaded');
+      const [info] = world.tier()?.info() ?? [];
+      assert.equal(info?.compiler.source, 'bundled');
+    });
+  }
+});
+
+describe('typed failures and the worker lifecycle (TSM-05)', () => {
+  it('heap abort is memory_budget: grammar edges, no resolver_failed, and the next read starts a fresh worker once', async (t) => {
+    const runner = countingRunner();
+    const world = await makeWorld(t, FIXTURE, { runner, host: { precise: { heapMb: 24 } } });
+    assert.equal((await world.build()).ok, true);
+    const first = await world.ask('code_refs', { name: 'compute', path: 'src/lib.cts' });
+    assert.equal(first.ok, true);
+    assert.ok((first.degraded ?? []).includes('memory_budget'), JSON.stringify(first.degraded));
+    assert.equal((first.degraded ?? []).includes('resolver_failed'), false);
+    assert.ok(at(refRows(first), 'src/user.cts').every((row) => row.tier === 'grammar'), 'the grammar edges are still there');
+    assert.equal(runner.workers.length, 1);
+    // The tier is not stuck: the next read starts a fresh worker, once, and that aborts too.
+    const second = await world.ask('code_refs', { name: 'compute', path: 'src/lib.cts' });
+    assert.ok((second.degraded ?? []).includes('memory_budget'));
+    assert.equal(runner.workers.length, 2);
+    assert.deepStrictEqual(diagnosticsOf(second, 'memory_budget'), ['the compiler worker reached its memory limit; this answer uses grammar facts']);
+  });
+
+  it('killed worker restarts: a SIGKILL gives resolver_failed and the next read starts a new worker', async (t) => {
+    const tmp = makeTempDir();
+    t.after(() => tmp.cleanup());
+    const flag = path.join(tmp.path, 'kill.flag');
+    const code = [
+      requireBundled,
+      "const fs = require('node:fs');",
+      `const flag = ${JSON.stringify(flag)};`,
+      'const patched = (...args) => {',
+      '  const program = ts.createProgram(...args);',
+      '  const getChecker = program.getTypeChecker.bind(program);',
+      '  program.getTypeChecker = () => {',
+      '    const checker = getChecker();',
+      '    const original = checker.getSymbolAtLocation.bind(checker);',
+      "    checker.getSymbolAtLocation = (node) => { if (fs.existsSync(flag)) process.kill(process.pid, 'SIGKILL'); return original(node); };",
+      '    return checker;',
+      '  };',
+      '  return program;',
+      '};',
+      "module.exports = new Proxy(ts, { get: (target, name) => (name === 'createProgram' ? patched : target[name]) });",
+      '',
+    ].join('\n');
+    const runner = countingRunner();
+    const world = await makeWorld(t, { ...FIXTURE, '.gitignore': 'node_modules/\n' }, { runner, working: projectCompiler('6.0.2', code), ignored: ['node_modules/'] });
+    assert.equal((await world.build()).ok, true);
+    const warm = await refsSettled(world, { name: 'compute', path: 'src/lib.cts' });
+    assert.ok(precise(warm.envelope), JSON.stringify(refRows(warm.envelope)));
+    assert.equal(runner.workers.length, 1);
+
+    fs.writeFileSync(flag, 'kill');
+    const killed = await world.ask('code_refs', { name: 'greet', path: 'src/lib.cts' });
+    assert.ok((killed.degraded ?? []).includes('resolver_failed'), JSON.stringify(killed.degraded));
+    assert.equal((killed.degraded ?? []).includes('memory_budget'), false);
+
+    fs.rmSync(flag);
+    const { envelope } = await refsSettled(world, { name: 'greet', path: 'src/lib.cts' });
+    assert.equal(at(refRows(envelope), 'src/lib.cts')[0]?.tier, 'precise');
+    assert.equal(runner.workers.length, 2, 'the worker was started again, once');
+  });
+});
+
+describe('no owner and providers off (SEC-02)', () => {
+  const SAME_FILE = ['export function f(): number {', '  return 1;', '}', 'export function g(): number {', '  return f();', '}', ''].join('\n');
+
+  it('no owner ts file: precise_unavailable with a fixed diagnostic, and no worker is started', async (t) => {
+    const runner = countingRunner();
+    const world = await makeWorld(t, { 'src/a.ts': SAME_FILE }, { runner });
+    assert.equal((await world.build()).ok, true);
+    for (let read = 0; read < 2; read += 1) {
+      const envelope = await world.ask('code_refs', { name: 'f', path: 'src/a.ts' });
+      assert.equal(envelope.ok, true);
+      assert.deepStrictEqual(envelope.degraded, ['precise_unavailable'], `read ${String(read)}`);
+      assert.equal(refRows(envelope).length, 1);
+      assert.equal(refRows(envelope)[0]?.tier, 'grammar');
+      assert.deepStrictEqual(diagnosticsOf(envelope, 'precise_unavailable'), ['no tsconfig.json covers a TypeScript file in this answer; it was answered from grammar facts']);
+    }
+    assert.equal(runner.workers.length, 0);
+  });
+
+  it('no owner js file: a JavaScript file with no config adds nothing and starts nothing', async (t) => {
+    const runner = countingRunner();
+    const world = await makeWorld(t, { 'src/a.cjs': 'function f() {\n  return 1;\n}\nfunction g() {\n  return f();\n}\nmodule.exports = { f, g };\n' }, { runner });
+    assert.equal((await world.build()).ok, true);
+    const envelope = await world.ask('code_refs', { name: 'f', path: 'src/a.cjs' });
+    assert.equal(envelope.ok, true);
+    assert.equal(envelope.degraded, undefined);
+    assert.ok(refRows(envelope).length >= 1, 'the grammar tier still answers');
+    assert.equal(runner.workers.length, 0);
+
+    // The same inside a TypeScript project: a .cjs outside every config's file set is not a reason to say anything.
+    const project = await makeWorld(t, { ...FIXTURE, 'scripts/run.cjs': 'function f() {\n  return 1;\n}\nfunction g() {\n  return f();\n}\nmodule.exports = { f, g };\n' }, { runner });
+    assert.equal((await project.build()).ok, true);
+    const inProject = await project.ask('code_refs', { name: 'f', path: 'scripts/run.cjs' });
+    assert.equal((inProject.degraded ?? []).includes('precise_unavailable'), false, JSON.stringify(inProject.degraded));
+  });
+
+  it('providers disabled starts nothing: grammar-tier answers, precise_unavailable and the switched-off text', async (t) => {
+    const runner = countingRunner();
+    const world = await makeWorld(t, FIXTURE, { runner, host: { config: { providers: { disabled: ['typescript'] } } } });
+    assert.equal((await world.build()).ok, true);
+    for (let read = 0; read < 2; read += 1) {
+      const envelope = await world.ask('code_refs', { name: 'compute', path: 'src/lib.cts' });
+      assert.equal(envelope.ok, true);
+      assert.deepStrictEqual(envelope.degraded, ['precise_unavailable'], `read ${String(read)}`);
+      assert.ok(at(refRows(envelope), 'src/user.cts').length > 0);
+      assert.ok(refRows(envelope).every((row) => row.tier === 'grammar'));
+      assert.deepStrictEqual(diagnosticsOf(envelope, 'precise_unavailable'), ['the typescript provider is turned off in the user configuration']);
+    }
+    assert.equal(runner.workers.length, 0, 'no worker is ever started');
+    const listed = await world.ask('lang_list');
+    const modules = (listed.data as { modules: Array<{ name: string; tiers: Array<{ tier: string; active: boolean; reason?: string }> }> }).modules;
+    assert.deepStrictEqual(modules.find((entry) => entry.name === 'typescript')?.tiers.find((tier) => tier.tier === 'precise'), { tier: 'precise', active: false, reason: 'provider_disabled' });
+  });
+
+  it('a hostile tsconfig plugin is never loaded and the only processes are git and the worker', async (t) => {
+    const tmp = makeTempDir();
+    t.after(() => tmp.cleanup());
+    const marker = path.join(tmp.path, 'PWNED');
+    const hostile = {
+      ...FIXTURE,
+      'tsconfig.json': JSON.stringify({ compilerOptions: { module: 'nodenext', strict: true, plugins: [{ name: './mark.cjs' }] }, include: ['src'] }),
+      'mark.cjs': `require('node:fs').writeFileSync(${JSON.stringify(marker)}, 'pwned');\nmodule.exports = () => ({ create: (info) => info.languageService });\n`,
+    };
+    const runner = countingRunner();
+    const world = await makeWorld(t, hostile, { runner });
+    assert.equal((await world.build()).ok, true);
+    const { envelope } = await refsSettled(world, { name: 'compute', path: 'src/lib.cts' });
+    assert.ok(precise(envelope), JSON.stringify(refRows(envelope)));
+    assert.equal(fs.existsSync(marker), false, 'a tsconfig plugin was loaded');
+    assert.equal(runner.workers.length, 1);
+    assert.ok(runner.others.every((spec) => spec.executable === 'git'), 'nothing but git besides the worker');
+  });
+});
+
+describe('the manifest and the worker source', () => {
+  it('the TypeScript module names tiers grammar and precise and the typescript adapter', () => {
+    const manifest = JSON.parse(fs.readFileSync(path.join(MODULES, 'typescript', 'atlas-lang.json'), 'utf8')) as { tiers: string[]; precise: { adapter: string } };
+    assert.deepStrictEqual(manifest.tiers, ['grammar', 'precise']);
+    assert.deepStrictEqual(manifest.precise, { adapter: 'typescript' });
+  });
+
+  it('worker.ts calls createProgram and never the language service, tsserver or a plugin loader', () => {
+    // Comments explain what the worker does not do; only code counts here.
+    const source = fs
+      .readFileSync(WORKER, 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/(^|\s)\/\/.*$/gm, '$1');
+    assert.match(source, /createProgram/);
+    assert.doesNotMatch(source, /createLanguageService|tsserver|loadPlugin|plugins/);
+  });
+
+  it('no production file outside the worker loads the compiler package', () => {
+    const dir = path.dirname(WORKER);
+    for (const name of fs.readdirSync(dir)) {
+      if (!name.endsWith('.ts') || name.endsWith('.test.ts') || name === 'worker.ts') continue;
+      const text = fs.readFileSync(path.join(dir, name), 'utf8');
+      assert.doesNotMatch(text, /(?:from|import|require)\s*\(?\s*['"]typescript(?:\/[^'"]*)?['"]/, `${name} imports the compiler`);
+    }
   });
 });

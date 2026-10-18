@@ -2,10 +2,13 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { describe, it } from 'node:test';
+import { ResolverFailure, degradedCodeOf } from '../facts/index.ts';
 import type {
+  DegradedCode,
   EmitLookup,
   FileFacts,
   LocatedSymbol,
+  PreciseFacts,
   ProjectContextProvider,
   RefSiteKey,
   ResolutionContext,
@@ -1160,6 +1163,174 @@ for (const driver of DRIVERS) {
           throw new Error('no project');
         },
       });
+    });
+  });
+}
+
+// ---------------------------------------------------------------------------------------------------------
+// Plan 03-23: notices, typed failures and the state of the precise tier.
+// ---------------------------------------------------------------------------------------------------------
+
+const scriptedBinding = asStoreResolver(
+  createScriptedResolver({
+    id: 'scripted',
+    edges: [
+      { site: SITE_A, target: RUN },
+      { site: SITE_B, target: RUN },
+    ],
+  }),
+);
+
+/** A resolver that yields `codes` as notices and then binds both sites to `run`, counting its calls. */
+function noticing(codes: readonly DegradedCode[]): { readonly resolver: Resolver; readonly calls: () => number } {
+  let calls = 0;
+  const resolver: Resolver = async function* (sites, context, symbols, scope) {
+    calls += 1;
+    for (const code of codes) yield { kind: 'notice', degraded: code };
+    yield* scriptedBinding(sites, context, symbols, scope);
+  };
+  return { resolver, calls: () => calls };
+}
+
+const facts = (over: Partial<PreciseFacts> = {}): PreciseFacts => ({
+  ownerOf: () => 'tsconfig.json',
+  requiresOwner: () => true,
+  compiler: { source: 'project', version: '6.0.2', dir: 'node_modules/typescript', case: 'project-6' },
+  configs: ['tsconfig.json'],
+  ...over,
+});
+
+const withPrecise = (precise: PreciseFacts): ProjectContextProvider => async () => ({ context: { id: 'ts:test', configHashes: ['aa'] }, precise });
+
+for (const driver of DRIVERS) {
+  describe(`resolver notices, typed failures and tier state (${driver})`, () => {
+    it('a notice with edges: the answer keeps the precise edges and carries the code', async () => {
+      const { resolver } = noticing(['compiler_fallback']);
+      await withRig(driver, async (rig) => {
+        const writer = rig.store.writer();
+        await seed(writer);
+        const refs = await rig.store.at('main').refs(RUN);
+        assert.deepStrictEqual(refs.degraded, ['compiler_fallback']);
+        assert.deepStrictEqual(tiers(refs.data), BOTH_PRECISE);
+        writer.release();
+      }, {}, resolver);
+    });
+
+    it('a notice is added once per read, however often the resolver yields it', async () => {
+      const { resolver } = noticing(['compiler_fallback', 'compiler_fallback', 'precise_unavailable']);
+      await withRig(driver, async (rig) => {
+        const writer = rig.store.writer();
+        await seed(writer);
+        const refs = await rig.store.at('main').refs(RUN);
+        assert.deepStrictEqual(refs.degraded, ['compiler_fallback', 'precise_unavailable']);
+        writer.release();
+      }, {}, resolver);
+    });
+
+    it('a typed failure answers with its own code and the grammar edges, and caches nothing', async () => {
+      let attempts = 0;
+      const failing: Resolver = async function* () {
+        attempts += 1;
+        throw new ResolverFailure('memory_budget', 'the worker ran out of memory');
+      };
+      await withRig(driver, async (rig) => {
+        const writer = rig.store.writer();
+        await seed(writer);
+        const peek = await rig.peek();
+        const reader = rig.store.at('main');
+        for (let call = 1; call <= 2; call += 1) {
+          const refs = await reader.refs(RUN);
+          assert.deepStrictEqual(refs.degraded, ['memory_budget']);
+          assert.deepStrictEqual(tiers(refs.data), BOTH_GRAMMAR);
+          assert.equal(attempts, call, 'a failed call settles nothing, so the next read asks again');
+        }
+        assert.equal(count(peek, 'resolved_asked'), 0);
+        writer.release();
+      }, {}, failing);
+    });
+
+    it('an ordinary error and an unknown code string are still resolver_failed', async () => {
+      const plain: Resolver = async function* () {
+        throw new Error('resolver exploded');
+      };
+      const odd: Resolver = async function* () {
+        throw Object.assign(new Error('odd'), { degradedCode: 'not_a_code' });
+      };
+      for (const resolver of [plain, odd]) {
+        await withRig(driver, async (rig) => {
+          const writer = rig.store.writer();
+          await seed(writer);
+          assert.deepStrictEqual((await rig.store.at('main').refs(RUN)).degraded, ['resolver_failed']);
+          writer.release();
+        }, {}, resolver);
+      }
+      assert.equal(degradedCodeOf(new ResolverFailure('memory_budget', 'x')), 'memory_budget');
+      assert.equal(degradedCodeOf('text'), 'resolver_failed');
+      assert.equal(degradedCodeOf(null), 'resolver_failed');
+    });
+
+    it('compiler_fallback is not hidden by the cache: a read served from cached edges under the bundled compiler still says it', async () => {
+      const { resolver, calls } = noticing([]);
+      const bundled = facts({ compiler: { source: 'bundled', version: '6.0.3', reason: 'no project compiler', case: 'none' } });
+      await withRig(driver, async (rig) => {
+        const writer = rig.store.writer();
+        await seed(writer);
+        const reader = rig.store.at('main');
+        const first = await reader.refs(RUN);
+        const second = await reader.refs(RUN);
+        assert.equal(calls(), 1, 'the second read is served from the cache');
+        assert.deepStrictEqual(first.degraded, ['compiler_fallback']);
+        assert.deepStrictEqual(second.degraded, ['compiler_fallback']);
+        assert.deepStrictEqual(tiers(second.data), BOTH_PRECISE);
+        writer.release();
+      }, { projectContext: withPrecise(bundled) }, resolver);
+    });
+
+    it('a project compiler adds no compiler_fallback', async () => {
+      const { resolver } = noticing([]);
+      await withRig(driver, async (rig) => {
+        const writer = rig.store.writer();
+        await seed(writer);
+        const refs = await rig.store.at('main').refs(RUN);
+        assert.equal(refs.degraded, undefined);
+        writer.release();
+      }, { projectContext: withPrecise(facts()) }, resolver);
+    });
+
+    it('precise_unavailable is derived from the facts on every read: a site that needs a config and has none', async () => {
+      const { resolver, calls } = noticing([]);
+      const unowned = facts({ ownerOf: (p) => (p === 'src/use.ts' ? undefined : 'tsconfig.json') });
+      await withRig(driver, async (rig) => {
+        const writer = rig.store.writer();
+        await seed(writer);
+        const reader = rig.store.at('main');
+        assert.deepStrictEqual((await reader.refs(RUN)).degraded, ['precise_unavailable']);
+        assert.deepStrictEqual((await reader.refs(RUN)).degraded, ['precise_unavailable'], 'the cache does not hide it');
+        assert.equal(calls(), 1);
+        writer.release();
+      }, { projectContext: withPrecise(unowned) }, resolver);
+
+      // A path that needs no owner (a JavaScript file) and has none adds nothing.
+      const jsLike = facts({ ownerOf: () => undefined, requiresOwner: () => false });
+      await withRig(driver, async (rig) => {
+        const writer = rig.store.writer();
+        await seed(writer);
+        assert.equal((await rig.store.at('main').refs(RUN)).degraded, undefined);
+        writer.release();
+      }, { projectContext: withPrecise(jsLike) }, noticing([]).resolver);
+    });
+
+    it('codes the project context names apply to every read that has sites to resolve', async () => {
+      const { resolver } = noticing([]);
+      const off: ProjectContextProvider = async () => ({ context: { id: 'ts:off', configHashes: [] }, degraded: ['precise_unavailable'] });
+      await withRig(driver, async (rig) => {
+        const writer = rig.store.writer();
+        await seed(writer);
+        const reader = rig.store.at('main');
+        assert.deepStrictEqual((await reader.refs(RUN)).degraded, ['precise_unavailable']);
+        assert.deepStrictEqual((await reader.refs(RUN)).degraded, ['precise_unavailable']);
+        writer.release();
+      }, { projectContext: off }, resolver);
     });
   });
 }
