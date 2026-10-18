@@ -7,6 +7,8 @@
 - **Refines:** [draft-host-process-model](draft-host-process-model.md), [11-worktree-lifecycle](11-worktree-lifecycle.md)
 - **Review findings addressed:** design-it-twice review, findings 3 and 4
 
+> Pre-release note: this record is not yet ratified; ratification is planned for the end of Phase 3, and every ADR will have a number by the MVP release; its Accepted status and issue number do not mean it is ratified (see docs/adr/README.md).
+
 ## Context
 Three groups of behaviour had no owner:
 - **Git-derived facts** (blob-id hashing with clean filters, the source set, object existence, reading at a commit, repo identity) were touched in seven places (A4, A5, A19, A20, A43, A47, history replay).

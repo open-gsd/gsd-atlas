@@ -6,6 +6,8 @@
 - **DESIGN.md:** A6, A7, A9, A25, A47, A48
 - **Review findings addressed:** LM‑1, LM‑2, LM‑3, LM‑4, LM‑5, SDK‑1, S‑1 (module side)
 
+> Pre-release note: this record is not yet ratified; ratification is planned for the end of Phase 3, and every ADR will have a number by the MVP release; its Accepted status and issue number do not mean it is ratified (see docs/adr/README.md).
+
 ## Context
 Users should be able to bring a language without anyone "adding support for it" in gsd‑atlas. The MVP language is TypeScript, for gsd‑core development (`.cts` compiled to `.cjs`). Swift follows, then community languages. gsd‑graph's EXT‑01 extractor registry is synchronous and per‑file, which can't load WebAssembly grammars or run project‑wide compilers.
 

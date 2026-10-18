@@ -2,6 +2,9 @@
 
 Each ADR records one decision: what was decided, why, and what follows. ADRs are append‑only; later changes are dated amendment sections, never rewrites. Conventions follow open‑gsd/gsd‑core `docs/adr/README.md`.
 
+## Pre-release legend
+Before the first release none of these records is ratified. Ratification is planned for the end of Phase 3 (the end-of-Phase-3 ratification step), and every ADR will have a number by the MVP release; drafts are numbered at that step. The `Accepted` status, the issue numbers and the numbered file names in older records, and the `Accepted` and `Ratified` wording in the tables and logs below, come from an earlier process step and do not mean a record is ratified. Until that step no file is renamed and no record is promoted.
+
 ## Naming
 New ADRs are named `<issue#>-<kebab-slug>.md`, with the number of the GitHub issue that proposes them. The repo has no issues yet, so the founding set below is named `draft-<slug>.md`. When the repo is created, open one issue per ADR and rename each file to `<issue#>-<slug>.md` in the same PR that lands it. The eight Phase 1 ADRs were ratified on 2026-10-15 (issue opened, file renamed, Status Accepted); the Ratification log below lists the issues. The four Phase 2 ADRs were ratified on 2026-10-16 (issues 11 to 14). The other two ADRs stay `draft-<slug>.md` and Proposed until the phase named in the Ratification schedule.
 
