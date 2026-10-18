@@ -173,13 +173,13 @@ Plans:
 
 Plans:
 **Wave 1**
-- [ ] 03-01-PLAN.md — Decision register (nine assumptions) and ratification of the diagnostics ADR (SKL-03)
+- [ ] 03-01-PLAN.md — Decision register (nine assumptions, stop-gates for the D-21 sampler deviation and the EVL-03 citation criterion), research Open Questions marked RESOLVED, and ratification of the diagnostics ADR (SKL-03)
 - [ ] 03-02-PLAN.md — Approve Phase 3 constants and the three package installs (TSM-05, TSM-06, TSM-07, EVL-02)
 - [ ] 03-03-PLAN.md — Headless `claude -p` session runner with isolation, bounds and usage accounting (EVL-02, EVL-03)
 - [ ] 03-04-PLAN.md — Independent compiler-derived oracle and question schema (EVL-02)
-- [ ] 03-05-PLAN.md — Paired cluster bootstrap, analysis and the pre-registration verifier (EVL-02, EVL-03)
 
 **Wave 2** *(blocked on Wave 1 completion)*
+- [ ] 03-05-PLAN.md — Paired cluster bootstrap, analysis and the pre-registration verifier; starts only once the EVL-03 citation criterion is confirmed (EVL-02, EVL-03)
 - [ ] 03-06-PLAN.md — Free-alternatives evaluation with live runs (EVL-01)
 - [ ] 03-07-PLAN.md — Answer schema, scorer with citation verification, corpus preparation (EVL-02, EVL-03)
 - [ ] 03-08-PLAN.md — Dated ADR amendments for the Phase 3 seams (TSM-01, TSM-03, TSM-04, TSM-05, TSM-07, QRY-07, SKL-02, SEC-02)
@@ -196,12 +196,12 @@ Plans:
 - [ ] 03-15-PLAN.md — `gsd-atlas allow`, MCP origin without permissions, `--allow-build`, providers switch (SEC-02, SEC-01)
 
 **Wave 5** *(blocked on Wave 4 completion)*
-- [ ] 03-16-PLAN.md — Question approval and pre-registration freeze, Stage A (EVL-02)
+- [ ] 03-16-PLAN.md — Question approval and pre-registration freeze, Stage A; refuses to freeze without the user's explicit EVL-03 citation-criterion confirmation (EVL-02)
 - [ ] 03-17-PLAN.md — Answer ids, flight recorder and `gsd-atlas rate` (SKL-02)
 
 **Wave 6** *(blocked on Wave 5 completion)*
 - [ ] 03-18-PLAN.md — Compiler-free ProjectModel, owners, context and TypeScript 7.x detection (TSM-07, TSM-02)
-- [ ] 03-19-PLAN.md — CommandRunner exact-shape built-in for the compiler worker (TSM-05)
+- [ ] 03-19-PLAN.md — CommandRunner exact-shape built-in for the compiler worker; runs only if the D-21 sampler deviation was approved (TSM-05)
 - [ ] 03-20-PLAN.md — Resolver seam: scope, symbol lookup with spans, per-overlay context, negative marker (TSM-01)
 - [ ] 03-21-PLAN.md — Diagnostics: catalog, per-type consent, preview, local save (SKL-03)
 
@@ -217,7 +217,7 @@ Plans:
 
 **Wave 10** *(blocked on Wave 9 completion)*
 - [ ] 03-26-PLAN.md — `explain` and the seventh tool `code_explain` (QRY-07)
-- [ ] 03-27-PLAN.md — Memory budget, RSS sampler, LRU worker pool, gsd-pi no-break (TSM-05)
+- [ ] 03-27-PLAN.md — Memory budget, RSS sampler, LRU worker pool, gsd-pi no-break; runs only if the D-21 sampler deviation was approved (TSM-05)
 
 **Wave 11** *(blocked on Wave 10 completion)*
 - [ ] 03-29-PLAN.md — Eager resolve in build, incremental update, warm start, gated `precise.command` (TSM-06, SEC-02, SEC-01)
