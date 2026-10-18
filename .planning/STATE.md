@@ -180,6 +180,12 @@ None yet.
 - Unconfirmed: Memtrace licensing status, a reported `node:sqlite` NUL-truncation bug (Node floor 24.15), Apple licensing of SDK packs.
 - Criteria 6 and 15 need Xcode 27; use the `xcode-27` runner if available, else local self-attested gates.
 
+### Quick Tasks Completed
+
+| # | Description | Date | Commit | Directory |
+|---|-------------|------|--------|-----------|
+| 261017-slg | Diataxis restructure of user documentation for Phase 2 | 2026-10-17 | 9f23c7f | [261017-slg-diataxis-restructure-of-user-documentati](./quick/261017-slg-diataxis-restructure-of-user-documentati/) |
+
 ## Deferred Items
 
 Items acknowledged and deferred at milestone close, most recent first:
