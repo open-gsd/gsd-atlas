@@ -5,7 +5,18 @@ import os from 'node:os';
 import path from 'node:path';
 import { after, describe, it } from 'node:test';
 
-import { ALLOWED_SHELL, ARMS, ATLAS_TOOL_NAMES, PLUGIN_NAME, SKILL_NAME, allowedToolsFor, buildPluginDir, checkInit, expectedToolSet } from './arms.ts';
+import {
+  ALLOWED_SHELL,
+  ARMS,
+  ATLAS_SETTINGS,
+  ATLAS_TOOL_NAMES,
+  PLUGIN_NAME,
+  SKILL_NAME,
+  allowedToolsFor,
+  buildPluginDir,
+  checkInit,
+  expectedToolSet,
+} from './arms.ts';
 import type { InitEvent } from './claude-session.ts';
 import { buildPrompt, isInfrastructureFailure, runAll, runCell, runCli, runningCostUsd } from './harness.ts';
 import type { CellDeps, Io } from './harness.ts';
@@ -274,6 +285,8 @@ describe('runCell tracer', () => {
     assert.equal(argv[argv.indexOf('--tools') + 1], 'Bash,Read,Skill');
     const allowed = (argv[argv.indexOf('--allowedTools') + 1] ?? '').split(',');
     assert.deepEqual(allowed.filter((t) => t.startsWith('Skill')), ['Skill(gsd-atlas-eval:gsd-atlas)']);
+    assert.equal(argv[argv.indexOf('--settings') + 1], ATLAS_SETTINGS, 'the atlas session carries the bundled-skill settings');
+    assert.equal(argv.filter((a) => a === '--settings').length, 1);
     const init = metaOf(env).find((m) => m.kind === 'session' && m.cellId === cellId(cell))?.['init'] as { tools: string[]; skills: string[] };
     assert.ok(init.tools.includes('Skill'));
     assert.ok(init.skills.includes('gsd-atlas-eval:gsd-atlas'));
@@ -289,6 +302,7 @@ describe('runCell tracer', () => {
     assert.equal((await runCell(cell, env.deps)).outcome, 'done');
     const argv = resultEventOf(env, cellId(cell))['fake_argv'] as string[];
     assert.ok(!argv.some((a) => a.includes('Skill')), 'no Skill token in the grep argv');
+    assert.ok(!argv.includes('--settings'), 'the grep session carries no settings');
     const dirty = makeEnv({ FAKE_INIT_EXTRA_TOOLS: JSON.stringify(['Skill']) });
     const contaminated = await runCell({ questionId: 'q-1', arm: 'grep', run: 1 }, dirty.deps);
     assert.equal(contaminated.outcome, 'contaminated');
@@ -413,7 +427,7 @@ describe('schedule', () => {
 const ATLAS_INIT = (over: Partial<InitEvent> = {}): InitEvent => ({
   tools: ['Bash', 'Read', 'Skill', 'mcp__gsd-atlas__code_find', 'mcp__gsd-atlas__code_refs'],
   mcpServers: [{ name: 'gsd-atlas', status: 'connected' }],
-  skills: ['update-config', 'gsd-atlas-eval:gsd-atlas'],
+  skills: ['gsd-atlas-eval:gsd-atlas'],
   plugins: [],
   agents: [],
   model: 'm',
@@ -483,6 +497,19 @@ describe('arms', () => {
     assert.deepEqual(allowedToolsFor('atlas').slice(13), ['Skill(gsd-atlas-eval:gsd-atlas)', ...ATLAS_TOOL_NAMES]);
   });
 
+  // The ladder outcome (docs/eval/skill-visibility.md): rung one, through --settings. Deny rules by name
+  // did not hide a skill from the model's list; `disableBundledSkills` hid all but three, which
+  // `skillOverrides` "off" hides; the model then sees the registered skill and nothing else.
+  it('the atlas arm designs the bundled skills out of the model view through --settings; the grep arm gets no settings', () => {
+    assert.equal(
+      ATLAS_SETTINGS,
+      '{"disableBundledSkills":true,"skillOverrides":{"plugin-authoring":"off","design":"off","doctor":"off"}}',
+    );
+    assert.equal(ARMS.atlas.settings, ATLAS_SETTINGS);
+    assert.equal(ARMS.grep.settings, undefined);
+    assert.ok(!allowedToolsFor('atlas').includes('Skill'), 'no bare Skill allow rule: only the registered skill is open');
+  });
+
   it('expectedToolSet: Bash and Read (and Skill for the atlas arm) exactly, a server only for the atlas arm', () => {
     assert.deepEqual(expectedToolSet('grep'), { tools: ['Bash', 'Read'], mcpServers: [] });
     assert.deepEqual(expectedToolSet('atlas'), { tools: ['Bash', 'Read', 'Skill'], mcpServers: ['gsd-atlas'] });
@@ -501,6 +528,12 @@ describe('arms', () => {
     assert.ok(checkInit('grep', GREP_INIT({ tools: ['Bash', 'Read', 'Skill'] })).includes('extra tool: Skill'));
     assert.ok(checkInit('grep', GREP_INIT({ skills: ['gsd-atlas-eval:gsd-atlas'] })).includes('unexpected skill: gsd-atlas'));
     assert.deepEqual(checkInit('grep', GREP_INIT()), [], 'the registered grep environment is still accepted');
+  });
+
+  it('checkInit names every other skill in the atlas arm: only the registered skill may be listed', () => {
+    const diffs = checkInit('atlas', ATLAS_INIT({ skills: ['gsd-atlas-eval:gsd-atlas', 'update-config', 'plugin-authoring'] }));
+    assert.deepEqual(diffs, ['unexpected skill: update-config', 'unexpected skill: plugin-authoring']);
+    assert.deepEqual(checkInit('atlas', ATLAS_INIT({ skills: ['gsd-atlas'] })), [], 'the bare skill name counts as the registered skill');
   });
 
   it('checkInit accepts the StructuredOutput tool that --json-schema adds, in both arms, and still names other extras', () => {
