@@ -894,7 +894,7 @@ export function verifyDefinition(fact: DefinitionFact, env: VerifyEnv): Verdict 
       reasons.push(`the source nests it as ${qualified ?? '?'}, not ${fact.qualifiedName}`);
       continue;
     }
-    return right(`a ${fact.kind} named ${fact.name} is declared at the span`);
+    return right(`${fact.kind} ${fact.name} is declared at the span`);
   }
   return wrong(reasons[0] ?? `no declaration named ${fact.name} starts and ends at the span`);
 }
@@ -1392,7 +1392,7 @@ export function renderTable(report: SampleReport): string {
     `- Corpus: ${header.corpus} at ${header.corpusSha}`,
     `- Seed: ${String(header.seed)}`,
     `- Sample size: ${String(report.sampled)} (requested ${String(header.requested)})`,
-    `- Atlas commit: ${header.atlasCommit}`,
+    `- Atlas commit: ${header.atlasCommit} (the last commit that changed src, modules, schemas or scripts/edge-sample.ts)`,
     `- Store schema version: ${String(header.schemaVersion)}`,
     `- Compilers: ${header.compilers}`,
     '',
@@ -1500,12 +1500,18 @@ function readPreparedRecord(dir: string): PreparedRecord {
   return { corpusId: record.corpusId, sha: record.sha, typescriptVersion: record.typescriptVersion ?? null, npmCi: record.npmCi };
 }
 
+/**
+ * The commit of the atlas code that made the index and checked it: the last commit that changed the package's sources,
+ * modules, schemas or this script. Committing the review table itself does not change it, so regenerating the table
+ * after the commit that holds it gives the same text.
+ */
 function atlasCommit(): string {
   const root = path.resolve(import.meta.dirname, '..');
-  const head = gitOutput(root, ['rev-parse', 'HEAD'])?.trim();
-  if (head === undefined || head === '') return 'unknown';
-  const dirty = (gitOutput(root, ['status', '--porcelain', '--untracked-files=no']) ?? '').trim() !== '';
-  return dirty ? `${head} (with uncommitted changes)` : head;
+  const scope = ['src', 'modules', 'schemas', 'scripts/edge-sample.ts'];
+  const last = gitOutput(root, ['log', '-1', '--format=%H', '--', ...scope])?.trim();
+  if (last === undefined || last === '') return 'unknown';
+  const dirty = (gitOutput(root, ['status', '--porcelain', '--untracked-files=no', '--', ...scope]) ?? '').trim() !== '';
+  return dirty ? `${last} (with uncommitted changes)` : last;
 }
 
 export async function runEdgeSample(options: RunOptions): Promise<RunResult> {
