@@ -4,6 +4,8 @@
  */
 export { PROJECT_MODEL_IDS, createTypeScriptProjectModel } from './typescript.ts';
 export type { TypeScriptProjectModelOptions } from './typescript.ts';
+export { buildContext } from './context.ts';
+export { BUNDLED_VERSION, compilerFallbackDiagnostic, detectTypeScriptInstall, selectCompiler } from './install.ts';
 export { PROJECT_MODEL_CODES } from './types.ts';
 export type {
   CompilerChoice,

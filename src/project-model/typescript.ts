@@ -1,6 +1,8 @@
 import type { Diagnostic } from '../facts/index.ts';
-import { createFileSetMatcher, hasHigherPriorityExtension } from './globs.ts';
+import { buildContext } from './context.ts';
+import { createFileSetMatcher, dirOf, hasHigherPriorityExtension } from './globs.ts';
 import type { FileSetMatcher } from './globs.ts';
+import { compilerFallbackDiagnostic, detectTypeScriptInstall, selectCompiler } from './install.ts';
 import { chooseOwner } from './owners.ts';
 import { createReadContext, discoverConfigs, effectiveConfig } from './tsconfig.ts';
 import type { ConfigInfo, DescribeInput, ProjectDescription, ProjectFs, ProjectModel } from './types.ts';
@@ -61,7 +63,7 @@ export function createTypeScriptProjectModel(defaultFs?: ProjectFs, options: Typ
       const matchers = new Map<string, { readonly info: ConfigInfo; readonly matcher: FileSetMatcher; readonly memo: Map<string, boolean> }>();
       for (const info of configs) {
         const matcher = createFileSetMatcher({
-          configDir: info.path.includes('/') ? info.path.slice(0, info.path.lastIndexOf('/')) : '',
+          configDir: dirOf(info.path),
           files: info.files,
           include: info.include,
           exclude: info.exclude,
@@ -94,13 +96,21 @@ export function createTypeScriptProjectModel(defaultFs?: ProjectFs, options: Typ
         return owner;
       };
 
+      // The compiler decision reads the package.json nearest the first owner config (the lexically first config that
+      // owns some overlay file), or the root when nothing is owned. Only data is read; nothing is loaded.
+      const configPaths = configs.map((c) => c.path);
+      const firstOwner = configPaths.find((candidate) => overlay.some((p) => matches(candidate, p) && ownerOf(p) === candidate));
+      const install = await detectTypeScriptInstall(fs, firstOwner === undefined ? '' : dirOf(firstOwner));
+      const compiler = selectCompiler(install);
+      const fallback = compilerFallbackDiagnostic(compiler);
+
       return {
-        context: { id: 'typescript:unknown', configHashes: [] },
+        context: buildContext(compiler, effective.map((e) => e.hashes)),
         configs,
         matches,
         ownerOf,
-        compiler: { source: 'bundled', version: '6.0.3', case: 'none' },
-        diagnostics: uniqueDiagnostics(ctx.diagnostics),
+        compiler,
+        diagnostics: uniqueDiagnostics([...ctx.diagnostics, ...install.diagnostics, ...(fallback === undefined ? [] : [fallback])]),
       };
     },
   };

@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -518,4 +519,97 @@ test('a hostile config cannot make the model throw', async () => {
     const description = await describeTree({ ...SRC_FILES, 'tsconfig.json': text });
     for (const p of Object.keys(SRC_FILES)) assert.equal(typeof description.matches('tsconfig.json', p), 'boolean');
   }
+});
+
+// ---------------------------------------------------------------------------------------------
+// Task 3: the resolution context and the compiler decision inside a description.
+
+const sha256 = (text: string): string => createHash('sha256').update(text.replace(/\r\n?/g, '\n'), 'utf8').digest('hex');
+const PACKAGE_JSON = 'node_modules/typescript/package.json';
+const compilerPackage = (version: string, exportKeys: readonly string[] = []): string =>
+  JSON.stringify({ name: 'typescript', version, exports: Object.fromEntries(exportKeys.map((k) => [k, './x.js'])) });
+
+test('context: the id names the compiler identity and configHashes are the sorted sha256 of every chain file', async () => {
+  const description = await describeTree(CORE_LIKE_TREE, CORE_LIKE_PATHS);
+  assert.equal(description.context.id, 'typescript:6.0.3:bundled');
+  assert.deepEqual(description.context.configHashes, [sha256(CORE_LIKE_TREE['tsconfig.json']), sha256(CORE_LIKE_TREE['tsconfig.build.json'])].sort());
+  assert.equal(description.compiler.source, 'bundled');
+  assert.equal(description.compiler.case, 'none');
+  assert.equal(description.compiler.reason, 'no project compiler');
+  assert.equal(description.diagnostics.filter((d) => d.code === 'compiler_fallback').length, 1, 'the fallback is reported once per description');
+});
+
+test('context: changing a byte of a chain file changes the hashes, and only that one', async () => {
+  const before = await describeTree(CORE_LIKE_TREE, CORE_LIKE_PATHS);
+  const edited = { ...CORE_LIKE_TREE, 'tsconfig.build.json': CORE_LIKE_TREE['tsconfig.build.json'].replace('out/lib', 'out/lub') };
+  const after = await describeTree(edited, CORE_LIKE_PATHS);
+  assert.notDeepEqual(after.context.configHashes, before.context.configHashes);
+  assert.equal(after.context.id, before.context.id, 'the compiler identity did not change');
+  const shared = after.context.configHashes.filter((h) => before.context.configHashes.includes(h));
+  assert.deepEqual(shared, [sha256(CORE_LIKE_TREE['tsconfig.json'])], 'the derived config is byte-identical');
+  // A change in the extending file alone changes the context too.
+  const derived = await describeTree({ ...CORE_LIKE_TREE, 'tsconfig.json': '{ "extends": "./tsconfig.build.json", "compilerOptions": {} }' }, CORE_LIKE_PATHS);
+  assert.notDeepEqual(derived.context.configHashes, before.context.configHashes);
+});
+
+test('context: a BOM and CRLF do not change the hashes', async () => {
+  const before = await describeTree(CORE_LIKE_TREE, CORE_LIKE_PATHS);
+  const crlf = { ...CORE_LIKE_TREE, 'tsconfig.build.json': `﻿${CORE_LIKE_TREE['tsconfig.build.json'].replace(/\n/g, '\r\n')}` };
+  const after = await describeTree(crlf, CORE_LIKE_PATHS);
+  assert.deepEqual(after.context, before.context);
+});
+
+test('context: changing the project compiler version changes the id, and a 6.x project compiler is used as is', async () => {
+  const withSix = (version: string): Record<string, string> => ({ ...CORE_LIKE_TREE, [PACKAGE_JSON]: compilerPackage(version) });
+  const a = await describeTree(withSix('6.0.2'), CORE_LIKE_PATHS);
+  const b = await describeTree(withSix('6.0.3'), CORE_LIKE_PATHS);
+  assert.equal(a.context.id, 'typescript:6.0.2:project');
+  assert.equal(b.context.id, 'typescript:6.0.3:project');
+  assert.notEqual(a.context.id, b.context.id);
+  assert.deepEqual(a.context.configHashes, b.context.configHashes, 'configs did not change');
+  assert.deepEqual(a.compiler, { source: 'project', version: '6.0.2', dir: 'node_modules/typescript', case: 'project-6' });
+  assert.equal(a.diagnostics.some((d) => d.code === 'compiler_fallback'), false);
+  const bundled = await describeTree(CORE_LIKE_TREE, CORE_LIKE_PATHS);
+  assert.notEqual(bundled.context.id, b.context.id, 'the bundled 6.0.3 and a project 6.0.3 are different identities');
+});
+
+test('context: a 7.x project compiler selects the bundled one and says which case', async () => {
+  const cases: Record<string, readonly string[]> = {
+    'project-7-unstable': ['.', './unstable/sync'],
+    'project-7-sync': ['.', './sync'],
+    'project-7-unknown-layout': ['.', './package.json'],
+  };
+  for (const [name, keys] of Object.entries(cases)) {
+    const description = await describeTree({ ...CORE_LIKE_TREE, [PACKAGE_JSON]: compilerPackage('7.0.2', keys) }, CORE_LIKE_PATHS);
+    assert.equal(description.compiler.source, 'bundled', name);
+    assert.equal(description.compiler.case, name);
+    assert.equal(description.context.id, 'typescript:6.0.3:bundled', name);
+    const notes = description.diagnostics.filter((d) => d.code === 'compiler_fallback');
+    assert.equal(notes.length, 1, name);
+    assert.ok(notes[0]?.message.includes(name), name);
+  }
+});
+
+test('context: reordering or repeating the overlay paths changes nothing', async () => {
+  const a = await describeTree(CORE_LIKE_TREE, CORE_LIKE_PATHS);
+  const b = await describeTree(CORE_LIKE_TREE, [...CORE_LIKE_PATHS, ...CORE_LIKE_PATHS].reverse());
+  assert.deepEqual(b.context, a.context);
+  assert.deepEqual(b.compiler, a.compiler);
+  assert.deepEqual(b.configs, a.configs);
+  assert.deepEqual(b.diagnostics, a.diagnostics);
+});
+
+test('compiler detection starts at the first owner config directory', async () => {
+  const tree = {
+    'tsconfig.json': '{ "files": [] }',
+    'packages/a/tsconfig.json': '{ "include": ["src"] }',
+    'packages/a/src/x.ts': '',
+    'packages/a/node_modules/typescript/package.json': compilerPackage('6.0.2'),
+    [PACKAGE_JSON]: compilerPackage('5.9.2'),
+  };
+  const description = await describeTree(tree);
+  assert.deepEqual(description.compiler, { source: 'project', version: '6.0.2', dir: 'packages/a/node_modules/typescript', case: 'project-6' });
+  const rootOnly = await describeTree({ 'tsconfig.json': '{ "files": [] }', 'readme.md': '', [PACKAGE_JSON]: compilerPackage('6.0.1') });
+  assert.equal(rootOnly.compiler.version, '6.0.1', 'with nothing owned, the root is used');
+  assert.equal(rootOnly.compiler.source, 'project');
 });
