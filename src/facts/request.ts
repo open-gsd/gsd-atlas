@@ -63,6 +63,11 @@ export interface EnvelopeExtras {
   readonly hints?: readonly string[];
   /** Milliseconds to wait before retrying; present only on a busy error. */
   readonly retry_after?: number;
+  /**
+   * Random identifier of this answer (`a_` and 16 hex digits), stamped by the Host after the answer
+   * exists. It holds no content, so a rating or report can name an answer without storing it.
+   */
+  readonly answer_id?: string;
 }
 
 /** The reply to a Request. `data` is null when `ok` is false. */
