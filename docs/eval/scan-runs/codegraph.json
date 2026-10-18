@@ -1,0 +1,384 @@
+{
+  "schemaVersion": 1,
+  "tool": {
+    "id": "codegraph",
+    "label": "colbymchenry/codegraph",
+    "version": "1.6.2",
+    "installMethod": "pre-installed CLI (user install); index built with codegraph init -y in the throwaway checkout (87 s)"
+  },
+  "claudeCodeVersion": "2.1.302",
+  "model": "claude-sonnet-5-5",
+  "date": "2026-10-18",
+  "corpus": {
+    "id": "gsd-core",
+    "sha": "10ac3a7a947903ba50f538a907af036744d759d5"
+  },
+  "limits": {
+    "maxBudgetUsdPerSession": 3,
+    "sessionWallClockMs": 900000
+  },
+  "isolation": {
+    "settingSources": "",
+    "strictMcpConfig": true,
+    "tools": [
+      "Bash",
+      "Read"
+    ],
+    "allowedTools": [
+      "Read",
+      "Bash(git grep:*)",
+      "Bash(git ls-files:*)",
+      "Bash(rg:*)",
+      "Bash(grep:*)",
+      "Bash(ls:*)",
+      "Bash(cat:*)",
+      "Bash(head:*)",
+      "Bash(tail:*)",
+      "Bash(wc:*)",
+      "mcp__codegraph"
+    ]
+  },
+  "couldNotRun": null,
+  "rows": [
+    {
+      "questionId": "s-001",
+      "category": "callers",
+      "status": "ok",
+      "correct": "yes",
+      "tokens": {
+        "input": 6,
+        "output": 1324,
+        "cacheCreation": 16586,
+        "cacheRead": 39011,
+        "billable": 56927
+      },
+      "toolCalls": 3,
+      "toolCallsByName": {
+        "mcp__codegraph__codegraph_explore": 1,
+        "Bash": 2
+      },
+      "initTools": [
+        "Bash",
+        "Read",
+        "mcp__codegraph__codegraph_explore"
+      ],
+      "mcpServers": [
+        {
+          "name": "codegraph",
+          "status": "connected"
+        }
+      ],
+      "wallMs": 11570,
+      "costUsd": 0.08349709999999999,
+      "numTurns": 4,
+      "answer": {
+        "parsed": true,
+        "abstain": false,
+        "itemCount": 4,
+        "matched": 4,
+        "expected": 4,
+        "extra": 0
+      },
+      "gapNote": "The graph's caller listing for the function (checked with the tool's own CLI on the same checkout) holds only the .cts-side callers; the .js and .cjs callers came from the shell search the session added after one explore call."
+    },
+    {
+      "questionId": "s-002",
+      "category": "callers",
+      "status": "ok",
+      "correct": "yes",
+      "tokens": {
+        "input": 8,
+        "output": 849,
+        "cacheCreation": 12014,
+        "cacheRead": 54132,
+        "billable": 67003
+      },
+      "toolCalls": 4,
+      "toolCallsByName": {
+        "mcp__codegraph__codegraph_explore": 1,
+        "Bash": 3
+      },
+      "initTools": [
+        "Bash",
+        "Read",
+        "mcp__codegraph__codegraph_explore"
+      ],
+      "mcpServers": [
+        {
+          "name": "codegraph",
+          "status": "connected"
+        }
+      ],
+      "wallMs": 7990,
+      "costUsd": 0.0619752,
+      "numTurns": 5,
+      "answer": {
+        "parsed": true,
+        "abstain": false,
+        "itemCount": 6,
+        "matched": 6,
+        "expected": 6,
+        "extra": 0
+      },
+      "gapNote": "One explore call, then repository-wide shell searches; the plain JavaScript caller was confirmed by text search, not by the graph."
+    },
+    {
+      "questionId": "s-003",
+      "category": "heritage",
+      "status": "ok",
+      "correct": "yes",
+      "tokens": {
+        "input": 4,
+        "output": 526,
+        "cacheCreation": 10291,
+        "cacheRead": 15650,
+        "billable": 26471
+      },
+      "toolCalls": 2,
+      "toolCallsByName": {
+        "mcp__codegraph__codegraph_explore": 1,
+        "Bash": 1
+      },
+      "initTools": [
+        "Bash",
+        "Read",
+        "mcp__codegraph__codegraph_explore"
+      ],
+      "mcpServers": [
+        {
+          "name": "codegraph",
+          "status": "connected"
+        }
+      ],
+      "wallMs": 5459,
+      "costUsd": 0.047997,
+      "numTurns": 3,
+      "answer": {
+        "parsed": true,
+        "abstain": false,
+        "itemCount": 2,
+        "matched": 2,
+        "expected": 2,
+        "extra": 0
+      },
+      "gapNote": ""
+    },
+    {
+      "questionId": "s-004",
+      "category": "emit",
+      "status": "ok",
+      "correct": "yes",
+      "tokens": {
+        "input": 8,
+        "output": 788,
+        "cacheCreation": 3883,
+        "cacheRead": 35118,
+        "billable": 39797
+      },
+      "toolCalls": 3,
+      "toolCallsByName": {
+        "Bash": 3
+      },
+      "initTools": [
+        "Bash",
+        "Read",
+        "mcp__codegraph__codegraph_explore"
+      ],
+      "mcpServers": [
+        {
+          "name": "codegraph",
+          "status": "connected"
+        }
+      ],
+      "wallMs": 9484,
+      "costUsd": 0.0269398,
+      "numTurns": 4,
+      "answer": {
+        "parsed": true,
+        "abstain": false,
+        "itemCount": 3,
+        "matched": 3,
+        "expected": 3,
+        "extra": 0
+      },
+      "gapNote": "The session never called a codegraph tool: the .cts to .cjs emit mapping was answered by shell text search alone."
+    },
+    {
+      "questionId": "s-005",
+      "category": "adr",
+      "status": "ok",
+      "correct": "yes",
+      "tokens": {
+        "input": 8,
+        "output": 962,
+        "cacheCreation": 10764,
+        "cacheRead": 50491,
+        "billable": 62225
+      },
+      "toolCalls": 3,
+      "toolCallsByName": {
+        "Bash": 3
+      },
+      "initTools": [
+        "Bash",
+        "Read",
+        "mcp__codegraph__codegraph_explore"
+      ],
+      "mcpServers": [
+        {
+          "name": "codegraph",
+          "status": "connected"
+        }
+      ],
+      "wallMs": 10897,
+      "costUsd": 0.057741100000000004,
+      "numTurns": 4,
+      "answer": {
+        "parsed": true,
+        "abstain": false,
+        "itemCount": 14,
+        "matched": 14,
+        "expected": 14,
+        "extra": 0
+      },
+      "gapNote": "The session never called a codegraph tool. ADR citations are comment text and the graph has no citation relation: an explore question about the ADR number, run through the tool's CLI on the same checkout, returned symbols whose names merely contain the letters ADR."
+    },
+    {
+      "questionId": "s-006",
+      "category": "impact",
+      "status": "ok",
+      "correct": "partial",
+      "tokens": {
+        "input": 24,
+        "output": 4344,
+        "cacheCreation": 34182,
+        "cacheRead": 254159,
+        "billable": 292709
+      },
+      "toolCalls": 11,
+      "toolCallsByName": {
+        "mcp__codegraph__codegraph_explore": 2,
+        "Bash": 9
+      },
+      "initTools": [
+        "Bash",
+        "Read",
+        "mcp__codegraph__codegraph_explore"
+      ],
+      "mcpServers": [
+        {
+          "name": "codegraph",
+          "status": "connected"
+        }
+      ],
+      "wallMs": 33511,
+      "costUsd": 0.2056319,
+      "numTurns": 12,
+      "answer": {
+        "parsed": true,
+        "abstain": false,
+        "itemCount": 21,
+        "matched": 16,
+        "expected": 21,
+        "extra": 5
+      },
+      "gapNote": "Explore gave direct callers; the second hop took nine shell searches, and the final list missed 5 of the 21 files in the key and named 5 outside it."
+    },
+    {
+      "questionId": "s-007",
+      "category": "definition",
+      "status": "ok",
+      "correct": "yes",
+      "tokens": {
+        "input": 4,
+        "output": 563,
+        "cacheCreation": 10947,
+        "cacheRead": 15616,
+        "billable": 27130
+      },
+      "toolCalls": 1,
+      "toolCallsByName": {
+        "mcp__codegraph__codegraph_explore": 1
+      },
+      "initTools": [
+        "Bash",
+        "Read",
+        "mcp__codegraph__codegraph_explore"
+      ],
+      "mcpServers": [
+        {
+          "name": "codegraph",
+          "status": "connected"
+        }
+      ],
+      "wallMs": 5187,
+      "costUsd": 0.0509876,
+      "numTurns": 2,
+      "answer": {
+        "parsed": true,
+        "abstain": false,
+        "itemCount": 4,
+        "matched": 4,
+        "expected": 4,
+        "extra": 0
+      },
+      "gapNote": ""
+    },
+    {
+      "questionId": "s-008",
+      "category": "abstain",
+      "status": "ok",
+      "correct": "yes",
+      "tokens": {
+        "input": 4,
+        "output": 235,
+        "cacheCreation": 10888,
+        "cacheRead": 15642,
+        "billable": 26769
+      },
+      "toolCalls": 1,
+      "toolCallsByName": {
+        "mcp__codegraph__codegraph_explore": 1
+      },
+      "initTools": [
+        "Bash",
+        "Read",
+        "mcp__codegraph__codegraph_explore"
+      ],
+      "mcpServers": [
+        {
+          "name": "codegraph",
+          "status": "connected"
+        }
+      ],
+      "wallMs": 5483,
+      "costUsd": 0.0474742,
+      "numTurns": 2,
+      "answer": {
+        "parsed": true,
+        "abstain": true,
+        "itemCount": 0,
+        "matched": 1,
+        "expected": 1,
+        "extra": 0
+      },
+      "gapNote": ""
+    }
+  ],
+  "totals": {
+    "sessions": 8,
+    "yes": 7,
+    "partial": 1,
+    "no": 0,
+    "tokens": {
+      "input": 66,
+      "output": 9591,
+      "cacheCreation": 109555,
+      "cacheRead": 479819,
+      "billable": 599031
+    },
+    "toolCalls": 28,
+    "wallMs": 89581,
+    "costUsd": 0.582244
+  }
+}
