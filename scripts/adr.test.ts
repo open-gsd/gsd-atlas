@@ -646,6 +646,20 @@ const AMENDED: readonly AmendedAdr[] = [
         title: 'Unbuilt repositories',
         keywords: ['not_indexed', 'atlas_status', 'lease.db', 'metrics.db', 'schema_too_new', 'gsd-atlas build'],
       },
+      {
+        title: 'Phase 3 contract changes',
+        keywords: [
+          'code_explain',
+          'answer_id',
+          'memory_budget',
+          'compiler_fallback',
+          'needs_approval',
+          'seventh',
+          'handle',
+          'ImpactVia',
+          'emittedAs',
+        ],
+      },
     ],
   },
   {
