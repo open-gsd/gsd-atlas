@@ -946,6 +946,32 @@ describe('the comment text bound (adr.maxCommentUnits)', () => {
     }
   });
 
+  it('overlapping captures: each capture scans at most 200 mentions (ten identical big comments, a module that captures one comment through ten patterns)', () => {
+    // 5,000 mentions in 30,000 units, within the comment bound; the same node captured by ten patterns overlaps itself.
+    const text = 'ADR-1 '.repeat(5000);
+    assert.ok(text.length <= GRAMMAR_LIMITS.commentTextChars);
+    const captures = Array.from({ length: 10 }, (_, pattern) => comment(pattern, [0, 0, 0, text.length], text));
+    const { facts, steps } = extractProbed(captures);
+    assert.equal(facts.citations?.length, MAX_CITATIONS_PER_FILE);
+    assert.deepEqual(facts.citations, referenceCitations(captures));
+    assert.ok(steps > 0 && steps <= 12 * MAX_CITATIONS_PER_FILE * captures.length, `${String(steps)} steps for 10 captures of ${String(text.length)} units`);
+  });
+
+  it('a capture whose text is longer than its span takes the full path, so the output is the one a scan of everything gives', () => {
+    // The shape of review scratch lying.ts: A says it is 5 columns wide but holds 250 mentions; B follows it by span
+    // alone, and its five mentions sit at columns inside A's text. An early exit by span would keep A's first 200 only.
+    const mention = (from: number, count: number): string => Array.from({ length: count }, (_, at) => `ADR-${String(from + at)}`).join(' ');
+    const captures = [comment(0, [0, 0, 0, 5], mention(1000, 250)), comment(1, [0, 5, 0, 10], mention(1, 5))];
+    for (const order of [captures, [...captures].reverse()]) {
+      const { facts } = extract(runOf(order));
+      assert.deepEqual(facts.citations, referenceCitations(captures));
+    }
+    assert.ok(
+      referenceCitations(captures).some((c) => c.number === 5),
+      'the five mentions of B rank among the first 200, which is what the early exit would have lost',
+    );
+  });
+
   it('the normal path is unchanged: fewer than 200 mentions across many comments, with a blanked comment still counted', () => {
     const captures = [
       ...Array.from({ length: 60 }, (_, row) => comment(row, [row * 2, 0, row * 2, 12], `// ADR-${String(row + 1)} here`)),
