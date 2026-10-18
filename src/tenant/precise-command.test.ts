@@ -10,7 +10,7 @@ import path from 'node:path';
 import { describe, it } from 'node:test';
 import type { TestContext } from 'node:test';
 import { COMMAND_CODES, allowAll, commandHash, compilerWorkerShape, createRealRunner, createRecordingRunner } from '../command-runner/index.ts';
-import type { CommandRunner, RecordedSpec, UserPermissions } from '../command-runner/index.ts';
+import type { CommandRunner, CommandSpec, RecordedSpec, UserPermissions } from '../command-runner/index.ts';
 import { PROTOCOL_VERSION, diagnostic } from '../facts/index.ts';
 import type { Envelope } from '../facts/index.ts';
 import { createGrammarEngine } from '../grammar-engine/index.ts';
@@ -289,7 +289,14 @@ describe('the approved precise.command gate (SEC-02, OQ5)', () => {
     const tmp = makeTempDir();
     const engine = createGrammarEngine();
     const shape = compilerWorkerShape({ execPath: process.execPath, workerPath: resolveWorkerPath() });
-    const recorder = createRecordingRunner({ builtinShapes: [shape], delegate: createRealRunner({ builtinShapes: [shape] }) });
+    // A runner that notes every spec and passes both `run` and `stream` on to the real one (a streamed worker must really run).
+    const inner = createRealRunner({ builtinShapes: [shape] });
+    const specs: CommandSpec[] = [];
+    const recorder: CommandRunner & { readonly starts: readonly CommandSpec[] } = {
+      starts: specs,
+      run: (spec, ctx) => (specs.push(spec), inner.run(spec, ctx)),
+      stream: (spec, ctx) => (specs.push(spec), inner.stream(spec, ctx)),
+    };
     const host = createHost({
       roots: { repoRoot: repo.dir, userDir: path.join(tmp.path, 'user'), builtinDir: MODULES, npmRoots: [] },
       engine,
@@ -314,6 +321,7 @@ describe('the approved precise.command gate (SEC-02, OQ5)', () => {
     assert.equal(reply.ok, true, JSON.stringify(reply.diagnostics));
     assert.equal(reportOf(reply), undefined, 'no command report for a tier that uses an adapter');
     assert.equal(reply.degraded?.includes('needs_approval') ?? false, false);
+    assert.ok(recorder.starts.some((spec) => spec.builtinId === 'typescript-resolver'), 'the worker really ran');
     for (const spec of recorder.starts) assert.ok(spec.executable === 'git' || spec.builtinId === 'typescript-resolver', `unexpected start: ${spec.executable} ${spec.args.join(' ')}`);
   });
 

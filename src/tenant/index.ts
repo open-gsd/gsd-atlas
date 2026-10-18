@@ -19,8 +19,11 @@ export type { RatingFeature, RatingScope, RatingValue } from '../metrics/index.t
 export { answerEvent, flightAnswer, isAnsweredKind } from './record.ts';
 export { BUILD_SCHEMA, MAINTAIN_SCHEMA, MAINTAIN_TASKS, STATUS_SCHEMA } from './types.ts';
 export type {
+  CommandGate,
+  CommandReport,
   MaintainOptions,
   MaintainTask,
+  PreciseReport,
   TaskReport,
   Tenant,
   TenantDeps,

@@ -3,8 +3,9 @@
  * per-repository state: Source Tree, Fact Store (with the writer lease), Indexer, Query and Metrics. The Grammar
  * Engine, the CommandRunner and the Governor are shared across tenants and arrive as dependencies.
  */
+import type { CommandResult, CommandRunner } from '../command-runner/index.ts';
 import type { Resolver, StoreLocation, StoreStatus, openFactStore } from '../fact-store/index.ts';
-import type { Clock, Envelope, Request } from '../facts/index.ts';
+import type { Clock, DegradedCode, Diagnostic, Envelope, Request } from '../facts/index.ts';
 import type { Governor, GovernorStatus } from '../governor/index.ts';
 import type { GrammarEngine } from '../grammar-engine/index.ts';
 import type { EventSource, Indexer, IndexerConfig, IndexerDeps, IndexerStatus } from '../indexer/index.ts';
@@ -92,6 +93,11 @@ export interface TenantDeps {
   readonly knownAdapters?: readonly string[];
   /** TEST HOOK. The store's resolver for this repository, given its directory; wins over `tiers`. Production omits it. */
   readonly resolverFactory?: (repoDir: string) => Resolver;
+  /**
+   * How a language module's `precise.command` is run (plan 03-29, SEC-02). Built by the Host. Absent: no command is ever run
+   * and `maintain resolve` does not look for one.
+   */
+  readonly commands?: CommandGate;
   /** The version of this build, recorded in a new store. */
   readonly version?: string;
   /**
@@ -107,6 +113,20 @@ export interface TenantDeps {
   readonly openStore?: typeof openFactStore;
   /** Shortens waits in tests. */
   readonly tuning?: Partial<TenantTuning>;
+}
+
+/**
+ * What the Tenant needs to run a language module's `precise.command` (plan 03-29, SEC-02). The Host builds it from its own runner
+ * and the permission list THIS Host may use (an MCP server has none unless it was started with `--allow-build`), so the Tenant
+ * never reads a permission, a config or a hash of its own.
+ */
+export interface CommandGate {
+  /** The Host's runner: the only thing that starts a process, and the owner of the last word on a permission. */
+  readonly runner: CommandRunner;
+  /** True when a person approved exactly this command (executable first) for this repository and this Host may use the approval. */
+  approved(command: readonly string[]): boolean;
+  /** Maps a refused start to the degraded answer and its fixed diagnostic; null for anything else. */
+  needsApprovalFrom(result: Pick<CommandResult, 'denied'>): { readonly degraded: Extract<DegradedCode, 'needs_approval'>; readonly diagnostic: Diagnostic } | null;
 }
 
 /**

@@ -26,6 +26,7 @@ import { createFollowerFresh } from './follower-overlay.ts';
 import { createFlightRecorder } from './flight.ts';
 import type { FlightRecorder } from './flight.ts';
 import { createIdleMaintainer } from './idle.ts';
+import { declaredPreciseCommands, mergeCommandReports, runApprovedPreciseCommand } from './precise-command.ts';
 import { recordRating } from './rate.ts';
 import type { RateInput } from './rate.ts';
 import { answerEvent, flightAnswer, isAnsweredKind } from './record.ts';
@@ -35,11 +36,17 @@ import { createOutputFilter, createTenantProjectProvider, preciseAdapterIds } fr
 import type { ProjectProvider } from './project.ts';
 import { createStatusPort } from './status-port.ts';
 import { BUILD_SCHEMA, MAINTAIN_SCHEMA, STATUS_SCHEMA } from './types.ts';
-import type { MaintainOptions, MaintainTask, TaskReport, Tenant, TenantDeps, TenantStatus, TenantTuning } from './types.ts';
+import type { CommandReport, MaintainOptions, MaintainTask, TaskReport, Tenant, TenantDeps, TenantStatus, TenantTuning } from './types.ts';
 
 /** The tasks `all` runs, in this order. */
 const ALL_TASKS = ['reconcile', 'resolve', 'refresh', 'collect', 'compact', 'check'] as const;
 type SingleTask = (typeof ALL_TASKS)[number];
+
+/** What the tasks of one `maintain` request add to its envelope beyond their reports (plan 03-29: a command that was not approved). */
+interface TaskSink {
+  readonly diagnostics: Diagnostic[];
+  readonly degraded: DegradedCode[];
+}
 
 /** The tasks that work on one worktree's overlay, so the worktree must have been built. */
 const WORKTREE_TASKS: ReadonlySet<SingleTask> = new Set<SingleTask>(['reconcile', 'refresh']);
@@ -778,7 +785,7 @@ export async function createTenant(deps: TenantDeps): Promise<Tenant> {
    * lease) but not the in-process writer slot, which the Indexer holds, so they run while it indexes. The store's own
    * `maintain` wrapper takes that slot and would answer `WriterBusy` here.
    */
-  async function runTask(task: SingleTask, options: MaintainOptions): Promise<TaskReport> {
+  async function runTask(task: SingleTask, options: MaintainOptions, sink: TaskSink): Promise<TaskReport> {
     const started = clock.now();
     const took = (): number => Math.max(0, clock.now() - started);
     switch (task) {
@@ -787,16 +794,47 @@ export async function createTenant(deps: TenantDeps): Promise<Tenant> {
         return { complete: true, spentMs: outcome.durationMs, processed: outcome.changed };
       }
       case 'resolve': {
-        if (!hasResolver()) return { complete: true, spentMs: 0, processed: 0, note: 'no precise tier is active' };
-        // An explicit resolve asks again after a memory stop (plan 03-27): the person is asking for it.
-        tier?.clearMemoryStop();
-        const pass = await resolveInSlices(options.worktree, undefined, async (call) => call());
+        const declared = deps.commands === undefined ? [] : declaredPreciseCommands(roots);
+        if (!hasResolver() && declared.length === 0) return { complete: true, spentMs: 0, processed: 0, note: 'no precise tier is active' };
+        let report: TaskReport = { complete: true, spentMs: 0, processed: 0 };
+        if (hasResolver()) {
+          // An explicit resolve asks again after a memory stop (plan 03-27): the person is asking for it.
+          tier?.clearMemoryStop();
+          const pass = await resolveInSlices(options.worktree, undefined, async (call) => call());
+          report = {
+            complete: pass.complete,
+            spentMs: pass.spentMs,
+            processed: pass.asked,
+            ...(pass.stopped === 'failure' ? { note: PASS_FAILED_NOTE } : {}),
+            precise: { asked: pass.asked, answered: pass.answered, complete: pass.complete },
+          };
+        }
+        const gate = deps.commands;
+        if (gate === undefined || declared.length === 0) return report;
+        // A module's own command (plan 03-29, SEC-02): only for the exact command a person approved, through the runner, with
+        // the approved limit, and only how it ended is reported.
+        const ended: CommandReport[] = [];
+        for (const each of declared) {
+          const outcome = await runApprovedPreciseCommand({
+            runner: gate.runner,
+            repoDir: deps.repoDir,
+            command: each.command,
+            timeoutMs: tuning.resolveBoundMs > 0 ? tuning.resolveBoundMs : DEFAULT_TENANT_TUNING.resolveBoundMs,
+            now: () => clock.now(),
+            approved: gate.approved,
+            needsApprovalFrom: gate.needsApprovalFrom,
+          });
+          ended.push(outcome.report);
+          if (outcome.refusal !== undefined) {
+            if (!sink.degraded.includes(outcome.refusal.degraded)) sink.degraded.push(outcome.refusal.degraded);
+            if (!sink.diagnostics.some((known) => known.code === outcome.refusal?.diagnostic.code)) sink.diagnostics.push(outcome.refusal.diagnostic);
+          }
+        }
+        const command = mergeCommandReports(ended);
         return {
-          complete: pass.complete,
-          spentMs: pass.spentMs,
-          processed: pass.asked,
-          ...(pass.stopped === 'failure' ? { note: PASS_FAILED_NOTE } : {}),
-          precise: { asked: pass.asked, answered: pass.answered, complete: pass.complete },
+          ...report,
+          spentMs: report.spentMs + (command?.ms ?? 0),
+          precise: { asked: report.precise?.asked ?? 0, answered: report.precise?.answered ?? 0, complete: report.precise?.complete ?? true, ...(command === undefined ? {} : { command }) },
         };
       }
       case 'refresh': {
@@ -892,13 +930,16 @@ export async function createTenant(deps: TenantDeps): Promise<Tenant> {
       try {
         // Only `resolve` while nothing can answer it (no precise tier is active) needs neither the writer nor an overlay.
         const resolving = hasResolver();
-        if (tasks.some((each) => each !== 'resolve' || resolving) && !(await isLeader())) return await leaseHeld();
+        const commanding = deps.commands !== undefined && declaredPreciseCommands(roots).length > 0;
+        if (tasks.some((each) => each !== 'resolve' || resolving || commanding) && !(await isLeader())) return await leaseHeld();
         if (tasks.some((each) => WORKTREE_TASKS.has(each) || (each === 'resolve' && resolving)) && !(await isIndexed(options.worktree))) {
           return await notIndexed();
         }
         const reports: Partial<Record<SingleTask, TaskReport>> = {};
-        for (const each of tasks) reports[each] = await runTask(each, options);
-        return okEnvelope(MAINTAIN_SCHEMA, { tasks: reports });
+        const sink: TaskSink = { diagnostics: [], degraded: [] };
+        for (const each of tasks) reports[each] = await runTask(each, options, sink);
+        const reply = okEnvelope(MAINTAIN_SCHEMA, { tasks: reports }, sink.diagnostics);
+        return sink.degraded.length === 0 ? reply : { ...reply, degraded: sink.degraded };
       } catch (error) {
         return failure(error);
       } finally {
