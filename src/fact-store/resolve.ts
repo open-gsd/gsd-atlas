@@ -912,9 +912,25 @@ function heritageOf(snap: Snapshot, target: SymbolIdentity): { readonly files: r
 }
 
 /**
- * The files that may declare a subtype of `root`, found from the grammar tier's heritage references and followed `depth`
- * levels down. This only chooses which files the compiler is asked about, so a name-matched candidate that turns out
- * not to be a subtype costs one extra file and never a wrong relation.
+ * The files that import `filePath` and declare a class or an interface. A heritage clause the grammar tier does not tag
+ * (`extends ns.Base`, a namespace import's member) can only name a type that its file can reach, so these files are the
+ * candidates that no reference of the grammar tier shows. A candidate that is not a subtype costs one file.
+ */
+function typeFilesImporting(snap: Snapshot, filePath: string): string[] {
+  const out: string[] = [];
+  for (const edge of walkImporters(snap, filePath, 1)) {
+    const fileId = overlayView(snap).fileIds.get(edge.row.importer);
+    if (fileId === undefined || fileId === null) continue;
+    if (fileSymbols(snap, fileId).some((symbol) => symbol.kind === 'class' || symbol.kind === 'interface')) out.push(edge.row.importer);
+  }
+  return out;
+}
+
+/**
+ * The files that may declare a subtype of `root`, found from the grammar tier's heritage references and from the files that
+ * import the file of a type and declare classes or interfaces, followed `depth` levels down. This only chooses which files
+ * the compiler is asked about, so a candidate that turns out not to be a subtype costs one extra file and never a wrong
+ * relation.
  */
 function subtypeFiles(snap: Snapshot, root: SymbolIdentity, depth: number): readonly string[] {
   const files = new Set<string>();
@@ -925,6 +941,7 @@ function subtypeFiles(snap: Snapshot, root: SymbolIdentity, depth: number): read
     for (const type of frontier) {
       const found = heritageOf(snap, type);
       for (const file of found.files) files.add(file);
+      for (const file of typeFilesImporting(snap, type.path)) files.add(file);
       for (const subtype of found.subtypes) {
         const key = symbolKey(subtype);
         if (seen.has(key)) continue;

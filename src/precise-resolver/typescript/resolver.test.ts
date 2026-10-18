@@ -1061,6 +1061,29 @@ describe('relations: generics, mixins, any, override chains and interface method
     );
   });
 
+  it('a namespace-qualified heritage clause is found: class Qual extends ns.Base, which the grammar tier does not tag, is an extends item (relations-check regression)', async (t) => {
+    // gsd-core: `interface ManifestSection extends sectionManifest.SelectableSection` in src/init.cts.
+    const world = await makeWorld(
+      t,
+      {
+        'tsconfig.json': TSCONFIG,
+        'src/base.cts': ['export class Base {', '  v = 1;', '}', ''].join('\n'),
+        'src/qual.cts': ["import * as ns from './base.cjs';", '', 'export class Qual extends ns.Base {}', ''].join('\n'),
+      },
+      { hook: true },
+    );
+    assert.equal((await world.build()).ok, true);
+
+    const base = (await refsSettled(world, { name: 'Base', kind: 'class' })).envelope;
+
+    assert.equal(base.ok, true, JSON.stringify(base.diagnostics));
+    assert.deepEqual(
+      edgeRows(base).filter((row) => row.edge === 'extends').map((row) => [row.enclosing, row.path, row.tier, row.kind]),
+      [['Qual', 'src/qual.cts', 'precise', 'heritage']],
+      JSON.stringify(edgeRows(base)),
+    );
+  });
+
   it('an edit makes a new snapshot: the relations are asked of the worker again and are not served from the old cache (T-03-254)', async (t) => {
     const world = await makeWorld(t, SHAPES_FIXTURE, { hook: true });
     assert.equal((await world.build()).ok, true);

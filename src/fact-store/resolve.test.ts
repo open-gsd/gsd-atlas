@@ -1573,6 +1573,29 @@ for (const driver of DRIVERS) {
       }, {}, forged);
     });
 
+    it('a subtype whose heritage clause the grammar tier does not tag is found through the files that import the base (extends ns.Base)', async () => {
+      const qual = identity('src/qual.ts', 'Qual', 'class');
+      const { resolver, calls } = relating([...SHAPE_RELATIONS, { from: qual, to: BASE, relation: 'extends' }]);
+      await withRig(driver, async (rig) => {
+        const writer = rig.store.writer();
+        await seedShapes(writer);
+        // src/qual.ts imports the module as a namespace and extends `ns.Base`: no heritage reference is recorded for it.
+        await writer.commitFile({
+          worktree: 'main',
+          path: 'src/qual.ts',
+          hash: H(11),
+          facts: fileOf('src/qual.ts', 11, {
+            symbols: [{ name: 'Qual', kind: 'class', span: span(1, 0, 1, 40), exported: true }],
+            imports: [{ path: './shapes', span: span(0, 0, 0, 34), style: 'es', bindings: [{ imported: '*', local: 'ns' }] }],
+          }),
+        });
+        const answer = await rig.store.at('main').relations(BASE, { direction: 'in' });
+        assert.deepStrictEqual(brief(answer.data), ['extends Qual -> Base', 'extends Sub -> Base', 'extends Box -> Base']);
+        assert.deepStrictEqual(calls, [['src/qual.ts', SHAPES]]);
+        writer.release();
+      }, {}, resolver);
+    });
+
     it('a symbol the overlay does not hold has no relations and asks nothing', async () => {
       const { resolver, calls } = relating(SHAPE_RELATIONS);
       await withRig(driver, async (rig) => {
