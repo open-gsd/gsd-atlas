@@ -83,6 +83,13 @@ for (const rel of collectLinkFiles(root)) {
   if (after !== before) {
     if (!dryRun) fs.writeFileSync(abs, after);
     changed.push(rel);
+    if (dryRun && readRel === `docs/adr/${draftName}`) {
+      // Show the header lines ratifyText would set; the diff is the only difference it makes.
+      const beforeLines = new Set(before.split('\n'));
+      for (const line of after.split('\n')) {
+        if (!beforeLines.has(line) && line.startsWith('- **')) process.stdout.write(`would set: ${line}\n`);
+      }
+    }
   }
 }
 

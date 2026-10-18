@@ -8,6 +8,7 @@ import { describe, it } from 'node:test';
 import {
   PHASE1_SLUGS,
   PHASE2_SLUGS,
+  PHASE3_SLUGS,
   RATIFIED_SLUGS,
   checkRelativeLinks,
   collectLinkFiles,
@@ -203,12 +204,89 @@ describe('checkRelativeLinks', () => {
   });
 });
 
-describe('adr-ratify slug sets (FND-12, D-18)', () => {
-  it('PHASE2_SLUGS is exactly the four Phase 2 ADRs and RATIFIED_SLUGS is Phase 1 then Phase 2', () => {
+describe('adr-ratify slug sets (FND-12, D-18, SKL-03)', () => {
+  it('PHASE2_SLUGS is the four Phase 2 ADRs, PHASE3_SLUGS the diagnostics ADR, and RATIFIED_SLUGS is Phase 1, 2, then 3', () => {
     assert.deepEqual(PHASE2_SLUGS, ['worktree-lifecycle', 'query-and-policy', 'mcp-contract', 'value-dashboard']);
-    assert.deepEqual(RATIFIED_SLUGS, [...PHASE1_SLUGS, ...PHASE2_SLUGS]);
-    assert.equal(new Set(RATIFIED_SLUGS).size, 12);
+    assert.deepEqual(PHASE3_SLUGS, ['user-controlled-diagnostics']);
+    assert.deepEqual(RATIFIED_SLUGS, [...PHASE1_SLUGS, ...PHASE2_SLUGS, ...PHASE3_SLUGS]);
+    assert.equal(new Set(RATIFIED_SLUGS).size, 13);
+    assert.equal(RATIFIED_SLUGS.length, 13);
     assert.equal(PHASE1_SLUGS.length, 8);
+  });
+
+  it('adr-ratify refuses a slug outside RATIFIED_SLUGS with a non-zero exit', () => {
+    const run = spawnSync(
+      process.execPath,
+      [path.join(ROOT, 'scripts', 'adr-ratify.ts'), '--slug', 'host-process-model', '--issue', '99', '--dry-run'],
+      { encoding: 'utf8' },
+    );
+    assert.notEqual(run.status, 0);
+    assert.match(run.stderr, /--slug must be one of/);
+  });
+
+  it('a dry run for user-controlled-diagnostics prints the rename, header lines and repaired files and changes no file', () => {
+    // Drive a temp copy of the scripts and of docs/adr so the real tree is never touched.
+    const dir = tmpTree({});
+    try {
+      fs.mkdirSync(path.join(dir, 'scripts'), { recursive: true });
+      for (const name of ['adr.ts', 'adr-ratify.ts']) {
+        fs.copyFileSync(path.join(ROOT, 'scripts', name), path.join(dir, 'scripts', name));
+      }
+      fs.cpSync(ADR_DIR, path.join(dir, 'docs', 'adr'), { recursive: true });
+      // The real tree may already have ratified this slug (plan 03-01 Task 3); the dry run needs the draft.
+      const draft = path.join(dir, 'docs', 'adr', 'draft-user-controlled-diagnostics.md');
+      if (!fs.existsSync(draft)) {
+        const numbered = findAdrFile(path.join(dir, 'docs', 'adr'), 'user-controlled-diagnostics');
+        assert.ok(numbered, 'no user-controlled-diagnostics ADR file to build the dry-run fixture from');
+        const body = fs
+          .readFileSync(path.join(dir, 'docs', 'adr', numbered), 'utf8')
+          .replace(/^- \*\*Status:\*\* Accepted$/m, '- **Status:** Proposed')
+          .replace(/^- \*\*Ratified:\*\*.*\n/m, '')
+          .replace(/^- \*\*Issue:\*\*.*$/m, '- **Issue:** to be opened');
+        fs.rmSync(path.join(dir, 'docs', 'adr', numbered));
+        fs.writeFileSync(draft, body);
+        const readmePath = path.join(dir, 'docs', 'adr', 'README.md');
+        fs.writeFileSync(
+          readmePath,
+          fs.readFileSync(readmePath, 'utf8').replaceAll(numbered, 'draft-user-controlled-diagnostics.md'),
+        );
+      }
+      const snapshot = (): Record<string, string> => {
+        const out: Record<string, string> = {};
+        for (const name of fs.readdirSync(path.join(dir, 'docs', 'adr')).sort()) {
+          out[name] = fs.readFileSync(path.join(dir, 'docs', 'adr', name), 'utf8');
+        }
+        return out;
+      };
+      const before = snapshot();
+      const run = spawnSync(
+        process.execPath,
+        [
+          path.join(dir, 'scripts', 'adr-ratify.ts'),
+          '--slug',
+          'user-controlled-diagnostics',
+          '--issue',
+          '15',
+          '--date',
+          '2026-10-18',
+          '--dry-run',
+        ],
+        { encoding: 'utf8' },
+      );
+      assert.equal(run.status, 0, run.stderr);
+      assert.match(
+        run.stdout,
+        /would rename docs\/adr\/draft-user-controlled-diagnostics\.md -> docs\/adr\/15-user-controlled-diagnostics\.md/,
+      );
+      assert.match(run.stdout, /would set: - \*\*Status:\*\* Accepted/);
+      assert.ok(run.stdout.includes(`would set: - **Issue:** [#15](${REPO_URL}/issues/15)`));
+      assert.match(run.stdout, /would set: - \*\*Ratified:\*\* 2026-10-18/);
+      assert.match(run.stdout, /would change: docs\/adr\/README\.md/);
+      assert.deepEqual(snapshot(), before);
+      assert.equal(fs.existsSync(path.join(dir, 'docs', 'adr', '15-user-controlled-diagnostics.md')), false);
+    } finally {
+      rmTree(dir);
+    }
   });
 
   it('a second ratify run for an already-numbered slug exits 1, refuses, and changes no file', () => {
