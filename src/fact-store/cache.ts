@@ -1,11 +1,13 @@
 /**
- * The resolved-edge cache (STO-04): keys, reads and writes of `resolved_edges`. A cached edge is valid for one
+ * The resolved-edge cache (STO-04): keys, reads and writes of `resolved_edges` and of the `resolved_asked`
+ * markers (sites the resolver was asked about, with or without an edge). A cached edge or marker is valid for one
  * overlay snapshot (the exact set of path and content-hash pairs) and one resolution context, so nothing is ever
  * invalidated: a content change or another context is a different key and simply misses. Internal; not exported
  * from index.ts.
  */
 import { createHash } from 'node:crypto';
 import type { RefSiteKey, ResolutionContext, ResolvedEdge, SymbolIdentity } from '../facts/index.ts';
+import { DbError } from '../sqlite/index.ts';
 import type { Db } from '../sqlite/index.ts';
 
 const SEPARATOR = '\u0000';
@@ -147,11 +149,60 @@ export function liveSnapshotIds(db: Db): Set<string> {
   return ids;
 }
 
-/** Delete the edges of every snapshot that no live overlay has any more, so the cache stays bounded. */
+const READ_ASKED_SQL = `SELECT 1 AS found
+  FROM resolved_asked
+  WHERE snapshot = ? AND context_id = ? AND site_path = ? AND start_line = ? AND start_column = ?
+    AND end_line = ? AND end_column = ? AND name = ?`;
+
+/**
+ * The sites, among `sites`, that were asked of the resolver under one snapshot and context, as a set of
+ * `siteId`s. An asked site is settled: the resolver said what it had (an edge, or nothing) and is not asked
+ * again. A table that can not be read (a store from a build that predates it, opened without write access)
+ * counts as no markers: the worst outcome is asking again, never a failed read.
+ */
+export function readAsked(db: Db, snapshot: string, contextId: number, sites: readonly RefSiteKey[]): Set<string> {
+  const found = new Set<string>();
+  try {
+    const select = db.prepare(READ_ASKED_SQL);
+    for (const site of sites) {
+      const { startLine, startColumn, endLine, endColumn } = site.span;
+      if (select.get(snapshot, contextId, site.path, startLine, startColumn, endLine, endColumn, site.name) !== undefined) {
+        found.add(siteId(site));
+      }
+    }
+  } catch (error) {
+    if (!(error instanceof DbError)) throw error;
+    found.clear();
+  }
+  return found;
+}
+
+/**
+ * Mark sites as asked under one snapshot and context. `INSERT OR IGNORE` against the full key, so marking a
+ * site twice (two reads that both missed) leaves one row. Writer connection, inside the caller's transaction.
+ */
+export function writeAsked(db: Db, snapshot: string, contextId: number, sites: readonly RefSiteKey[]): void {
+  const insert = db.prepare(
+    `INSERT OR IGNORE INTO resolved_asked
+       (snapshot, context_id, site_path, start_line, start_column, end_line, end_column, name)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+  );
+  for (const site of sites) {
+    const { startLine, startColumn, endLine, endColumn } = site.span;
+    insert.run(snapshot, contextId, site.path, startLine, startColumn, endLine, endColumn, site.name);
+  }
+}
+
+/**
+ * Delete the edges and the asked markers of every snapshot that no live overlay has any more, so the cache stays
+ * bounded. Both tables go in one pass: a marker never outlives the snapshot it describes.
+ */
 export function pruneEdges(db: Db, live: ReadonlySet<string>): void {
-  const remove = db.prepare('DELETE FROM resolved_edges WHERE snapshot = ?');
-  for (const row of db.prepare('SELECT DISTINCT snapshot FROM resolved_edges').all()) {
-    const snapshot = String(row.snapshot);
-    if (!live.has(snapshot)) remove.run(snapshot);
+  for (const table of ['resolved_edges', 'resolved_asked']) {
+    const remove = db.prepare(`DELETE FROM ${table} WHERE snapshot = ?`);
+    for (const row of db.prepare(`SELECT DISTINCT snapshot FROM ${table}`).all()) {
+      const snapshot = String(row.snapshot);
+      if (!live.has(snapshot)) remove.run(snapshot);
+    }
   }
 }

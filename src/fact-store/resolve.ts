@@ -28,8 +28,10 @@ import {
   liveSnapshotIds,
   overlaySnapshotId,
   pruneEdges,
+  readAsked,
   readEdges,
   siteId,
+  writeAsked,
   writeEdges,
 } from './cache.ts';
 import type { CachedEdge } from './cache.ts';
@@ -440,6 +442,8 @@ export interface ResolveInput {
   readonly sites: readonly RefSiteKey[];
   /** Valid cached edges by `siteId`; a site is answered when it has at least one. */
   readonly cached: ReadonlyMap<string, readonly CachedEdge[]>;
+  /** The `siteId`s that were asked of the resolver before under this snapshot and context (the negative marker). */
+  readonly asked: ReadonlySet<string>;
   /**
    * True when no project context could be had for this snapshot (the provider failed or lost the race against a
    * commit twice). The resolver is not asked and nothing is cached: the answer is the grammar one.
@@ -482,19 +486,23 @@ export function prepareResolution(snap: Snapshot, sites: readonly RefSiteKey[], 
       overlay,
       sites: [...distinct.values()],
       cached,
+      asked: new Set(),
       unavailable: true,
     };
   }
   const { context } = project;
   const key = contextKey(context);
   const contextId = distinct.size === 0 ? undefined : findContextId(snap.db, key);
+  let asked: ReadonlySet<string> = new Set();
   if (contextId !== undefined) {
     for (const [id, edges] of readEdges(snap.db, snapshotId, contextId, [...distinct.values()], snap.parts.repo)) {
       const valid = edges.filter((edge) => findSymbol(snap, edge.target) !== null);
       if (valid.length > 0) cached.set(id, valid);
     }
+    const unanswered = [...distinct].filter(([id]) => !cached.has(id)).map(([, site]) => site);
+    asked = readAsked(snap.db, snapshotId, contextId, unanswered);
   }
-  return { snapshotId, project, context, contextKey: key, overlay, sites: [...distinct.values()], cached };
+  return { snapshotId, project, context, contextKey: key, overlay, sites: [...distinct.values()], cached, asked };
 }
 
 /**
@@ -648,19 +656,30 @@ function validate(
 }
 
 /**
- * Write validated edges to the cache when this process may (`canCache`, the writer-lease holder, D-16) and the
- * overlay still has the contents they were computed for. True when nothing needed writing or the edges were
- * stored or are stale on purpose; false when this process could not write them.
+ * Write validated edges, and the asked marker of every site the completed resolver call was asked about, to the
+ * cache in one transaction, when this process may (`canCache`, the writer-lease holder, D-16) and the overlay
+ * still has the contents they were computed for. The markers are what stop a site that legitimately has no edge
+ * from being asked again (Pitfall 6). True when nothing needed writing or the rows were stored or are stale on
+ * purpose; false when this process could not write edges it holds. A process that may not write the cache and
+ * has no edge to keep says nothing, exactly as before the markers existed.
  */
-function store(parts: StoreParts, input: ResolveInput, edges: readonly ResolvedEdge[], currentSnapshotId: string): boolean {
-  if (edges.length === 0) return true;
-  if (!parts.canCache()) return false;
-  if (currentSnapshotId !== input.snapshotId) return true; // the overlay moved on: these edges describe a state that is gone
+function store(
+  parts: StoreParts,
+  input: ResolveInput,
+  edges: readonly ResolvedEdge[],
+  askedSites: readonly RefSiteKey[],
+  currentSnapshotId: string,
+): boolean {
+  if (edges.length === 0 && askedSites.length === 0) return true;
+  if (!parts.canCache()) return edges.length === 0;
+  if (currentSnapshotId !== input.snapshotId) return true; // the overlay moved on: these rows describe a state that is gone
   try {
     parts.writeDb.transaction(() => {
       const live = liveSnapshotIds(parts.writeDb);
       if (!live.has(input.snapshotId)) return;
-      writeEdges(parts.writeDb, input.snapshotId, ensureContextId(parts.writeDb, input.contextKey), edges);
+      const contextId = ensureContextId(parts.writeDb, input.contextKey);
+      writeEdges(parts.writeDb, input.snapshotId, contextId, edges);
+      writeAsked(parts.writeDb, input.snapshotId, contextId, askedSites);
       pruneEdges(parts.writeDb, live);
     });
     return true;
@@ -696,7 +715,8 @@ export async function resolveSites(
 ): Promise<ResolvedSites> {
   const edges = new Map<string, CachedEdge[]>();
   for (const [id, list] of input.cached) edges.set(id, [...list]);
-  const pending = input.sites.filter((site) => !input.cached.has(siteId(site)));
+  // A site is settled when the cache holds an edge for it or the resolver was already asked about it (the marker).
+  const pending = input.sites.filter((site) => !input.cached.has(siteId(site)) && !input.asked.has(siteId(site)));
   if (pending.length === 0) return { edges, degraded: [] };
   // No project context for this snapshot: the resolver is not asked, and nothing is cached.
   if (input.unavailable === true) return { edges, degraded: ['resolver_failed'] };
@@ -711,7 +731,7 @@ export async function resolveSites(
       (fresh) => {
         try {
           const accepted = validate(parts, worktree, asked, fresh);
-          if (accepted !== null) store(parts, input, accepted.edges, accepted.snapshotId);
+          if (accepted !== null) store(parts, input, accepted.edges, pending, accepted.snapshotId);
         } catch {
           // Background work has no caller to tell; the next call computes again.
         }
@@ -724,7 +744,7 @@ export async function resolveSites(
   const accepted = validate(parts, worktree, asked, outcome.edges);
   if (accepted === null) return { edges, degraded: [] };
   groupBySite(accepted.edges, edges);
-  const stored = store(parts, input, accepted.edges, accepted.snapshotId);
+  const stored = store(parts, input, accepted.edges, pending, accepted.snapshotId);
   return { edges, degraded: stored ? [] : ['cache_unavailable'] };
 }
 
