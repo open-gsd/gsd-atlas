@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { after, describe, it } from 'node:test';
 
-import { ALLOWED_SHELL, ARMS, ATLAS_TOOL_NAMES, allowedToolsFor, buildPluginDir, checkInit, expectedToolSet } from './arms.ts';
+import { ALLOWED_SHELL, ARMS, ATLAS_TOOL_NAMES, PLUGIN_NAME, SKILL_NAME, allowedToolsFor, buildPluginDir, checkInit, expectedToolSet } from './arms.ts';
 import type { InitEvent } from './claude-session.ts';
 import { buildPrompt, isInfrastructureFailure, runAll, runCell, runCli, runningCostUsd } from './harness.ts';
 import type { CellDeps, Io } from './harness.ts';
@@ -265,6 +265,36 @@ describe('runCell tracer', () => {
     assert.equal(row.arm, 'grep');
   });
 
+  it('Skill tool tracer (atlas): the argv carries the Skill tool and its one allow rule, the init event lists it, a Skill call lands in the row', async () => {
+    const env = makeEnv({ FAKE_TOOL_NAMES: JSON.stringify(['Skill', 'mcp__gsd-atlas__code_find', 'Bash']) }, { keepSessions: true });
+    const cell = { questionId: 'q-1', arm: 'atlas', run: 1 } as const;
+    const result = await runCell(cell, env.deps);
+    assert.equal(result.outcome, 'done', `checkInit must be clean: ${(result.diffs ?? []).join('; ')}`);
+    const argv = resultEventOf(env, cellId(cell))['fake_argv'] as string[];
+    assert.equal(argv[argv.indexOf('--tools') + 1], 'Bash,Read,Skill');
+    const allowed = (argv[argv.indexOf('--allowedTools') + 1] ?? '').split(',');
+    assert.deepEqual(allowed.filter((t) => t.startsWith('Skill')), ['Skill(gsd-atlas-eval:gsd-atlas)']);
+    const init = metaOf(env).find((m) => m.kind === 'session' && m.cellId === cellId(cell))?.['init'] as { tools: string[]; skills: string[] };
+    assert.ok(init.tools.includes('Skill'));
+    assert.ok(init.skills.includes('gsd-atlas-eval:gsd-atlas'));
+    const row = ResultRowSchema.parse(readLines(path.join(env.out, 'results.jsonl'))[0]);
+    assert.equal(row.toolCallsByName['Skill'], 1);
+    assert.equal(row.atlasToolCalls, 1);
+    assert.equal(row.toolCalls, 3);
+  });
+
+  it('Skill tool tracer (grep): no Skill token anywhere in the argv, and a Skill tool in the init event is contamination', async () => {
+    const env = makeEnv({}, { keepSessions: true });
+    const cell = { questionId: 'q-1', arm: 'grep', run: 1 } as const;
+    assert.equal((await runCell(cell, env.deps)).outcome, 'done');
+    const argv = resultEventOf(env, cellId(cell))['fake_argv'] as string[];
+    assert.ok(!argv.some((a) => a.includes('Skill')), 'no Skill token in the grep argv');
+    const dirty = makeEnv({ FAKE_INIT_EXTRA_TOOLS: JSON.stringify(['Skill']) });
+    const contaminated = await runCell({ questionId: 'q-1', arm: 'grep', run: 1 }, dirty.deps);
+    assert.equal(contaminated.outcome, 'contaminated');
+    assert.ok((contaminated.diffs ?? []).includes('extra tool: Skill'));
+  });
+
   it('separate stores per cell: each cell has its own store and an empty user directory inside its session directory', async () => {
     const env = makeEnv({}, { keepSessions: true });
     const first = { questionId: 'q-1', arm: 'atlas', run: 1 } as const;
@@ -381,7 +411,7 @@ describe('schedule', () => {
 // Task 2: the arms
 
 const ATLAS_INIT = (over: Partial<InitEvent> = {}): InitEvent => ({
-  tools: ['Bash', 'Read', 'mcp__gsd-atlas__code_find', 'mcp__gsd-atlas__code_refs'],
+  tools: ['Bash', 'Read', 'Skill', 'mcp__gsd-atlas__code_find', 'mcp__gsd-atlas__code_refs'],
   mcpServers: [{ name: 'gsd-atlas', status: 'connected' }],
   skills: ['update-config', 'gsd-atlas-eval:gsd-atlas'],
   plugins: [],
@@ -413,19 +443,64 @@ describe('arms', () => {
     }
     assert.deepEqual(allowedToolsFor('grep').filter((t) => t.startsWith('mcp__')), []);
     assert.deepEqual(allowedToolsFor('atlas').filter((t) => t.startsWith('mcp__')), [...ATLAS_TOOL_NAMES]);
-    // The two arms differ in exactly the atlas tools.
-    assert.deepEqual(allowedToolsFor('atlas').filter((t) => !t.startsWith('mcp__')), allowedToolsFor('grep'));
+    // The two arms differ in exactly the atlas tools and the one Skill rule (plan 03-38, Revision 1).
+    assert.deepEqual(
+      allowedToolsFor('atlas').filter((t) => !t.startsWith('mcp__') && !t.startsWith('Skill(')),
+      allowedToolsFor('grep'),
+    );
   });
 
-  it('expectedToolSet: Bash and Read exactly, a server only for the atlas arm', () => {
+  // The grep arm is pinned against literal copies of its pre-revision values (plan 03-38): any change
+  // to it fails here, whatever the code under change says.
+  it('the grep arm is byte for byte what it was before Revision 1', () => {
+    assert.deepEqual([...ARMS.grep.builtinTools], ['Bash', 'Read']);
+    assert.deepEqual(allowedToolsFor('grep'), [
+      'Bash(rg:*)',
+      'Bash(git grep:*)',
+      'Bash(git ls-files:*)',
+      'Bash(grep:*)',
+      'Bash(cat:*)',
+      'Bash(head:*)',
+      'Bash(tail:*)',
+      'Bash(wc:*)',
+      'Bash(ls:*)',
+      'Bash(find:*)',
+      'Bash(sort:*)',
+      'Bash(uniq:*)',
+      'Read',
+    ]);
+    assert.deepEqual([...ARMS.grep.atlasToolNames], []);
     assert.deepEqual(expectedToolSet('grep'), { tools: ['Bash', 'Read'], mcpServers: [] });
-    assert.deepEqual(expectedToolSet('atlas'), { tools: ['Bash', 'Read'], mcpServers: ['gsd-atlas'] });
+    assert.ok(!allowedToolsFor('grep').some((t) => t.includes('Skill')), 'the grep arm has no Skill rule');
+  });
+
+  it('the atlas arm adds the Skill built-in and exactly one Skill rule, built from the plugin and skill names', () => {
+    assert.deepEqual([...ARMS.atlas.builtinTools], ['Bash', 'Read', 'Skill']);
+    const rules = allowedToolsFor('atlas').filter((t) => t === 'Skill' || t.startsWith('Skill('));
+    assert.deepEqual(rules, [`Skill(${PLUGIN_NAME}:${SKILL_NAME})`]);
+    assert.deepEqual(rules, ['Skill(gsd-atlas-eval:gsd-atlas)']);
+    assert.deepEqual(allowedToolsFor('atlas').slice(0, 13), allowedToolsFor('grep'), 'the shell patterns and Read come first, unchanged');
+    assert.deepEqual(allowedToolsFor('atlas').slice(13), ['Skill(gsd-atlas-eval:gsd-atlas)', ...ATLAS_TOOL_NAMES]);
+  });
+
+  it('expectedToolSet: Bash and Read (and Skill for the atlas arm) exactly, a server only for the atlas arm', () => {
+    assert.deepEqual(expectedToolSet('grep'), { tools: ['Bash', 'Read'], mcpServers: [] });
+    assert.deepEqual(expectedToolSet('atlas'), { tools: ['Bash', 'Read', 'Skill'], mcpServers: ['gsd-atlas'] });
   });
 
   it('checkInit accepts the registered environments, including a subset of the atlas tools', () => {
     assert.deepEqual(checkInit('grep', GREP_INIT()), []);
     assert.deepEqual(checkInit('atlas', ATLAS_INIT()), []);
-    assert.deepEqual(checkInit('atlas', ATLAS_INIT({ tools: ['Bash', 'Read', 'mcp__gsd-atlas__code_find'] })), []);
+    assert.deepEqual(checkInit('atlas', ATLAS_INIT({ tools: ['Bash', 'Read', 'Skill', 'mcp__gsd-atlas__code_find'] })), []);
+  });
+
+  it('checkInit requires the Skill tool and the skill in the atlas arm only', () => {
+    assert.deepEqual(checkInit('atlas', ATLAS_INIT({ tools: [...ATLAS_INIT().tools, 'StructuredOutput'] })), []);
+    assert.ok(checkInit('atlas', ATLAS_INIT({ tools: ['Bash', 'Read', 'mcp__gsd-atlas__code_find'] })).includes('missing tool: Skill'));
+    assert.ok(checkInit('atlas', ATLAS_INIT({ skills: ['update-config'] })).includes('skill absent: gsd-atlas-eval:gsd-atlas'));
+    assert.ok(checkInit('grep', GREP_INIT({ tools: ['Bash', 'Read', 'Skill'] })).includes('extra tool: Skill'));
+    assert.ok(checkInit('grep', GREP_INIT({ skills: ['gsd-atlas-eval:gsd-atlas'] })).includes('unexpected skill: gsd-atlas'));
+    assert.deepEqual(checkInit('grep', GREP_INIT()), [], 'the registered grep environment is still accepted');
   });
 
   it('checkInit accepts the StructuredOutput tool that --json-schema adds, in both arms, and still names other extras', () => {
@@ -815,6 +890,7 @@ describe('command line', () => {
     assert.match(text, /seed: 20261017/);
     assert.match(text, /concurrency: 2/);
     assert.match(text, /no session started/);
+    assert.match(text, /tools: .*Bash,Read.*atlas arm adds .*Skill tool/s, 'the plan says the atlas arm adds the Skill tool');
     assert.equal(fs.existsSync(env.eventsFile), false);
     assert.equal(fs.existsSync(env.out) && fs.readdirSync(env.out).length > 0, false, 'plan writes no results');
   });
