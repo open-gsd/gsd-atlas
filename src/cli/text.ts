@@ -31,3 +31,24 @@ export function printEnvelope(sinks: Sinks, envelope: Envelope): void {
     }
   }
 }
+
+/** A value as the person sees it: JSON-quoted, with the characters JSON leaves raw (C1 controls, line separators) escaped too. */
+export function show(text: string): string {
+  let out = '';
+  for (const char of JSON.stringify(text)) {
+    const code = char.codePointAt(0) as number;
+    out += isControl(code) ? `\\u${code.toString(16).padStart(4, '0')}` : char;
+  }
+  return out;
+}
+
+/**
+ * The line that tells the person what a confirmed `allow` approved: the executable and its arguments, each quoted and
+ * escaped. Null when the reply carries no command (an error reply, or a reply from a Host that does not echo it).
+ */
+export function approvedLine(data: unknown): string | null {
+  if (typeof data !== 'object' || data === null) return null;
+  const { executable, args } = data as Record<string, unknown>;
+  if (typeof executable !== 'string' || !Array.isArray(args) || !args.every((each): each is string => typeof each === 'string')) return null;
+  return `gsd-atlas: approved command: ${show(executable)} [${args.map(show).join(', ')}]\n`;
+}

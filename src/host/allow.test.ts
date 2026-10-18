@@ -104,7 +104,7 @@ describe('allow: confirm', () => {
     const preview = previewOf(await w.ask('allow', { repo: w.repo.dir, argv }));
     const reply = await w.ask('allow', { repo: w.repo.dir, argv, confirm: preview.sha256 });
     assert.equal(reply.ok, true, JSON.stringify(reply.diagnostics));
-    assert.deepEqual(reply.data, { written: true, sha256: preview.sha256 });
+    assert.deepEqual(reply.data, { written: true, sha256: preview.sha256, executable: process.execPath, args: [SCRIPT, '--flag'] });
     const written: unknown = JSON.parse(fs.readFileSync(configFileOf(w), 'utf8'));
     assert.deepEqual(written, { permissions: { allow: [{ repo: w.repo.dir, executable: process.execPath, sha256: preview.sha256 }] } });
     const loaded = loadUserConfig(userDirOf(w), {});
@@ -388,6 +388,7 @@ describe('allow: the user configuration through the Host', () => {
     const preview = previewOf(await w.ask('allow', { repo: w.repo.dir, argv }));
     const reply = await w.ask('allow', { repo: w.repo.dir, argv, confirm: preview.sha256 });
     assert.equal(codeOf(reply), 'config_too_large');
+    assert.ok(!JSON.stringify(reply).includes(SCRIPT), 'an error reply carries no argv');
     assert.equal(fs.readFileSync(configFileOf(w), 'utf8'), content);
   });
 
@@ -396,10 +397,10 @@ describe('allow: the user configuration through the Host', () => {
     const argv = [process.execPath, SCRIPT];
     const preview = previewOf(await w.ask('allow', { repo: w.repo.dir, argv }));
     const first = await w.ask('allow', { repo: w.repo.dir, argv, confirm: preview.sha256 });
-    assert.deepEqual(first.data, { written: true, sha256: preview.sha256 });
+    assert.deepEqual(first.data, { written: true, sha256: preview.sha256, executable: process.execPath, args: [SCRIPT] });
     const second = await w.ask('allow', { repo: w.repo.dir, argv, confirm: preview.sha256 });
     assert.equal(second.ok, true);
-    assert.deepEqual(second.data, { written: false, sha256: preview.sha256, already_allowed: true });
+    assert.deepEqual(second.data, { written: false, sha256: preview.sha256, executable: process.execPath, args: [SCRIPT], already_allowed: true });
     assert.equal(loadUserConfig(userDirOf(w), {}).config.permissions?.allow.length, 1);
   });
 });
@@ -480,7 +481,7 @@ describe('allow: --module', () => {
     '.gsd-atlas/languages/adapted/atlas-lang.json': manifest('adapted', { adapter: 'typescript' }),
   };
 
-  it('module argv not in envelope: the proposal comes from the manifest, only the confirmed reply and every diagnostic stay free of it', async (t) => {
+  it('module argv not in envelope: the proposal comes from the manifest, the confirmed reply echoes it for the CLI host, every diagnostic stays free of it', async (t) => {
     const w = await makeWorld(t, { files: MODULE_FILES });
     const dry = await w.ask('allow', { repo: w.repo.dir, module: 'evil' });
     const preview = previewOf(dry);
@@ -495,9 +496,11 @@ describe('allow: --module', () => {
 
     const done = await w.ask('allow', { repo: w.repo.dir, module: 'evil', confirm: preview.sha256 });
     assert.equal(done.ok, true, JSON.stringify(done.diagnostics));
-    const serialized = JSON.stringify(done);
-    for (const element of [...COMMAND, 'evil.js']) assert.ok(!serialized.includes(element), `the confirmed reply holds no argv element (${element})`);
-    assert.deepEqual(done.data, { written: true, sha256: preview.sha256 });
+    // The confirmed reply to a CLI-origin Host echoes the approved argv (the same fields the dry run uses), and nothing else of the module.
+    assert.deepEqual(done.data, { written: true, sha256: preview.sha256, executable: COMMAND[0], args: COMMAND.slice(1) });
+    assert.ok(!JSON.stringify(done.diagnostics).includes(MARKER), 'no diagnostic holds the argv');
+    assert.ok(!JSON.stringify(done).includes('evil/'), 'no module folder path');
+    assert.ok(!Object.values(done.data as object).includes('evil'), 'no module name');
     assert.deepEqual(loadUserConfig(userDirOf(w), {}).config.permissions?.allow, [{ repo: w.repo.dir, executable: 'node', sha256: preview.sha256 }]);
   });
 

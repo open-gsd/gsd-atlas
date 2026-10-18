@@ -11,8 +11,9 @@
  * Nothing here is reachable from MCP: there is no tool for it and a Host started for MCP refuses the request.
  *
  * Text that came from a repository (a module's `precise.command`) is proposed to the person and nowhere else: it is in the
- * dry-run reply, which only the terminal CLI receives, so it can be printed at the prompt. It is never in the confirmed
- * reply, a diagnostic, an error message or a log, and the module is named by a boolean (`fromModule`), never by name.
+ * dry-run reply and in the confirmed reply (so the person can see what was approved), both of which only the terminal CLI
+ * receives: a Host started for MCP refuses the request before this module sees it. It is never in an error reply, a
+ * diagnostic or a log, and the module is named by a boolean (`fromModule`), never by name.
  */
 import crypto from 'node:crypto';
 import fs from 'node:fs';
@@ -50,10 +51,12 @@ export interface AllowPreview {
   readonly fromModule?: true;
 }
 
-/** What a confirmed call returns. It never carries the command. */
+/** What a confirmed call returns: the hash, and the command that was approved (the dry run's own fields). */
 export interface AllowWritten {
   readonly written: boolean;
   readonly sha256: string;
+  readonly executable: string;
+  readonly args: readonly string[];
   /** True when an identical entry was already there, so nothing was written. */
   readonly already_allowed?: true;
 }
@@ -326,13 +329,15 @@ export async function applyAllow(input: AllowInput, deps: AllowDeps, confirm: st
   return { ok: true, preview, written: added.status === 'added', alreadyAllowed: added.status === 'already_allowed' };
 }
 
-/** The envelope of an `allow` result: the preview for a dry run, `{written, sha256}` for a confirmed call. */
+/** The envelope of an `allow` result: the preview for a dry run, `{written, sha256, executable, args}` for a confirmed call. */
 function envelopeOf(result: AllowResult, confirmed: boolean): Envelope {
   if (!result.ok) return errorEnvelope(result.code, result.message);
   if (!confirmed) return okEnvelope<AllowPreview>(ALLOW_SCHEMA, result.preview);
   const data: AllowWritten = {
     written: result.written,
     sha256: result.preview.sha256,
+    executable: result.preview.executable,
+    args: result.preview.args,
     ...(result.alreadyAllowed ? { already_allowed: true as const } : {}),
   };
   return okEnvelope<AllowWritten>(ALLOW_SCHEMA, data);

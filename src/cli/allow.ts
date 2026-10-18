@@ -12,7 +12,7 @@
 import { PROTOCOL_VERSION } from '../host-client/index.ts';
 import type { Envelope, HostClient, Request } from '../host-client/index.ts';
 import { EXIT_FAILURE, EXIT_LEASE_HELD, EXIT_OK, EXIT_USAGE, exitCodeFor } from './exit.ts';
-import { isControl, oneLine, printEnvelope } from './text.ts';
+import { approvedLine, oneLine, printEnvelope, show } from './text.ts';
 import type { Sinks } from './text.ts';
 
 /** What `allow` needs from the CLI's io. */
@@ -48,16 +48,6 @@ const NEEDS_TERMINAL = 'gsd-atlas: error allow_needs_terminal: allow needs a ter
 const QUESTION = 'Allow this exact command to run for this repository? [y/N] ';
 const RESTART_NOTE =
   'gsd-atlas: approved. A running MCP server must be restarted to see this approval, and it runs an approved command only when it was started with --allow-build.\n';
-
-/** A value as the person sees it: JSON-quoted, with the characters JSON leaves raw (C1 controls, line separators) escaped too. */
-function show(text: string): string {
-  let out = '';
-  for (const char of JSON.stringify(text)) {
-    const code = char.codePointAt(0) as number;
-    out += isControl(code) ? `\\u${code.toString(16).padStart(4, '0')}` : char;
-  }
-  return out;
-}
 
 function readPreview(data: unknown): Preview | null {
   if (typeof data !== 'object' || data === null) return null;
@@ -149,6 +139,8 @@ export async function runAllow(io: AllowIo, input: AllowRequestInput): Promise<n
   if (done === null) return EXIT_FAILURE;
   printEnvelope(io, done);
   if (done.ok) {
+    const approved = approvedLine(done.data);
+    if (approved !== null) io.stderr.write(approved);
     const already = (done.data as { already_allowed?: unknown } | null)?.already_allowed === true;
     io.stderr.write(already ? 'gsd-atlas: this exact command was already approved; nothing was changed\n' : RESTART_NOTE);
   }

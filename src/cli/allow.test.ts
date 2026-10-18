@@ -18,7 +18,7 @@ const SCHEMA = 'gsd-atlas.allow/1';
 
 const PREVIEW = { repo: '/the/repo', executable: 'node', args: ['tools/x.js', '--flag'], cwd: '.', sha256: HASH };
 const previewReply: Envelope = { schema: SCHEMA, ok: true, data: PREVIEW, diagnostics: [] };
-const writtenReply: Envelope = { schema: SCHEMA, ok: true, data: { written: true, sha256: HASH }, diagnostics: [] };
+const writtenReply: Envelope = { schema: SCHEMA, ok: true, data: { written: true, sha256: HASH, executable: 'node', args: ['tools/x.js', '--flag'] }, diagnostics: [] };
 const failure = (code: string, message: string): Envelope => ({
   schema: 'gsd-atlas.error/1',
   ok: false,
@@ -97,6 +97,26 @@ describe('gsd-atlas allow: preview then write', () => {
     for (const part of ['/the/repo', 'node', '"tools/x.js"', '"--flag"', 'working directory', '.', HASH]) {
       assert.ok(shown.includes(part), `the preview shows ${part}`);
     }
+  });
+
+  it('approved argv: the confirmed output shows what was approved, quoted and escaped, on stderr only', async () => {
+    const hostile: Envelope = { ...writtenReply, data: { written: true, sha256: HASH, executable: 'node', args: ['a\u001b[2Jb', 'two words'] } };
+    const h = terminal([previewReply, hostile], ['y']);
+    assert.equal(await h.run(['allow', '--', 'node', 'x']), EXIT_OK);
+    const text = h.stderr.join('');
+    assert.ok(text.includes('approved command:'), 'the approved command is named');
+    assert.ok(text.includes('"node"') && text.includes('"two words"'), 'executable and arguments are shown quoted');
+    assert.ok(!text.includes('\u001b'), 'no raw ESC reaches the terminal');
+    assert.ok(text.includes('\\u001b[2J'), 'the control character is shown escaped');
+  });
+
+  it('approved argv: an error reply, or a reply without the fields, prints no approved command line', async () => {
+    const refused = terminal([previewReply, failure('confirm_mismatch', 'nope')], ['y']);
+    await refused.run(['allow', '--', 'node', 'x']);
+    assert.ok(!refused.stderr.join('').includes('approved command:'));
+    const bare = terminal([previewReply, { ...writtenReply, data: { written: true, sha256: HASH } }], ['y']);
+    assert.equal(await bare.run(['allow', '--', 'node', 'x']), EXIT_OK);
+    assert.ok(!bare.stderr.join('').includes('approved command:'));
   });
 
   it('keeps flags after the double dash as arguments of the command, not as flags of allow', async () => {
