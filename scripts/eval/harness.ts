@@ -325,6 +325,7 @@ export async function runCell(cell: Cell, deps: CellDeps): Promise<CellResult> {
     allowedTools: allowedToolsFor(cell.arm),
     mcpConfigPath,
     pluginDirs,
+    ...(ARMS[cell.arm].settings === undefined ? {} : { settings: ARMS[cell.arm].settings }),
     jsonSchema: deps.answerSchema,
     maxBudgetUsd: deps.maxBudgetUsd,
     wallClockMs: deps.wallClockMs,

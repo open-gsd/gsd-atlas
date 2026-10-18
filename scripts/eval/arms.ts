@@ -7,7 +7,8 @@
  * and the same bounds; the atlas arm adds the atlas MCP server, the `gsd-atlas` skill and the `Skill`
  * built-in tool that makes the skill visible to the model (Revision 1, plan 03-38: under `--tools
  * Bash,Read` the init event lists the skill, yet the model sees no skill list and has no Skill tool),
- * and nothing else. The grep arm is what it always was.
+ * and the `--settings` that keep Claude Code's own skills out of the model's list, and nothing else.
+ * The grep arm is what it always was.
  *
  * Eval tooling: it must never import from src/ (D-02). The atlas binary is only ever run as a
  * program.
@@ -95,17 +96,40 @@ export const ALLOWED_SHELL: readonly string[] = [
   'Bash(uniq:*)',
 ];
 
+/**
+ * The inline `--settings` JSON of the atlas arm: it designs Claude Code's own skills out of what the
+ * model sees, so that the registered skill is the only skill in its list (Revision 1, plan 03-38).
+ *
+ * Pinned to the registered Claude Code version (2.1.302), by live probe (docs/eval/skill-visibility.md):
+ * deny rules by name (`--disallowedTools "Skill(<name>)"`) did not remove a skill from the list the
+ * model sees; `disableBundledSkills` removed all but three skills (`plugin-authoring`, `design`,
+ * `doctor`), which `skillOverrides` set to "off" removes. With this JSON the init event lists the
+ * registered skill alone, and the model sees nothing else. `checkInit` fails a session whose init
+ * event lists another skill, so a Claude Code version that adds a skill stops the run instead of
+ * leaking a second skill listing into the atlas arm.
+ */
+export const ATLAS_SETTINGS =
+  '{"disableBundledSkills":true,"skillOverrides":{"plugin-authoring":"off","design":"off","doctor":"off"}}';
+
 export interface ArmDef {
   readonly id: ArmId;
   readonly builtinTools: readonly string[];
   readonly allowedShell: readonly string[];
   /** Empty for the grep arm. */
   readonly atlasToolNames: readonly string[];
+  /** The inline `--settings` JSON; absent for the grep arm, whose sessions carry no `--settings`. */
+  readonly settings?: string;
 }
 
 export const ARMS: Readonly<Record<ArmId, ArmDef>> = {
   grep: { id: 'grep', builtinTools: BUILTIN_TOOLS, allowedShell: ALLOWED_SHELL, atlasToolNames: [] },
-  atlas: { id: 'atlas', builtinTools: ATLAS_BUILTIN_TOOLS, allowedShell: ALLOWED_SHELL, atlasToolNames: ATLAS_TOOL_NAMES },
+  atlas: {
+    id: 'atlas',
+    builtinTools: ATLAS_BUILTIN_TOOLS,
+    allowedShell: ALLOWED_SHELL,
+    atlasToolNames: ATLAS_TOOL_NAMES,
+    settings: ATLAS_SETTINGS,
+  },
 };
 
 /**
@@ -200,7 +224,7 @@ const isAtlasSkill = (skill: string): boolean => skill === SKILL_NAME || skill =
  * - Built-in tools must equal `Bash` and `Read` exactly in the grep arm and `Bash`, `Read` and `Skill`
  *   exactly in the atlas arm.
  * - Atlas arm: the server `gsd-atlas` is present, the MCP tools are a non-empty subset of the seven
- *   atlas tools, and the skill is listed. No other server, no other MCP tool.
+ *   atlas tools, and the skill is listed and is the only skill listed. No other server, no other MCP tool.
  * - Grep arm: no MCP server, no MCP tool, no Skill tool (an extra tool) and no atlas skill.
  */
 export function checkInit(arm: ArmId, init: InitEvent | null): string[] {
@@ -215,6 +239,8 @@ export function checkInit(arm: ArmId, init: InitEvent | null): string[] {
   if (arm === 'atlas') {
     if (allowedPresent.length === 0) diffs.push('no atlas tool in the init event');
     if (!init.skills.some(isAtlasSkill)) diffs.push(`skill absent: ${PLUGIN_NAME}:${SKILL_NAME}`);
+    // `ATLAS_SETTINGS` leaves the registered skill as the only listed skill.
+    for (const skill of init.skills) if (!isAtlasSkill(skill)) diffs.push(`unexpected skill: ${skill}`);
   } else if (init.skills.some(isAtlasSkill)) {
     diffs.push(`unexpected skill: ${SKILL_NAME}`);
   }
