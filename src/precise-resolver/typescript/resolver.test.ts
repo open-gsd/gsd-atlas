@@ -20,7 +20,7 @@ import { createTempGitRepo, makeTempDir, realPath } from '../../test-kit/index.t
 import type { TempDir, TempGitRepo } from '../../test-kit/index.ts';
 import { definePreciseResolverContract } from '../contract.ts';
 import type { PreciseResolverSubject } from '../contract.ts';
-import { bundledCompilerDir, createTypeScriptResolver, createTypeScriptTier, mapTarget, resolveWorkerPath } from './index.ts';
+import { bundledCompilerDir, createTypeScriptResolver, createTypeScriptTier, mapTarget, resolveWorkerPath, resolveWorkerUrl } from './index.ts';
 import type { PreciseTier, TypeScriptResolver } from './index.ts';
 
 const MODULES = path.resolve(import.meta.dirname, '..', '..', '..', 'modules');
@@ -707,6 +707,88 @@ describe('no owner and providers off (SEC-02)', () => {
   });
 });
 
+describe('an untrusted worker (T-03-232, T-03-233)', () => {
+  const FAKE = [
+    "import readline from 'node:readline';",
+    "const mode = process.env.FAKE_MODE ?? process.argv[3] ?? 'flood';",
+    'const rl = readline.createInterface({ input: process.stdin });',
+    'const send = (o) => process.stdout.write(JSON.stringify(o) + "\\n");',
+    'rl.on("line", (line) => {',
+    '  const m = JSON.parse(line);',
+    '  if (m.t === "init") return send({ t: "ready", compiler: { version: "6.0.3", source: "bundled" }, rssMb: 1, pid: process.pid });',
+    '  if (m.t !== "resolve") return;',
+    '  const s = m.sites[0];',
+    '  const target = { path: "src/lib.cts", row: 0, col: 16, name: "compute", kind: "FunctionDeclaration" };',
+    '  if (mode === "flood") { for (let i = 0; i < 3; i += 1) send({ t: "edge", id: m.id, site: s, targets: [target] }); return send({ t: "done", id: m.id, asked: 1, answered: 3 }); }',
+    '  if (mode === "garbage") return process.stdout.write("this is not json\\n");',
+    '  if (mode === "escape") { send({ t: "edge", id: m.id, site: s, targets: [{ ...target, path: "../../etc/passwd" }] }); return send({ t: "done", id: m.id, asked: 1, answered: 1 }); }',
+    '  if (mode === "silent") return;',
+    '});',
+    'rl.on("close", () => process.exit(0));',
+    '',
+  ].join('\n');
+
+  /** A resolver over the fixture project whose "worker" is the fake script above, started through the same exact shape. */
+  function resolverWith(t: TestContext, mode: string, limits: Record<string, number> = {}): TypeScriptResolver {
+    const tmp = makeTempDir();
+    t.after(() => tmp.cleanup());
+    const fake = path.join(tmp.path, `fake-${mode}.mjs`);
+    fs.writeFileSync(fake, FAKE.replace("process.env.FAKE_MODE ?? process.argv[3] ?? 'flood'", JSON.stringify(mode)));
+    const project = writeProject(FIXTURE);
+    t.after(() => project.cleanup());
+    const runner = createRealRunner({ builtinShapes: [compilerWorkerShape({ execPath: process.execPath, workerPath: fake })] });
+    const resolver = createTypeScriptResolver({ runner, worktree: project.dir, project: () => factsFor(), execPath: process.execPath, workerPath: fake, limits });
+    t.after(() => resolver.close());
+    return resolver;
+  }
+
+  const SITE = site('src/user.cts', 6, 9, 'compute');
+  const anyLookup: SymbolLookup = {
+    find: async () => [],
+    findIn: async (p, name) => [{ repo: 'r', path: p, qualifiedName: name, kind: 'function', span: span(0, 0, 1000, 0) }],
+  };
+
+  async function drain(resolver: TypeScriptResolver): Promise<unknown[]> {
+    const out: unknown[] = [];
+    for await (const item of resolver.resolveScoped(factsFor(), NO_OVERLAY, CONTEXT, [SITE], anyLookup)) out.push(item);
+    return out;
+  }
+
+  it('a worker that answers more sites than it was asked is stopped and the call fails with resolver_failed', async (t) => {
+    const resolver = resolverWith(t, 'flood');
+    await assert.rejects(drain(resolver), (error: unknown) => (error as { degradedCode?: string }).degradedCode === 'resolver_failed');
+  });
+
+  it('a line that is not a protocol message stops the worker and fails the call', async (t) => {
+    const resolver = resolverWith(t, 'garbage');
+    await assert.rejects(drain(resolver), (error: unknown) => (error as { degradedCode?: string }).degradedCode === 'resolver_failed');
+  });
+
+  it('a worker that never answers is killed at the request timeout', async (t) => {
+    const resolver = resolverWith(t, 'silent', { requestTimeoutMs: 400 });
+    const started = Date.now();
+    await assert.rejects(drain(resolver), (error: unknown) => (error as { degradedCode?: string }).degradedCode === 'resolver_failed');
+    assert.ok(Date.now() - started < 10_000);
+  });
+
+  it('a target path that leaves the repository is refused before the store is asked about it', async (t) => {
+    const resolver = resolverWith(t, 'escape');
+    const asked: string[] = [];
+    const watching: SymbolLookup = {
+      find: async () => [],
+      findIn: async (p, name) => {
+        asked.push(p);
+        return anyLookup.findIn(p, name);
+      },
+    };
+    const out: unknown[] = [];
+    for await (const item of resolver.resolveScoped(factsFor(), NO_OVERLAY, CONTEXT, [SITE], watching)) out.push(item);
+    assert.deepEqual(out.filter((item) => (item as { kind?: string }).kind !== 'notice'), []);
+    assert.deepEqual(asked, []);
+    assert.equal(resolver.stats().dropped['FunctionDeclaration'], 1);
+  });
+});
+
 describe('the manifest and the worker source', () => {
   it('the TypeScript module names tiers grammar and precise and the typescript adapter', () => {
     const manifest = JSON.parse(fs.readFileSync(path.join(MODULES, 'typescript', 'atlas-lang.json'), 'utf8')) as { tiers: string[]; precise: { adapter: string } };
@@ -722,6 +804,12 @@ describe('the manifest and the worker source', () => {
       .replace(/(^|\s)\/\/.*$/gm, '$1');
     assert.match(source, /createProgram/);
     assert.doesNotMatch(source, /createLanguageService|tsserver|loadPlugin|plugins/);
+  });
+
+  it('the worker file is worker.ts from source and worker.js from the compiled package', () => {
+    assert.equal(resolveWorkerUrl('file:///repo/src/precise-resolver/typescript/worker-url.ts').href, 'file:///repo/src/precise-resolver/typescript/worker.ts');
+    assert.equal(resolveWorkerUrl('file:///pkg/dist/precise-resolver/typescript/worker-url.js').href, 'file:///pkg/dist/precise-resolver/typescript/worker.js');
+    assert.equal(resolveWorkerPath(), path.join(import.meta.dirname, 'worker.ts'));
   });
 
   it('no production file outside the worker loads the compiler package', () => {

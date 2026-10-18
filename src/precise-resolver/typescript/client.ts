@@ -309,7 +309,12 @@ export function createTypeScriptResolver(deps: TypeScriptResolverDeps): TypeScri
   }
 
   /** One request and its edges, until `done`. Rejects when the worker exits, breaks the protocol or is too slow. */
-  function ask(candidate: Live, build: (id: number) => Request, onEdge: (message: Extract<Response, { t: 'edge' }>) => void): Promise<{ asked: number; answered: number }> {
+  function ask(
+    candidate: Live,
+    build: (id: number) => Request,
+    onEdge: (message: Extract<Response, { t: 'edge' }>) => void,
+    maxEdges: number,
+  ): Promise<{ asked: number; answered: number }> {
     return new Promise((resolve, reject) => {
       if (candidate.exit !== undefined) {
         reject(exitFailure(candidate.exit));
@@ -333,8 +338,17 @@ export function createTypeScriptResolver(deps: TypeScriptResolverDeps): TypeScri
       }, limits.requestTimeoutMs);
       timer.unref();
       candidate.exitWaiters.add(onExit);
+      let received = 0;
       candidate.listeners.set(id, (message) => {
         if (message.t === 'edge') {
+          // One edge per site at most: a worker that sends more is broken or hostile, and is stopped (T-03-232, T-03-233).
+          received += 1;
+          if (received > maxEdges) {
+            finish();
+            candidate.stream.kill();
+            reject(new ResolverFailure('resolver_failed', 'the compiler worker answered more sites than it was asked'));
+            return;
+          }
           onEdge(message);
         } else if (message.t === 'done') {
           finish();
@@ -411,6 +425,7 @@ export function createTypeScriptResolver(deps: TypeScriptResolverDeps): TypeScri
               (message) => {
                 answers.set(siteKey(message.site.path, message.site.row, message.site.col, message.site.name), message.targets);
               },
+              chunk.length,
             );
             stats.sites.asked += counts.asked;
             stats.sites.answered += counts.answered;

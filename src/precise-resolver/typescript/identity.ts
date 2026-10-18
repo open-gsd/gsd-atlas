@@ -49,6 +49,12 @@ export function countDeclaration(stats: Stats, kind: string, mapped: boolean): v
   stats.byKind[kind] = entry;
 }
 
+/** True for a repository-relative POSIX path: not absolute, no drive letter, no backslash, no NUL and no `..` or `.` segment. */
+export function isRepositoryPath(value: string): boolean {
+  if (value === '' || value.startsWith('/') || /^[A-Za-z]:/.test(value) || value.includes('\\') || value.includes('\0')) return false;
+  return !value.split('/').some((segment) => segment === '' || segment === '.' || segment === '..');
+}
+
 /** True when the half-open range of `span` holds the position. */
 function holds(span: LocatedSymbol['span'], row: number, col: number): boolean {
   if (row < span.startLine || (row === span.startLine && col < span.startColumn)) return false;
@@ -69,6 +75,9 @@ function tighter(a: LocatedSymbol['span'], b: LocatedSymbol['span']): number {
  * ambiguous and give null.
  */
 export async function mapTarget(target: Target, symbols: SymbolLookup): Promise<SymbolIdentity | null> {
+  // The worker is untrusted (it may run the project's own compiler): a path that is not a plain repository-relative POSIX path
+  // is refused before the store is asked anything about it (T-03-232).
+  if (!isRepositoryPath(target.path)) return null;
   const candidates = await symbols.findIn(target.path, target.name);
   const containing = candidates.filter((symbol) => holds(symbol.span, target.row, target.col));
   if (containing.length === 0) return null;

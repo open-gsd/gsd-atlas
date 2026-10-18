@@ -624,7 +624,13 @@ export async function createTenant(deps: TenantDeps): Promise<Tenant> {
         return { complete: true, spentMs: outcome.durationMs, processed: outcome.changed };
       }
       case 'resolve':
-        return { complete: true, spentMs: 0, processed: 0, note: 'no precise tier is active' };
+        // Eager resolution is plan 03-29; until then an active tier resolves when a read asks.
+        return {
+          complete: true,
+          spentMs: 0,
+          processed: 0,
+          note: tier?.active === true ? 'the precise tier resolves on demand, when a read asks' : 'no precise tier is active',
+        };
       case 'refresh': {
         const { processed } = await getIndexer().refresh(options.worktree);
         return { complete: true, spentMs: took(), processed };
