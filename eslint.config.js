@@ -34,6 +34,10 @@ export const MODULES = [
   // may not start a process or open a database, is reached only through index.ts, and is no adapter's business
   // (adapters import only host-client). Not a SQLite owner, not an adapter, not a closed module.
   'diagnostics',
+  // Phase 3: the compiler-free ProjectModel (TSM-07). It reads the repository's own configuration through an injected,
+  // confined reader, so its production files may never import the TypeScript package (see patternsFor/syntaxFor). Not a
+  // SQLite owner, not an adapter, not a closed module.
+  'project-model',
 ];
 
 /** The only modules that may touch src/sqlite (and so a SQLite driver). */
@@ -62,6 +66,12 @@ export const TEST_CONTEXT_FILES = Object.fromEntries(
 const CP = '(?:node:)?child_process';
 const DRIVERS = '(?:node:sqlite|better-sqlite3)';
 const TEST_CODE = 'is test code and the compiled package must not load it';
+// TSM-07: the ProjectModel reads package.json and tsconfig files as data and must never load a compiler: not the bundled
+// `typescript`, not a subpath of it, not the `typescript-7` dev alias. Only its test files may (the differential test).
+const TS_PACKAGE = '^typescript(?:-\\d+)?(?:/.*)?$';
+// The esquery regex literal in a selector cannot contain a slash, so the same pattern spells it \x2f there.
+const TS_PACKAGE_SELECTOR = '^typescript(?:-\\d+)?(?:\\x2f.*)?$';
+const TS_PACKAGE_MESSAGE = 'project-model is compiler-free (TSM-07): it reads tsconfig and package.json as data and never imports the TypeScript package; only its test files may, for the differential test.';
 
 const deepImport = (m) => ({
   regex: `(^|/)${m}/(?!index\\.ts$).+`,
@@ -114,6 +124,7 @@ export function patternsFor(mod, opts = {}) {
       p.push(forbid(m, `Adapters (${ADAPTERS.join(', ')}) import only host-client, not ${m}.`));
     }
   }
+  if (mod === 'project-model' && !testContext) p.push({ regex: TS_PACKAGE, message: TS_PACKAGE_MESSAGE });
   if (!SQLITE_OWNERS.includes(mod)) p.push(forbid('sqlite', 'src/sqlite is private to fact-store, metrics and sdk.'));
   for (const m of MODULES) if (m !== mod) p.push(deepImport(m));
   return p;
@@ -145,6 +156,7 @@ export function syntaxFor(mod, opts = {}) {
     s.push(...dynamicAndRequire('^\\..*test-kit', `src/test-kit is test code: it ${TEST_CODE}.`));
     s.push(...dynamicAndRequire('^\\..*contract(\\.ts)?$', `Contract suites are test code: a contract.ts file ${TEST_CODE}.`));
   }
+  if (mod === 'project-model' && !testContext) s.push(...dynamicAndRequire(TS_PACKAGE_SELECTOR, TS_PACKAGE_MESSAGE));
   if (mod === 'grammar-engine' && opts.allowParse !== true) s.push(PARSE_SELECTOR);
   return s;
 }

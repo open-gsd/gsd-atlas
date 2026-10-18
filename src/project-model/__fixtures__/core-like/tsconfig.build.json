@@ -1,0 +1,11 @@
+{
+  // The shape of gsd-core's build config: .cts sources under src, emitted as .cjs under an output directory.
+  "compilerOptions": {
+    "module": "nodenext",
+    "rootDir": "src",
+    "outDir": "out/lib",
+    "declaration": false,
+  },
+  "include": ["src/**/*.cts"],
+  "exclude": ["src/**/*.test.cts"]
+}
