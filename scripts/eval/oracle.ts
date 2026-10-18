@@ -36,7 +36,7 @@ import {
  */
 
 /** Part of every answer key; names the plan that froze this logic. */
-export const ORACLE_VERSION = '03-04.1';
+export const ORACLE_VERSION = '03-14.1';
 
 export interface OracleContext {
   /** The corpus checkout (or fixture) root; must be inside a git work tree. */
@@ -747,6 +747,89 @@ function typedRefs(state: State, target: ts.Symbol, name: string, aliases: Set<s
 // ---------------------------------------------------------------------------------------------
 // CommonJS rule
 
+const FOLD_DEPTH = 8;
+const PATH_FUNCTIONS = new Set(['join', 'resolve', 'normalize', 'dirname']);
+
+/** `path` or `path.posix` as the object of a call: the Node path module, by its conventional name. */
+function isPathModule(expression: ts.Expression): boolean {
+  if (ts.isIdentifier(expression)) return expression.text === 'path';
+  return (
+    ts.isPropertyAccessExpression(expression) &&
+    ts.isIdentifier(expression.expression) &&
+    expression.expression.text === 'path' &&
+    expression.name.text === 'posix'
+  );
+}
+
+/**
+ * Static value of a path-building expression, or undefined when any part is a runtime value. It
+ * follows string literals, templates, `+`, `__dirname`/`__filename` (absolute, from the file's
+ * place in the checkout), a `const` whose initializer folds, and `path.join`, `path.resolve`,
+ * `path.normalize` and `path.dirname` over folded arguments. Nothing is executed. `path` is taken
+ * to be the Node module by its name, the convention of every CommonJS file in the corpora.
+ */
+function foldPath(state: State, unit: Unit, node: ts.Expression, depth: number): string | undefined {
+  if (depth > FOLD_DEPTH) return undefined;
+  if (ts.isParenthesizedExpression(node) || ts.isAsExpression(node) || ts.isNonNullExpression(node)) {
+    return foldPath(state, unit, node.expression, depth + 1);
+  }
+  if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) return node.text;
+  if (ts.isTemplateExpression(node)) {
+    let text = node.head.text;
+    for (const span of node.templateSpans) {
+      const part = foldPath(state, unit, span.expression, depth + 1);
+      if (part === undefined) return undefined;
+      text += part + span.literal.text;
+    }
+    return text;
+  }
+  if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.PlusToken) {
+    const left = foldPath(state, unit, node.left, depth + 1);
+    const right = left === undefined ? undefined : foldPath(state, unit, node.right, depth + 1);
+    return left === undefined || right === undefined ? undefined : left + right;
+  }
+  if (ts.isIdentifier(node)) {
+    if (node.text === '__dirname') return norm(path.join(state.repoDir, path.posix.dirname(unit.rel)));
+    if (node.text === '__filename') return norm(path.join(state.repoDir, unit.rel));
+    const declaration = unit.checker?.getSymbolAtLocation(node)?.valueDeclaration;
+    if (
+      declaration !== undefined &&
+      ts.isVariableDeclaration(declaration) &&
+      declaration.initializer !== undefined &&
+      ts.isIdentifier(declaration.name) &&
+      ts.isVariableDeclarationList(declaration.parent) &&
+      (declaration.parent.flags & ts.NodeFlags.Const) !== 0 &&
+      declaration.getSourceFile() === unit.sf
+    ) {
+      return foldPath(state, unit, declaration.initializer, depth + 1);
+    }
+    return undefined;
+  }
+  if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)) {
+    const callee = node.expression;
+    if (!isPathModule(callee.expression) || !PATH_FUNCTIONS.has(callee.name.text)) return undefined;
+    const parts: string[] = [];
+    for (const argument of node.arguments) {
+      const part = foldPath(state, unit, argument, depth + 1);
+      if (part === undefined) return undefined;
+      parts.push(part);
+    }
+    if (parts.length === 0) return undefined;
+    switch (callee.name.text) {
+      case 'join':
+        return path.posix.join(...parts);
+      case 'resolve':
+        // A relative first part would resolve against the process directory, which is not the checkout.
+        return path.isAbsolute(parts[0]) ? path.resolve(...parts) : undefined;
+      case 'normalize':
+        return parts.length === 1 ? path.posix.normalize(parts[0]) : undefined;
+      default:
+        return parts.length === 1 ? path.posix.dirname(parts[0]) : undefined;
+    }
+  }
+  return undefined;
+}
+
 function requireCallsOf(state: State, unit: Unit): RequireCall[] {
   let calls = state.requireCache.get(unit);
   if (calls === undefined) {
@@ -758,7 +841,11 @@ function requireCallsOf(state: State, unit: Unit): RequireCall[] {
       const argument = call.arguments[0];
       if (ts.isStringLiteral(argument) || ts.isNoSubstitutionTemplateLiteral(argument)) {
         collected.push({ call, spec: argument.text });
+        continue;
       }
+      // A computed specifier (`path.join(__dirname, ...)`) counts only when it folds to a path.
+      const folded = foldPath(state, unit, argument, 0);
+      if (folded !== undefined && path.isAbsolute(folded)) collected.push({ call, spec: norm(folded) });
     }
     state.requireCache.set(unit, calls);
   }
@@ -778,7 +865,10 @@ const EXT_SUBSTITUTIONS: Readonly<Record<string, readonly string[]>> = {
  * specifier is tried with the CommonJS extensions. Anything else is not a reference to the program.
  */
 export function resolveRequireSpec(state: State, fromRel: string, spec: string): string | undefined {
-  if (!spec.startsWith('./') && !spec.startsWith('../')) return undefined;
+  // An absolute specifier is a folded computed path (`path.join(__dirname, ...)`); it must be inside the checkout.
+  const folded = path.isAbsolute(spec);
+  if (!folded && !spec.startsWith('./') && !spec.startsWith('../')) return undefined;
+  if (folded && !isInside(state.repoDir, path.resolve(spec))) return undefined;
   const joined = norm(path.resolve(state.repoDir, path.posix.dirname(fromRel), spec));
   const candidates = path.extname(joined) === '' ? [joined, `${joined}.cjs`, `${joined}.js`, `${joined}/index.js`] : [joined];
   for (const candidate of candidates) {

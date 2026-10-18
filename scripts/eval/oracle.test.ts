@@ -324,6 +324,45 @@ describe('key kinds', () => {
     ]);
   });
 
+  test('computed require paths: path.join and path.resolve over __dirname, constants and templates are followed', async () => {
+    const text = [
+      "'use strict';",
+      "const path = require('node:path');",
+      "const libDir = path.join(__dirname, '..', 'out');",
+      "const { compute } = require(path.join(libDir, 'lib.cjs'));", // 4: via a const
+      "const viaJoin = require(path.join(__dirname, '..', 'out', 'lib.cjs'));", // 5: direct
+      'const viaTemplate = require(`${libDir}/lib.cjs`);', // 6: template
+      "const viaResolve = require(path.resolve(__dirname, '../src/lib.cjs'));", // 7: sibling specifier of the source
+      "const unknown = require(path.join(process.cwd(), 'out', 'lib.cjs'));", // 8: runtime value, not followed
+      "const other = require(path.join(libDir, 'other.cjs'));", // 9: another file
+      'function pick(dir) {',
+      "  return require(path.join(dir, 'lib.cjs'));", // 11: parameter, not followed
+      '}',
+      'compute(1);',
+      'module.exports = { compute, viaJoin, viaTemplate, viaResolve, unknown, other, pick };',
+      '',
+    ].join('\n');
+    const repo = tempRepo(undefined, { 'tools/dyn.cjs': text });
+    try {
+      const answer = await computeAnswerKey({ kind: 'emit-consumers', source: 'src/lib.cts', ...REF }, repo.ctx);
+      assert.deepEqual(answer.items, [
+        { file: 'consumer.cjs', line: 3 },
+        { file: 'src/user.cts', line: 11 },
+        { file: 'tools/dyn.cjs', line: 4 },
+        { file: 'tools/dyn.cjs', line: 5 },
+        { file: 'tools/dyn.cjs', line: 6 },
+        { file: 'tools/dyn.cjs', line: 7 },
+      ]);
+      const callers = await computeAnswerKey(callersOfCompute(), repo.ctx);
+      assert.ok(
+        callers.items.some((item) => item.file === 'tools/dyn.cjs'),
+        'a use of a symbol bound from a computed require is a caller',
+      );
+    } finally {
+      repo.cleanup();
+    }
+  });
+
   test('adr citers: comments only, numbers by value, a string literal counted but excluded', async () => {
     const one = await key({ kind: 'adr-citers', number: 1, ...REF });
     assert.deepEqual(one.items, [{ file: 'src/lib.cts', line: 14 }]);
