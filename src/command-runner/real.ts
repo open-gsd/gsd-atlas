@@ -27,6 +27,7 @@ import {
   spawnErrorResult,
 } from './spec.ts';
 import type {
+  BuiltinShape,
   CommandResult,
   CommandRunner,
   CommandSpec,
@@ -43,6 +44,11 @@ export interface RealRunnerOptions {
   readonly decide?: DecideFn;
   /** User-level permissions for the default rule. Read from user config by the composition root, never from a repo. */
   readonly user?: UserPermissions;
+  /**
+   * The exact shapes of the non-git built-ins (the compiler worker, plan 03-19), built by the composition root and passed
+   * to the default rule. Absent means none: the runner then behaves exactly as before. Ignored when `decide` is given.
+   */
+  readonly builtinShapes?: readonly BuiltinShape[];
   /** The parent environment children inherit (minus the denylist). Defaults to `process.env`. */
   readonly env?: Readonly<Record<string, string | undefined>>;
   /** Defaults to `process.platform`. */
@@ -148,7 +154,7 @@ const settled = (result: CommandResult): CommandStream => ({
 
 export function createRealRunner(opts: RealRunnerOptions = {}): CommandRunner {
   const platform = opts.platform ?? process.platform;
-  const rule: DecideFn = opts.decide ?? ((spec, ctx) => defaultDecide(spec, ctx, opts.user));
+  const rule: DecideFn = opts.decide ?? ((spec, ctx) => defaultDecide(spec, ctx, opts.user, opts.builtinShapes));
   const defaultTimeoutMs = opts.defaultTimeoutMs ?? DEFAULT_RUN_TIMEOUT_MS;
   if (!Number.isFinite(defaultTimeoutMs) || defaultTimeoutMs <= 0) {
     throw new RangeError(`defaultTimeoutMs must be a positive finite number, got ${String(defaultTimeoutMs)}`);

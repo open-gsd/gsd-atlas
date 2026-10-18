@@ -9,6 +9,7 @@
 import { decide as defaultDecide } from './decide.ts';
 import { deniedResult, emptyResult } from './spec.ts';
 import type {
+  BuiltinShape,
   CommandResult,
   CommandRunner,
   CommandSpec,
@@ -40,6 +41,8 @@ export interface RecordingRunnerOptions {
   /** The permission rule. Defaults to the real `decide` with `user`. */
   readonly decide?: DecideFn;
   readonly user?: UserPermissions;
+  /** Exact shapes of the non-git built-ins, passed to the default rule exactly as the real runner does. Ignored when `decide` is given. */
+  readonly builtinShapes?: readonly BuiltinShape[];
   /** Results consumed in order by allowed runs that `respond` does not answer; then a default success. */
   readonly script?: readonly ScriptedResult[];
   /** Answers a run from its spec; takes precedence over `script` when it returns a value. */
@@ -91,7 +94,7 @@ async function drain(source: AsyncIterable<StdinChunk>): Promise<Uint8Array> {
 }
 
 export function createRecordingRunner(opts: RecordingRunnerOptions = {}): RecordingRunner {
-  const rule: DecideFn = opts.decide ?? ((spec, ctx) => defaultDecide(spec, ctx, opts.user));
+  const rule: DecideFn = opts.decide ?? ((spec, ctx) => defaultDecide(spec, ctx, opts.user, opts.builtinShapes));
   const starts: RecordedSpec[] = [];
   const denials: RecordedSpec[] = [];
   let scriptIndex = 0;

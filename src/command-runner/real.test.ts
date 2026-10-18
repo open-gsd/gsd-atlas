@@ -9,8 +9,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { describe, it } from 'node:test';
 import { makeTempDir } from '../test-kit/index.ts';
-import { allowAll, createRealRunner } from './index.ts';
-import type { CommandSpec } from './index.ts';
+import { compilerWorkerShape } from './builtins.ts';
+import { allowAll, createAsyncQueue, createRealRunner } from './index.ts';
+import type { BuiltinShape, CommandSpec } from './index.ts';
 import { DEFAULT_RUN_TIMEOUT_MS } from './real.ts';
 
 const text = (bytes: Uint8Array): string => new TextDecoder().decode(bytes);
@@ -305,5 +306,77 @@ describe('no shell and no shim (FND-06)', () => {
     };
     walk(root);
     assert.deepEqual(offenders, []);
+  });
+});
+
+// ---------------------------------------------------------------------------------------------------------------
+// A long-lived duplex child started through an exact-shape built-in (plan 03-19, TSM-05). The child is the echo
+// worker: a plain `.mjs` file run by the running Node, no shim and no shell.
+// ---------------------------------------------------------------------------------------------------------------
+
+const WORKER = path.join(import.meta.dirname, '__fixtures__', 'echo-worker.mjs');
+const productionShape = compilerWorkerShape({ execPath: process.execPath, workerPath: WORKER });
+/** The production shape plus the fixture's own mode switches, so tests can ask the echo worker for behavior. */
+const workerShape: BuiltinShape = {
+  ...productionShape,
+  env: { ...productionShape.env, ECHO_PRINT_PID: '^1$', ECHO_PRINT_ENV: '^1$', ECHO_BURST_MB: '^[0-9]{1,3}$', ECHO_STDERR_MB: '^[0-9]{1,3}$' },
+};
+const workerRunner = createRealRunner({ builtinShapes: [workerShape] });
+
+function workerSpec(extra: Partial<CommandSpec> = {}, env: Readonly<Record<string, string>> = {}): CommandSpec {
+  return {
+    executable: process.execPath,
+    args: ['--max-old-space-size=256', WORKER],
+    builtinId: 'typescript-resolver',
+    env: { GSD_ATLAS_WORKER: '1', ...env },
+    ...extra,
+  };
+}
+
+/** Reads from a stream's stdout until the text collected so far satisfies `done`. */
+async function readUntil(iterator: AsyncIterator<Uint8Array>, done: (collected: string) => boolean, start = ''): Promise<string> {
+  let collected = start;
+  while (!done(collected)) {
+    const next = await iterator.next();
+    if (next.done === true) break;
+    collected += text(next.value);
+  }
+  return collected;
+}
+
+describe('a long-lived worker through the runner (exact-shape built-in)', () => {
+  it('streams lines through the worker and ends it when stdin ends', { timeout: 30_000 }, async () => {
+    const queue = createAsyncQueue<string>();
+    const stream = workerRunner.stream(workerSpec({ stdin: queue }));
+    const iterator = stream.stdout[Symbol.asyncIterator]();
+    queue.push('one\n');
+    queue.push('two\n');
+    const out = await readUntil(iterator, (s) => s.length >= 8);
+    assert.equal(out, 'ONE\nTWO\n');
+    queue.end();
+    const result = await stream.result;
+    assert.equal(result.denied, undefined);
+    assert.equal(result.ok, true, text(result.stderr));
+    assert.equal(result.exitCode, 0);
+    assert.equal(result.signal, null);
+  });
+
+  it('kill() ends a worker that is still reading, with a signal and ok false', { timeout: 30_000 }, async () => {
+    const queue = createAsyncQueue<string>();
+    const stream = workerRunner.stream(workerSpec({ stdin: queue }));
+    const iterator = stream.stdout[Symbol.asyncIterator]();
+    queue.push('alive\n');
+    assert.equal(await readUntil(iterator, (s) => s.length >= 6), 'ALIVE\n');
+    stream.kill();
+    const result = await stream.result;
+    assert.equal(result.ok, false);
+    assert.notEqual(result.signal, null);
+    assert.equal(result.exitCode, null);
+  });
+
+  it('a deviation from the shape starts nothing, even with the same worker file', async () => {
+    const result = await workerRunner.run(workerSpec({ args: ['--inspect', WORKER] }));
+    assert.equal(result.denied?.code, 'command_denied');
+    assert.equal(result.exitCode, null);
   });
 });
