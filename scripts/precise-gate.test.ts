@@ -325,8 +325,8 @@ describe('evaluate (the pure judgement)', () => {
     assert.equal(warm.verdicts.find((verdict) => verdict.budget === 'warm')?.ceilingMs, WARM_QUERY_STRICT_MS);
   });
 
-  it('a build of 30001 ms passes the pull request tier and fails the strict tier', () => {
-    const measurements = { buildMs: 30_001, updateMs: rep(100, 5), warmMs: rep(40, 10) };
+  it('a build one millisecond over the strict ceiling passes the pull request tier and fails the strict tier', () => {
+    const measurements = { buildMs: BUILD_STRICT_MS + 1, updateMs: rep(100, 5), warmMs: rep(40, 10) };
     assert.equal(evaluate(measurements, 'pr').ok, true);
     const strict = evaluate({ ...measurements, updateMs: rep(100, 20), warmMs: rep(40, 50) }, 'strict');
     assert.equal(strict.ok, false);
@@ -350,6 +350,22 @@ describe('evaluate (the pure judgement)', () => {
     assert.equal(BUILD_STRICT_MS, approvedRow('gate.buildStrictMs'));
     assert.equal(UPDATE_STRICT_MS, approvedRow('gate.updateStrictMs'));
     assert.equal(WARM_QUERY_STRICT_MS, approvedRow('gate.warmQueryStrictMs'));
+  });
+
+  it('the strict build ceiling is the 60 s of the user decision "B and C" (2026-10-18): 03-CONSTANTS.md records the reply, and the ceiling stays between the roadmap figure and the pull request ceiling', () => {
+    assert.equal(BUILD_STRICT_MS, 60_000);
+    assert.ok(BUILD_STRICT_MS > 30_000, 'above the 30 s roadmap figure the hosted Linux runners could not meet');
+    assert.ok(BUILD_STRICT_MS < BUILD_PR_CEILING_MS, 'the strict tier stays tighter than the pull request tier');
+    const text = fs.readFileSync(CONSTANTS_FILE, 'utf8');
+    const approvals = text.slice(text.indexOf('## Approvals'));
+    assert.match(approvals, /^> B and C$/m, 'the reply is quoted verbatim');
+    assert.match(approvals, /`gate\.buildStrictMs`[^\n]*60000/, 'the entry names the key and the new value');
+    // The other five ceilings are the values approved before (the decision moved the strict build figure only).
+    assert.equal(BUILD_PR_CEILING_MS, 90_000);
+    assert.equal(UPDATE_PR_CEILING_MS, 15_000);
+    assert.equal(WARM_QUERY_PR_CEILING_MS, 6_000);
+    assert.equal(UPDATE_STRICT_MS, 5_000);
+    assert.equal(WARM_QUERY_STRICT_MS, 2_000);
   });
 });
 
