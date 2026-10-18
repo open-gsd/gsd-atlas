@@ -1,5 +1,5 @@
 {
-  "oracleVersion": "03-04.1",
+  "oracleVersion": "03-14.1",
   "repoSha": "10ac3a7a947903ba50f538a907af036744d759d5",
   "preparedRecord": {
     "corpusId": "gsd-core",
@@ -53,6 +53,36 @@
           "file": "tests/portable-node-runner.install.test.cjs",
           "line": 522,
           "symbol": "<module>"
+        },
+        {
+          "file": "tests/shell-command-projection-dispatch.test.cjs",
+          "line": 1840,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/shell-command-projection-dispatch.test.cjs",
+          "line": 1846,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/shell-command-projection-dispatch.test.cjs",
+          "line": 1852,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/shell-command-projection-dispatch.test.cjs",
+          "line": 1862,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/shell-command-projection-dispatch.test.cjs",
+          "line": 1868,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/shell-command-projection-dispatch.test.cjs",
+          "line": 1874,
+          "symbol": "<module>"
         }
       ],
       "granularity": "file",
@@ -62,7 +92,7 @@
       ],
       "unexplained": [],
       "notes": {},
-      "oracleVersion": "03-04.1"
+      "oracleVersion": "03-14.1"
     },
     {
       "questionId": "q-002",
@@ -113,7 +143,7 @@
       ],
       "unexplained": [],
       "notes": {},
-      "oracleVersion": "03-04.1"
+      "oracleVersion": "03-14.1"
     },
     {
       "questionId": "q-003",
@@ -178,7 +208,7 @@
       ],
       "unexplained": [],
       "notes": {},
-      "oracleVersion": "03-04.1"
+      "oracleVersion": "03-14.1"
     },
     {
       "questionId": "q-004",
@@ -268,7 +298,7 @@
       ],
       "unexplained": [],
       "notes": {},
-      "oracleVersion": "03-04.1"
+      "oracleVersion": "03-14.1"
     },
     {
       "questionId": "q-005",
@@ -383,7 +413,7 @@
       ],
       "unexplained": [],
       "notes": {},
-      "oracleVersion": "03-04.1"
+      "oracleVersion": "03-14.1"
     },
     {
       "questionId": "q-006",
@@ -399,6 +429,51 @@
           "file": "src/worktree-base-ref.cts",
           "line": 276,
           "symbol": "parseBaseRef"
+        },
+        {
+          "file": "tests/worktree-base-ref.test.cjs",
+          "line": 69,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/worktree-base-ref.test.cjs",
+          "line": 73,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/worktree-base-ref.test.cjs",
+          "line": 77,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/worktree-base-ref.test.cjs",
+          "line": 81,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/worktree-base-ref.test.cjs",
+          "line": 85,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/worktree-base-ref.test.cjs",
+          "line": 89,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/worktree-base-ref.test.cjs",
+          "line": 93,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/worktree-base-ref.test.cjs",
+          "line": 97,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/worktree-base-ref.test.cjs",
+          "line": 101,
+          "symbol": "<module>"
         }
       ],
       "granularity": "file",
@@ -408,7 +483,7 @@
       ],
       "unexplained": [],
       "notes": {},
-      "oracleVersion": "03-04.1"
+      "oracleVersion": "03-14.1"
     },
     {
       "questionId": "q-007",
@@ -453,7 +528,7 @@
       ],
       "unexplained": [],
       "notes": {},
-      "oracleVersion": "03-04.1"
+      "oracleVersion": "03-14.1"
     },
     {
       "questionId": "q-008",
@@ -564,6 +639,21 @@
           "file": "src/worktree-base-ref.cts",
           "line": 409,
           "symbol": "cmdWorktreeBaseCheck"
+        },
+        {
+          "file": "tests/agent-install-check.test.cjs",
+          "line": 175,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/agent-install-check.test.cjs",
+          "line": 181,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/agent-install-check.test.cjs",
+          "line": 379,
+          "symbol": "<module>"
         },
         {
           "file": "tests/capability-state.test.cjs",
@@ -771,6 +861,371 @@
           "symbol": "<module>"
         },
         {
+          "file": "tests/kimi-agent-converter.test.cjs",
+          "line": 229,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/kimi-agent-converter.test.cjs",
+          "line": 279,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/kimi-agent-converter.test.cjs",
+          "line": 293,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/runtime-config-adapter-registry.test.cjs",
+          "line": 434,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/runtime-descriptor-owner.test.cjs",
+          "line": 58,
+          "symbol": "getGlobalConfigDir"
+        },
+        {
+          "file": "tests/runtime-descriptor-owner.test.cjs",
+          "line": 206,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/runtime-descriptor-owner.test.cjs",
+          "line": 220,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/runtime-descriptor-owner.test.cjs",
+          "line": 224,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/runtime-homes-descriptor-drive.test.cjs",
+          "line": 126,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/runtime-homes-descriptor-drive.test.cjs",
+          "line": 136,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/runtime-homes-descriptor-drive.test.cjs",
+          "line": 145,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/runtime-homes-descriptor-drive.test.cjs",
+          "line": 179,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/runtime-homes-descriptor-drive.test.cjs",
+          "line": 192,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/runtime-homes-descriptor-drive.test.cjs",
+          "line": 202,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/runtime-homes-descriptor-drive.test.cjs",
+          "line": 214,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/runtime-homes-descriptor-drive.test.cjs",
+          "line": 220,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/runtime-homes-descriptor-drive.test.cjs",
+          "line": 226,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/runtime-homes-descriptor-drive.test.cjs",
+          "line": 342,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/runtime-homes-descriptor-drive.test.cjs",
+          "line": 348,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/runtime-homes-descriptor-drive.test.cjs",
+          "line": 520,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/runtime-homes-descriptor-drive.test.cjs",
+          "line": 531,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/runtime-homes-descriptor-drive.test.cjs",
+          "line": 542,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/runtime-homes-descriptor-drive.test.cjs",
+          "line": 552,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/runtime-homes-descriptor-drive.test.cjs",
+          "line": 562,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/runtime-homes-descriptor-drive.test.cjs",
+          "line": 573,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/runtime-homes-descriptor-drive.test.cjs",
+          "line": 584,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/runtime-homes-descriptor-drive.test.cjs",
+          "line": 595,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/runtime-homes-descriptor-drive.test.cjs",
+          "line": 605,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/runtime-homes-descriptor-drive.test.cjs",
+          "line": 1036,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/runtime-homes-descriptor-drive.test.cjs",
+          "line": 1037,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/runtime-homes-descriptor-drive.test.cjs",
+          "line": 1038,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/runtime-homes-descriptor-drive.test.cjs",
+          "line": 1039,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/runtime-homes-descriptor-drive.test.cjs",
+          "line": 1044,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/runtime-homes-descriptor-drive.test.cjs",
+          "line": 1051,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/runtime-homes-descriptor-drive.test.cjs",
+          "line": 1062,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/runtime-homes-descriptor-drive.test.cjs",
+          "line": 1070,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/runtime-homes-descriptor-drive.test.cjs",
+          "line": 1076,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/runtime-homes-descriptor-drive.test.cjs",
+          "line": 1087,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/runtime-homes-descriptor-drive.test.cjs",
+          "line": 1095,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/runtime-homes-descriptor-drive.test.cjs",
+          "line": 1101,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/runtime-homes-descriptor-drive.test.cjs",
+          "line": 1169,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/runtime-homes-descriptor-drive.test.cjs",
+          "line": 1261,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/runtime-homes-descriptor-drive.test.cjs",
+          "line": 1271,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/runtime-homes-descriptor-drive.test.cjs",
+          "line": 1276,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/runtime-homes-descriptor-drive.test.cjs",
+          "line": 1284,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/runtime-homes-descriptor-drive.test.cjs",
+          "line": 1289,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/runtime-homes-descriptor-drive.test.cjs",
+          "line": 1295,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/runtime-homes-descriptor-drive.test.cjs",
+          "line": 1303,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/runtime-homes-descriptor-drive.test.cjs",
+          "line": 1312,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/runtime-homes-descriptor-drive.test.cjs",
+          "line": 1328,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/runtime-homes-descriptor-drive.test.cjs",
+          "line": 1399,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/runtime-homes-descriptor-drive.test.cjs",
+          "line": 1404,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/runtime-homes-descriptor-drive.test.cjs",
+          "line": 1411,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/runtime-homes-descriptor-drive.test.cjs",
+          "line": 1420,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/runtime-homes-descriptor-drive.test.cjs",
+          "line": 1429,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/runtime-homes-descriptor-drive.test.cjs",
+          "line": 1438,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/runtime-homes-descriptor-drive.test.cjs",
+          "line": 1449,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/runtime-homes-descriptor-drive.test.cjs",
+          "line": 1462,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/runtime-homes-descriptor-drive.test.cjs",
+          "line": 1471,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/runtime-homes-descriptor-drive.test.cjs",
+          "line": 1480,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/runtime-homes-descriptor-drive.test.cjs",
+          "line": 1491,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/runtime-homes-legacy-ids-drift-guard.test.cjs",
+          "line": 91,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/runtime-homes-legacy-ids-drift-guard.test.cjs",
+          "line": 93,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/runtime-homes-legacy-ids-drift-guard.test.cjs",
+          "line": 99,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/runtime-homes-legacy-ids-drift-guard.test.cjs",
+          "line": 109,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/runtime-homes-legacy-ids-drift-guard.test.cjs",
+          "line": 127,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/runtime-homes-legacy-ids-drift-guard.test.cjs",
+          "line": 128,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/runtime-homes-legacy-ids-drift-guard.test.cjs",
+          "line": 130,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/runtime-name-policy.test.cjs",
+          "line": 214,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/runtime-name-policy.test.cjs",
+          "line": 223,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/runtime-name-policy.test.cjs",
+          "line": 287,
+          "symbol": "call"
+        },
+        {
+          "file": "tests/runtime-name-policy.test.cjs",
+          "line": 412,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/runtime-name-policy.test.cjs",
+          "line": 425,
+          "symbol": "<module>"
+        },
+        {
           "file": "tests/windsurf-install.test.cjs",
           "line": 27,
           "symbol": "<module>"
@@ -808,13 +1263,18 @@
       ],
       "unexplained": [],
       "notes": {},
-      "oracleVersion": "03-04.1"
+      "oracleVersion": "03-14.1"
     },
     {
       "questionId": "q-009",
       "kind": "callers",
       "abstain": false,
       "items": [
+        {
+          "file": "bin/install.js",
+          "line": 9565,
+          "symbol": "writeJsoncConfig"
+        },
         {
           "file": "src/installer-migrations.cts",
           "line": 788,
@@ -898,7 +1358,7 @@
       ],
       "unexplained": [],
       "notes": {},
-      "oracleVersion": "03-04.1"
+      "oracleVersion": "03-14.1"
     },
     {
       "questionId": "q-010",
@@ -1083,7 +1543,7 @@
       ],
       "unexplained": [],
       "notes": {},
-      "oracleVersion": "03-04.1"
+      "oracleVersion": "03-14.1"
     },
     {
       "questionId": "q-011",
@@ -1151,6 +1611,11 @@
           "symbol": "<module>"
         },
         {
+          "file": "tests/lint-planning-document-positive-control.test.cjs",
+          "line": 123,
+          "symbol": "<module>"
+        },
+        {
           "file": "tests/phase.test.cjs",
           "line": 12301,
           "symbol": "<module>"
@@ -1168,7 +1633,7 @@
       ],
       "unexplained": [],
       "notes": {},
-      "oracleVersion": "03-04.1"
+      "oracleVersion": "03-14.1"
     },
     {
       "questionId": "q-012",
@@ -1188,7 +1653,7 @@
       ],
       "unexplained": [],
       "notes": {},
-      "oracleVersion": "03-04.1"
+      "oracleVersion": "03-14.1"
     },
     {
       "questionId": "q-013",
@@ -1369,7 +1834,7 @@
       ],
       "unexplained": [],
       "notes": {},
-      "oracleVersion": "03-04.1"
+      "oracleVersion": "03-14.1"
     },
     {
       "questionId": "q-014",
@@ -1400,6 +1865,271 @@
           "file": "src/shell-command-projection.cts",
           "line": 928,
           "symbol": "projectSpawnInvocation"
+        },
+        {
+          "file": "tests/fallow-runner.test.cjs",
+          "line": 13,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/fallow-runner.test.cjs",
+          "line": 53,
+          "symbol": "resolveFallowBinaryWin32"
+        },
+        {
+          "file": "tests/shell-command-projection-dispatch.test.cjs",
+          "line": 13,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/shell-command-projection-dispatch.test.cjs",
+          "line": 142,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/shell-command-projection-dispatch.test.cjs",
+          "line": 149,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/shell-command-projection-dispatch.test.cjs",
+          "line": 160,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/shell-command-projection-dispatch.test.cjs",
+          "line": 172,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/shell-command-projection-dispatch.test.cjs",
+          "line": 184,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/shell-command-projection-dispatch.test.cjs",
+          "line": 196,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/shell-command-projection-dispatch.test.cjs",
+          "line": 198,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/shell-command-projection-dispatch.test.cjs",
+          "line": 209,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/shell-command-projection-dispatch.test.cjs",
+          "line": 220,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/shell-command-projection-dispatch.test.cjs",
+          "line": 231,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/shell-command-projection-dispatch.test.cjs",
+          "line": 243,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/shell-command-projection-dispatch.test.cjs",
+          "line": 254,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/shell-command-projection-dispatch.test.cjs",
+          "line": 268,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/shell-command-projection-dispatch.test.cjs",
+          "line": 278,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/shell-command-projection-dispatch.test.cjs",
+          "line": 288,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/shell-command-projection-dispatch.test.cjs",
+          "line": 301,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/shell-command-projection-dispatch.test.cjs",
+          "line": 312,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/shell-command-projection-dispatch.test.cjs",
+          "line": 322,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/shell-command-projection-dispatch.test.cjs",
+          "line": 330,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/shell-command-projection-dispatch.test.cjs",
+          "line": 331,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/shell-command-projection-dispatch.test.cjs",
+          "line": 332,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/shell-command-projection-dispatch.test.cjs",
+          "line": 339,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/shell-command-projection-dispatch.test.cjs",
+          "line": 349,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/shell-command-projection-dispatch.test.cjs",
+          "line": 360,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/shell-command-projection-dispatch.test.cjs",
+          "line": 381,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/shell-command-projection-dispatch.test.cjs",
+          "line": 394,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/shell-command-projection-dispatch.test.cjs",
+          "line": 405,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/shell-command-projection-dispatch.test.cjs",
+          "line": 410,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/shell-command-projection-dispatch.test.cjs",
+          "line": 422,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/shell-command-projection-dispatch.test.cjs",
+          "line": 444,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/shell-command-projection-dispatch.test.cjs",
+          "line": 461,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/shell-command-projection-dispatch.test.cjs",
+          "line": 478,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/shell-command-projection-dispatch.test.cjs",
+          "line": 479,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/shell-command-projection-dispatch.test.cjs",
+          "line": 492,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/shell-command-projection-dispatch.test.cjs",
+          "line": 509,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/shell-command-projection-dispatch.test.cjs",
+          "line": 528,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/shell-command-projection-dispatch.test.cjs",
+          "line": 547,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/shell-command-projection-dispatch.test.cjs",
+          "line": 565,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/shell-command-projection-dispatch.test.cjs",
+          "line": 587,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/shell-command-projection-dispatch.test.cjs",
+          "line": 606,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/shell-command-projection-dispatch.test.cjs",
+          "line": 626,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/shell-command-projection-dispatch.test.cjs",
+          "line": 643,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/shell-command-projection-dispatch.test.cjs",
+          "line": 647,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/shell-command-projection-dispatch.test.cjs",
+          "line": 668,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/shell-command-projection-dispatch.test.cjs",
+          "line": 680,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/shell-command-projection-dispatch.test.cjs",
+          "line": 696,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/shell-command-projection-dispatch.test.cjs",
+          "line": 713,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/shell-command-projection-dispatch.test.cjs",
+          "line": 732,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/shell-command-projection-dispatch.test.cjs",
+          "line": 746,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/shell-command-projection-dispatch.test.cjs",
+          "line": 765,
+          "symbol": "<module>"
         }
       ],
       "granularity": "file",
@@ -1409,7 +2139,7 @@
       ],
       "unexplained": [],
       "notes": {},
-      "oracleVersion": "03-04.1"
+      "oracleVersion": "03-14.1"
     },
     {
       "questionId": "q-015",
@@ -1429,7 +2159,7 @@
       ],
       "unexplained": [],
       "notes": {},
-      "oracleVersion": "03-04.1"
+      "oracleVersion": "03-14.1"
     },
     {
       "questionId": "q-016",
@@ -1454,7 +2184,7 @@
       ],
       "unexplained": [],
       "notes": {},
-      "oracleVersion": "03-04.1"
+      "oracleVersion": "03-14.1"
     },
     {
       "questionId": "q-017",
@@ -1475,7 +2205,7 @@
       ],
       "unexplained": [],
       "notes": {},
-      "oracleVersion": "03-04.1"
+      "oracleVersion": "03-14.1"
     },
     {
       "questionId": "q-018",
@@ -1502,7 +2232,7 @@
       ],
       "unexplained": [],
       "notes": {},
-      "oracleVersion": "03-04.1"
+      "oracleVersion": "03-14.1"
     },
     {
       "questionId": "q-019",
@@ -1523,7 +2253,7 @@
       ],
       "unexplained": [],
       "notes": {},
-      "oracleVersion": "03-04.1"
+      "oracleVersion": "03-14.1"
     },
     {
       "questionId": "q-020",
@@ -1544,7 +2274,7 @@
       ],
       "unexplained": [],
       "notes": {},
-      "oracleVersion": "03-04.1"
+      "oracleVersion": "03-14.1"
     },
     {
       "questionId": "q-021",
@@ -1565,13 +2295,17 @@
       ],
       "unexplained": [],
       "notes": {},
-      "oracleVersion": "03-04.1"
+      "oracleVersion": "03-14.1"
     },
     {
       "questionId": "q-022",
       "kind": "emit-consumers",
       "abstain": false,
       "items": [
+        {
+          "file": "bin/install.js",
+          "line": 803
+        },
         {
           "file": "gsd-core/bin/verify-reapply-patches.cjs",
           "line": 403
@@ -1585,8 +2319,16 @@
           "line": 16
         },
         {
+          "file": "tests/agent-descriptor-parity.install.test.cjs",
+          "line": 453
+        },
+        {
           "file": "tests/executed-plan.test.cjs",
           "line": 43
+        },
+        {
+          "file": "tests/gemini-runtime-removed.test.cjs",
+          "line": 183
         },
         {
           "file": "tests/golden-parity-single-source.test.cjs",
@@ -1649,8 +2391,16 @@
           "line": 44
         },
         {
+          "file": "tests/kimi-agent-converter.test.cjs",
+          "line": 199
+        },
+        {
           "file": "tests/opencode-command-dir-plural.test.cjs",
           "line": 49
+        },
+        {
+          "file": "tests/runtime-artifact-layout-descriptor-drive.test.cjs",
+          "line": 38
         },
         {
           "file": "tests/runtime-artifact-layout-install-profiles.test.cjs",
@@ -1681,8 +2431,20 @@
           "line": 1515
         },
         {
+          "file": "tests/runtime-config-adapter-registry.test.cjs",
+          "line": 34
+        },
+        {
+          "file": "tests/runtime-converters.test.cjs",
+          "line": 650
+        },
+        {
           "file": "tests/runtime-converters.test.cjs",
           "line": 2582
+        },
+        {
+          "file": "tests/runtime-descriptor-owner.test.cjs",
+          "line": 228
         }
       ],
       "granularity": "file",
@@ -1693,7 +2455,7 @@
       ],
       "unexplained": [],
       "notes": {},
-      "oracleVersion": "03-04.1"
+      "oracleVersion": "03-14.1"
     },
     {
       "questionId": "q-023",
@@ -1711,7 +2473,7 @@
       ],
       "unexplained": [],
       "notes": {},
-      "oracleVersion": "03-04.1"
+      "oracleVersion": "03-14.1"
     },
     {
       "questionId": "q-024",
@@ -1739,7 +2501,7 @@
       ],
       "unexplained": [],
       "notes": {},
-      "oracleVersion": "03-04.1"
+      "oracleVersion": "03-14.1"
     },
     {
       "questionId": "q-025",
@@ -1757,7 +2519,7 @@
       ],
       "unexplained": [],
       "notes": {},
-      "oracleVersion": "03-04.1"
+      "oracleVersion": "03-14.1"
     },
     {
       "questionId": "q-026",
@@ -1775,7 +2537,7 @@
       ],
       "unexplained": [],
       "notes": {},
-      "oracleVersion": "03-04.1"
+      "oracleVersion": "03-14.1"
     },
     {
       "questionId": "q-027",
@@ -1795,7 +2557,7 @@
       ],
       "unexplained": [],
       "notes": {},
-      "oracleVersion": "03-04.1"
+      "oracleVersion": "03-14.1"
     },
     {
       "questionId": "q-028",
@@ -1827,7 +2589,7 @@
       ],
       "unexplained": [],
       "notes": {},
-      "oracleVersion": "03-04.1"
+      "oracleVersion": "03-14.1"
     },
     {
       "questionId": "q-029",
@@ -1847,7 +2609,7 @@
       ],
       "unexplained": [],
       "notes": {},
-      "oracleVersion": "03-04.1"
+      "oracleVersion": "03-14.1"
     },
     {
       "questionId": "q-030",
@@ -1874,7 +2636,7 @@
       ],
       "unexplained": [],
       "notes": {},
-      "oracleVersion": "03-04.1"
+      "oracleVersion": "03-14.1"
     },
     {
       "questionId": "q-031",
@@ -1894,7 +2656,7 @@
       ],
       "unexplained": [],
       "notes": {},
-      "oracleVersion": "03-04.1"
+      "oracleVersion": "03-14.1"
     },
     {
       "questionId": "q-032",
@@ -1952,7 +2714,7 @@
       "notes": {
         "excludedNonComment": 0
       },
-      "oracleVersion": "03-04.1"
+      "oracleVersion": "03-14.1"
     },
     {
       "questionId": "q-033",
@@ -1973,7 +2735,7 @@
       "notes": {
         "excludedNonComment": 0
       },
-      "oracleVersion": "03-04.1"
+      "oracleVersion": "03-14.1"
     },
     {
       "questionId": "q-034",
@@ -2114,7 +2876,7 @@
       "notes": {
         "excludedNonComment": 0
       },
-      "oracleVersion": "03-04.1"
+      "oracleVersion": "03-14.1"
     },
     {
       "questionId": "q-035",
@@ -2187,7 +2949,7 @@
       "notes": {
         "excludedNonComment": 2
       },
-      "oracleVersion": "03-04.1"
+      "oracleVersion": "03-14.1"
     },
     {
       "questionId": "q-036",
@@ -2214,6 +2976,9 @@
         },
         {
           "file": "tests/4213-progress-helpers.property.test.cjs"
+        },
+        {
+          "file": "tests/clock.test.cjs"
         },
         {
           "file": "tests/feat-3881-yaml-parser-consequences.test.cjs"
@@ -2252,7 +3017,7 @@
       "notes": {
         "depth": 2
       },
-      "oracleVersion": "03-04.1"
+      "oracleVersion": "03-14.1"
     },
     {
       "questionId": "q-037",
@@ -2261,6 +3026,9 @@
       "items": [
         {
           "file": "bin/install.js"
+        },
+        {
+          "file": "tests/shell-command-projection-dispatch.test.cjs"
         }
       ],
       "granularity": "file",
@@ -2272,7 +3040,7 @@
       "notes": {
         "depth": 2
       },
-      "oracleVersion": "03-04.1"
+      "oracleVersion": "03-14.1"
     },
     {
       "questionId": "q-038",
@@ -2298,7 +3066,7 @@
       "notes": {
         "depth": 2
       },
-      "oracleVersion": "03-04.1"
+      "oracleVersion": "03-14.1"
     },
     {
       "questionId": "q-039",
@@ -2339,7 +3107,7 @@
       "notes": {
         "depth": 2
       },
-      "oracleVersion": "03-04.1"
+      "oracleVersion": "03-14.1"
     },
     {
       "questionId": "q-040",
@@ -2359,7 +3127,7 @@
       ],
       "unexplained": [],
       "notes": {},
-      "oracleVersion": "03-04.1"
+      "oracleVersion": "03-14.1"
     },
     {
       "questionId": "q-041",
@@ -2379,7 +3147,7 @@
       ],
       "unexplained": [],
       "notes": {},
-      "oracleVersion": "03-04.1"
+      "oracleVersion": "03-14.1"
     },
     {
       "questionId": "q-042",
@@ -2399,7 +3167,7 @@
       ],
       "unexplained": [],
       "notes": {},
-      "oracleVersion": "03-04.1"
+      "oracleVersion": "03-14.1"
     },
     {
       "questionId": "q-043",
@@ -2419,7 +3187,7 @@
       ],
       "unexplained": [],
       "notes": {},
-      "oracleVersion": "03-04.1"
+      "oracleVersion": "03-14.1"
     },
     {
       "questionId": "q-044",
@@ -2439,7 +3207,7 @@
       ],
       "unexplained": [],
       "notes": {},
-      "oracleVersion": "03-04.1"
+      "oracleVersion": "03-14.1"
     },
     {
       "questionId": "q-045",
@@ -2451,7 +3219,7 @@
       "needles": [],
       "unexplained": [],
       "notes": {},
-      "oracleVersion": "03-04.1"
+      "oracleVersion": "03-14.1"
     },
     {
       "questionId": "q-046",
@@ -2463,7 +3231,7 @@
       "needles": [],
       "unexplained": [],
       "notes": {},
-      "oracleVersion": "03-04.1"
+      "oracleVersion": "03-14.1"
     },
     {
       "questionId": "q-047",
@@ -2475,7 +3243,7 @@
       "needles": [],
       "unexplained": [],
       "notes": {},
-      "oracleVersion": "03-04.1"
+      "oracleVersion": "03-14.1"
     },
     {
       "questionId": "q-048",
@@ -2487,7 +3255,7 @@
       "needles": [],
       "unexplained": [],
       "notes": {},
-      "oracleVersion": "03-04.1"
+      "oracleVersion": "03-14.1"
     },
     {
       "questionId": "q-049",
@@ -2499,7 +3267,7 @@
       "needles": [],
       "unexplained": [],
       "notes": {},
-      "oracleVersion": "03-04.1"
+      "oracleVersion": "03-14.1"
     },
     {
       "questionId": "q-050",
@@ -2511,7 +3279,1491 @@
       "needles": [],
       "unexplained": [],
       "notes": {},
-      "oracleVersion": "03-04.1"
+      "oracleVersion": "03-14.1"
+    },
+    {
+      "questionId": "q-051",
+      "kind": "callers",
+      "abstain": false,
+      "items": [
+        {
+          "file": "src/opencode-version.cts",
+          "line": 293,
+          "symbol": "resolveOpencodeGeneration"
+        },
+        {
+          "file": "tests/opencode-version.test.cjs",
+          "line": 30,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/opencode-version.test.cjs",
+          "line": 31,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/opencode-version.test.cjs",
+          "line": 32,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/opencode-version.test.cjs",
+          "line": 33,
+          "symbol": "<module>"
+        }
+      ],
+      "granularity": "file",
+      "equality": "exact-set",
+      "needles": [
+        "generationForMajor"
+      ],
+      "unexplained": [],
+      "notes": {},
+      "oracleVersion": "03-14.1"
+    },
+    {
+      "questionId": "q-052",
+      "kind": "callers",
+      "abstain": false,
+      "items": [
+        {
+          "file": "src/state.cts",
+          "line": 4400,
+          "symbol": "applyPostSyncPreservation"
+        },
+        {
+          "file": "tests/state-transition.test.cjs",
+          "line": 2547,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/state-transition.test.cjs",
+          "line": 2564,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/state-transition.test.cjs",
+          "line": 2584,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/state-transition.test.cjs",
+          "line": 2604,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/state-transition.test.cjs",
+          "line": 2625,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/state-transition.test.cjs",
+          "line": 2642,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/state-transition.test.cjs",
+          "line": 2656,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/state-transition.test.cjs",
+          "line": 2669,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/state-transition.test.cjs",
+          "line": 2682,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/state-transition.test.cjs",
+          "line": 2695,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/state-transition.test.cjs",
+          "line": 2709,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/state-transition.test.cjs",
+          "line": 2771,
+          "symbol": "honored"
+        },
+        {
+          "file": "tests/state-transition.test.cjs",
+          "line": 2783,
+          "symbol": "honored"
+        },
+        {
+          "file": "tests/state-transition.test.cjs",
+          "line": 2798,
+          "symbol": "honored"
+        },
+        {
+          "file": "tests/state-transition.test.cjs",
+          "line": 2846,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/state-transition.test.cjs",
+          "line": 2868,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/state-transition.test.cjs",
+          "line": 2881,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/state-transition.test.cjs",
+          "line": 2897,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/state-transition.test.cjs",
+          "line": 2910,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/state-transition.test.cjs",
+          "line": 2923,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/state-transition.test.cjs",
+          "line": 2936,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/state-transition.test.cjs",
+          "line": 2993,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/state-transition.test.cjs",
+          "line": 3011,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/state-transition.test.cjs",
+          "line": 3027,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/state-transition.test.cjs",
+          "line": 3041,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/state-transition.test.cjs",
+          "line": 3055,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/state-transition.test.cjs",
+          "line": 3069,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/state-transition.test.cjs",
+          "line": 3088,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/state-transition.test.cjs",
+          "line": 3109,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/state-transition.test.cjs",
+          "line": 3125,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/state-transition.test.cjs",
+          "line": 3141,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/state-transition.test.cjs",
+          "line": 3156,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/state-transition.test.cjs",
+          "line": 3169,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/state-transition.test.cjs",
+          "line": 3183,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/state-transition.test.cjs",
+          "line": 3209,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/state-transition.test.cjs",
+          "line": 3225,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/state-transition.test.cjs",
+          "line": 3248,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/state-transition.test.cjs",
+          "line": 3287,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/state-transition.test.cjs",
+          "line": 3306,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/state-transition.test.cjs",
+          "line": 3330,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/state-transition.test.cjs",
+          "line": 3353,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/state-transition.test.cjs",
+          "line": 3372,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/state-transition.test.cjs",
+          "line": 3389,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/state-transition.test.cjs",
+          "line": 3425,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/state-transition.test.cjs",
+          "line": 3440,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/state-transition.test.cjs",
+          "line": 3454,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/state-transition.test.cjs",
+          "line": 3464,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/state-transition.test.cjs",
+          "line": 3477,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/state-transition.test.cjs",
+          "line": 3488,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/state-transition.test.cjs",
+          "line": 3502,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/state-transition.test.cjs",
+          "line": 3526,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/state-transition.test.cjs",
+          "line": 3538,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/state-transition.test.cjs",
+          "line": 3576,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/state-transition.test.cjs",
+          "line": 4234,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/state-transition.test.cjs",
+          "line": 4286,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/state-transition.test.cjs",
+          "line": 4304,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/state-transition.test.cjs",
+          "line": 4333,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/state-transition.test.cjs",
+          "line": 4351,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/state-transition.test.cjs",
+          "line": 4362,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/state-transition.test.cjs",
+          "line": 4382,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/state-transition.test.cjs",
+          "line": 4396,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/state-transition.test.cjs",
+          "line": 4421,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/state-transition.test.cjs",
+          "line": 4432,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/state-transition.test.cjs",
+          "line": 4463,
+          "symbol": "restoreWithDerivedTotals"
+        },
+        {
+          "file": "tests/state-transition.test.cjs",
+          "line": 4567,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/state-transition.test.cjs",
+          "line": 4602,
+          "symbol": "resyncMerge"
+        },
+        {
+          "file": "tests/state-transition.test.cjs",
+          "line": 4926,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/state-transition.test.cjs",
+          "line": 4948,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/state-transition.test.cjs",
+          "line": 4961,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/state-transition.test.cjs",
+          "line": 4978,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/state.test.cjs",
+          "line": 21899,
+          "symbol": "narrowStatus"
+        },
+        {
+          "file": "tests/state.test.cjs",
+          "line": 21925,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/state.test.cjs",
+          "line": 21932,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/state.test.cjs",
+          "line": 21962,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/state.test.cjs",
+          "line": 21969,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/state.test.cjs",
+          "line": 21977,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/state.test.cjs",
+          "line": 22009,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/state.test.cjs",
+          "line": 22023,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/state.test.cjs",
+          "line": 22032,
+          "symbol": "intentFor"
+        },
+        {
+          "file": "tests/state.test.cjs",
+          "line": 22098,
+          "symbol": "intentFor"
+        },
+        {
+          "file": "tests/state.test.cjs",
+          "line": 22199,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/state.test.cjs",
+          "line": 22221,
+          "symbol": "<module>"
+        }
+      ],
+      "granularity": "file",
+      "equality": "exact-set",
+      "needles": [
+        "openStateTransaction"
+      ],
+      "unexplained": [],
+      "notes": {},
+      "oracleVersion": "03-14.1"
+    },
+    {
+      "questionId": "q-053",
+      "kind": "callers",
+      "abstain": false,
+      "items": [
+        {
+          "file": "gsd-core/bin/gsd-tools.cjs",
+          "line": 3087,
+          "symbol": "routeAssumptionDelta"
+        },
+        {
+          "file": "src/assumption-delta.cts",
+          "line": 267,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/assumption-delta.test.cjs",
+          "line": 376,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/assumption-delta.test.cjs",
+          "line": 389,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/assumption-delta.test.cjs",
+          "line": 396,
+          "symbol": "<module>"
+        }
+      ],
+      "granularity": "file",
+      "equality": "exact-set",
+      "needles": [
+        "detectAssumptionDelta"
+      ],
+      "unexplained": [],
+      "notes": {},
+      "oracleVersion": "03-14.1"
+    },
+    {
+      "questionId": "q-054",
+      "kind": "callers",
+      "abstain": false,
+      "items": [
+        {
+          "file": "src/markdown-table.cts",
+          "line": 616,
+          "symbol": "insertTableRow"
+        },
+        {
+          "file": "src/markdown-table.cts",
+          "line": 854,
+          "symbol": "cellFor"
+        },
+        {
+          "file": "src/markdown-table.cts",
+          "line": 855,
+          "symbol": "cellFor"
+        },
+        {
+          "file": "src/markdown-table.cts",
+          "line": 856,
+          "symbol": "cellFor"
+        },
+        {
+          "file": "src/markdown-table.cts",
+          "line": 857,
+          "symbol": "cellFor"
+        },
+        {
+          "file": "src/markdown-table.cts",
+          "line": 858,
+          "symbol": "cellFor"
+        },
+        {
+          "file": "src/markdown-table.cts",
+          "line": 859,
+          "symbol": "cellFor"
+        },
+        {
+          "file": "src/markdown-table.cts",
+          "line": 979,
+          "symbol": "migrateQuickTasksTable"
+        },
+        {
+          "file": "src/phase.cts",
+          "line": 2402,
+          "symbol": "updateRoadmapAfterPhaseRemoval"
+        },
+        {
+          "file": "src/phase.cts",
+          "line": 2406,
+          "symbol": "updateRoadmapAfterPhaseRemoval"
+        },
+        {
+          "file": "src/roadmap.cts",
+          "line": 1342,
+          "symbol": "cmdRoadmapUpdatePlanProgress"
+        }
+      ],
+      "granularity": "file",
+      "equality": "exact-set",
+      "needles": [
+        "escapeCell"
+      ],
+      "unexplained": [],
+      "notes": {},
+      "oracleVersion": "03-14.1"
+    },
+    {
+      "questionId": "q-055",
+      "kind": "callers",
+      "abstain": false,
+      "items": [
+        {
+          "file": "src/external-descriptor-trust.cts",
+          "line": 106,
+          "symbol": "check"
+        },
+        {
+          "file": "src/install-engine.cts",
+          "line": 1604,
+          "symbol": "installOpencodeFamilySkills"
+        },
+        {
+          "file": "src/install-profiles.cts",
+          "line": 758,
+          "symbol": "readInstalledCapabilitySkill"
+        },
+        {
+          "file": "src/install-profiles.cts",
+          "line": 887,
+          "symbol": "stageSkillsForRuntimeAsSkills"
+        },
+        {
+          "file": "src/retired-artifact-cleanup.cts",
+          "line": 69,
+          "symbol": "pruneRetiredRuntimeArtifacts"
+        },
+        {
+          "file": "tests/external-descriptor-confinement.test.cjs",
+          "line": 18,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/external-descriptor-confinement.test.cjs",
+          "line": 19,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/external-descriptor-confinement.test.cjs",
+          "line": 20,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/external-descriptor-confinement.test.cjs",
+          "line": 21,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/external-descriptor-confinement.test.cjs",
+          "line": 22,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/external-descriptor-confinement.test.cjs",
+          "line": 23,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/external-descriptor-confinement.test.cjs",
+          "line": 24,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/external-descriptor-confinement.test.cjs",
+          "line": 25,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/external-descriptor-confinement.test.cjs",
+          "line": 32,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/external-descriptor-confinement.test.cjs",
+          "line": 36,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/external-descriptor-confinement.test.cjs",
+          "line": 40,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/external-descriptor-confinement.test.cjs",
+          "line": 44,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/external-descriptor-confinement.test.cjs",
+          "line": 48,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/external-descriptor-confinement.test.cjs",
+          "line": 52,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/external-descriptor-confinement.test.cjs",
+          "line": 61,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/external-descriptor-confinement.test.cjs",
+          "line": 70,
+          "symbol": "<module>"
+        }
+      ],
+      "granularity": "file",
+      "equality": "exact-set",
+      "needles": [
+        "isPathConfined"
+      ],
+      "unexplained": [],
+      "notes": {},
+      "oracleVersion": "03-14.1"
+    },
+    {
+      "questionId": "q-056",
+      "kind": "callers",
+      "abstain": false,
+      "items": [
+        {
+          "file": "src/shell-command-projection.cts",
+          "line": 1075,
+          "symbol": "dispatchGsdCommand"
+        },
+        {
+          "file": "tests/shell-command-projection-dispatch.test.cjs",
+          "line": 1162,
+          "symbol": "<module>"
+        }
+      ],
+      "granularity": "file",
+      "equality": "exact-set",
+      "needles": [
+        "resolveGsdToolsPath"
+      ],
+      "unexplained": [],
+      "notes": {},
+      "oracleVersion": "03-14.1"
+    },
+    {
+      "questionId": "q-057",
+      "kind": "references",
+      "abstain": false,
+      "items": [
+        {
+          "file": "src/verification.cts",
+          "line": 269,
+          "symbol": "<module>"
+        },
+        {
+          "file": "src/verification.cts",
+          "line": 1727,
+          "symbol": "<module>"
+        },
+        {
+          "file": "src/verification.cts",
+          "line": 2717,
+          "symbol": "<module>"
+        }
+      ],
+      "granularity": "file",
+      "equality": "exact-set",
+      "needles": [
+        "RouteCommand"
+      ],
+      "unexplained": [],
+      "notes": {},
+      "oracleVersion": "03-14.1"
+    },
+    {
+      "questionId": "q-058",
+      "kind": "references",
+      "abstain": false,
+      "items": [
+        {
+          "file": "src/api-coverage.cts",
+          "line": 63,
+          "symbol": "<module>"
+        },
+        {
+          "file": "src/api-coverage.cts",
+          "line": 486,
+          "symbol": "detectApiIntegration"
+        },
+        {
+          "file": "tests/markdown-sectionizer.test.cjs",
+          "line": 49,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/markdown-sectionizer.test.cjs",
+          "line": 94,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/markdown-sectionizer.test.cjs",
+          "line": 102,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/markdown-sectionizer.test.cjs",
+          "line": 107,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/markdown-sectionizer.test.cjs",
+          "line": 108,
+          "symbol": "<module>"
+        }
+      ],
+      "granularity": "file",
+      "equality": "exact-set",
+      "needles": [
+        "scanInlineCodeSpans"
+      ],
+      "unexplained": [],
+      "notes": {},
+      "oracleVersion": "03-14.1"
+    },
+    {
+      "questionId": "q-059",
+      "kind": "references",
+      "abstain": false,
+      "items": [
+        {
+          "file": "src/roadmap-parser.cts",
+          "line": 64,
+          "symbol": "<module>"
+        },
+        {
+          "file": "src/roadmap-parser.cts",
+          "line": 91,
+          "symbol": "stripShippedMilestones"
+        },
+        {
+          "file": "src/roadmap-parser.cts",
+          "line": 1142,
+          "symbol": "extractCurrentMilestoneScoped"
+        },
+        {
+          "file": "src/roadmap-parser.cts",
+          "line": 1405,
+          "symbol": "extractCurrentMilestoneScoped"
+        },
+        {
+          "file": "src/verify-command-grounding.cts",
+          "line": 31,
+          "symbol": "<module>"
+        },
+        {
+          "file": "src/verify-command-grounding.cts",
+          "line": 212,
+          "symbol": "extractAutomatedCommands"
+        },
+        {
+          "file": "src/verify-command-grounding.cts",
+          "line": 392,
+          "symbol": "extractFailingDirections"
+        },
+        {
+          "file": "tests/markdown-sectionizer.test.cjs",
+          "line": 44,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/markdown-sectionizer.test.cjs",
+          "line": 1623,
+          "symbol": "<module>"
+        }
+      ],
+      "granularity": "file",
+      "equality": "exact-set",
+      "needles": [
+        "stripTaggedBlocks"
+      ],
+      "unexplained": [],
+      "notes": {},
+      "oracleVersion": "03-14.1"
+    },
+    {
+      "questionId": "q-060",
+      "kind": "heritage",
+      "abstain": false,
+      "items": [
+        {
+          "file": "src/installer-migrations.cts",
+          "line": 736,
+          "symbol": "JournalAction"
+        }
+      ],
+      "granularity": "file+symbol",
+      "equality": "exact-set",
+      "needles": [
+        "JournalAction",
+        "Record"
+      ],
+      "unexplained": [],
+      "notes": {},
+      "oracleVersion": "03-14.1"
+    },
+    {
+      "questionId": "q-061",
+      "kind": "heritage",
+      "abstain": false,
+      "items": [
+        {
+          "file": "src/mcp-catalog.cts",
+          "line": 173,
+          "symbol": "CatalogPromptEntryInternal"
+        }
+      ],
+      "granularity": "file+symbol",
+      "equality": "exact-set",
+      "needles": [
+        "CatalogPromptEntry",
+        "CatalogPromptEntryInternal"
+      ],
+      "unexplained": [],
+      "notes": {},
+      "oracleVersion": "03-14.1"
+    },
+    {
+      "questionId": "q-062",
+      "kind": "heritage",
+      "abstain": false,
+      "items": [
+        {
+          "file": "src/init.cts",
+          "line": 519,
+          "symbol": "ManifestSection"
+        }
+      ],
+      "granularity": "file+symbol",
+      "equality": "exact-set",
+      "needles": [
+        "ManifestSection",
+        "SelectableSection"
+      ],
+      "unexplained": [],
+      "notes": {},
+      "oracleVersion": "03-14.1"
+    },
+    {
+      "questionId": "q-063",
+      "kind": "emit",
+      "abstain": false,
+      "items": [
+        {
+          "file": "gsd-core/bin/lib/real-home-guard.cjs"
+        }
+      ],
+      "granularity": "file",
+      "equality": "exact-set",
+      "needles": [
+        "real-home-guard.cjs"
+      ],
+      "unexplained": [],
+      "notes": {},
+      "oracleVersion": "03-14.1"
+    },
+    {
+      "questionId": "q-064",
+      "kind": "emit-consumers",
+      "abstain": false,
+      "items": [
+        {
+          "file": "tests/installer-migrations.test.cjs",
+          "line": 21
+        }
+      ],
+      "granularity": "file",
+      "equality": "exact-set",
+      "needles": [
+        "005-opencode-baseline-commands-dir.cjs",
+        "require"
+      ],
+      "unexplained": [],
+      "notes": {},
+      "oracleVersion": "03-14.1"
+    },
+    {
+      "questionId": "q-065",
+      "kind": "emit-consumers",
+      "abstain": false,
+      "items": [
+        {
+          "file": "tests/claude-orchestration.test.cjs",
+          "line": 924
+        },
+        {
+          "file": "tests/codex-config-agents.test.cjs",
+          "line": 20
+        },
+        {
+          "file": "tests/codex-config-agents.test.cjs",
+          "line": 28
+        },
+        {
+          "file": "tests/codex-config-hooks.test.cjs",
+          "line": 20
+        },
+        {
+          "file": "tests/codex-config-hooks.test.cjs",
+          "line": 28
+        },
+        {
+          "file": "tests/codex-config-install.test.cjs",
+          "line": 20
+        },
+        {
+          "file": "tests/codex-config-install.test.cjs",
+          "line": 28
+        },
+        {
+          "file": "tests/codex-config.test.cjs",
+          "line": 20
+        },
+        {
+          "file": "tests/codex-config.test.cjs",
+          "line": 28
+        },
+        {
+          "file": "tests/helpers.cjs",
+          "line": 1066
+        },
+        {
+          "file": "tests/model-adapter.test.cjs",
+          "line": 18
+        },
+        {
+          "file": "tests/model-profiles.test.cjs",
+          "line": 22
+        },
+        {
+          "file": "tests/model-profiles.test.cjs",
+          "line": 441
+        },
+        {
+          "file": "tests/model-resolver.test.cjs",
+          "line": 32
+        },
+        {
+          "file": "tests/model-resolver.test.cjs",
+          "line": 862
+        },
+        {
+          "file": "tests/model-resolver.test.cjs",
+          "line": 1095
+        },
+        {
+          "file": "tests/model-resolver.test.cjs",
+          "line": 1219
+        },
+        {
+          "file": "tests/model-resolver.test.cjs",
+          "line": 1446
+        },
+        {
+          "file": "tests/model-resolver.test.cjs",
+          "line": 1631
+        },
+        {
+          "file": "tests/model-resolver.test.cjs",
+          "line": 2358
+        },
+        {
+          "file": "tests/model-resolver.test.cjs",
+          "line": 3306
+        },
+        {
+          "file": "tests/model-resolver.test.cjs",
+          "line": 4668
+        },
+        {
+          "file": "tests/model-resolver.test.cjs",
+          "line": 5082
+        },
+        {
+          "file": "tests/roadmapper-granularity.test.cjs",
+          "line": 173
+        }
+      ],
+      "granularity": "file",
+      "equality": "exact-set",
+      "needles": [
+        "model-resolver.cjs",
+        "require"
+      ],
+      "unexplained": [],
+      "notes": {},
+      "oracleVersion": "03-14.1"
+    },
+    {
+      "questionId": "q-066",
+      "kind": "adr-of",
+      "abstain": false,
+      "items": [
+        {
+          "file": "docs/adr/3180-planning-semantic-model-single-owner.md",
+          "adr": 3180,
+          "resolved": true
+        }
+      ],
+      "granularity": "file",
+      "equality": "exact-set",
+      "needles": [
+        "ADR"
+      ],
+      "unexplained": [],
+      "notes": {},
+      "oracleVersion": "03-14.1"
+    },
+    {
+      "questionId": "q-067",
+      "kind": "adr-citers",
+      "abstain": false,
+      "items": [
+        {
+          "file": "scripts/gen-adr-index.cjs",
+          "line": 114
+        }
+      ],
+      "granularity": "file",
+      "equality": "exact-set",
+      "needles": [
+        "ADR"
+      ],
+      "unexplained": [],
+      "notes": {
+        "excludedNonComment": 2
+      },
+      "oracleVersion": "03-14.1"
+    },
+    {
+      "questionId": "q-068",
+      "kind": "adr-citers",
+      "abstain": false,
+      "items": [
+        {
+          "file": "scripts/lint-state-write-path-drift.cjs",
+          "line": 165,
+          "detail": "§8.1"
+        },
+        {
+          "file": "scripts/lint-state-write-path-drift.cjs",
+          "line": 654,
+          "detail": "§8.1"
+        },
+        {
+          "file": "scripts/lint-state-write-path-drift.cjs",
+          "line": 713,
+          "detail": "§8.1"
+        },
+        {
+          "file": "src/state-transition.cts",
+          "line": 523,
+          "detail": "§8.1"
+        },
+        {
+          "file": "src/state-transition.cts",
+          "line": 547,
+          "detail": "§8.2"
+        },
+        {
+          "file": "src/state-transition.cts",
+          "line": 576,
+          "detail": "§8.1"
+        },
+        {
+          "file": "src/state-transition.cts",
+          "line": 606,
+          "detail": "§8.2"
+        },
+        {
+          "file": "src/state-transition.cts",
+          "line": 627,
+          "detail": "§8.2"
+        },
+        {
+          "file": "src/state-transition.cts",
+          "line": 639,
+          "detail": "§8.2"
+        },
+        {
+          "file": "src/state.cts",
+          "line": 4976,
+          "detail": "§8.2"
+        },
+        {
+          "file": "src/state.cts",
+          "line": 4980
+        },
+        {
+          "file": "src/state.cts",
+          "line": 5034,
+          "detail": "§8.2"
+        },
+        {
+          "file": "src/state.cts",
+          "line": 5077,
+          "detail": "§8.2"
+        },
+        {
+          "file": "src/state.cts",
+          "line": 5122,
+          "detail": "§8.2"
+        },
+        {
+          "file": "src/state.cts",
+          "line": 5131
+        },
+        {
+          "file": "src/state.cts",
+          "line": 5244,
+          "detail": "§8.2"
+        },
+        {
+          "file": "src/state.cts",
+          "line": 5259,
+          "detail": "§8.4"
+        },
+        {
+          "file": "src/state.cts",
+          "line": 5292
+        },
+        {
+          "file": "src/state.cts",
+          "line": 5296,
+          "detail": "§8.3"
+        },
+        {
+          "file": "src/state.cts",
+          "line": 5438,
+          "detail": "§8.2"
+        },
+        {
+          "file": "src/state.cts",
+          "line": 5470,
+          "detail": "§8"
+        },
+        {
+          "file": "src/state.cts",
+          "line": 7457,
+          "detail": "§8.2"
+        },
+        {
+          "file": "tests/state-transition.test.cjs",
+          "line": 4916,
+          "detail": "§8.1"
+        },
+        {
+          "file": "tests/state-transition.test.cjs",
+          "line": 4957,
+          "detail": "§8.2"
+        },
+        {
+          "file": "tests/state-write-path-drift-guard.test.cjs",
+          "line": 639,
+          "detail": "§8.1"
+        },
+        {
+          "file": "tests/state.test.cjs",
+          "line": 21884,
+          "detail": "§8.2"
+        }
+      ],
+      "granularity": "file",
+      "equality": "exact-set",
+      "needles": [
+        "ADR"
+      ],
+      "unexplained": [],
+      "notes": {
+        "excludedNonComment": 9
+      },
+      "oracleVersion": "03-14.1"
+    },
+    {
+      "questionId": "q-069",
+      "kind": "impact",
+      "abstain": false,
+      "items": [
+        {
+          "file": "src/check-command-router.cts"
+        },
+        {
+          "file": "src/gap-checker.cts"
+        },
+        {
+          "file": "src/gate-api-coverage-verify-pre.cts"
+        },
+        {
+          "file": "src/gate-context-drift.cts"
+        },
+        {
+          "file": "src/gate-decision-coverage-plan.cts"
+        },
+        {
+          "file": "src/gate-decision-coverage-verify.cts"
+        },
+        {
+          "file": "src/gate-evaluation-scope.cts"
+        },
+        {
+          "file": "src/gate-gap-analysis-plan-post.cts"
+        },
+        {
+          "file": "src/gate-phase-context.cts"
+        },
+        {
+          "file": "src/gate-predicate.cts"
+        },
+        {
+          "file": "src/gate-prohibition-enforcement.cts"
+        },
+        {
+          "file": "src/gate-schema-drift.cts"
+        },
+        {
+          "file": "src/gate-tdd-red-evidence.cts"
+        },
+        {
+          "file": "src/gate-tdd-review-checkpoint.cts"
+        },
+        {
+          "file": "src/gate-ui-plan.cts"
+        },
+        {
+          "file": "src/gate-ui-safety.cts"
+        },
+        {
+          "file": "src/gate-verify-command-paths.cts"
+        },
+        {
+          "file": "src/gate-verify-failure-directions.cts"
+        },
+        {
+          "file": "src/ui-frontend-evidence.cts"
+        },
+        {
+          "file": "src/verify.cts"
+        },
+        {
+          "file": "tests/check-ui-plan-gate.test.cjs"
+        },
+        {
+          "file": "tests/gate-api-coverage-verify-pre.unit.test.cjs"
+        },
+        {
+          "file": "tests/gate-plan-scan-truncated.test.cjs"
+        },
+        {
+          "file": "tests/gate-prohibition-enforcement.unit.test.cjs"
+        },
+        {
+          "file": "tests/gate-schema-drift.unit.test.cjs"
+        },
+        {
+          "file": "tests/gate-tdd-red-evidence-containment.test.cjs"
+        },
+        {
+          "file": "tests/gate-tdd-red-evidence.unit.test.cjs"
+        },
+        {
+          "file": "tests/gate-tolerant-probe-evidence.test.cjs"
+        },
+        {
+          "file": "tests/ui-frontend-evidence-unreadable.test.cjs"
+        }
+      ],
+      "granularity": "file",
+      "equality": "exact-set",
+      "needles": [
+        "evidenceFromError"
+      ],
+      "unexplained": [],
+      "notes": {
+        "depth": 2
+      },
+      "oracleVersion": "03-14.1"
+    },
+    {
+      "questionId": "q-070",
+      "kind": "impact",
+      "abstain": false,
+      "items": [
+        {
+          "file": "gsd-core/bin/gsd-tools.cjs"
+        },
+        {
+          "file": "tests/antigravity-repo-grounding.test.cjs"
+        },
+        {
+          "file": "tests/antigravity-reviewer.test.cjs"
+        },
+        {
+          "file": "tests/feat-2483-review-claude-mds-guard.test.cjs"
+        },
+        {
+          "file": "tests/opencode-review-reconstruction.property.test.cjs"
+        },
+        {
+          "file": "tests/plan-review-convergence.test.cjs"
+        },
+        {
+          "file": "tests/review-default-reviewers-workflow.test.cjs"
+        },
+        {
+          "file": "tests/review-lane-runner.test.cjs"
+        }
+      ],
+      "granularity": "file",
+      "equality": "exact-set",
+      "needles": [
+        "antigravityWatermark"
+      ],
+      "unexplained": [],
+      "notes": {
+        "depth": 2
+      },
+      "oracleVersion": "03-14.1"
+    },
+    {
+      "questionId": "q-071",
+      "kind": "definition",
+      "abstain": false,
+      "items": [
+        {
+          "file": "src/codex-agent-toml.cts",
+          "line": 613,
+          "symbol": "isSandboxHeld"
+        }
+      ],
+      "granularity": "file+line",
+      "equality": "exact-set",
+      "needles": [
+        "isSandboxHeld"
+      ],
+      "unexplained": [],
+      "notes": {},
+      "oracleVersion": "03-14.1"
+    },
+    {
+      "questionId": "q-072",
+      "kind": "definition",
+      "abstain": false,
+      "items": [
+        {
+          "file": "src/state-document.cts",
+          "line": 802,
+          "symbol": "STATUS_ANCHORED_PATTERNS"
+        }
+      ],
+      "granularity": "file+line",
+      "equality": "exact-set",
+      "needles": [
+        "STATUS_ANCHORED_PATTERNS"
+      ],
+      "unexplained": [],
+      "notes": {},
+      "oracleVersion": "03-14.1"
+    },
+    {
+      "questionId": "q-073",
+      "kind": "abstain",
+      "abstain": true,
+      "items": [],
+      "granularity": "file",
+      "equality": "exact-set",
+      "needles": [],
+      "unexplained": [],
+      "notes": {},
+      "oracleVersion": "03-14.1"
+    },
+    {
+      "questionId": "q-074",
+      "kind": "abstain",
+      "abstain": true,
+      "items": [],
+      "granularity": "file",
+      "equality": "exact-set",
+      "needles": [],
+      "unexplained": [],
+      "notes": {},
+      "oracleVersion": "03-14.1"
+    },
+    {
+      "questionId": "q-075",
+      "kind": "abstain",
+      "abstain": true,
+      "items": [],
+      "granularity": "file",
+      "equality": "exact-set",
+      "needles": [],
+      "unexplained": [],
+      "notes": {},
+      "oracleVersion": "03-14.1"
     }
   ]
 }

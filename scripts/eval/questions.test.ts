@@ -32,16 +32,15 @@ const FILES = [
   'candidates.json',
 ];
 
-/** The mix registered in plan 03-09 (EVL-02 minimum 50; abstain is 12 percent). */
-const SCORED_MIX: Readonly<Record<Category, number>> = {
-  callers: 11,
-  references: 5,
-  heritage: 5,
-  emit: 7,
-  adr: 7,
-  impact: 4,
-  definition: 5,
-  abstain: 6,
+/**
+ * The declared mix for each N the set can have (EVL-02 minimum 50; abstain is 12 percent rounded
+ * half up). N = 50 is the mix registered in plan 03-09; N = 75 is the 50 mix times 1.5, chosen at
+ * plan 03-14 (`n75`), with the half-questions going to the earlier groups. The expected counts of
+ * every test below come from the length of the committed question file through this table.
+ */
+const MIXES: Readonly<Record<number, Readonly<Record<Category, number>>>> = {
+  50: { callers: 11, references: 5, heritage: 5, emit: 7, adr: 7, impact: 4, definition: 5, abstain: 6 },
+  75: { callers: 17, references: 8, heritage: 8, emit: 10, adr: 10, impact: 6, definition: 7, abstain: 9 },
 };
 const PILOT_QUESTIONS = 5;
 const MAX_EXPECTED = 30;
@@ -79,6 +78,20 @@ function committed(): Committed {
   return memo;
 }
 
+/** The committed scored set's size and the declared mix for it; a size with no declared mix fails here. */
+function declared(data: Committed): { total: number; mix: Readonly<Record<Category, number>> } {
+  const total = data.scored.questions.length;
+  const mix = MIXES[total];
+  assert.ok(mix, `no mix is declared for ${total} scored questions`);
+  assert.equal(
+    Object.values(mix).reduce((sum, count) => sum + count, 0),
+    total,
+    'the declared mix sums to the number of scored questions',
+  );
+  assert.equal(mix.abstain, Math.floor((total * 12 + 50) / 100), 'abstain is 12 percent, rounded half up');
+  return { total, mix };
+}
+
 function answerFor(data: Committed, question: Question): AnswerKey {
   const file = question.id.startsWith('p-') ? data.pilotAnswers : data.scoredAnswers;
   const found = file.answers.find((answer) => answer.questionId === question.id);
@@ -114,11 +127,12 @@ function manifestSha(): string {
 }
 
 describe('question files', () => {
-  test('ids are q-001 to q-050 and p-001 to p-005, and every question has a key of its own kind', () => {
+  test('ids are q-001 to q-N and p-001 to p-005, and every question has a key of its own kind', () => {
     const data = committed();
+    const { total } = declared(data);
     assert.deepEqual(
       data.scored.questions.map((question) => question.id),
-      Array.from({ length: 50 }, (_unused, index) => `q-${String(index + 1).padStart(3, '0')}`),
+      Array.from({ length: total }, (_unused, index) => `q-${String(index + 1).padStart(3, '0')}`),
     );
     assert.deepEqual(
       data.pilot.questions.map((question) => question.id),
@@ -130,7 +144,7 @@ describe('question files', () => {
       assert.equal(key.granularity, question.key.granularity, `${question.id} granularity`);
       assert.equal(key.equality, question.key.equality, `${question.id} equality`);
     }
-    assert.equal(data.scoredAnswers.answers.length, 50);
+    assert.equal(data.scoredAnswers.answers.length, total);
     assert.equal(data.pilotAnswers.answers.length, PILOT_QUESTIONS);
   });
 
@@ -154,12 +168,15 @@ describe('question files', () => {
     assert.deepEqual(data.scoredAnswers.preparedRecord, data.pilotAnswers.preparedRecord);
   });
 
-  test('category mix is callers 11, references 5, heritage 5, emit 7, adr 7, impact 4, definition 5, abstain 6', () => {
-    const { scored } = committed();
+  test('category mix is the declared mix for N: at least 50 questions, with the 50 mix as a floor in every category', () => {
+    const data = committed();
+    const { scored } = data;
+    const { total, mix } = declared(data);
     const counts = Object.fromEntries(CategorySchema.options.map((category) => [category, 0])) as Record<Category, number>;
     for (const question of scored.questions) counts[question.category] += 1;
-    assert.deepEqual(counts, SCORED_MIX);
-    assert.equal(scored.questions.length, 50);
+    assert.deepEqual(counts, mix);
+    assert.ok(total >= 50, 'EVL-02: at least 50 scored questions');
+    for (const category of CategorySchema.options) assert.ok(mix[category] >= MIXES[50][category], `${category} is not below the 50 mix`);
   });
 
   test('pilot questions come from five different categories', () => {
@@ -212,10 +229,10 @@ describe('question files', () => {
     }
   });
 
-  test('abstain keys: every abstain question abstains and expects no items; six are scored', () => {
+  test('abstain keys: every abstain question abstains and expects no items; the declared number are scored', () => {
     const data = committed();
     const abstainQuestions = data.all.filter((question) => question.category === 'abstain');
-    assert.equal(abstainQuestions.filter((question) => question.id.startsWith('q-')).length, 6);
+    assert.equal(abstainQuestions.filter((question) => question.id.startsWith('q-')).length, declared(data).mix.abstain);
     for (const question of abstainQuestions) {
       const key = answerFor(data, question);
       assert.equal(question.key.kind, 'abstain');
@@ -280,7 +297,7 @@ describe('candidates', () => {
         `${category} ranks are 1..n`,
       );
       const accepted = records.filter((record) => record.status === 'accepted');
-      const wanted = SCORED_MIX[category] + (candidates.pilotCategories.includes(category) ? 1 : 0);
+      const wanted = declared(committed()).mix[category] + (candidates.pilotCategories.includes(category) ? 1 : 0);
       assert.equal(accepted.length, wanted, `${category}: accepted entries`);
       for (const record of records) {
         if (record.status === 'rejected') {

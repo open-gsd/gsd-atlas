@@ -2,7 +2,7 @@
 
 Drafted without running atlas: yes
 
-Attestation. The 50 scored questions and the 5 pilot questions were drafted from the gsd-core source and ADRs. The candidates come from a compiler-derived census of the prepared checkout (the oracle's TypeScript program), ordered by a seeded shuffle; the texts were written by reading files and `git grep` on the checkout; the expected answers come from the oracle. No atlas command, no atlas MCP tool and no code-intelligence server was run or read while choosing or writing a question.
+Attestation. The 75 scored questions and the 5 pilot questions were drafted from the gsd-core source and ADRs. The candidates come from a compiler-derived census of the prepared checkout (the oracle's TypeScript program), ordered by a seeded shuffle; the texts were written by reading files and `git grep` on the checkout; the expected answers come from the oracle. No atlas command, no atlas MCP tool and no code-intelligence server was run or read while choosing or writing a question.
 
 ## Corpus and preparation
 
@@ -10,7 +10,7 @@ Attestation. The 50 scored questions and the 5 pilot questions were drafted from
 - Prepared checkout: `npm ci --ignore-scripts`: yes
 - Compiler used for the keys: TypeScript 6.0.3
 - package-lock.json sha256 (CRLF read as LF): `dccc7f1cc3cd7ee9b8d071a03def1e7a4a535cc68a1828df2b797c6aecb357fb`
-- Oracle version: `03-04.1`
+- Oracle version: `03-14.1`
 - Candidate order seed: 20261017 (`eval.bootstrapSeed`)
 - Pilot categories (picked by the seed): references, adr, impact, definition, abstain
 
@@ -18,15 +18,15 @@ Attestation. The 50 scored questions and the 5 pilot questions were drafted from
 
 | Category | Scored | Share | Pilot |
 | --- | --- | --- | --- |
-| callers | 11 | 22% | 0 |
-| references | 5 | 10% | 1 |
-| heritage | 5 | 10% | 0 |
-| emit | 7 | 14% | 0 |
-| adr | 7 | 14% | 1 |
-| impact | 4 | 8% | 1 |
-| definition | 5 | 10% | 1 |
-| abstain | 6 | 12% | 1 |
-| total | 50 | 100% | 5 |
+| callers | 17 | 23% | 0 |
+| references | 8 | 11% | 1 |
+| heritage | 8 | 11% | 0 |
+| emit | 10 | 13% | 0 |
+| adr | 10 | 13% | 1 |
+| impact | 6 | 8% | 1 |
+| definition | 7 | 9% | 1 |
+| abstain | 9 | 12% | 1 |
+| total | 75 | 100% | 5 |
 
 ## How the questions were chosen
 
@@ -48,7 +48,7 @@ Candidates after the last one needed stay `unused`: they were never looked at, a
 
 - Key kind: callers
 - Granularity: file; equality: exact-set
-- Expected answers: 3 at granularity file (8 key items)
+- Expected answers: 4 at granularity file (14 key items)
 - First expected: `bin/install.js:5409 sectionHasStaleCommand`, `src/installer-migrations/002-codex-legacy-hooks-json.cts:67 isManagedCodexHookCommand`, `tests/portable-node-runner.install.test.cjs:522 <module>`
 
 ### q-002 (callers)
@@ -93,8 +93,8 @@ Candidates after the last one needed stay `unused`: they were never looked at, a
 
 - Key kind: callers
 - Granularity: file; equality: exact-set
-- Expected answers: 2 at granularity file (2 key items)
-- First expected: `bin/install.js:13650 install`, `src/worktree-base-ref.cts:276 parseBaseRef`
+- Expected answers: 3 at granularity file (11 key items)
+- First expected: `bin/install.js:13650 install`, `src/worktree-base-ref.cts:276 parseBaseRef`, `tests/worktree-base-ref.test.cjs:69 <module>`
 
 ### q-007 (callers)
 
@@ -111,7 +111,7 @@ Candidates after the last one needed stay `unused`: they were never looked at, a
 
 - Key kind: callers
 - Granularity: file; equality: exact-set
-- Expected answers: 13 at granularity file (68 key items)
+- Expected answers: 20 at granularity file (144 key items)
 - First expected: `bin/install.js:1175 getGlobalDir`, `hooks/gsd-cursor-subagent-start.js:178 resolveIsolationEvidence`, `src/agent-install-check.cts:157 getAgentsDir`
 
 ### q-009 (callers)
@@ -120,8 +120,8 @@ Candidates after the last one needed stay `unused`: they were never looked at, a
 
 - Key kind: callers
 - Granularity: file; equality: exact-set
-- Expected answers: 2 at granularity file (15 key items)
-- First expected: `src/installer-migrations.cts:788 renderRewrittenJson`, `tests/jsonc-edit.test.cjs:36 <module>`
+- Expected answers: 3 at granularity file (16 key items)
+- First expected: `bin/install.js:9565 writeJsoncConfig`, `src/installer-migrations.cts:788 renderRewrittenJson`, `tests/jsonc-edit.test.cjs:36 <module>`
 
 ### q-010 (callers)
 
@@ -138,7 +138,7 @@ Candidates after the last one needed stay `unused`: they were never looked at, a
 
 - Key kind: callers
 - Granularity: file; equality: exact-set
-- Expected answers: 8 at granularity file (14 key items)
+- Expected answers: 9 at granularity file (15 key items)
 - First expected: `src/phase.cts:2441 updateRoadmapAfterPhaseRemoval`, `src/planning-document.cts:845 replaceProse`, `src/roadmap-upgrade.cts:2226 substituteCrossRefs`
 
 ### q-012 (references)
@@ -165,7 +165,7 @@ Candidates after the last one needed stay `unused`: they were never looked at, a
 
 - Key kind: references
 - Granularity: file; equality: exact-set
-- Expected answers: 3 at granularity file (5 key items)
+- Expected answers: 5 at granularity file (58 key items)
 - First expected: `gsd-core/bin/gsd-tools.cjs:4714 resolveSpawnBinary`, `src/fallow-runner.cts:21 <module>`, `src/shell-command-projection.cts:928 projectSpawnInvocation`
 
 ### q-015 (references)
@@ -237,8 +237,8 @@ Candidates after the last one needed stay `unused`: they were never looked at, a
 
 - Key kind: emit-consumers
 - Granularity: file; equality: exact-set
-- Expected answers: 17 at granularity file (28 key items)
-- First expected: `gsd-core/bin/verify-reapply-patches.cjs:403`, `src/capability-writer.cts:366`, `tests/advertised-command-parity.test.cjs:16`
+- Expected answers: 24 at granularity file (36 key items)
+- First expected: `bin/install.js:803`, `gsd-core/bin/verify-reapply-patches.cjs:403`, `src/capability-writer.cts:366`
 
 ### q-023 (emit)
 
@@ -363,7 +363,7 @@ Candidates after the last one needed stay `unused`: they were never looked at, a
 
 - Key kind: impact
 - Granularity: file; equality: exact-set
-- Expected answers: 16 at granularity file (16 key items)
+- Expected answers: 17 at granularity file (17 key items)
 - First expected: `src/commands.cts`, `src/gsd2-import.cts`, `src/milestone.cts`
 
 ### q-037 (impact)
@@ -372,8 +372,8 @@ Candidates after the last one needed stay `unused`: they were never looked at, a
 
 - Key kind: impact
 - Granularity: file; equality: exact-set
-- Expected answers: 1 at granularity file (1 key items)
-- First expected: `bin/install.js`
+- Expected answers: 2 at granularity file (2 key items)
+- First expected: `bin/install.js`, `tests/shell-command-projection-dispatch.test.cjs`
 
 ### q-038 (impact)
 
@@ -492,6 +492,231 @@ Candidates after the last one needed stay `unused`: they were never looked at, a
 - Expected answer: not found (abstain)
 - Probe: ADR number 2481, which no ADR file carries
 
+### q-051 (callers)
+
+> Which files call `generationForMajor`, the function exported from `src/opencode-version.cts`? Include test files, plain JavaScript files and calls made through a renamed import. A different function that happens to share the name does not count. List each file once. Give your answer in the required JSON form.
+
+- Key kind: callers
+- Granularity: file; equality: exact-set
+- Expected answers: 2 at granularity file (5 key items)
+- First expected: `src/opencode-version.cts:293 resolveOpencodeGeneration`, `tests/opencode-version.test.cjs:30 <module>`
+
+### q-052 (callers)
+
+> List every file that contains a call to `openStateTransaction` from `src/state-transition.cts`, counting test files and plain JavaScript files as well as TypeScript sources. List each file once; a same-named function declared elsewhere is not the same function. Give your answer in the required JSON form.
+
+- Key kind: callers
+- Granularity: file; equality: exact-set
+- Expected answers: 3 at granularity file (83 key items)
+- First expected: `src/state.cts:4400 applyPostSyncPreservation`, `tests/state-transition.test.cjs:2547 <module>`, `tests/state.test.cjs:21899 narrowStatus`
+
+### q-053 (callers)
+
+> `detectAssumptionDelta` is exported from `src/assumption-delta.cts`. Which files use it by calling it? Test files and plain JavaScript files count, a call under another local name counts, and a different function with the same name does not. List each file once. Give your answer in the required JSON form.
+
+- Key kind: callers
+- Granularity: file; equality: exact-set
+- Expected answers: 3 at granularity file (5 key items)
+- First expected: `gsd-core/bin/gsd-tools.cjs:3087 routeAssumptionDelta`, `src/assumption-delta.cts:267 <module>`, `tests/assumption-delta.test.cjs:376 <module>`
+
+### q-054 (callers)
+
+> Which files call `escapeCell`, the function exported from `src/markdown-table.cts`? Include test files, plain JavaScript files and calls made through a renamed import. A different function that happens to share the name does not count. List each file once. Give your answer in the required JSON form.
+
+- Key kind: callers
+- Granularity: file; equality: exact-set
+- Expected answers: 3 at granularity file (11 key items)
+- First expected: `src/markdown-table.cts:616 insertTableRow`, `src/phase.cts:2402 updateRoadmapAfterPhaseRemoval`, `src/roadmap.cts:1342 cmdRoadmapUpdatePlanProgress`
+
+### q-055 (callers)
+
+> List every file that contains a call to `isPathConfined` from `src/external-descriptor-trust.cts`, counting test files and plain JavaScript files as well as TypeScript sources. List each file once; a same-named function declared elsewhere is not the same function. Give your answer in the required JSON form.
+
+- Key kind: callers
+- Granularity: file; equality: exact-set
+- Expected answers: 5 at granularity file (21 key items)
+- First expected: `src/external-descriptor-trust.cts:106 check`, `src/install-engine.cts:1604 installOpencodeFamilySkills`, `src/install-profiles.cts:758 readInstalledCapabilitySkill`
+
+### q-056 (callers)
+
+> `resolveGsdToolsPath` is exported from `src/shell-command-projection.cts`. Which files use it by calling it? Test files and plain JavaScript files count, a call under another local name counts, and a different function with the same name does not. List each file once. Give your answer in the required JSON form.
+
+- Key kind: callers
+- Granularity: file; equality: exact-set
+- Expected answers: 2 at granularity file (2 key items)
+- First expected: `src/shell-command-projection.cts:1075 dispatchGsdCommand`, `tests/shell-command-projection-dispatch.test.cjs:1162 <module>`
+
+### q-057 (references)
+
+> Which files refer to `RouteCommand`, exported from `src/verification.cts`? Count every use except its declaration (imports, calls, reads), including uses inside `src/verification.cts`, and include test files and plain JavaScript files. List each file once; a different symbol with the same name does not count. Give your answer in the required JSON form.
+
+- Key kind: references
+- Granularity: file; equality: exact-set
+- Expected answers: 1 at granularity file (3 key items)
+- First expected: `src/verification.cts:269 <module>`
+
+### q-058 (references)
+
+> Which files refer to `scanInlineCodeSpans`, exported from `src/markdown-sectionizer.cts`? Count every use except its declaration (imports, calls, reads), including uses inside `src/markdown-sectionizer.cts`, and include test files and plain JavaScript files. List each file once; a different symbol with the same name does not count. Give your answer in the required JSON form.
+
+- Key kind: references
+- Granularity: file; equality: exact-set
+- Expected answers: 2 at granularity file (7 key items)
+- First expected: `src/api-coverage.cts:63 <module>`, `tests/markdown-sectionizer.test.cjs:49 <module>`
+
+### q-059 (references)
+
+> Which files refer to `stripTaggedBlocks`, exported from `src/markdown-sectionizer.cts`? Count every use except its declaration (imports, calls, reads), including uses inside `src/markdown-sectionizer.cts`, and include test files and plain JavaScript files. List each file once; a different symbol with the same name does not count. Give your answer in the required JSON form.
+
+- Key kind: references
+- Granularity: file; equality: exact-set
+- Expected answers: 3 at granularity file (9 key items)
+- First expected: `src/roadmap-parser.cts:64 <module>`, `src/verify-command-grounding.cts:31 <module>`, `tests/markdown-sectionizer.test.cjs:44 <module>`
+
+### q-060 (heritage)
+
+> Which interfaces or classes in the TypeScript (`.cts`) sources under `src/` extend or implement the built-in TypeScript type `Record`? Give the file and the name of each. Give your answer in the required JSON form.
+
+- Key kind: heritage
+- Granularity: file+symbol; equality: exact-set
+- Expected answers: 1 at granularity file+symbol (1 key items)
+- First expected: `src/installer-migrations.cts:736 JournalAction`
+
+### q-061 (heritage)
+
+> Which interfaces or classes extend or implement `CatalogPromptEntry`, declared in `src/mcp-catalog.cts`? Give the file and the name of each. Give your answer in the required JSON form.
+
+- Key kind: heritage
+- Granularity: file+symbol; equality: exact-set
+- Expected answers: 1 at granularity file+symbol (1 key items)
+- First expected: `src/mcp-catalog.cts:173 CatalogPromptEntryInternal`
+
+### q-062 (heritage)
+
+> Which interfaces or classes extend or implement `SelectableSection`, declared in `src/section-manifest.cts`? Give the file and the name of each. Give your answer in the required JSON form.
+
+- Key kind: heritage
+- Granularity: file+symbol; equality: exact-set
+- Expected answers: 1 at granularity file+symbol (1 key items)
+- First expected: `src/init.cts:519 ManifestSection`
+
+### q-063 (emit)
+
+> The TypeScript build compiles `src/real-home-guard.cts` to a CommonJS file. At which path, relative to the repository root, does the build write the compiled file? Give your answer in the required JSON form.
+
+- Key kind: emit
+- Granularity: file; equality: exact-set
+- Expected answers: 1 at granularity file (1 key items)
+- First expected: `gsd-core/bin/lib/real-home-guard.cjs`
+
+### q-064 (emit)
+
+> Which files in this repository `require` the compiled CommonJS module that the build produces from `src/installer-migrations/005-opencode-baseline-commands-dir.cts`? Include test files, plain JavaScript files and `.cts` sources that call `require`; list each file once. Give your answer in the required JSON form.
+
+- Key kind: emit-consumers
+- Granularity: file; equality: exact-set
+- Expected answers: 1 at granularity file (1 key items)
+- First expected: `tests/installer-migrations.test.cjs:21`
+
+### q-065 (emit)
+
+> The build compiles `src/model-resolver.cts` to a `.cjs` module. Which files load that module with `require`, whether by its compiled path or by a sibling `.cjs` specifier? Test files and plain JavaScript files count; list each file once. Give your answer in the required JSON form.
+
+- Key kind: emit-consumers
+- Granularity: file; equality: exact-set
+- Expected answers: 10 at granularity file (24 key items)
+- First expected: `tests/claude-orchestration.test.cjs:924`, `tests/codex-config-agents.test.cjs:20`, `tests/codex-config-hooks.test.cjs:20`
+
+### q-066 (adr)
+
+> Which ADR files do the comments on `formatProgressMachineSegment` in `src/state-transition.cts` cite, counting comments inside its body? Give the path of each ADR file under `docs/adr`. Give your answer in the required JSON form.
+
+- Key kind: adr-of
+- Granularity: file; equality: exact-set
+- Expected answers: 1 at granularity file (1 key items)
+- First expected: `docs/adr/3180-planning-semantic-model-single-owner.md`
+
+### q-067 (adr)
+
+> Which files cite ADR-5 in a code comment, however the number is written (`ADR-5`, `ADR 5` or `ADR #5`)? Include tests, scripts and JavaScript configuration files; Markdown documents do not count. List each file once. Give your answer in the required JSON form.
+
+- Key kind: adr-citers
+- Granularity: file; equality: exact-set
+- Expected answers: 1 at granularity file (1 key items)
+- First expected: `scripts/gen-adr-index.cjs:114`
+
+### q-068 (adr)
+
+> Which files cite ADR-4629 in a code comment, however the number is written (`ADR-4629`, `ADR 4629` or `ADR #4629`)? Include tests, scripts and JavaScript configuration files; Markdown documents do not count. List each file once. Give your answer in the required JSON form.
+
+- Key kind: adr-citers
+- Granularity: file; equality: exact-set
+- Expected answers: 6 at granularity file (26 key items)
+- First expected: `scripts/lint-state-write-path-drift.cjs:165`, `src/state-transition.cts:523`, `src/state.cts:4976`
+
+### q-069 (impact)
+
+> List the files affected if the signature of `evidenceFromError` in `src/gate-evidence.cts` changed, to depth two: files that call it directly, plus files that call any function exported by a `.cts` file that calls it directly. Include tests and plain JavaScript files; leave out `src/gate-evidence.cts` itself. Give your answer in the required JSON form.
+
+- Key kind: impact
+- Granularity: file; equality: exact-set
+- Expected answers: 29 at granularity file (29 key items)
+- First expected: `src/check-command-router.cts`, `src/gap-checker.cts`, `src/gate-api-coverage-verify-pre.cts`
+
+### q-070 (impact)
+
+> List the files affected if the signature of `antigravityWatermark` in `src/review-lane-runner.cts` changed, to depth two: files that call it directly, plus files that call any function exported by a `.cts` file that calls it directly. Include tests and plain JavaScript files; leave out `src/review-lane-runner.cts` itself. Give your answer in the required JSON form.
+
+- Key kind: impact
+- Granularity: file; equality: exact-set
+- Expected answers: 8 at granularity file (8 key items)
+- First expected: `gsd-core/bin/gsd-tools.cjs`, `tests/antigravity-repo-grounding.test.cjs`, `tests/antigravity-reviewer.test.cjs`
+
+### q-071 (definition)
+
+> Where is `isSandboxHeld` declared in the TypeScript (`.cts`) sources under `src/`? Give the file and the line of its declaration. Give your answer in the required JSON form.
+
+- Key kind: definition
+- Granularity: file+line; equality: exact-set
+- Expected answers: 1 at granularity file+line (1 key items)
+- First expected: `src/codex-agent-toml.cts:613 isSandboxHeld`
+
+### q-072 (definition)
+
+> Give the file and line where `STATUS_ANCHORED_PATTERNS` is declared, among the TypeScript (`.cts`) sources under `src/`. Give your answer in the required JSON form.
+
+- Key kind: definition
+- Granularity: file+line; equality: exact-set
+- Expected answers: 1 at granularity file+line (1 key items)
+- First expected: `src/state-document.cts:802 STATUS_ANCHORED_PATTERNS`
+
+### q-073 (abstain)
+
+> Where is the function `locateLaneBudget` defined, and which files call it? If this repository has no such function, say so. Give your answer in the required JSON form.
+
+- Key kind: abstain
+- Granularity: file; equality: exact-set
+- Expected answer: not found (abstain)
+- Probe: the name `locateLaneBudget`, which no tracked file mentions
+
+### q-074 (abstain)
+
+> Which file defines `verifyFieldName`, and which files call that function? If no function with that name exists in this repository, say so. Give your answer in the required JSON form.
+
+- Key kind: abstain
+- Granularity: file; equality: exact-set
+- Expected answer: not found (abstain)
+- Probe: the name `verifyFieldName`, which no tracked file mentions
+
+### q-075 (abstain)
+
+> Which file in `docs/adr` records ADR-3873? If no ADR file carries that number, say so. Give your answer in the required JSON form.
+
+- Key kind: abstain
+- Granularity: file; equality: exact-set
+- Expected answer: not found (abstain)
+- Probe: ADR number 3873, which no ADR file carries
+
 ## Pilot questions
 
 ### p-001 (references)
@@ -500,8 +725,8 @@ Candidates after the last one needed stay `unused`: they were never looked at, a
 
 - Key kind: references
 - Granularity: file; equality: exact-set
-- Expected answers: 1 at granularity file (2 key items)
-- First expected: `gsd-core/bin/gsd-tools.cjs:365 <module>`
+- Expected answers: 2 at granularity file (16 key items)
+- First expected: `gsd-core/bin/gsd-tools.cjs:365 <module>`, `tests/git-base-branch.test.cjs:448 <module>`
 
 ### p-002 (adr)
 
@@ -543,27 +768,32 @@ Candidates after the last one needed stay `unused`: they were never looked at, a
 
 | Reason | Count |
 | --- | --- |
-| unexplained | 0 |
-| too-large | 1 |
+| unexplained | 1 |
+| too-large | 2 |
 | empty | 0 |
 | duplicate-symbol | 0 |
 | used-by-pilot | 0 |
-| ambiguous-name | 5 |
-| total | 6 |
+| ambiguous-name | 6 |
+| total | 9 |
 
 | Category | Candidates | Accepted | Rejected | Unused |
 | --- | --- | --- | --- | --- |
-| callers | 581 | 11 | 0 | 570 |
-| references | 1255 | 6 | 2 | 1247 |
-| heritage | 19 | 5 | 1 | 13 |
-| emit | 518 | 7 | 0 | 511 |
-| adr | 725 | 8 | 2 | 715 |
-| impact | 581 | 5 | 0 | 576 |
-| definition | 1294 | 6 | 1 | 1287 |
-| abstain | 246 | 7 | 0 | 239 |
+| callers | 581 | 17 | 1 | 563 |
+| references | 1255 | 9 | 3 | 1243 |
+| heritage | 19 | 8 | 1 | 10 |
+| emit | 518 | 10 | 0 | 508 |
+| adr | 725 | 11 | 2 | 712 |
+| impact | 581 | 7 | 0 | 574 |
+| definition | 1294 | 8 | 2 | 1284 |
+| abstain | 246 | 10 | 0 | 236 |
+
+### unexplained
+
+- callers rank 13, `sym:clampPercent` (callers): 1 mention(s) neither included nor classified, first src/phase.cts:76
 
 ### too-large
 
+- references rank 9, `sym:escapeRegex` (references): the expected answer has 60 items at granularity file; the limit is 30
 - adr rank 24, `adr:2143` (adr-citers): the expected answer has 31 items at granularity file; the limit is 30
 
 ### ambiguous-name
@@ -573,3 +803,4 @@ Candidates after the last one needed stay `unused`: they were never looked at, a
 - heritage rank 2, `sym:CleanupManifestEntry` (heritage): the name is declared 2 times in the program
 - adr rank 3, `sym:analyzeCoverage` (adr-of): the name is declared 3 times in the program
 - definition rank 2, `sym:withLedgerLock` (definition): the name is declared 2 times in the program
+- definition rank 9, `sym:FieldSource` (definition): the name is declared 2 times in the program

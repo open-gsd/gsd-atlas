@@ -559,16 +559,17 @@ describe('review document', () => {
     for (const category of CategorySchema.options) {
       const count = input.questions.questions.filter((question) => question.category === category).length;
       const pilot = (input.pilotQuestions?.questions ?? []).filter((question) => question.category === category).length;
-      const share = `${Math.round((100 * count) / 50)}%`;
+      const share = `${Math.round((100 * count) / input.questions.questions.length)}%`;
       assert.ok(doc.includes(`| ${category} | ${count} | ${share} | ${pilot} |`), `the table row for ${category}`);
     }
-    assert.ok(doc.includes('| total | 50 | 100% | 5 |'));
+    assert.ok(doc.includes(`| total | ${input.questions.questions.length} | 100% | 5 |`));
   });
 
   test('one block per scored question and per pilot question, with granularity, equality, size and first expected items', () => {
     const input = inputs();
     const doc = renderReview(input);
-    assert.equal((doc.match(/^### q-\d{3} /gm) ?? []).length, 50);
+    assert.equal((doc.match(/^### q-\d{3} /gm) ?? []).length, input.questions.questions.length);
+    assert.equal(input.questions.questions.length, 75, 'plan 03-14 chose N = 75');
     assert.equal((doc.match(/^### p-\d{3} /gm) ?? []).length, 5);
     for (const question of [...input.questions.questions, ...(input.pilotQuestions?.questions ?? [])]) {
       assert.ok(doc.includes(`### ${question.id} (${question.category})`), `${question.id} has a block`);
