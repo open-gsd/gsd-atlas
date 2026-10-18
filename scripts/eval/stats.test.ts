@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { bootstrapDistribution, mean, mulberry32, pairedClusterBootstrap, percentile } from './stats.ts';
+import { bootstrapDistribution, mean, mulberry32, pairedClusterBootstrap, percentile, wilsonInterval } from './stats.ts';
 
 /** The published mulberry32 recurrence, written out a second time so the production code is compared with it. */
 function reference(seed: number): () => number {
@@ -195,5 +195,47 @@ describe('pairedClusterBootstrap', () => {
     );
     assert.equal(result.lower, percentile(distribution, 0.05));
     assert.equal(result.upper, percentile(distribution, 0.95));
+  });
+});
+
+describe('wilsonInterval', () => {
+  // Hand calculation (PITFALLS C4), n 50, z 1.96, z*z = 3.8416, denominator 1 + z*z/n = 1.076832:
+  //   46 of 50: p 0.92, centre (0.92 + 0.038416) / 1.076832 = 0.89003, half-width 0.084443 / 1.076832 = 0.07842, lower 0.8116
+  //   45 of 50: p 0.90, centre (0.90 + 0.038416) / 1.076832 = 0.87146, half-width 0.091601 / 1.076832 = 0.08507, lower 0.7864
+  test('wilsonInterval at 46 of 50 has point 0.92 and a lower bound near 0.8115, above 0.8', () => {
+    const result = wilsonInterval(46, 50, 1.96);
+    assert.equal(result.point, 0.92);
+    assert.ok(Math.abs(result.lower - 0.8115) < 0.001, `lower ${String(result.lower)}`);
+    assert.ok(result.lower > 0.8);
+    assert.ok(Math.abs(result.upper - 0.9685) < 0.001, `upper ${String(result.upper)}`);
+  });
+
+  test('wilsonInterval at 45 of 50 has a lower bound near 0.7864, below 0.8', () => {
+    const result = wilsonInterval(45, 50, 1.96);
+    assert.equal(result.point, 0.9);
+    assert.ok(Math.abs(result.lower - 0.7864) < 0.001, `lower ${String(result.lower)}`);
+    assert.ok(result.lower < 0.8);
+  });
+
+  test('wilsonInterval with no observations throws a RangeError', () => {
+    assert.throws(() => wilsonInterval(0, 0, 1.96), RangeError);
+  });
+
+  test('wilsonInterval rejects successes above n, a negative or fractional count, and a non-positive z', () => {
+    assert.throws(() => wilsonInterval(6, 5, 1.96), RangeError);
+    assert.throws(() => wilsonInterval(-1, 5, 1.96), RangeError);
+    assert.throws(() => wilsonInterval(1.5, 5, 1.96), RangeError);
+    assert.throws(() => wilsonInterval(1, 5, 0), RangeError);
+    assert.throws(() => wilsonInterval(1, 5, Number.NaN), RangeError);
+  });
+
+  test('wilsonInterval bounds stay within [0, 1] at the extremes and the point lies between them', () => {
+    for (const [successes, n] of [[0, 1], [1, 1], [0, 10], [10, 10], [3, 7], [500, 1000]] as const) {
+      const result = wilsonInterval(successes, n, 1.96);
+      assert.ok(result.lower >= 0 && result.upper <= 1, `${String(successes)}/${String(n)}: [${String(result.lower)}, ${String(result.upper)}]`);
+      assert.ok(result.lower <= result.point && result.point <= result.upper);
+    }
+    assert.equal(wilsonInterval(0, 10, 1.96).lower, 0);
+    assert.equal(wilsonInterval(10, 10, 1.96).upper, 1);
   });
 });
