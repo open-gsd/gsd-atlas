@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -886,6 +887,199 @@ describe('scored gate', () => {
     const argv = baseArgs(env, reg).map((a) => (a.endsWith('scored-out') ? path.join(env.root, 'pilot') : a));
     assert.equal(await runCli(argv, c.io, depsFor(env, reg)), 2);
     assert.match(c.err(), /pilot/);
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// Task 3: the run summary, the pilot projection and interrupt safety
+
+/** A row with a usage that adds up: `fresh` input tokens and `cached` cache-read tokens. */
+const usageRow = (
+  questionId: string,
+  arm: 'atlas' | 'grep',
+  run: number,
+  correct: boolean,
+  over: { fresh?: number; cached?: number; cost?: number | null; tools?: number; wallMs?: number; status?: ResultRow['status'] } = {},
+): ResultRow => {
+  const fresh = over.fresh ?? 100;
+  const cached = over.cached ?? 0;
+  return aRow({
+    questionId,
+    arm,
+    run,
+    correct,
+    status: over.status ?? 'ok',
+    usage: { input: fresh, output: 0, cacheCreation: 0, cacheRead: cached },
+    billableTokens: fresh + cached,
+    toolCalls: over.tools ?? 2,
+    toolCallsByName: { Bash: over.tools ?? 2 },
+    wallMs: over.wallMs ?? 1000,
+    costUsd: over.cost === undefined ? 0.01 : over.cost,
+  });
+};
+
+function writeRows(dir: string, rows: readonly ResultRow[]): void {
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, 'results.jsonl'), rows.map((r) => `${JSON.stringify(r)}\n`).join(''));
+}
+
+describe('summary', () => {
+  it('summary per arm: sessions, statuses, tokens, cache reads, tool calls, wall time, cost and disagreement', async () => {
+    const env = makeEnv();
+    const dir = path.join(env.root, 'summary-out');
+    writeRows(dir, [
+      usageRow('q-1', 'atlas', 1, true, { fresh: 100, cached: 50, cost: 0.1, tools: 4, wallMs: 2000 }),
+      usageRow('q-1', 'grep', 1, false, { fresh: 300, cached: 150, cost: 0.3, tools: 8, wallMs: 4000 }),
+      usageRow('q-2', 'atlas', 1, true, { fresh: 200, cached: 0, cost: 0.2, tools: 6, wallMs: 3000 }),
+      usageRow('q-2', 'grep', 1, true, { fresh: 100, cached: 0, cost: null, tools: 2, wallMs: 1000, status: 'timeout' }),
+    ]);
+    const c = capture();
+    assert.equal(await runCli(['summary', '--out-dir', dir], c.io), 0, c.err());
+    const text = c.out();
+    const atlas = text.slice(text.indexOf('arm atlas'), text.indexOf('arm grep'));
+    const grep = text.slice(text.indexOf('arm grep'));
+    assert.match(atlas, /sessions: 2/);
+    assert.match(atlas, /ok: 2/);
+    assert.match(atlas, /billable tokens: mean 225\.0, total 450/);
+    assert.match(atlas, /cache-read tokens: mean 25\.0, total 50/);
+    assert.match(atlas, /mean tool calls: 5\.0/);
+    assert.match(atlas, /mean wall time: 2500 ms/);
+    assert.match(atlas, /cost: total 0\.3000 USD \(2 of 2 sessions\)/);
+    assert.match(grep, /sessions: 2/);
+    assert.match(grep, /ok: 1/);
+    assert.match(grep, /failed: timeout 1/);
+    assert.match(grep, /billable tokens: mean 275\.0, total 550/);
+    assert.match(grep, /cost: total 0\.3000 USD \(1 of 2 sessions\)/);
+    // q-1: atlas 1.0 above 0.5, grep 0.0 not; q-2: both above 0.5.
+    assert.match(text, /questions with both arms: 2/);
+    assert.match(text, /disagreement: 1 of 2 questions \(50\.0%\)/);
+  });
+
+  it('prefers a pilot directory under --out-dir when the directory itself has no results', async () => {
+    const env = makeEnv();
+    writeRows(path.join(env.root, 'o', 'pilot'), [usageRow('q-1', 'atlas', 1, true)]);
+    const c = capture();
+    assert.equal(await runCli(['summary', '--out-dir', path.join(env.root, 'o')], c.io), 0, c.err());
+    assert.match(c.out(), /rows: 1/);
+  });
+
+  it('duplicate cell reported: a hand-made duplicate row is an error and exit 1', async () => {
+    const env = makeEnv();
+    const dir = path.join(env.root, 'dup-out');
+    writeRows(dir, [usageRow('q-1', 'atlas', 1, true), usageRow('q-1', 'atlas', 1, false)]);
+    const c = capture();
+    assert.equal(await runCli(['summary', '--out-dir', dir], c.io), 1);
+    assert.match(c.err(), /duplicate cell q-1\|atlas\|1/);
+  });
+
+  it('reports a missing results file and a row that breaks the schema', async () => {
+    const env = makeEnv();
+    const none = capture();
+    assert.equal(await runCli(['summary', '--out-dir', path.join(env.root, 'nothing-here')], none.io), 2);
+    assert.match(none.err(), /no results/);
+    const dir = path.join(env.root, 'bad-out');
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, 'results.jsonl'), `${JSON.stringify({ ...usageRow('q-1', 'atlas', 1, true), billableTokens: 1 })}\n`);
+    const bad = capture();
+    assert.equal(await runCli(['summary', '--out-dir', dir], bad.io), 1);
+    assert.match(bad.err(), /billableTokens/);
+  });
+});
+
+describe('project', () => {
+  const pilotRows = (): ResultRow[] => {
+    // Per-question atlas minus grep accuracy over two runs: 1, 0, 0.5, -0.5.
+    const plan: Array<[string, boolean[], boolean[]]> = [
+      ['q-1', [true, true], [false, false]],
+      ['q-2', [true, true], [true, true]],
+      ['q-3', [true, true], [true, false]],
+      ['q-4', [true, false], [true, true]],
+    ];
+    const rows: ResultRow[] = [];
+    for (const [id, atlas, grep] of plan) {
+      atlas.forEach((ok, i) => rows.push(usageRow(id, 'atlas', i + 1, ok, { cost: 0.02 })));
+      grep.forEach((ok, i) => rows.push(usageRow(id, 'grep', i + 1, ok, { cost: 0.01 })));
+    }
+    return rows;
+  };
+
+  it('projection offsets: sessions and cost per arm as an estimate, and 1.645 * sd / sqrt(N) for N = 50, 75, 100', async () => {
+    const env = makeEnv();
+    const dir = path.join(env.root, 'pilot-out');
+    writeRows(dir, pilotRows());
+    const c = capture();
+    assert.equal(await runCli(['project', '--out-dir', dir, '--questions', '50', '--runs', '3'], c.io), 0, c.err());
+    const text = c.out();
+    assert.match(text, /estimate/);
+    assert.match(text, /atlas: 0\.0200 USD per session x 150 sessions = 3\.00 USD/);
+    assert.match(text, /grep: 0\.0100 USD per session x 150 sessions = 1\.50 USD/);
+    assert.match(text, /total: 300 sessions, 4\.50 USD/);
+    const sd = Math.sqrt(1.25 / 3);
+    assert.match(text, new RegExp(`paired difference sd: ${sd.toFixed(4)} over 4 questions`));
+    for (const n of [50, 75, 100]) {
+      const offset = ((1.645 * sd) / Math.sqrt(n)) * 100;
+      assert.match(text, new RegExp(`N = ${String(n)}: ${offset.toFixed(2)} points`), `offset for N = ${String(n)}`);
+    }
+  });
+
+  it('says so when the pilot cannot give a standard deviation or a cost', async () => {
+    const env = makeEnv();
+    const dir = path.join(env.root, 'thin-out');
+    writeRows(dir, [usageRow('q-1', 'atlas', 1, true, { cost: null }), usageRow('q-1', 'grep', 1, true, { cost: null })]);
+    const c = capture();
+    assert.equal(await runCli(['project', '--out-dir', dir, '--questions', '50', '--runs', '3'], c.io), 0, c.err());
+    assert.match(c.out(), /no cost reported/);
+    assert.match(c.out(), /needs at least 2 paired questions/);
+  });
+
+  it('refuses arguments that are not whole numbers', async () => {
+    const env = makeEnv();
+    const dir = path.join(env.root, 'args-out');
+    writeRows(dir, pilotRows());
+    for (const args of [['--questions', 'fifty', '--runs', '3'], ['--questions', '50'], ['--runs', '3']]) {
+      const c = capture();
+      assert.equal(await runCli(['project', '--out-dir', dir, ...args], c.io), 2);
+    }
+  });
+});
+
+describe('interrupt safety', () => {
+  it('interrupt leaves complete lines: SIGKILL mid-run, then a second start finishes the remaining cells exactly once', async () => {
+    const env = makeEnv();
+    const files = writeQuestionFiles(env.root);
+    const outDir = path.join(env.root, 'kill-out');
+    const results = path.join(outDir, 'pilot', 'results.jsonl');
+    const argv = [
+      path.join(here, 'harness.ts'),
+      'pilot', '--questions', files.questions, '--answers', files.answers, '--corpus-dir', CORPUS, '--out-dir', outDir,
+      '--arms', 'atlas,grep', '--runs', '2', '--concurrency', '1', '--seed', '3', '--model', 'fake-model',
+      '--max-budget-usd', '1', '--wall-clock-ms', '20000', '--atlas-bin', FAKE_ATLAS, '--skill', SKILL,
+      '--scratch-dir', env.scratch, '--retry-delay-ms', '0', '--claude-executable', process.execPath, '--claude-prefix-arg', FAKE_CLAUDE,
+    ];
+    const total = 8;
+    const childEnv = (delay: string): NodeJS.ProcessEnv => ({ ...process.env, ...env.deps.env, FAKE_DELAY_MS: delay });
+    const first = spawn(process.execPath, argv, { env: childEnv('400'), stdio: 'ignore' });
+    const exited = new Promise<void>((resolve) => first.on('exit', () => resolve()));
+    const started = Date.now();
+    while (readLines(results).length < 2) {
+      assert.ok(Date.now() - started < 30_000, 'the first run produced no rows');
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    first.kill('SIGKILL');
+    await exited;
+
+    const text = fs.readFileSync(results, 'utf8');
+    const lines = text.split('\n');
+    assert.equal(lines.pop(), '', 'the file ends with a newline: only complete lines');
+    for (const line of lines) ResultRowSchema.parse(JSON.parse(line));
+    assert.ok(lines.length >= 2 && lines.length < total, `${String(lines.length)} rows after the kill`);
+
+    const second = spawn(process.execPath, argv, { env: childEnv('0'), stdio: 'ignore' });
+    const code = await new Promise<number | null>((resolve) => second.on('exit', (c) => resolve(c)));
+    assert.equal(code, 0);
+    const rows = readLines(results).map((r) => ResultRowSchema.parse(r));
+    assert.equal(rows.length, total);
+    assert.equal(new Set(rows.map(cellId)).size, total, 'no cell twice');
   });
 });
 
