@@ -720,8 +720,142 @@ describe('extractFileFacts: ADR citations', () => {
   });
 });
 
+/** The mention shapes of D-19, each with the (number, detail) pairs the scan must find. `null` detail means none. */
+const SHAPES: ReadonlyArray<readonly [text: string, found: ReadonlyArray<readonly [number, string | null]>]> = [
+  ['ADR-1', [[1, null]]],
+  ['ADR-01', [[1, null]]],
+  ['adr-0001', [[1, null]]],
+  ['ADR 1', [[1, null]]],
+  ['Adr #1', [[1, null]]],
+  ['ADR#1', [[1, null]]],
+  ['aDr-12', [[12, null]]],
+  ['ADR - 1', []],
+  ['ADR-', []],
+  ['ADR #', []],
+  ['ADR-#1', []],
+  ['ADR  1', []],
+  ['ADR-0', []],
+  ['ADR-12345678901234567890', []],
+  ['ADR-9007199254740991', [[9007199254740991, null]]],
+  ['ADR-9007199254740992', []],
+  ['ADR-0000000000000000000000001', [[1, null]]],
+  ['ADR-١٢', []],
+  ['ADR-1a', [[1, null]]],
+  ['ADR-1 §3.2', [[1, '§3.2']]],
+  ['ADR-1§3', [[1, '§3']]],
+  ['ADR-1 §', [[1, null]]],
+  ['ADR-1 §.', [[1, null]]],
+  ['ADR-1 §3.', [[1, '§3']]],
+  ['ADR-1  §3', [[1, null]]],
+  ['ADR-1 §abcdefghijklmnopqrst', [[1, '§abcdefghijklmnop']]],
+  ['ADR-1 §3 and ADR-2 §4', [[1, '§3'], [2, '§4']]],
+  ['ADR-2143 §3', [[2143, '§3']]],
+  ['ADR-5057 Phase 10', [[5057, null]]],
+  ['see (ADR-4), ADR 5; adr #6.', [[4, null], [5, null], [6, null]]],
+  ['quadr-5', []],
+  ['ADR_5', []],
+  ['ADR-1ADR-2', [[1, null]]],
+  ['ADR-1-ADR-2', [[1, null], [2, null]]],
+];
+
+/** The predicate of a module's tags query, as the JavaScript regular expression the engine builds from it. */
+function commentPredicate(moduleName: string): RegExp {
+  const query = fs.readFileSync(fileURLToPath(new URL(`../../modules/${moduleName}/queries/tags.scm`, import.meta.url)), 'utf8');
+  const found = /\(#match\? @comment "([^"]*)"\)/.exec(query);
+  assert.ok(found?.[1] !== undefined, `${moduleName}: tags.scm has the @comment predicate`);
+  return new RegExp(found[1]);
+}
+
 describe('scanAdrMentions', () => {
-  it('is exported for the shape table and the step counter', () => {
-    assert.equal(typeof scanAdrMentions, 'function');
+  it('mention shapes table', () => {
+    for (const [text, expected] of SHAPES) {
+      const found = scanAdrMentions(text).map((m) => [m.number, m.detail ?? null]);
+      assert.deepEqual(found, expected, JSON.stringify(text));
+      // The same text through the extractor: valid facts, spans that cut the mention out of the comment.
+      const { facts } = extract(runOf([comment(0, [4, 10, 4, 10 + text.length], text)]));
+      assert.deepEqual(validateFileFacts(facts), [], JSON.stringify(text));
+      for (const [at, site] of (facts.citations ?? []).entries()) {
+        const mention = scanAdrMentions(text)[at];
+        assert.ok(mention !== undefined);
+        assert.equal(text.slice(mention.index, mention.end), text.slice(site.span.startColumn - 10, site.span.endColumn - 10));
+        assert.equal(site.span.startLine, 4);
+      }
+    }
+  });
+
+  it('mention shapes table: every text with a mention passes the predicate of both tags queries', () => {
+    for (const moduleName of ['typescript', 'javascript']) {
+      const predicate = commentPredicate(moduleName);
+      for (const [text, expected] of SHAPES) {
+        if (expected.length > 0) {
+          assert.equal(predicate.test(text), true, `${moduleName}: ${JSON.stringify(text)}`);
+        }
+      }
+      for (const text of ['quadr-5', 'ADR_5', 'ADR', 'ADR-', '// nothing to see', 'ADR - 1', 'ADR  1']) {
+        assert.equal(predicate.test(text), false, `${moduleName}: ${JSON.stringify(text)}`);
+      }
+    }
+  });
+
+  it('reads a mention on a later line of a CRLF comment at the right column', () => {
+    const { facts } = extract(runOf([comment(0, [2, 4, 4, 6], '/* first\r\n   second ADR-7\r\n   third ADR #8 */')]));
+    assert.deepEqual(facts.citations, [
+      { number: 7, span: sp(3, 10, 3, 15) },
+      { number: 8, span: sp(4, 9, 4, 15) },
+    ]);
+  });
+
+  it('counts columns in UTF-16 units after an emoji', () => {
+    const { facts } = extract(runOf([comment(0, [0, 0, 0, 20], '// \u{1F600} ADR-7')]));
+    assert.deepEqual(facts.citations, [{ number: 7, span: sp(0, 6, 0, 11) }]);
+  });
+
+  it('linear time: a 4,000 character comment of any shape is scanned in a few passes, not a quadratic number of steps', () => {
+    const size = 4000;
+    const shapes: ReadonlyArray<readonly [string, string]> = [
+      ['ADR- repeated', 'ADR-'.repeat(size / 4)],
+      ['ADR then spaces', `ADR${' '.repeat(size - 3)}`],
+      ['digits after ADR-', `ADR-${'9'.repeat(size - 4)}`],
+      ['zeros after ADR-', `ADR-${'0'.repeat(size - 4)}`],
+      ['ADR # repeated', 'ADR #'.repeat(size / 5)],
+      ['adr 1 repeated', 'adr 1'.repeat(size / 5)],
+      ['ADR-1 section dots', `ADR-1 §${'.'.repeat(size - 7)}`],
+      ['ADR-1 section token repeated', 'ADR-1 §ab '.repeat(size / 10)],
+      ['letters', 'a'.repeat(size)],
+      ['A D R spread', 'A D R '.repeat(size / 6)],
+      ['newlines', 'ADR-\n'.repeat(size / 5)],
+    ];
+    for (const [label, text] of shapes) {
+      assert.ok(text.length >= size - 16 && text.length <= size, `${label}: ${text.length}`);
+      const probe = { steps: 0 };
+      const started = Date.now();
+      scanAdrMentions(text, probe);
+      assert.ok(probe.steps <= 3 * text.length + 16, `${label}: ${probe.steps} steps for ${text.length} characters`);
+      assert.ok(Date.now() - started < 1000, `${label}: wall clock smoke check`);
+    }
+  });
+
+  it('linear time: the steps grow in proportion to the length, whatever the shape', () => {
+    for (const unit of ['ADR-', 'ADR ', 'ADR-9', 'adr #1 §a.']) {
+      const steps = (repeat: number): number => {
+        const probe = { steps: 0 };
+        scanAdrMentions(unit.repeat(repeat), probe);
+        return probe.steps;
+      };
+      const small = steps(500);
+      const large = steps(4000);
+      assert.ok(large <= small * 8 * 1.1 + 16, `${JSON.stringify(unit)}: ${small} then ${large}`);
+    }
+  });
+
+  it('linear time: the predicate of the tags queries is quick on the same shapes', () => {
+    for (const moduleName of ['typescript', 'javascript']) {
+      const predicate = commentPredicate(moduleName);
+      for (const text of ['ADR-'.repeat(1000), `ADR${' '.repeat(3990)}`, `ADR-${'9'.repeat(3996)}`, 'ADR #'.repeat(800), 'a'.repeat(4000)]) {
+        const started = Date.now();
+        predicate.test(text);
+        assert.ok(Date.now() - started < 1000, `${moduleName}: wall clock smoke check`);
+      }
+    }
   });
 });

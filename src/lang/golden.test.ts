@@ -194,4 +194,19 @@ describe('ADR citations of the built-in modules', () => {
     const golden = JSON.parse(fs.readFileSync(path.join(dir, 'fixtures', 'adr.ts.golden.json'), 'utf8')) as unknown;
     assert.equal(compareGolden(golden, renderGolden('adr.ts', result)), null);
   });
+
+  it('javascript adr fixture: the same eight cases in CommonJS style give the same kinds of citations', async () => {
+    const { dir, result, facts, diagnostics } = await runFixture('javascript', 'adr.cjs');
+    assert.deepEqual(diagnostics, []);
+    assert.deepEqual(
+      facts.citations,
+      expectedCitations({ header: 0, headerColumn: 40, jsdoc: 4, block: 8, trailing: 10, pair: 14, history: 18 }),
+    );
+    assert.deepEqual(
+      facts.symbols.map((s) => s.name),
+      ['load', 'note', 'memo'],
+    );
+    const golden = JSON.parse(fs.readFileSync(path.join(dir, 'fixtures', 'adr.cjs.golden.json'), 'utf8')) as unknown;
+    assert.equal(compareGolden(golden, renderGolden('adr.cjs', result)), null);
+  });
 });
