@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
+import { MAX_CITATIONS_PER_FILE } from '../facts/index.ts';
 import { createGovernor } from '../governor/index.ts';
 import { GRAMMAR_LIMITS } from '../grammar-engine/index.ts';
 import type { Job } from '../governor/index.ts';
@@ -272,6 +273,93 @@ describe('Reconcile and builds report comments the bound skipped (plan 03-24, ap
       'the file within the bound still gets its citation',
     );
     assert.equal((await world.reader.fileFacts('src/a.ts')).data?.citations, undefined);
+  });
+
+  // -----------------------------------------------------------------------------------------
+  // Plan 03-28 (amendment of 2026-10-18): the note is counted from the store, not from what one run parsed
+
+  const NOTE = (count: number): string =>
+    `${String(count)} ${count === 1 ? 'file has' : 'files have'} ADR mentions that are not indexed (a comment over the comment size bound, or more than ${String(MAX_CITATIONS_PER_FILE)} mentions in one file); citations from them are missing`;
+  const gapNotes = (skipped: readonly { readonly code: string }[]) => skipped.filter((d) => d.code === 'citation_comment_too_long');
+  /** A file with 201 mentions, one more than the file cap. */
+  const capped = `${Array.from({ length: MAX_CITATIONS_PER_FILE + 1 }, (_, i) => `// ADR-${String(i + 1)}`).join('\n')}\nexport const c = 1;\n`;
+
+  it('note from the store: the build counts the files the store holds with a gap and says it in the fixed text', async (t) => {
+    const world = await makeWorld(t, {
+      files: { 'src/a.ts': over(45), 'src/b.ts': over(46), 'src/c.ts': '// see ADR-7\nexport const c = 1;\n' },
+      builtinDir: shippedModules,
+    });
+    const result = await world.indexer.build(world.dir);
+    const [note, ...rest] = gapNotes(result.skipped);
+    assert.deepEqual(rest, [], 'one aggregated note');
+    assert.equal(note?.message, NOTE(2));
+    assert.equal((await world.reader.citationGaps()).data.files, 2, 'the note is the store count');
+    assert.deepEqual((await world.reader.fileFacts('src/a.ts')).data?.citationGaps, { skippedComments: 1, capped: false });
+  });
+
+  it('build that parses nothing repeats the note: a second build of an unchanged tree, and one that only adds an unrelated file', async (t) => {
+    const world = await makeWorld(t, {
+      files: { 'src/a.ts': over(45), 'src/b.ts': over(46), 'src/c.ts': '// see ADR-7\nexport const c = 1;\n' },
+      builtinDir: shippedModules,
+    });
+    const first = await world.indexer.build(world.dir);
+    assert.equal(gapNotes(first.skipped).length, 1);
+
+    const second = await world.indexer.build(world.dir);
+    assert.equal(second.parsed, 0, 'nothing was parsed');
+    assert.equal(second.linked, 3);
+    assert.equal(gapNotes(second.skipped)[0]?.message, NOTE(2), 'the note is still there');
+
+    world.repo.write('src/d.ts', 'export const d = 4;\n');
+    const third = await world.indexer.build(world.dir);
+    assert.equal(third.parsed, 1);
+    assert.equal(gapNotes(third.skipped)[0]?.message, NOTE(2), 'an unrelated file does not make it go');
+    const reconcile = await world.indexer.reconcile(world.dir);
+    assert.equal(reconcile.parsed, 0);
+    assert.equal((await world.reader.citationGaps()).data.files, 2);
+  });
+
+  it('capped file is counted: a file with more than 200 mentions is a gap, one with exactly 200 is not', async (t) => {
+    const world = await makeWorld(t, {
+      files: {
+        'src/many.ts': capped,
+        'src/exact.ts': `${Array.from({ length: MAX_CITATIONS_PER_FILE }, (_, i) => `// ADR-${String(i + 1)}`).join('\n')}\nexport const e = 1;\n`,
+      },
+      builtinDir: shippedModules,
+    });
+    const result = await world.indexer.build(world.dir);
+    assert.equal(gapNotes(result.skipped)[0]?.message, NOTE(1));
+    assert.deepEqual((await world.reader.fileFacts('src/many.ts')).data?.citationGaps, { skippedComments: 0, capped: true });
+    assert.equal((await world.reader.fileFacts('src/many.ts')).data?.citations?.length, MAX_CITATIONS_PER_FILE);
+    assert.equal('citationGaps' in ((await world.reader.fileFacts('src/exact.ts')).data ?? {}), false);
+  });
+
+  it('note disappears with the file: removing the gap file removes the note on the next build', async (t) => {
+    const world = await makeWorld(t, {
+      files: { 'src/a.ts': over(45), 'src/many.ts': capped, 'src/c.ts': '// see ADR-7\nexport const c = 1;\n' },
+      builtinDir: shippedModules,
+    });
+    assert.equal(gapNotes((await world.indexer.build(world.dir)).skipped)[0]?.message, NOTE(2));
+    world.repo.remove('src/a.ts');
+    assert.equal(gapNotes((await world.indexer.build(world.dir)).skipped)[0]?.message, NOTE(1));
+    world.repo.remove('src/many.ts');
+    const last = await world.indexer.build(world.dir);
+    assert.deepEqual(gapNotes(last.skipped), []);
+    assert.equal((await world.reader.citationGaps()).data.files, 0);
+  });
+
+  it('note holds no path: no subject, no file name, no comment text and no number from a skipped comment', async (t) => {
+    const world = await makeWorld(t, {
+      files: { 'src/secret-name.ts': over(4567), 'src/many.ts': capped },
+      builtinDir: shippedModules,
+    });
+    const notes = gapNotes((await world.indexer.build(world.dir)).skipped);
+    assert.equal(notes.length, 1);
+    const [note] = notes;
+    assert.equal(note?.subject, undefined);
+    assert.equal(note?.severity, 'info');
+    assert.equal(note?.message, NOTE(2));
+    assert.ok(!/secret|many|src|4567|xxxx/.test(note?.message ?? ''));
   });
 
   it('one file is named in the singular, and a build with nothing over the bound has no such note', async (t) => {

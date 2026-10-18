@@ -833,3 +833,42 @@ describe('validateFileFacts: ADR citations (plan 03-24, D-19)', () => {
     assert.notDeepEqual(problems(Array.from({ length: 201 }, () => site())), []);
   });
 });
+
+describe('validateFileFacts: citation gaps (plan 03-28, amendment of 2026-10-18)', () => {
+  const withGaps = (citationGaps: unknown): unknown => ({ ...goodFacts(), citationGaps });
+  const problems = (citationGaps: unknown) => validateFileFacts(withGaps(citationGaps));
+
+  it('a Phase 2 shaped value and a value with citations but no gap stay valid', () => {
+    assert.deepEqual(validateFileFacts(goodFacts()), []);
+    assert.deepEqual(validateFileFacts({ ...goodFacts(), citations: [{ number: 1, span: span(0, 0, 0, 5) }] }), []);
+  });
+
+  it('accepts a skipped-comment count, a cap flag, or both', () => {
+    assert.deepEqual(problems({ skippedComments: 1, capped: false }), []);
+    assert.deepEqual(problems({ skippedComments: 0, capped: true }), []);
+    assert.deepEqual(problems({ skippedComments: 7, capped: true }), []);
+    assert.deepEqual(problems({ skippedComments: 2 ** 31, capped: false }), []);
+  });
+
+  it('rejects a negative, fractional, non-numeric or non-finite skippedComments', () => {
+    for (const skippedComments of [-1, 1.5, '1', Number.NaN, Number.POSITIVE_INFINITY, null, undefined, Number.MAX_SAFE_INTEGER + 1]) {
+      assert.notDeepEqual(problems({ skippedComments, capped: true }), [], `skippedComments ${String(skippedComments)}`);
+    }
+  });
+
+  it('rejects a capped that is not a boolean', () => {
+    for (const capped of [1, 0, 'true', null, undefined]) {
+      assert.notDeepEqual(problems({ skippedComments: 1, capped }), [], `capped ${String(capped)}`);
+    }
+  });
+
+  it('rejects the empty gap: with nothing skipped and not capped the field must be absent', () => {
+    assert.notDeepEqual(problems({ skippedComments: 0, capped: false }), []);
+  });
+
+  it('rejects any extra key, and a value that is not an object', () => {
+    assert.notDeepEqual(problems({ skippedComments: 1, capped: false, path: 'src/a.ts' }), []);
+    assert.notDeepEqual(problems({ skippedComments: 1, capped: false, numbers: [5] }), []);
+    for (const value of [null, 1, 'gap', [], [1]]) assert.notDeepEqual(problems(value), [], JSON.stringify(value));
+  });
+});
