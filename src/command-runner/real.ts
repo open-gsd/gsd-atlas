@@ -16,7 +16,7 @@ import type { Writable } from 'node:stream';
 import { diagnostic } from '../facts/index.ts';
 import type { Diagnostic } from '../facts/index.ts';
 import { decide as defaultDecide } from './decide.ts';
-import { scrubEnv } from './env.ts';
+import { minimalEnv, scrubEnv } from './env.ts';
 import { resolveExecutable } from './exec-resolve.ts';
 import {
   COMMAND_CODES,
@@ -27,6 +27,7 @@ import {
   spawnErrorResult,
 } from './spec.ts';
 import type {
+  BuiltinShape,
   CommandResult,
   CommandRunner,
   CommandSpec,
@@ -43,6 +44,11 @@ export interface RealRunnerOptions {
   readonly decide?: DecideFn;
   /** User-level permissions for the default rule. Read from user config by the composition root, never from a repo. */
   readonly user?: UserPermissions;
+  /**
+   * The exact shapes of the non-git built-ins (the compiler worker, plan 03-19), built by the composition root and passed
+   * to the default rule. Absent means none: the runner then behaves exactly as before. Ignored when `decide` is given.
+   */
+  readonly builtinShapes?: readonly BuiltinShape[];
   /** The parent environment children inherit (minus the denylist). Defaults to `process.env`. */
   readonly env?: Readonly<Record<string, string | undefined>>;
   /** Defaults to `process.platform`. */
@@ -76,6 +82,13 @@ class ByteQueue implements AsyncIterable<Uint8Array> {
     else this.items.push(chunk);
   }
 
+  /** Bytes delivered by the child but not yet taken by the consumer. */
+  get bufferedBytes(): number {
+    let total = 0;
+    for (const item of this.items) total += item.length;
+    return total;
+  }
+
   end(): void {
     this.ended = true;
     for (const waiter of this.waiters.splice(0)) waiter({ value: undefined, done: true });
@@ -95,6 +108,14 @@ class ByteQueue implements AsyncIterable<Uint8Array> {
       },
     };
   }
+}
+
+/**
+ * Stdout bytes the real runner holds for a stream that its consumer has not read yet, or `undefined` when the stream is
+ * not one this runner produced. For tests: a long-lived worker must not pile output up here between round trips.
+ */
+export function bufferedStdoutBytes(stream: CommandStream): number | undefined {
+  return stream.stdout instanceof ByteQueue ? stream.stdout.bufferedBytes : undefined;
 }
 
 /** Writes one chunk, waiting for `drain`. Resolves false when the child is gone (EPIPE and friends). */
@@ -148,7 +169,7 @@ const settled = (result: CommandResult): CommandStream => ({
 
 export function createRealRunner(opts: RealRunnerOptions = {}): CommandRunner {
   const platform = opts.platform ?? process.platform;
-  const rule: DecideFn = opts.decide ?? ((spec, ctx) => defaultDecide(spec, ctx, opts.user));
+  const rule: DecideFn = opts.decide ?? ((spec, ctx) => defaultDecide(spec, ctx, opts.user, opts.builtinShapes));
   const defaultTimeoutMs = opts.defaultTimeoutMs ?? DEFAULT_RUN_TIMEOUT_MS;
   if (!Number.isFinite(defaultTimeoutMs) || defaultTimeoutMs <= 0) {
     throw new RangeError(`defaultTimeoutMs must be a positive finite number, got ${String(defaultTimeoutMs)}`);
@@ -158,9 +179,14 @@ export function createRealRunner(opts: RealRunnerOptions = {}): CommandRunner {
     const decision = rule(spec, ctx);
     if (!decision.allowed) return settled(deniedResult(decision.diagnostic));
 
-    const childEnv = scrubEnv(ctx.env ?? opts.env ?? process.env, spec.env);
-    const resolved = resolveExecutable(spec.executable, { platform, env: childEnv });
+    const parentEnv = ctx.env ?? opts.env ?? process.env;
+    const scrubbed = scrubEnv(parentEnv, spec.env);
+    const resolved = resolveExecutable(spec.executable, { platform, env: scrubbed });
     if (!resolved.ok) return settled(spawnErrorResult(resolved.diagnostic));
+    // A shape-matched built-in (the compiler worker) runs repository-influenced JavaScript, so it gets a minimal
+    // environment instead of the denylist-scrubbed inherited one (T-03-192); git keeps the scrubbed environment.
+    const shaped = decision.via === 'builtin' && opts.builtinShapes?.some((s) => s.id === decision.builtinId) === true;
+    const childEnv = shaped ? minimalEnv(parentEnv, spec.env) : scrubbed;
 
     let child: ChildProcess;
     try {

@@ -6,6 +6,8 @@
  * test code and is deliberately NOT exported here; the module's own tests import it by relative path.
  */
 export type {
+  BuiltinArgShape,
+  BuiltinShape,
   CommandResult,
   CommandRunner,
   CommandSpec,
@@ -19,6 +21,10 @@ export type {
 } from './spec.ts';
 export { COMMAND_CODES, DEFAULT_MAX_STDERR_BYTES, DEFAULT_MAX_STDOUT_BYTES } from './spec.ts';
 export { allowAll, decide } from './decide.ts';
+export { COMPILER_WORKER_ID, compilerWorkerShape, matchShape } from './builtins.ts';
+export type { CompilerWorkerShapeOptions } from './builtins.ts';
+export { createAsyncQueue } from './async-queue.ts';
+export type { AsyncQueue } from './async-queue.ts';
 export { canonicalCommand, commandHash } from './hash.ts';
 export type { HashableCommand } from './hash.ts';
 export { createRealRunner } from './real.ts';

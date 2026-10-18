@@ -1,14 +1,16 @@
 import { diagnostic } from '../facts/index.ts';
+import { matchShape } from './builtins.ts';
 import { isNeutralisableFilterName } from './filter-name.ts';
 import { commandHash } from './hash.ts';
-import type { CommandSpec, Decision, RunContext, UserPermissions } from './spec.ts';
+import type { BuiltinShape, CommandSpec, Decision, RunContext, UserPermissions } from './spec.ts';
 import { COMMAND_CODES } from './spec.ts';
 
 /**
  * The permission rule (command-runner ADR decision 3), in one reviewable place.
  *
  * A spec runs only if
- *   1. it exactly matches a first-party built-in in {@link BUILTINS}, or
+ *   1. it exactly matches a first-party built-in in {@link BUILTINS}, or an exact shape in the injected `shapes` table
+ *      that it claims by `builtinId` (the compiler worker, plan 03-19), or
  *   2. the injected user-level permission list allows that executable for `ctx.repo` (and, when the entry carries a
  *      `sha256`, only the one exact command that hash was computed for, D-15).
  *
@@ -260,11 +262,25 @@ function userAllows(spec: CommandSpec, repo: string | undefined, user: UserPermi
   });
 }
 
-export function decide(spec: CommandSpec, ctx?: RunContext, user?: UserPermissions): Decision {
+const NO_SHAPES: readonly BuiltinShape[] = [];
+
+/**
+ * `shapes` is the table of exact non-git built-in shapes (plan 03-19), built by the composition root and passed in;
+ * it is consulted only after the git built-in and only for a spec that claims a shape's id. Absent means none, which
+ * is the behavior before the table existed. The id `git` is reserved: a shape claiming it is ignored.
+ */
+export function decide(spec: CommandSpec, ctx?: RunContext, user?: UserPermissions, shapes: readonly BuiltinShape[] = NO_SHAPES): Decision {
   // A declared builtinId narrows the table to that entry; an unknown or mismatched claim never matches.
   const candidates = spec.builtinId === undefined ? BUILTINS : BUILTINS.filter((b) => b.id === spec.builtinId);
   for (const builtin of candidates) {
     if (builtin.match(spec)) return { allowed: true, via: 'builtin', builtinId: builtin.id };
+  }
+  if (spec.builtinId !== undefined) {
+    for (const shape of shapes) {
+      if (shape.id === spec.builtinId && !BUILTINS.some((b) => b.id === shape.id) && matchShape(shape, spec)) {
+        return { allowed: true, via: 'builtin', builtinId: shape.id };
+      }
+    }
   }
   if (userAllows(spec, ctx?.repo, user)) return { allowed: true, via: 'user' };
   return denial(spec);

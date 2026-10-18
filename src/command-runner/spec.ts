@@ -32,7 +32,11 @@ export interface CommandSpec {
   readonly executable: string;
   /** Arguments, one array element per argument. Passed to the child unchanged. */
   readonly args: readonly string[];
-  /** Names the first-party built-in this spec claims to be (Phase 1: `git`). The runner verifies the claim. */
+  /**
+   * Names the first-party built-in this spec claims to be (`git`, or the id of a {@link BuiltinShape} the composition
+   * root injected, such as `typescript-resolver`). The runner verifies the claim: a shape is consulted only when the
+   * spec claims its id, and a spec that matches no entry is denied.
+   */
   readonly builtinId?: string;
   /** Overlaid on the inherited environment after the denylist is applied (see `scrubEnv`). */
   readonly env?: Readonly<Record<string, string>>;
@@ -113,6 +117,23 @@ export interface UserPermissions {
      */
     readonly sha256?: string;
   }>;
+}
+
+/** One argument position of a {@link BuiltinShape}: an exact string, or a regular expression matched against the whole argument. */
+export type BuiltinArgShape = { readonly literal: string } | { readonly pattern: string };
+
+/**
+ * An exact shape for one first-party, non-git built-in (plan 03-19). Built by the composition root and injected into
+ * `decide` and the runners; never module state and never derived from repository data. A spec matches only when it
+ * claims `id`, runs `executable` (exact string), has exactly these `args` in this order, and sets only the `env` keys
+ * listed here with values matching the listed pattern sources (anchored to the whole value).
+ */
+export interface BuiltinShape {
+  readonly id: string;
+  readonly executable: string;
+  readonly args: readonly BuiltinArgShape[];
+  /** Allowed environment key to the source of the regular expression its value must match in full. */
+  readonly env: Readonly<Record<string, string>>;
 }
 
 /** The permission rule as a function; the real runner and the recording fake both take one. */

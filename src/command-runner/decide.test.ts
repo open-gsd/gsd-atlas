@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { describe, it } from 'node:test';
 import { allowAll, commandHash, createRealRunner, decide } from './index.ts';
-import type { CommandSpec, Decision, UserPermissions } from './index.ts';
+import type { BuiltinShape, CommandSpec, Decision, UserPermissions } from './index.ts';
 
 /** A bare git spec: no overrides, no environment. Only `--version` may run like this. */
 const git = (...args: string[]): CommandSpec => ({ executable: 'git', args, builtinId: 'git' });
@@ -629,6 +629,37 @@ describe('real runner: an approval binds to one exact command (D-15)', () => {
   it('denies the same entry under a different run-context repository', async () => {
     const result = await runner.run(spec, { repo: path.resolve(os.tmpdir(), 'ga-approval-other') });
     assert.equal(result.denied?.code, 'command_denied');
+  });
+});
+
+describe('decide: the injected built-in shape table (plan 03-19)', () => {
+  const shape: BuiltinShape = {
+    id: 'typescript-resolver',
+    executable: process.execPath,
+    args: [{ literal: '--flag' }],
+    env: {},
+  };
+  const claimed: CommandSpec = { executable: process.execPath, args: ['--flag'], builtinId: 'typescript-resolver' };
+
+  it('a shape is consulted only when the spec claims its id', () => {
+    assert.equal(decide(claimed, {}, undefined, [shape]).allowed, true);
+    assert.equal(decide({ ...claimed, builtinId: undefined }, {}, undefined, [shape]).allowed, false);
+  });
+
+  it('without a table the decision is the one it was before: only git and user permissions allow', () => {
+    assert.equal(decide(claimed, {}).allowed, false);
+    assert.equal(decide(claimed, {}, undefined, []).allowed, false);
+    assert.equal(decide(git('--version')).allowed, true);
+  });
+
+  it('a shape is checked after the git built-in and never widens it', () => {
+    const gitLike: BuiltinShape = { id: 'git', executable: 'git', args: [{ literal: 'push' }], env: {} };
+    assert.equal(decide({ executable: 'git', args: ['push'], builtinId: 'git' }, {}, undefined, [gitLike]).allowed, false);
+  });
+
+  it('the table is not remembered between calls', () => {
+    assert.equal(decide(claimed, {}, undefined, [shape]).allowed, true);
+    assert.equal(decide(claimed, {}).allowed, false);
   });
 });
 
