@@ -169,7 +169,7 @@ Plans:
   4. The `gsd-atlas` skill routes agents to atlas tools and `gsd-atlas-module-author` guides module writing; a user can rate a session, feature or last answer up, meh or down; diagnostics are off by default, approved per data type and previewed before manual submission; and `gsd-atlas bug` captures a flight recorder, versions, config, store health and the failing answer with hashed names and paths by default.
   5. The free-alternatives evaluation (LSP-wrapping MCP servers, agent repo-maps, colbymchenry/codegraph, Claude Code LSP, Memtrace) is recorded before the eval, the eval design is pre-registered (at least 50 questions per corpus including abstain cases, at least 3 runs per configuration, independent oracle, paired pooled analysis, accuracy non-inferiority margin, tool-call rate logged), and on gsd-core agents using atlas consume fewer tokens than the grep-only baseline at non-inferior accuracy with verifiable file:line citations at least 80% of the time.
 
-**Plans:** 17/35 plans executed
+**Plans:** 21/35 plans executed
 
 Plans:
 **Wave 1**
@@ -200,10 +200,10 @@ Plans:
 - [x] 03-17-PLAN.md — Answer ids, flight recorder and `gsd-atlas rate` (SKL-02)
 
 **Wave 6** *(blocked on Wave 5 completion)*
-- [ ] 03-18-PLAN.md — Compiler-free ProjectModel, owners, context and TypeScript 7.x detection (TSM-07, TSM-02)
-- [ ] 03-19-PLAN.md — CommandRunner exact-shape built-in for the compiler worker; runs only if the D-21 sampler deviation was approved (TSM-05)
-- [ ] 03-20-PLAN.md — Resolver seam: scope, symbol lookup with spans, per-overlay context, negative marker (TSM-01)
-- [ ] 03-21-PLAN.md — Diagnostics: catalog, per-type consent, preview, local save (SKL-03)
+- [x] 03-18-PLAN.md — Compiler-free ProjectModel, owners, context and TypeScript 7.x detection (TSM-07, TSM-02)
+- [x] 03-19-PLAN.md — CommandRunner exact-shape built-in for the compiler worker; runs only if the D-21 sampler deviation was approved (TSM-05)
+- [x] 03-20-PLAN.md — Resolver seam: scope, symbol lookup with spans, per-overlay context, negative marker (TSM-01)
+- [x] 03-21-PLAN.md — Diagnostics: catalog, per-type consent, preview, local save (SKL-03)
 
 **Wave 7** *(blocked on Wave 6 completion)*
 - [ ] 03-22-PLAN.md — Emit mapping end to end: `.cjs` requirers linked to `.cts`, outputs get no facts (TSM-03)
@@ -358,7 +358,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 |-------|----------------|--------|-----------|
 | 1. Foundations and Walking Skeleton | 20/20 | Complete    | 2026-10-16 |
 | 2. Grammar Tier, Store and stdio Host | 46/46 | Complete    | 2026-10-17 |
-| 3. TypeScript Module and MVP Eval | 17/35 | In Progress | - |
+| 3. TypeScript Module and MVP Eval | 21/35 | In Progress | - |
 | 4. Host Hardening | 0/TBD | Not started | - |
 | 5. Swift Module | 0/TBD | Not started | - |
 | 6. Platform SDK Facts | 0/TBD | Not started | - |
