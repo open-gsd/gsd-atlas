@@ -124,6 +124,22 @@ export interface CitationSite {
 }
 
 /**
+ * What the extractor could not keep of a file's ADR mentions (plan 03-28, amendment of 2026-10-18; D-19, D-20). A mention the
+ * index never stored would otherwise make an answer to "which code cites ADR N" look complete when it is not, so the gap itself
+ * is a fact of the file version. It records two causes and nothing else: `skippedComments` comments that mention an ADR but were
+ * over the comment size bound (skipped whole, so the numbers in them were never read), and `capped`, true when the file holds
+ * more than `MAX_CITATIONS_PER_FILE` mentions and the citations beyond the cap were dropped.
+ *
+ * It is absent when there is no gap (`skippedComments` 0 and `capped` false), exactly as `citations` is absent when empty, so
+ * every value written before this field existed reads back unchanged. It carries a count and a flag: never a path, a number from
+ * a skipped comment or any comment text.
+ */
+export interface CitationGaps {
+  readonly skippedComments: number;
+  readonly capped: boolean;
+}
+
+/**
  * Local facts of one file, keyed by content hash. This is the only value that crosses from the
  * Grammar Engine to the Fact Store; `validateFileFacts` must pass before the writer commits it.
  */
@@ -139,6 +155,8 @@ export interface FileFacts {
   readonly exports?: readonly ExportSite[];
   /** ADR mentions in the file's comments (optional, Phase 3, at most `MAX_CITATIONS_PER_FILE`). */
   readonly citations?: readonly CitationSite[];
+  /** What of the file's ADR mentions was not kept (optional, plan 03-28); absent when nothing was lost. */
+  readonly citationGaps?: CitationGaps;
   readonly parse: { readonly errorBytes: number; readonly totalBytes: number };
 }
 
@@ -333,6 +351,21 @@ export function validateFileFacts(value: unknown): Diagnostic[] {
           break;
       }
     });
+  }
+
+  if (value.citationGaps !== undefined) {
+    const gaps = value.citationGaps;
+    if (!isRecord(gaps)) {
+      invalid('FileFacts.citationGaps must be an object');
+    } else {
+      const extra = Object.keys(gaps).filter((key) => key !== 'skippedComments' && key !== 'capped');
+      if (extra.length > 0) invalid('FileFacts.citationGaps holds only skippedComments and capped');
+      const skipped = gaps.skippedComments;
+      const skippedOk = typeof skipped === 'number' && Number.isSafeInteger(skipped) && skipped >= 0;
+      if (!skippedOk) invalid('FileFacts.citationGaps.skippedComments must be a non-negative whole number');
+      if (typeof gaps.capped !== 'boolean') invalid('FileFacts.citationGaps.capped must be a boolean');
+      else if (skippedOk && skipped === 0 && gaps.capped === false) invalid('FileFacts.citationGaps must be absent when nothing was skipped and the file is not capped');
+    }
   }
 
   const parse = value.parse;

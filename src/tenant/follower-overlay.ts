@@ -422,6 +422,17 @@ export function createOverlayReader(base: Reader, patch: Patch, context: Overlay
       return result([...stored, ...added].sort(bySite).slice(0, limitOf(options?.limit, Number.POSITIVE_INFINITY)));
     },
 
+    async citationGaps(options) {
+      // The store's count, with each patched path's own gap taken from its facts instead of the store's row (a hidden path has none).
+      let files = observe(await base.citationGaps(options)).files;
+      const patched = options?.path === undefined ? [...patch.keys()] : patch.has(options.path) ? [options.path] : [];
+      for (const filePath of patched) {
+        const stored = observe(await base.citationGaps({ path: filePath })).files;
+        files += (patch.get(filePath)?.citationGaps === undefined ? 0 : 1) - stored;
+      }
+      return result({ files });
+    },
+
     async relations(id, options) {
       // The store's relations, minus the ones that start or end in a patched file: the compiler saw the store's version of
       // that file, so a relation that touches it may be stale. Like a patched file's sites, a patched file has none.

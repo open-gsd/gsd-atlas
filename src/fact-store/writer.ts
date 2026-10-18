@@ -162,6 +162,15 @@ function writeFactRows(db: Db, fileId: number, facts: FileFacts, trigram: boolea
       site.enclosing ?? null,
     );
   });
+
+  // What of the file's ADR mentions was not kept (plan 03-28): one row, only when there is a gap, in this same transaction.
+  if (facts.citationGaps !== undefined) {
+    db.prepare('INSERT INTO citation_gaps (file_id, skipped_comments, capped) VALUES (?, ?, ?)').run(
+      fileId,
+      facts.citationGaps.skippedComments,
+      facts.citationGaps.capped ? 1 : 0,
+    );
+  }
 }
 
 /** Insert a new `files` row (state live) and all of its fact rows; returns the new file id. */
@@ -197,6 +206,7 @@ function rewriteFile(db: Db, fileId: number, facts: FileFacts, now: number, trig
   db.prepare('DELETE FROM import_bindings WHERE file_id = ?').run(fileId);
   db.prepare('DELETE FROM exports WHERE file_id = ?').run(fileId);
   db.prepare('DELETE FROM citations WHERE file_id = ?').run(fileId);
+  db.prepare('DELETE FROM citation_gaps WHERE file_id = ?').run(fileId);
   db.prepare(
     "UPDATE files SET module = ?, grammar_version = ?, nsym = ?, nref = ?, error_bytes = ?, total_bytes = ?, state = 'live', stale = 0, retired_at = NULL, last_seen = ? WHERE id = ?",
   ).run(

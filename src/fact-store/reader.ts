@@ -9,7 +9,7 @@ import type {
   RefKind,
   RefSite,
 } from '../facts/index.ts';
-import { readCitations } from './citations.ts';
+import { countCitationGaps, readCitations } from './citations.ts';
 import {
   clampDepth,
   collectCallEdges,
@@ -126,6 +126,9 @@ function rebuildFacts(snap: Snapshot, path: string, fileId: number): FileFacts {
       ...(row.enclosing === null ? {} : { enclosing: num(row.enclosing) }),
     }));
 
+  // What of the file's ADR mentions was not kept (plan 03-28): present only when a row exists, so a value without a gap reads back unchanged.
+  const gap = snap.db.prepare('SELECT skipped_comments, capped FROM citation_gaps WHERE file_id = ?').get(fileId);
+
   return {
     path,
     contentHash: file.hash,
@@ -136,6 +139,7 @@ function rebuildFacts(snap: Snapshot, path: string, fileId: number): FileFacts {
     imports,
     exports,
     ...(citations.length === 0 ? {} : { citations }),
+    ...(gap === undefined ? {} : { citationGaps: { skippedComments: num(gap.skipped_comments), capped: num(gap.capped) !== 0 } }),
     parse: { errorBytes: file.errorBytes, totalBytes: file.totalBytes },
   };
 }
@@ -245,6 +249,9 @@ export function createReader(parts: StoreParts, worktree: WorktreeId): Reader {
     },
     async citations(query, options) {
       return answer(parts, worktree, (snap) => readCitations(snap, query, options?.limit));
+    },
+    async citationGaps(options) {
+      return answer(parts, worktree, (snap) => ({ files: countCitationGaps(snap, options?.path) }));
     },
     async emittedAs(path) {
       const pending = emitLookupFor(parts, worktree);

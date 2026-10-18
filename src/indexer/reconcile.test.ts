@@ -280,7 +280,7 @@ describe('Reconcile and builds report comments the bound skipped (plan 03-24, ap
 
   const NOTE = (count: number): string =>
     `${String(count)} ${count === 1 ? 'file has' : 'files have'} ADR mentions that are not indexed (a comment over the comment size bound, or more than ${String(MAX_CITATIONS_PER_FILE)} mentions in one file); citations from them are missing`;
-  const gapNotes = (skipped: readonly { readonly code: string }[]) => skipped.filter((d) => d.code === 'citation_comment_too_long');
+  const gapNotes = <T extends { readonly code: string }>(skipped: readonly T[]): T[] => skipped.filter((d) => d.code === 'citation_comment_too_long');
   /** A file with 201 mentions, one more than the file cap. */
   const capped = `${Array.from({ length: MAX_CITATIONS_PER_FILE + 1 }, (_, i) => `// ADR-${String(i + 1)}`).join('\n')}\nexport const c = 1;\n`;
 

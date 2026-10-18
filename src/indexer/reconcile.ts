@@ -18,7 +18,7 @@
  */
 import { UnknownWorktree } from '../fact-store/index.ts';
 import type { Writer } from '../fact-store/index.ts';
-import { diagnostic } from '../facts/index.ts';
+import { MAX_CITATIONS_PER_FILE, diagnostic } from '../facts/index.ts';
 import type { Diagnostic } from '../facts/index.ts';
 import { CITATION_COMMENT_TOO_LONG } from '../grammar-engine/index.ts';
 import { SOURCE_TREE_CODES } from '../source-tree/index.ts';
@@ -98,6 +98,16 @@ async function applyTouched(ctx: ProcessContext, worktree: string, overlay: Map<
   }
 }
 
+/** How many files of the worktree's overlay hold a citation gap, from the store. A worktree the store does not know has none. */
+async function citationGapFiles(ctx: ProcessContext, worktree: string): Promise<number> {
+  try {
+    return (await ctx.store.at(worktree).citationGaps()).data.files;
+  } catch (error) {
+    if (error instanceof UnknownWorktree) return 0;
+    throw error;
+  }
+}
+
 /**
  * Compare `target.worktree` with the store and index what differs, then record the overlay. Rejects only with
  * `IndexerError('stopped')` or when the Writer itself is unusable; everything about a single file is a result.
@@ -165,9 +175,10 @@ export async function reconcileWorktree(
     ...results.filter((r) => r.outcome === 'failed').map((r) => ({ worktree, path: r.path, code: r.code ?? 'internal_error' })),
     ...oversize.map((path) => ({ worktree, path, code: SOURCE_TREE_CODES.sourceTooLarge })),
   ];
-  // Comments over the comment size bound are skipped whole, so the citations in them are missing: one counted note,
-  // fixed text, no path and no repository text, says so (the extractor's per-file diagnostic is not kept).
-  const commentFiles = results.filter((r) => r.commentsTooLong === true).length;
+  // A comment over the comment size bound is skipped whole and mentions past the per-file cap are dropped, so citations are missing
+  // from the files that hold such a gap: one counted note, fixed text, no path and no repository text, says so. The count is the
+  // store's (the files of this overlay that hold a gap, read after the overlay is written), not what this run happened to parse.
+  const gapFiles = await citationGapFiles(ctx, worktree);
   const skipped: Diagnostic[] = [
     ...snapshot.diagnostics,
     ...source.skipped.filter((d) => d.code !== SOURCE_TREE_CODES.sourceTooLarge),
@@ -180,13 +191,13 @@ export async function reconcileWorktree(
             `${String(excluded.size)} ${excluded.size === 1 ? 'file is' : 'files are'} the emit output of an included source and ${excluded.size === 1 ? 'is' : 'are'} not indexed`,
           ),
         ]),
-    ...(commentFiles === 0
+    ...(gapFiles === 0
       ? []
       : [
           diagnostic(
             CITATION_COMMENT_TOO_LONG,
             'info',
-            `${String(commentFiles)} ${commentFiles === 1 ? 'file has' : 'files have'} comments that mention an ADR but are over the comment size bound; their citations are not indexed`,
+            `${String(gapFiles)} ${gapFiles === 1 ? 'file has' : 'files have'} ADR mentions that are not indexed (a comment over the comment size bound, or more than ${String(MAX_CITATIONS_PER_FILE)} mentions in one file); citations from them are missing`,
           ),
         ]),
   ];

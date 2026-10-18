@@ -810,7 +810,7 @@ export function defineFactStoreContract(label: string, driver: DriverName): void
         await writer.setOverlay('empty', 'refs/heads/e', new Map());
         assert.equal((await reader.find('anything')).watermark.seq, 1, 'an identical overlay does not advance seq');
         const status = await fx.store.status();
-        assert.deepStrictEqual(status.worktrees, [{ worktree: 'empty', seq: 1, stalePaths: 0, files: 0 }]);
+        assert.deepStrictEqual(status.worktrees, [{ worktree: 'empty', seq: 1, stalePaths: 0, files: 0, citationGapFiles: 0 }]);
         writer.release();
       });
     });
@@ -860,7 +860,7 @@ export function defineFactStoreContract(label: string, driver: DriverName): void
         assert.equal(found.data.length, 3, 'stale facts keep serving');
         assert.deepStrictEqual(found.watermark, { seq: 4, stalePaths: ['src/a.ts', 'src/b.ts'] });
         assert.deepStrictEqual(found.degraded, ['stale']);
-        assert.deepStrictEqual((await fx.store.status()).worktrees, [{ worktree: 'main', seq: 4, stalePaths: 2, files: 3 }]);
+        assert.deepStrictEqual((await fx.store.status()).worktrees, [{ worktree: 'main', seq: 4, stalePaths: 2, files: 3, citationGapFiles: 0 }]);
 
         const symbolRows = counts(peek).symbols;
         const refreshed = await put(writer, 'main', 'src/a.ts', 1, { grammarVersion: '0.24.0' });
@@ -2120,8 +2120,8 @@ export function defineFactStoreContract(label: string, driver: DriverName): void
         await writer.dropOverlay('doomed');
         const status = await fx.store.status();
         assert.deepStrictEqual(status.worktrees, [
-          { worktree: 'alpha', seq: 1, stalePaths: 1, files: 1 },
-          { worktree: 'zeta', seq: 1, stalePaths: 0, files: 1 },
+          { worktree: 'alpha', seq: 1, stalePaths: 1, files: 1, citationGapFiles: 0 },
+          { worktree: 'zeta', seq: 1, stalePaths: 0, files: 1, citationGapFiles: 0 },
         ]);
         writer.release();
       });

@@ -56,6 +56,7 @@
  */
 import { IMPORT_STYLES, MAX_CITATIONS_PER_FILE, REF_KINDS, diagnostic } from '../facts/index.ts';
 import type {
+  CitationGaps,
   CitationSite,
   Diagnostic,
   ExportSite,
@@ -387,7 +388,9 @@ function collectCitationDrafts(
     const span = (readable[at] as Capture).span;
     disjoint = span.startLine > before.endLine || (span.startLine === before.endLine && span.startColumn >= before.endColumn);
   }
-  const cap = disjoint ? MAX_CITATIONS_PER_FILE : Number.POSITIVE_INFINITY;
+  // One mention past the cap is looked for, so that a file with exactly the cap is told from a file that lost some
+  // (`citationGaps.capped`); `attachCitations` drops the extra one, so the citations kept are the same first 200.
+  const cap = disjoint ? MAX_CITATIONS_PER_FILE + 1 : Number.POSITIVE_INFINITY;
   for (const capture of readable) {
     if (drafts.length >= cap) {
       break;
@@ -400,7 +403,7 @@ function collectCitationDrafts(
     // A capture holds its mentions in strictly increasing positions, so none after its first
     // `MAX_CITATIONS_PER_FILE` can be among the first `MAX_CITATIONS_PER_FILE` of all; on the full path that bound is
     // what keeps a hostile module's repeated or overlapping captures from being scanned to the end each.
-    const room = disjoint ? cap - drafts.length : MAX_CITATIONS_PER_FILE;
+    const room = disjoint ? cap - drafts.length : MAX_CITATIONS_PER_FILE + 1;
     for (const mention of scanAdrMentions(capture.text, probe, room)) {
       while (nextLf !== -1 && nextLf < mention.index) {
         line += 1;
@@ -856,6 +859,9 @@ export function extractFileFacts(input: ExtractInput): ExtractResult {
 
   const cited = collectCitationDrafts(run.captures, input.scanProbe);
   const citations = attachCitations(cited.drafts, cited.comments, symbols);
+  // What was lost is recorded with the file version (plan 03-28): comments skipped for their size, and mentions past the cap.
+  const capped = cited.drafts.length > MAX_CITATIONS_PER_FILE;
+  const citationGaps: CitationGaps | undefined = cited.tooLong > 0 || capped ? { skippedComments: cited.tooLong, capped } : undefined;
 
   const nameSkipped = defined.skipped + exported.skipped;
   if (nameSkipped > 0) {
@@ -900,6 +906,7 @@ export function extractFileFacts(input: ExtractInput): ExtractResult {
     imports,
     exports: exported.sites,
     ...(citations.length === 0 ? {} : { citations }),
+    ...(citationGaps === undefined ? {} : { citationGaps }),
     parse: { errorBytes: run.errorBytes, totalBytes: run.totalBytes },
   };
   return { facts, diagnostics };

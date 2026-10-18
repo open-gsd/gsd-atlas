@@ -19,6 +19,7 @@ export type {
   CallerRecord,
   CallersOptions,
   CheckResult,
+  CitationGapsOptions,
   CitationRecord,
   CitationsOptions,
   CitationsQuery,

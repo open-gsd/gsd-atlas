@@ -147,6 +147,11 @@ export interface CitationsOptions {
   readonly limit?: number;
 }
 
+export interface CitationGapsOptions {
+  /** Ask about this one overlay path instead of the whole overlay. */
+  readonly path?: string;
+}
+
 /** What kind of fact a handle names (plan 03-26): a definition, a reference site, an import or export statement, or a compiler relation. */
 export type FactKind = 'symbol' | 'reference' | 'import' | 'export' | 'relation' | 'citation';
 
@@ -316,6 +321,15 @@ export interface Reader {
    * the caller against the repository's ADR directory.
    */
   citations(query: CitationsQuery, options?: CitationsOptions): Promise<Answer<readonly CitationRecord[]>>;
+
+  /**
+   * How many files of this overlay hold a citation gap (plan 03-28, amendment of 2026-10-18): a comment the extractor skipped for
+   * its size, or more mentions than the per-file cap. `data.files` counts overlay paths (a file version linked from two paths
+   * counts for each); with `options.path` it is 1 or 0 for that one path (0 for a path the overlay does not hold). It reads the
+   * gap rows stored with the file versions, so it is the same after any number of builds, and it says nothing of which file or
+   * which number: only that citations from that many files are missing.
+   */
+  citationGaps(options?: CitationGapsOptions): Promise<Answer<{ readonly files: number }>>;
 
   /** The local facts of one file as the overlay sees it; `data` is null when the path is not in the overlay. */
   fileFacts(path: string): Promise<Answer<FileFacts | null>>;
@@ -497,6 +511,8 @@ export interface WorktreeStatus {
   readonly stalePaths: number;
   /** How many paths the worktree's overlay holds, pending ones included (`stalePaths` is a subset of them). */
   readonly files: number;
+  /** How many of those paths hold a citation gap (plan 03-28); 0 for a store built before the gap table existed. */
+  readonly citationGapFiles: number;
 }
 
 /** Store health, as its own method rather than a read variant. */

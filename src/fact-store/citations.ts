@@ -56,6 +56,18 @@ function recordOf(snap: Snapshot, path: string, row: Row): CitationRecord {
   };
 }
 
+const GAP_FILES_SQL = `SELECT count(*) AS n FROM overlay_files o JOIN citation_gaps g ON g.file_id = o.file_id WHERE o.worktree = ?`;
+const GAP_PATH_SQL = `${GAP_FILES_SQL} AND o.path = ?`;
+
+/**
+ * How many files of the overlay hold a citation gap (plan 03-28), or, with `path`, 1 or 0 for that one path. A file version
+ * linked from two paths counts for each path, because each is a file of the worktree whose citations are incomplete.
+ */
+export function countCitationGaps(snap: Snapshot, path: string | undefined): number {
+  const row = path === undefined ? snap.db.prepare(GAP_FILES_SQL).get(snap.worktree) : snap.db.prepare(GAP_PATH_SQL).get(snap.worktree, path);
+  return num(row?.n ?? 0);
+}
+
 /** The citations `query` asks for, in the order of {@link Reader.citations}. */
 export function readCitations(snap: Snapshot, query: CitationsQuery, limit: number | undefined): CitationRecord[] {
   const bound = sqlLimit(limit);
