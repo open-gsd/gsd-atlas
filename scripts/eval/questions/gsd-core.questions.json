@@ -600,6 +600,307 @@
         "granularity": "file",
         "equality": "exact-set"
       }
+    },
+    {
+      "id": "q-051",
+      "category": "callers",
+      "text": "Which files call `generationForMajor`, the function exported from `src/opencode-version.cts`? Include test files, plain JavaScript files and calls made through a renamed import. A different function that happens to share the name does not count. List each file once. Give your answer in the required JSON form.",
+      "key": {
+        "kind": "callers",
+        "symbol": "generationForMajor",
+        "definedIn": "src/opencode-version.cts",
+        "granularity": "file",
+        "equality": "exact-set"
+      }
+    },
+    {
+      "id": "q-052",
+      "category": "callers",
+      "text": "List every file that contains a call to `openStateTransaction` from `src/state-transition.cts`, counting test files and plain JavaScript files as well as TypeScript sources. List each file once; a same-named function declared elsewhere is not the same function. Give your answer in the required JSON form.",
+      "key": {
+        "kind": "callers",
+        "symbol": "openStateTransaction",
+        "definedIn": "src/state-transition.cts",
+        "granularity": "file",
+        "equality": "exact-set"
+      }
+    },
+    {
+      "id": "q-053",
+      "category": "callers",
+      "text": "`detectAssumptionDelta` is exported from `src/assumption-delta.cts`. Which files use it by calling it? Test files and plain JavaScript files count, a call under another local name counts, and a different function with the same name does not. List each file once. Give your answer in the required JSON form.",
+      "key": {
+        "kind": "callers",
+        "symbol": "detectAssumptionDelta",
+        "definedIn": "src/assumption-delta.cts",
+        "granularity": "file",
+        "equality": "exact-set"
+      }
+    },
+    {
+      "id": "q-054",
+      "category": "callers",
+      "text": "Which files call `escapeCell`, the function exported from `src/markdown-table.cts`? Include test files, plain JavaScript files and calls made through a renamed import. A different function that happens to share the name does not count. List each file once. Give your answer in the required JSON form.",
+      "key": {
+        "kind": "callers",
+        "symbol": "escapeCell",
+        "definedIn": "src/markdown-table.cts",
+        "granularity": "file",
+        "equality": "exact-set"
+      }
+    },
+    {
+      "id": "q-055",
+      "category": "callers",
+      "text": "List every file that contains a call to `isPathConfined` from `src/external-descriptor-trust.cts`, counting test files and plain JavaScript files as well as TypeScript sources. List each file once; a same-named function declared elsewhere is not the same function. Give your answer in the required JSON form.",
+      "key": {
+        "kind": "callers",
+        "symbol": "isPathConfined",
+        "definedIn": "src/external-descriptor-trust.cts",
+        "granularity": "file",
+        "equality": "exact-set"
+      }
+    },
+    {
+      "id": "q-056",
+      "category": "callers",
+      "text": "`resolveGsdToolsPath` is exported from `src/shell-command-projection.cts`. Which files use it by calling it? Test files and plain JavaScript files count, a call under another local name counts, and a different function with the same name does not. List each file once. Give your answer in the required JSON form.",
+      "key": {
+        "kind": "callers",
+        "symbol": "resolveGsdToolsPath",
+        "definedIn": "src/shell-command-projection.cts",
+        "granularity": "file",
+        "equality": "exact-set"
+      }
+    },
+    {
+      "id": "q-057",
+      "category": "references",
+      "text": "Which files refer to `RouteCommand`, exported from `src/verification.cts`? Count every use except its declaration (imports, calls, reads), including uses inside `src/verification.cts`, and include test files and plain JavaScript files. List each file once; a different symbol with the same name does not count. Give your answer in the required JSON form.",
+      "key": {
+        "kind": "references",
+        "symbol": "RouteCommand",
+        "definedIn": "src/verification.cts",
+        "granularity": "file",
+        "equality": "exact-set"
+      }
+    },
+    {
+      "id": "q-058",
+      "category": "references",
+      "text": "Which files refer to `scanInlineCodeSpans`, exported from `src/markdown-sectionizer.cts`? Count every use except its declaration (imports, calls, reads), including uses inside `src/markdown-sectionizer.cts`, and include test files and plain JavaScript files. List each file once; a different symbol with the same name does not count. Give your answer in the required JSON form.",
+      "key": {
+        "kind": "references",
+        "symbol": "scanInlineCodeSpans",
+        "definedIn": "src/markdown-sectionizer.cts",
+        "granularity": "file",
+        "equality": "exact-set"
+      }
+    },
+    {
+      "id": "q-059",
+      "category": "references",
+      "text": "Which files refer to `stripTaggedBlocks`, exported from `src/markdown-sectionizer.cts`? Count every use except its declaration (imports, calls, reads), including uses inside `src/markdown-sectionizer.cts`, and include test files and plain JavaScript files. List each file once; a different symbol with the same name does not count. Give your answer in the required JSON form.",
+      "key": {
+        "kind": "references",
+        "symbol": "stripTaggedBlocks",
+        "definedIn": "src/markdown-sectionizer.cts",
+        "granularity": "file",
+        "equality": "exact-set"
+      }
+    },
+    {
+      "id": "q-060",
+      "category": "heritage",
+      "text": "Which interfaces or classes in the TypeScript (`.cts`) sources under `src/` extend or implement the built-in TypeScript type `Record`? Give the file and the name of each. Give your answer in the required JSON form.",
+      "key": {
+        "kind": "heritage",
+        "symbol": "Record",
+        "lib": true,
+        "direction": "subtypes",
+        "granularity": "file+symbol",
+        "equality": "exact-set"
+      }
+    },
+    {
+      "id": "q-061",
+      "category": "heritage",
+      "text": "Which interfaces or classes extend or implement `CatalogPromptEntry`, declared in `src/mcp-catalog.cts`? Give the file and the name of each. Give your answer in the required JSON form.",
+      "key": {
+        "kind": "heritage",
+        "symbol": "CatalogPromptEntry",
+        "definedIn": "src/mcp-catalog.cts",
+        "direction": "subtypes",
+        "granularity": "file+symbol",
+        "equality": "exact-set"
+      }
+    },
+    {
+      "id": "q-062",
+      "category": "heritage",
+      "text": "Which interfaces or classes extend or implement `SelectableSection`, declared in `src/section-manifest.cts`? Give the file and the name of each. Give your answer in the required JSON form.",
+      "key": {
+        "kind": "heritage",
+        "symbol": "SelectableSection",
+        "definedIn": "src/section-manifest.cts",
+        "direction": "subtypes",
+        "granularity": "file+symbol",
+        "equality": "exact-set"
+      }
+    },
+    {
+      "id": "q-063",
+      "category": "emit",
+      "text": "The TypeScript build compiles `src/real-home-guard.cts` to a CommonJS file. At which path, relative to the repository root, does the build write the compiled file? Give your answer in the required JSON form.",
+      "key": {
+        "kind": "emit",
+        "source": "src/real-home-guard.cts",
+        "granularity": "file",
+        "equality": "exact-set"
+      }
+    },
+    {
+      "id": "q-064",
+      "category": "emit",
+      "text": "Which files in this repository `require` the compiled CommonJS module that the build produces from `src/installer-migrations/005-opencode-baseline-commands-dir.cts`? Include test files, plain JavaScript files and `.cts` sources that call `require`; list each file once. Give your answer in the required JSON form.",
+      "key": {
+        "kind": "emit-consumers",
+        "source": "src/installer-migrations/005-opencode-baseline-commands-dir.cts",
+        "granularity": "file",
+        "equality": "exact-set"
+      }
+    },
+    {
+      "id": "q-065",
+      "category": "emit",
+      "text": "The build compiles `src/model-resolver.cts` to a `.cjs` module. Which files load that module with `require`, whether by its compiled path or by a sibling `.cjs` specifier? Test files and plain JavaScript files count; list each file once. Give your answer in the required JSON form.",
+      "key": {
+        "kind": "emit-consumers",
+        "source": "src/model-resolver.cts",
+        "granularity": "file",
+        "equality": "exact-set"
+      }
+    },
+    {
+      "id": "q-066",
+      "category": "adr",
+      "text": "Which ADR files do the comments on `formatProgressMachineSegment` in `src/state-transition.cts` cite, counting comments inside its body? Give the path of each ADR file under `docs/adr`. Give your answer in the required JSON form.",
+      "key": {
+        "kind": "adr-of",
+        "symbol": "formatProgressMachineSegment",
+        "definedIn": "src/state-transition.cts",
+        "granularity": "file",
+        "equality": "exact-set"
+      }
+    },
+    {
+      "id": "q-067",
+      "category": "adr",
+      "text": "Which files cite ADR-5 in a code comment, however the number is written (`ADR-5`, `ADR 5` or `ADR #5`)? Include tests, scripts and JavaScript configuration files; Markdown documents do not count. List each file once. Give your answer in the required JSON form.",
+      "key": {
+        "kind": "adr-citers",
+        "number": 5,
+        "granularity": "file",
+        "equality": "exact-set"
+      }
+    },
+    {
+      "id": "q-068",
+      "category": "adr",
+      "text": "Which files cite ADR-4629 in a code comment, however the number is written (`ADR-4629`, `ADR 4629` or `ADR #4629`)? Include tests, scripts and JavaScript configuration files; Markdown documents do not count. List each file once. Give your answer in the required JSON form.",
+      "key": {
+        "kind": "adr-citers",
+        "number": 4629,
+        "granularity": "file",
+        "equality": "exact-set"
+      }
+    },
+    {
+      "id": "q-069",
+      "category": "impact",
+      "text": "List the files affected if the signature of `evidenceFromError` in `src/gate-evidence.cts` changed, to depth two: files that call it directly, plus files that call any function exported by a `.cts` file that calls it directly. Include tests and plain JavaScript files; leave out `src/gate-evidence.cts` itself. Give your answer in the required JSON form.",
+      "key": {
+        "kind": "impact",
+        "symbol": "evidenceFromError",
+        "definedIn": "src/gate-evidence.cts",
+        "depth": 2,
+        "granularity": "file",
+        "equality": "exact-set"
+      }
+    },
+    {
+      "id": "q-070",
+      "category": "impact",
+      "text": "List the files affected if the signature of `antigravityWatermark` in `src/review-lane-runner.cts` changed, to depth two: files that call it directly, plus files that call any function exported by a `.cts` file that calls it directly. Include tests and plain JavaScript files; leave out `src/review-lane-runner.cts` itself. Give your answer in the required JSON form.",
+      "key": {
+        "kind": "impact",
+        "symbol": "antigravityWatermark",
+        "definedIn": "src/review-lane-runner.cts",
+        "depth": 2,
+        "granularity": "file",
+        "equality": "exact-set"
+      }
+    },
+    {
+      "id": "q-071",
+      "category": "definition",
+      "text": "Where is `isSandboxHeld` declared in the TypeScript (`.cts`) sources under `src/`? Give the file and the line of its declaration. Give your answer in the required JSON form.",
+      "key": {
+        "kind": "definition",
+        "symbol": "isSandboxHeld",
+        "granularity": "file+line",
+        "equality": "exact-set"
+      }
+    },
+    {
+      "id": "q-072",
+      "category": "definition",
+      "text": "Give the file and line where `STATUS_ANCHORED_PATTERNS` is declared, among the TypeScript (`.cts`) sources under `src/`. Give your answer in the required JSON form.",
+      "key": {
+        "kind": "definition",
+        "symbol": "STATUS_ANCHORED_PATTERNS",
+        "granularity": "file+line",
+        "equality": "exact-set"
+      }
+    },
+    {
+      "id": "q-073",
+      "category": "abstain",
+      "text": "Where is the function `locateLaneBudget` defined, and which files call it? If this repository has no such function, say so. Give your answer in the required JSON form.",
+      "key": {
+        "kind": "abstain",
+        "probe": {
+          "symbol": "locateLaneBudget"
+        },
+        "granularity": "file",
+        "equality": "exact-set"
+      }
+    },
+    {
+      "id": "q-074",
+      "category": "abstain",
+      "text": "Which file defines `verifyFieldName`, and which files call that function? If no function with that name exists in this repository, say so. Give your answer in the required JSON form.",
+      "key": {
+        "kind": "abstain",
+        "probe": {
+          "symbol": "verifyFieldName"
+        },
+        "granularity": "file",
+        "equality": "exact-set"
+      }
+    },
+    {
+      "id": "q-075",
+      "category": "abstain",
+      "text": "Which file in `docs/adr` records ADR-3873? If no ADR file carries that number, say so. Give your answer in the required JSON form.",
+      "key": {
+        "kind": "abstain",
+        "probe": {
+          "adrNoFile": 3873
+        },
+        "granularity": "file",
+        "equality": "exact-set"
+      }
     }
   ]
 }

@@ -21,6 +21,7 @@ import {
   projectedSize,
   renderReview,
   sample,
+  scaledMix,
   serializeCandidates,
   type Candidate,
   type Census,
@@ -414,6 +415,108 @@ describe('draftCandidates', () => {
   test('asking for more than the census offers fails loudly', async () => {
     await assert.rejects(draftCandidates(census, CTX, options({ mix: { callers: { callers: 10 } } })), /not enough/);
   });
+
+  describe('continuing a committed candidates file (previous)', () => {
+    const SMALL = { definition: { definition: 2 } } as const;
+    const LARGER = { definition: { definition: 4 } } as const;
+    const quiet = (extra: Record<string, unknown> = {}) => options({ pilotCategories: [], ...extra });
+    const definitions = (file: Awaited<ReturnType<typeof draftCandidates>>) => file.categories.definition ?? [];
+
+    test('a larger mix keeps the order, every earlier decision and id, and adds the next ids', async () => {
+      const first = await draftCandidates(census, CTX, quiet({ mix: SMALL }));
+      const next = await draftCandidates(census, CTX, quiet({ mix: LARGER, previous: first }));
+      assert.deepEqual(definitions(next).map((record) => record.identity), definitions(first).map((record) => record.identity));
+      for (const record of definitions(first).filter((entry) => entry.status !== 'unused')) {
+        const now = definitions(next)[record.rank - 1];
+        assert.equal(now?.status, record.status, `rank ${record.rank} status`);
+        assert.equal(now?.questionId, record.questionId, `rank ${record.rank} id`);
+      }
+      const accepted = definitions(next).filter((record) => record.status === 'accepted');
+      assert.deepEqual(accepted.map((record) => record.questionId), ['q-001', 'q-002', 'q-003', 'q-004']);
+      assert.equal(next.seed, first.seed);
+    });
+
+    test('a candidate the oracle now drops frees its id for the next acceptable candidate', async () => {
+      const first = await draftCandidates(census, CTX, quiet({ mix: SMALL }));
+      const head = definitions(first).find((record) => record.status === 'accepted');
+      assert.ok(head?.questionId);
+      const next = await draftCandidates(census, CTX, quiet({ mix: SMALL, previous: first, reserved: [head.identity] }));
+      const dropped = definitions(next)[head.rank - 1];
+      assert.equal(dropped?.status, 'rejected');
+      assert.equal(dropped?.reason, 'duplicate-symbol');
+      assert.equal(dropped?.questionId, undefined);
+      const accepted = definitions(next).filter((record) => record.status === 'accepted');
+      assert.equal(accepted.length, 2);
+      assert.deepEqual(new Set(accepted.map((record) => record.questionId)), new Set(['q-001', 'q-002']));
+      const refilled = accepted.find((record) => record.questionId === head.questionId);
+      assert.ok(refilled && refilled.rank > head.rank, 'the freed id goes to a later candidate');
+    });
+
+    test('a rejection already on record is history and stays', async () => {
+      const first = await draftCandidates(census, CTX, quiet({ mix: SMALL }));
+      const earlier = structuredClone(first);
+      const target = definitions(earlier).find((record) => record.status === 'accepted');
+      assert.ok(target);
+      target.status = 'rejected';
+      target.reason = 'too-large';
+      target.detail = 'recorded under an earlier oracle';
+      delete target.questionId;
+      delete target.slot;
+      const next = await draftCandidates(census, CTX, quiet({ mix: SMALL, previous: earlier }));
+      const kept = definitions(next)[target.rank - 1];
+      assert.equal(kept?.status, 'rejected');
+      assert.equal(kept?.reason, 'too-large');
+      assert.equal(kept?.detail, 'recorded under an earlier oracle');
+    });
+
+    test('the pilot categories come from the previous file, not from a new pick', async () => {
+      const first = await draftCandidates(census, CTX, options({ mix: MIX }));
+      const next = await draftCandidates(census, CTX, options({ mix: MIX, previous: first, pilotCategories: undefined }));
+      assert.deepEqual(next.pilotCategories, first.pilotCategories);
+      assert.equal(serializeCandidates(next), serializeCandidates(first));
+    });
+  });
+});
+
+describe('scaledMix', () => {
+  const total = (mix: Record<string, Record<string, number>>): number =>
+    Object.values(mix).reduce((sum, groups) => sum + Object.values(groups).reduce((a, b) => a + b, 0), 0);
+
+  test('50 is the registered mix', () => {
+    assert.deepEqual(scaledMix(50), SCORED_MIX);
+  });
+
+  test('75 is the declared table: the 50 mix times 1.5, ties to the earlier group, abstain 9', () => {
+    assert.deepEqual(scaledMix(75), {
+      callers: { callers: 17 },
+      references: { references: 8 },
+      heritage: { heritage: 8 },
+      emit: { 'emit-outputs': 4, 'emit-consumers': 6 },
+      adr: { 'adr-citers': 6, 'adr-of': 4 },
+      impact: { impact: 6 },
+      definition: { definition: 7 },
+      abstain: { 'abstain-symbol': 6, 'abstain-adr': 3 },
+    });
+  });
+
+  test('every N from 50 to 100 sums exactly to N with abstain at twelve percent rounded half up', () => {
+    for (let n = 50; n <= 100; n += 1) {
+      const mix = scaledMix(n);
+      assert.equal(total(mix), n, `N = ${n}`);
+      const abstain = Object.values(mix.abstain).reduce((a, b) => a + b, 0);
+      assert.equal(abstain, Math.floor((n * 12 + 50) / 100), `abstain at N = ${n}`);
+      for (const groups of Object.values(mix)) for (const count of Object.values(groups)) assert.ok(count >= 1);
+    }
+  });
+
+  test('no group has fewer questions than in the 50 mix, so the first 50 stay a prefix of a larger set', () => {
+    for (let n = 50; n <= 100; n += 1) {
+      const mix = scaledMix(n);
+      for (const [category, groups] of Object.entries(SCORED_MIX)) {
+        for (const [group, count] of Object.entries(groups)) assert.ok((mix[category]?.[group] ?? 0) >= count, `${category}/${group} at ${n}`);
+      }
+    }
+  });
 });
 
 describe('review document', () => {
@@ -456,16 +559,17 @@ describe('review document', () => {
     for (const category of CategorySchema.options) {
       const count = input.questions.questions.filter((question) => question.category === category).length;
       const pilot = (input.pilotQuestions?.questions ?? []).filter((question) => question.category === category).length;
-      const share = `${Math.round((100 * count) / 50)}%`;
+      const share = `${Math.round((100 * count) / input.questions.questions.length)}%`;
       assert.ok(doc.includes(`| ${category} | ${count} | ${share} | ${pilot} |`), `the table row for ${category}`);
     }
-    assert.ok(doc.includes('| total | 50 | 100% | 5 |'));
+    assert.ok(doc.includes(`| total | ${input.questions.questions.length} | 100% | 5 |`));
   });
 
   test('one block per scored question and per pilot question, with granularity, equality, size and first expected items', () => {
     const input = inputs();
     const doc = renderReview(input);
-    assert.equal((doc.match(/^### q-\d{3} /gm) ?? []).length, 50);
+    assert.equal((doc.match(/^### q-\d{3} /gm) ?? []).length, input.questions.questions.length);
+    assert.equal(input.questions.questions.length, 75, 'plan 03-14 chose N = 75');
     assert.equal((doc.match(/^### p-\d{3} /gm) ?? []).length, 5);
     for (const question of [...input.questions.questions, ...(input.pilotQuestions?.questions ?? [])]) {
       assert.ok(doc.includes(`### ${question.id} (${question.category})`), `${question.id} has a block`);

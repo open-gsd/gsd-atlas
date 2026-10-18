@@ -46,14 +46,15 @@ A consuming plan reads its value from the table below instead of inventing a num
 | `eval.bootstrapSeed` | 20261017 | 03-05, 03-16 | planner-added: fixed so the analysis is reproducible |
 | `eval.concurrency` | 2 | 03-10 | research Eval E: two to three workers against rate limits |
 | `eval.pilotQuestions` | 5 | 03-14 | planner-added: pilot of 5 questions times 2 arms = 10 sessions |
-| `eval.maxBudgetUsdPerSession` | set after the pilot | 03-14, 03-16 | NOT proposed here: plan 03-14 proposes it from measured cost and the freeze approves it |
-| `eval.sessionWallClockMs` | set after the pilot | 03-14, 03-16 | NOT proposed here: same rule |
+| `eval.maxBudgetUsdPerSession` | 3 (USD) | 03-14, 03-16 | approved by the user's reply to the plan 03-14 checkpoint (see Approvals): the pilot rule gave 1, the user kept the `scan.maxBudgetUsdPerSession` value because a bound set from five easy questions could fail slow correct sessions |
+| `eval.sessionWallClockMs` | 900000 | 03-14, 03-16 | approved by the same reply: the pilot rule gave 60000, the user kept the `scan.sessionWallClockMs` value |
+| `eval.scoredQuestions` | 75 | 03-14, 03-16 | planner-added row recording the user's choice of N at the plan 03-14 checkpoint; `eval.minQuestions` 50 stays the locked floor |
 | `scan.maxBudgetUsdPerSession` | 3 | 03-06 | planner-added: cost cap for each free-alternatives live run |
 | `scan.sessionWallClockMs` | 900000 | 03-06 | planner-added: wall-clock kill for each live run |
 
-### Deferred rows
+### Deferred rows (resolved)
 
-`eval.maxBudgetUsdPerSession` and `eval.sessionWallClockMs` are deliberately not proposed in this file. Plan 03-14 measures a 10-session pilot, proposes both values from the measured cost and duration, and the eval freeze (plan 03-16) records the human's approval of them. Approving this file does not approve those two values.
+`eval.maxBudgetUsdPerSession` and `eval.sessionWallClockMs` were left open when this file was approved: plan 03-14 measured a 10-session pilot and proposed 1 USD and 60000 ms by its rule. The user answered the plan 03-14 checkpoint on 2026-10-18 (see Approvals), keeping the scan values, 3 USD and 900000 ms, and the two rows above carry them. The eval freeze (plan 03-16) records them in the pre-registration. The approval of this file on 2026-10-18 (`approve-all`) did not cover these two values; the later reply does.
 
 ### Packages to add (need approval)
 
@@ -169,3 +170,9 @@ Task 2 of plan 03-02 (blocking-human checkpoint) was answered by the user on 202
 > approve-all
 
 Meaning: every constant in the table above is approved unchanged, including the three `gate.*PrCeilingMs` D-10 ceilings (`gate.buildPrCeilingMs` 90000, `gate.updatePrCeilingMs` 15000, `gate.warmQueryPrCeilingMs` 6000), and all three packages are approved for install: typescript 6.0.3 (runtime, moved from devDependencies, exact), jsonc-parser 3.3.1 (runtime, exact) and typescript-7 = npm:typescript@7.0.2 (dev, exact). No package was refused. `eval.maxBudgetUsdPerSession` and `eval.sessionWallClockMs` remain deferred to plans 03-14 and 03-16.
+
+Task 2 of plan 03-14 (blocking-human checkpoint, the pilot decision) was answered by the user on 2026-10-18. Reply, verbatim:
+
+> n75 keep-scan fix-oracle
+
+Meaning: the scored question set is extended from 50 to 75 questions (`eval.scoredQuestions` 75; `eval.minQuestions` 50 is unchanged); the per-session bounds keep the `scan.*` values, so `eval.maxBudgetUsdPerSession` is 3 (USD) and `eval.sessionWallClockMs` is 900000; and the oracle blind spot found by the pilot (computed `require(path.join(...))` paths, `docs/eval/pilot.md` Findings 7) is fixed and the affected answer keys are regenerated before the plan 03-16 freeze. Only these two eval rows and the new `eval.scoredQuestions` row changed; the Status line stays `Approved` and no other constant or package changed. This is the approval of those values; plan 03-16 still records them in the pre-registration and asks the user to approve the frozen files.

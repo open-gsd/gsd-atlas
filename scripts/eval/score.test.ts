@@ -184,6 +184,10 @@ describe('score: schema agreement between the zod twin and answer-schema.json', 
   const schema = JSON.parse(fs.readFileSync(path.join(import.meta.dirname, 'answer-schema.json'), 'utf8')) as object;
   const validate = new Ajv2020({ allErrors: true }).compile(schema);
 
+  test('the schema carries no $schema key: `claude --json-schema` rejects draft 2020-12 (pilot finding, plan 03-14)', () => {
+    assert.equal(Object.hasOwn(schema, '$schema'), false);
+  });
+
   const samples: Array<{ name: string; valid: boolean; value: unknown }> = [
     { name: 'found with a file only', valid: true, value: { answer: 'found', items: [{ file: 'a.ts' }], summary: '' } },
     { name: 'not_found with no items', valid: true, value: { answer: 'not_found', items: [], summary: 'nothing' } },

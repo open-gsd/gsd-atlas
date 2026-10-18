@@ -1,5 +1,5 @@
 {
-  "oracleVersion": "03-04.1",
+  "oracleVersion": "03-14.1",
   "repoSha": "10ac3a7a947903ba50f538a907af036744d759d5",
   "preparedRecord": {
     "corpusId": "gsd-core",
@@ -23,6 +23,76 @@
           "file": "gsd-core/bin/gsd-tools.cjs",
           "line": 777,
           "symbol": "routeGit"
+        },
+        {
+          "file": "tests/git-base-branch.test.cjs",
+          "line": 448,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/git-base-branch.test.cjs",
+          "line": 462,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/git-base-branch.test.cjs",
+          "line": 482,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/git-base-branch.test.cjs",
+          "line": 496,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/git-base-branch.test.cjs",
+          "line": 707,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/git-base-branch.test.cjs",
+          "line": 721,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/git-base-branch.test.cjs",
+          "line": 733,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/git-base-branch.test.cjs",
+          "line": 820,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/git-base-branch.test.cjs",
+          "line": 899,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/git-base-branch.test.cjs",
+          "line": 913,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/git-base-branch.test.cjs",
+          "line": 927,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/git-base-branch.test.cjs",
+          "line": 935,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/git-base-branch.test.cjs",
+          "line": 2226,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/git-base-branch.test.cjs",
+          "line": 2244,
+          "symbol": "<module>"
         }
       ],
       "granularity": "file",
@@ -32,7 +102,7 @@
       ],
       "unexplained": [],
       "notes": {},
-      "oracleVersion": "03-04.1"
+      "oracleVersion": "03-14.1"
     },
     {
       "questionId": "p-002",
@@ -109,7 +179,7 @@
       "notes": {
         "excludedNonComment": 1
       },
-      "oracleVersion": "03-04.1"
+      "oracleVersion": "03-14.1"
     },
     {
       "questionId": "p-003",
@@ -169,7 +239,7 @@
       "notes": {
         "depth": 2
       },
-      "oracleVersion": "03-04.1"
+      "oracleVersion": "03-14.1"
     },
     {
       "questionId": "p-004",
@@ -189,7 +259,7 @@
       ],
       "unexplained": [],
       "notes": {},
-      "oracleVersion": "03-04.1"
+      "oracleVersion": "03-14.1"
     },
     {
       "questionId": "p-005",
@@ -201,7 +271,7 @@
       "needles": [],
       "unexplained": [],
       "notes": {},
-      "oracleVersion": "03-04.1"
+      "oracleVersion": "03-14.1"
     }
   ]
 }
