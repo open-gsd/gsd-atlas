@@ -15,7 +15,7 @@
  * - `comment` (optional, plan 03-24) on a comment node, alone in its match. A module's query filters it with
  *   a `#match?` predicate so only comments that mention an ADR cross the engine boundary; the extractor scans
  *   the text for `ADR-<n>`, `ADR <n>` and `ADR #<n>` (see `scanAdrMentions`) and turns each mention into a
- *   `CitationSite`. The engine keeps the text of a `comment` up to 4,096 UTF-16 units (`GRAMMAR_LIMITS`); a
+ *   `CitationSite`. The engine keeps the text of a `comment` up to 65,536 UTF-16 units (`GRAMMAR_LIMITS`); a
  *   longer one arrives empty and is counted in the info diagnostic `citation_comment_too_long`. A comment
  *   match is never a "match without a name".
  *
@@ -312,7 +312,7 @@ interface CommentDraft {
 
 /**
  * The mentions of every `comment` capture of the tags query, each with the span of the mention itself. A comment
- * whose text was dropped by the engine (over the 4,096-unit bound) is counted and yields nothing. Only the number,
+ * whose text was dropped by the engine (over the 65,536-unit bound) is counted and yields nothing. Only the number,
  * the detail and the span leave this function; the comment text is read here and never kept.
  */
 function collectCitationDrafts(captures: readonly Capture[]): {

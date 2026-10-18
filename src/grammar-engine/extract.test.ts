@@ -10,6 +10,7 @@ import { loadToyScenarios } from './contract.ts';
 import { createGrammarEngine } from './engine.ts';
 import { extractFileFacts, scanAdrMentions } from './extract.ts';
 import { createFakeGrammarEngine } from './fake.ts';
+import { GRAMMAR_LIMITS } from './limits.ts';
 import type { Capture, GrammarRunResult, QueryKind } from './types.ts';
 
 /** Scripted captures exercise the capture-name vocabulary independent of any grammar. */
@@ -636,11 +637,12 @@ describe('extractFileFacts: ADR citations', () => {
     assert.deepEqual(validateFileFacts(facts), []);
   });
 
-  it('comment too long: a 3,000 character comment is read, a 5,000 character one is not (fake engine bound of 4,096)', async () => {
+  it('comment too long: a 20,000 character comment is read, one over the bound of 65,536 is not (fake engine)', async () => {
     const scenarios = await loadToyScenarios();
-    const shortText = `// ${'x'.repeat(2991)} ADR-44`;
-    const longText = `// ${'x'.repeat(4990)} ADR-45`;
-    assert.ok(shortText.length > 2999 && shortText.length < 4096 && longText.length > 4096);
+    const shortText = `// ${'x'.repeat(19_991)} ADR-44`;
+    const longText = `// ${'x'.repeat(GRAMMAR_LIMITS.commentTextChars)} ADR-45`;
+    assert.ok(shortText.length > 19_999 && shortText.length < GRAMMAR_LIMITS.commentTextChars);
+    assert.ok(longText.length > GRAMMAR_LIMITS.commentTextChars);
     const captureOf = (text: string): Capture => cap('tags', 0, 'comment', [0, 0, 0, text.length], text);
     const results = new Map(
       [shortText, longText].map((text) => [
@@ -665,9 +667,9 @@ describe('extractFileFacts: ADR citations', () => {
     }
   });
 
-  it('comment too long: the real engine reads a 3,000 character comment and counts a 5,000 character one', async () => {
-    const shortText = `// ${'x'.repeat(2991)} ADR-44`;
-    const longText = `// ${'x'.repeat(4990)} ADR-45`;
+  it('comment too long: the real engine reads a 20,000 character comment and counts one over the bound of 65,536', async () => {
+    const shortText = `// ${'x'.repeat(19_991)} ADR-44`;
+    const longText = `// ${'x'.repeat(GRAMMAR_LIMITS.commentTextChars)} ADR-45`;
     const short = await extractWithModule('typescript', `${shortText}\n`);
     assert.deepEqual(short.facts.citations, [{ number: 44, span: sp(0, shortText.length - 6, 0, shortText.length) }]);
     assert.deepEqual(short.diagnostics, []);
@@ -681,6 +683,22 @@ describe('extractFileFacts: ADR citations', () => {
       long.facts.symbols.map((s) => s.name),
       ['after'],
       'the rest of the file is still extracted',
+    );
+  });
+
+  it('a long file header block that cites several ADRs keeps every citation (gsd-core src/install-fs-adapter.cts shape)', async () => {
+    const filler = Array.from({ length: 150 }, (_, index) => ` * Line ${String(index)} of the long module documentation block.`);
+    const lines = ['/**', ' * Install Fs Adapter, governed by ADR-58.', ...filler, ' * See also ADR #1239 section note.', ' */', 'export const x = 1;', ''];
+    const text = lines.join('\n');
+    assert.ok(text.length > 4096 && text.length < GRAMMAR_LIMITS.commentTextChars, `${String(text.length)} characters`);
+    const { facts, diagnostics } = await extractWithModule('typescript', text);
+    assert.deepEqual(diagnostics, []);
+    assert.deepEqual(
+      facts.citations?.map((c) => [c.number, c.span.startLine, c.span.startColumn]),
+      [
+        [58, 1, 35],
+        [1239, 152, 12],
+      ],
     );
   });
 

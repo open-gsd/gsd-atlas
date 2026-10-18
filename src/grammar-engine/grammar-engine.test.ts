@@ -505,14 +505,15 @@ describe('toCapture: bounded capture text', () => {
     assert.equal(GRAMMAR_LIMITS.captureTextChars, 256);
   });
 
-  it('gives a capture named comment the internal bound of 4,096 units and every other capture 256 (size bound, not a gate)', () => {
-    const source = 'x'.repeat(5000);
-    assert.equal(GRAMMAR_LIMITS.commentTextChars, 4096);
-    assert.equal(toCapture('tags', 'comment', nodeOf(4096), source, 1).text, 'x'.repeat(4096));
+  it('gives a capture named comment the internal bound of 65,536 units and every other capture 256 (size bound, not a gate)', () => {
+    const bound = GRAMMAR_LIMITS.commentTextChars;
+    const source = 'x'.repeat(bound + 10);
+    assert.equal(bound, 65536);
+    assert.equal(toCapture('tags', 'comment', nodeOf(bound), source, 1).text, 'x'.repeat(bound));
     assert.equal(toCapture('tags', 'comment', nodeOf(257), source, 1).text, 'x'.repeat(257));
-    const over = toCapture('tags', 'comment', nodeOf(4097), source, 1);
+    const over = toCapture('tags', 'comment', nodeOf(bound + 1), source, 1);
     assert.equal(over.text, '');
-    assert.deepEqual(over.span, span(0, 0, 0, 4097), 'the span stays exact');
+    assert.deepEqual(over.span, span(0, 0, 0, bound + 1), 'the span stays exact');
     assert.equal(toCapture('tags', 'name', nodeOf(257), source, 1).text, '');
     assert.equal(toCapture('tags', 'definition.comment', nodeOf(257), source, 1).text, '');
   });
@@ -530,8 +531,18 @@ describe('toCapture: bounded capture text', () => {
             totalBytes: 16,
             missingNodes: 0,
             captures: [
-              { query: 'tags' as const, name: 'comment', span: span(0, 0, 0, 4096), text: 'a'.repeat(4096) },
-              { query: 'tags' as const, name: 'comment', span: span(1, 0, 1, 4097), text: 'b'.repeat(4097) },
+              {
+                query: 'tags' as const,
+                name: 'comment',
+                span: span(0, 0, 0, GRAMMAR_LIMITS.commentTextChars),
+                text: 'a'.repeat(GRAMMAR_LIMITS.commentTextChars),
+              },
+              {
+                query: 'tags' as const,
+                name: 'comment',
+                span: span(1, 0, 1, GRAMMAR_LIMITS.commentTextChars + 1),
+                text: 'b'.repeat(GRAMMAR_LIMITS.commentTextChars + 1),
+              },
             ],
           },
         ],
@@ -542,7 +553,7 @@ describe('toCapture: bounded capture text', () => {
       const captures = (await grammar.run(source)).captures;
       assert.deepEqual(
         captures.map((c) => c.text.length),
-        [4096, 0],
+        [GRAMMAR_LIMITS.commentTextChars, 0],
       );
     } finally {
       await engine.dispose();
