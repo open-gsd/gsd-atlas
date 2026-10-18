@@ -56,7 +56,8 @@ jobs:
       - name: Corpus build gates (timings printed)
         run: node scripts/corpus-gates.ts
       # The precise tier at the roadmap figures (plan 03-30, ROADMAP criterion 2): a full gsd-core build including the
-      # compiler pass in 30 s, the p95 of 20 one-file updates in 5 s, the p95 of 50 warm queries in 2 s. The pinned corpus
+      # compiler pass in 60 s (raised from 30 s on 2026-10-18 after hosted-Linux
+      # measurements; see 03-30-SUMMARY.md), the p95 of 20 one-file updates in 5 s, the p95 of 50 warm queries in 2 s. The pinned corpus
       # is fetched and nothing is installed, so the compiler is the bundled one; the JSON line prints its version.
       - name: Precise tier gate (strict)
         run: node scripts/precise-gate.ts --strict --corpus gsd-core
