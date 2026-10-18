@@ -14,7 +14,8 @@
   "files": [
     "dist",
     "schemas",
-    "modules"
+    "modules",
+    "skills"
   ],
   "publishConfig": {
     "access": "public",

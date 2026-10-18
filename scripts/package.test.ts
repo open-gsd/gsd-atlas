@@ -108,6 +108,7 @@ test('package.json identity, license, module type, engines floor, bins and files
   assert.equal(pkg.bin?.['gsd-atlas-mcp'], 'dist/bin/gsd-atlas-mcp.js');
   assert.ok(pkg.files?.includes('dist'), 'files must include dist');
   assert.ok(pkg.files?.includes('schemas'), 'files must include schemas');
+  assert.ok(pkg.files?.includes('skills'), 'files must include skills (SKL-01, OQ6)');
 });
 
 test('every dependency is an exact pin, no gsd-core or gsd-graph dependency, better-sqlite3 peer optional', () => {
@@ -312,8 +313,19 @@ test('pack contents', async () => {
     'dist/bin/gsd-atlas.js',
     'dist/bin/gsd-atlas-mcp.js',
     'schemas/atlas-lang.schema.json',
+    // SKL-01, OQ6: the routing skill ships in the package; `gsd-atlas init` does not copy it in Phase 3.
+    'skills/gsd-atlas/SKILL.md',
   ]) {
     assert.ok(has(required), `tarball must contain ${required}`);
+  }
+  // Every skill folder on disk ships its SKILL.md, and nothing under skills/ is stray.
+  for (const entry of readdirSync(path.join(root, 'skills'), { withFileTypes: true })) {
+    if (entry.isDirectory()) {
+      assert.ok(has(`skills/${entry.name}/SKILL.md`), `tarball must contain skills/${entry.name}/SKILL.md`);
+    }
+  }
+  for (const file of files.filter((candidate) => candidate.startsWith('skills/'))) {
+    assert.match(file, /^skills\/[a-z0-9]+(?:-[a-z0-9]+)*\/[^/]+$/, `unexpected path under skills/ in tarball: ${file}`);
   }
   for (const [name, target] of Object.entries(pkg.bin ?? {})) {
     assert.ok(has(target), `bin ${name} points at ${target}, which is not in the tarball`);
@@ -325,7 +337,8 @@ test('pack contents', async () => {
     );
   }
 
-  const forbiddenPrefixes = ['src/', 'test/', 'scripts/', 'docs/', '.planning/', '.github/', 'node_modules/'];
+  // T-03-112: planning, eval and source files never ship (docs/eval is covered by the docs/ prefix).
+  const forbiddenPrefixes = ['src/', 'test/', 'scripts/', 'docs/', 'docs/eval/', '.planning/', '.github/', 'node_modules/'];
   for (const file of files) {
     for (const prefix of forbiddenPrefixes) {
       assert.ok(!file.startsWith(prefix), `tarball must not contain ${file}`);
@@ -338,7 +351,7 @@ test('pack contents', async () => {
     assert.ok(!file.split('/').includes('test-kit'), `tarball must not contain test-kit output: ${file}`);
     // Strict whitelist: what the files list names plus what npm adds on its own.
     assert.ok(
-      /^(dist|schemas|modules)\//.test(file) || ['package.json', 'README.md', 'LICENSE'].includes(file),
+      /^(dist|schemas|modules|skills)\//.test(file) || ['package.json', 'README.md', 'LICENSE'].includes(file),
       `unexpected path in tarball: ${file}`,
     );
   }
@@ -364,6 +377,13 @@ test('installed tarball runs the bins', async () => {
       `${dependency} must be installed from the tarball's own dependencies`,
     );
   }
+
+  // The routing skill arrives intact from the tarball: the frontmatter name line is the one the skill folder carries.
+  const installedSkill = path.join(installed, 'skills', 'gsd-atlas', 'SKILL.md');
+  assert.ok(existsSync(installedSkill), 'the installed package carries skills/gsd-atlas/SKILL.md');
+  const skillLines = readFileSync(installedSkill, 'utf8').replace(/\r\n/g, '\n').split('\n');
+  assert.equal(skillLines[0], '---');
+  assert.ok(skillLines.includes('name: gsd-atlas'), 'the installed skill keeps its `name: gsd-atlas` frontmatter line');
 
   // No installed production file may load test code (T-01-40): scan every dist .js file's specifiers.
   const distFiles = walk(path.join(installed, 'dist')).filter((file) => file.endsWith('.js'));
