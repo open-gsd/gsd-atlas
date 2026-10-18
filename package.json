@@ -15,7 +15,8 @@
     "dist",
     "schemas",
     "modules",
-    "skills"
+    "skills",
+    "diagnostics"
   ],
   "publishConfig": {
     "access": "public",

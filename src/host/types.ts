@@ -3,6 +3,7 @@
  * routing and the tenants; adapters only call `host.handle(request)`, through the HostClient seam.
  */
 import type { CommandRunner, UserPermissions } from '../command-runner/index.ts';
+import type { DiagnosticsFs, PlatformFacts } from '../diagnostics/index.ts';
 import type { Clock, Envelope, Request } from '../facts/index.ts';
 import type { Governor } from '../governor/index.ts';
 import type { GrammarEngine } from '../grammar-engine/index.ts';
@@ -68,6 +69,11 @@ export interface HostOptions {
   readonly version?: string;
   /** False: record no metrics. Default true. */
   readonly metrics?: boolean;
+  /**
+   * Where diagnostics keeps what is not consent: saved reports, under `<stateDir>/diagnostics`. Set only by the composition
+   * root (it alone knows the environment and the home directory); absent, a report cannot be saved.
+   */
+  readonly stateDir?: string;
   /** Where a store goes when the git common directory is not usable. Default: `<userDir>/cache`. */
   readonly cacheRoot?: string;
   /** Extra environment for every git command (a test's config isolation). */
@@ -92,6 +98,18 @@ export interface HostOptions {
    * how many source files a whole-tree history question reads (default: the approved `history.maxFiles`).
    */
   readonly history?: { readonly tmpRoot?: string; readonly maxFiles?: number; readonly nonce?: () => string };
+  /**
+   * Facts for the diagnostics module (SKL-03). `catalogDir`, `io` and `platform` are TEST HOOKS: the folder the catalog is read
+   * from (default: the one that ships with the package), the file-system calls the module makes (default: the real ones, so a
+   * test can record which paths it touches) and the platform facts (default: this process's). `agentHost` is the agent host the
+   * composition root was told about (`claude-code`, `cursor`, `codex`); default `unknown`.
+   */
+  readonly diagnostics?: {
+    readonly catalogDir?: string;
+    readonly io?: DiagnosticsFs;
+    readonly platform?: PlatformFacts;
+    readonly agentHost?: string;
+  };
 }
 
 export interface Host {

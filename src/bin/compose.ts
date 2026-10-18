@@ -17,7 +17,7 @@ import { createGovernor } from '../governor/index.ts';
 import { createPooledGrammarEngine } from '../grammar-engine/index.ts';
 import { createInProcessHostClient } from '../host-client/index.ts';
 import type { HostClient, Roots } from '../host-client/index.ts';
-import { createHost, loadUserConfig, permissionsFor } from '../host/index.ts';
+import { createHost, defaultStateDir, loadUserConfig, permissionsFor } from '../host/index.ts';
 import type { Host, HostOrigin } from '../host/index.ts';
 import { createParcelEventSource } from '../indexer/index.ts';
 
@@ -105,6 +105,8 @@ export function composeHost(options: ComposeOptions): Composed {
     allowBuild,
     version: readVersion(),
     cacheRoot: defaultCacheRoot(options.env, home),
+    // SKL-03: where saved diagnostics reports live. Only this root knows the environment and the home directory.
+    stateDir: defaultStateDir(options.env, home),
     eventSource: () => createParcelEventSource(),
   });
   const client = createInProcessHostClient({ roots, engine, host });

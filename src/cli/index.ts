@@ -14,6 +14,7 @@ import { parseArgs } from 'node:util';
 import { INDEX_STATE_SCHEMA, PROTOCOL_VERSION } from '../host-client/index.ts';
 import type { Envelope, HostClient, IndexStateData, Request } from '../host-client/index.ts';
 import { runAllow } from './allow.ts';
+import { runDiagnostics } from './diagnostics.ts';
 import { EXIT_FAILURE, EXIT_LEASE_HELD, EXIT_OK, EXIT_USAGE, exitCodeFor } from './exit.ts';
 import { INIT_SCHEMA, runInit } from './init.ts';
 import type { IndexState, InitEnvironment } from './init.ts';
@@ -231,6 +232,24 @@ export async function runCli(argv: readonly string[], io: CliIo): Promise<number
         module: moduleName,
         argv: moduleName === undefined ? toApprove : undefined,
       });
+    }
+    case 'diagnostics': {
+      const [sub, ...others] = rest;
+      const base = io.cwd ?? path.resolve('.');
+      return runDiagnostics(
+        io,
+        {
+          sub,
+          rest: others,
+          repo: typeof values.repo === 'string' ? path.resolve(base, values.repo) : undefined,
+          cwd: typeof values.cwd === 'string' ? path.resolve(base, values.cwd) : undefined,
+          note: typeof values.note === 'string' ? values.note : undefined,
+          rating: typeof values.rating === 'string' ? values.rating : undefined,
+          feature: typeof values.feature === 'string' ? values.feature : undefined,
+          save: values.save === true,
+        },
+        (message) => usageError(io, message),
+      );
     }
     case 'lang': {
       const roots = rootsFrom(values as RootFlags);

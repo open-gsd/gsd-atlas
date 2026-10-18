@@ -161,7 +161,9 @@ describe('usage errors', () => {
     await help.run(['--help']);
     const usage = help.stdout.join('');
     assert.match(usage, /gsd-atlas rate up\|meh\|down/);
-    assert.doesNotMatch(usage, /--note/);
+    // Plan 03-21 added `diagnostics preview --note`, a person's own words for a report; a rating still takes none.
+    const rateLine = usage.split('\n').find((line) => line.includes('gsd-atlas rate up|meh|down')) ?? '';
+    assert.doesNotMatch(rateLine, /--note/);
   });
 
   it('flags that belong to other commands do not apply to rate', async () => {

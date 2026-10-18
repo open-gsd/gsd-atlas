@@ -8,6 +8,8 @@
  * pay no store-open or Reconcile cost. Tenants never see each other's requests: the registry key is the store id
  * Source Tree derives from the repository's root commit and its real common git directory.
  */
+import { existsSync } from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { createRealRunner, decide } from '../command-runner/index.ts';
 import type { CommandRunner } from '../command-runner/index.ts';
@@ -19,20 +21,23 @@ import { createGovernor } from '../governor/index.ts';
 import type { Governor, JobClass } from '../governor/index.ts';
 import { createModuleHost } from '../indexer/index.ts';
 import type { IndexerConfig, ModuleHost } from '../indexer/index.ts';
+import { resolveModules } from '../lang/index.ts';
 import { ERROR_SCHEMA, TOOL_NAMES, errorEnvelope } from '../query/index.ts';
 import { createSourceTree } from '../source-tree/index.ts';
 import type { SourceTree } from '../source-tree/index.ts';
-import { createTenant, noRecentEnvelope, notIndexedNoStore } from '../tenant/index.ts';
+import { DEFAULT_TENANT_TUNING, FLIGHT_FILE, FLIGHT_PREVIOUS_FILE, createFlightRecorder, createTenant, noRecentEnvelope, notIndexedNoStore } from '../tenant/index.ts';
 import type { Tenant } from '../tenant/index.ts';
 import { ALLOW_KIND, handleAllow, permissionsFor } from './allow.ts';
 import type { AllowDeps } from './allow.ts';
 import { HOST_DEFAULTS } from './defaults.ts';
+import { DIAGNOSTICS_KIND, factsFromStatus, handleDiagnostics, platformFactsOf } from './diagnostics.ts';
+import type { DiagnosticsDeps, RepoFacts } from './diagnostics.ts';
 import { HISTORY_KIND, runHistory } from './history.ts';
 import type { HistoryDeps } from './history.ts';
 import { createIdleRegistry } from './idle-registry.ts';
 import { LANG_KINDS, handleLang } from './lang.ts';
 import { classFor, isAdmissionOnly, isRepoKind, parseRepoArgs, resolveRepository, short } from './route.ts';
-import type { RepoArgs, RepoKind, Resolved } from './route.ts';
+import type { RepoArgs, RepoKind, Resolved, Selection } from './route.ts';
 import type { Host, HostOptions } from './types.ts';
 
 const ignore = (): void => {};
@@ -48,6 +53,15 @@ const NOT_A_REPO = 'repo must be an existing directory inside a git repository.'
 const ALLOW_FORBIDDEN = 'Approvals are recorded only by a person at a terminal with "gsd-atlas allow"; this server cannot record one.';
 
 const RATE_FORBIDDEN = 'Ratings are given only by a person at a terminal with "gsd-atlas rate"; this server cannot record one.';
+
+/** The metrics window a diagnostics report reads: 30 days, the metrics retention. */
+const DIAGNOSTICS_WINDOW_MS = 30 * 86_400_000;
+
+/** A folder name inside the user's directory that is never a repository, so the module scan has no repository to read. */
+const NO_REPOSITORY = '.diagnostics-no-repository';
+
+const DIAGNOSTICS_FORBIDDEN =
+  'Diagnostics are controlled only by a person at a terminal with "gsd-atlas diagnostics"; this server cannot change or build them.';
 
 /** Envelope schema of an `index_state` reply (internal, plan 02-44). */
 export const INDEX_STATE_SCHEMA = 'gsd-atlas.index-state/1';
@@ -389,6 +403,97 @@ export function createHost(options: HostOptions): Host {
     };
   }
 
+  /**
+   * What the diagnostics collectors read about one repository: its worktree count, and, when it has an index, the metrics
+   * report and the codes of the answers it gave. Counts and codes only. It follows `repoRequest`: a store is never created
+   * (only a repository that already has an index gets a Tenant), the request is counted as in flight so the idle timer cannot
+   * close the tenant under it, and the work runs in a Governor slot.
+   */
+  async function diagnosticsRepoFacts(selection: Selection): Promise<RepoFacts | null> {
+    const resolved = await resolveRepository(selection, hostCwd, makeTree);
+    if (resolved === null) return null;
+    const key = resolved.identity.storeId;
+    tenantIdle.begin(key);
+    try {
+      await closing.get(key);
+      let worktrees: number | null = null;
+      try {
+        worktrees = (await resolved.tree.worktrees()).filter((entry) => !entry.bare).length;
+      } catch {
+        worktrees = null;
+      }
+      const none: RepoFacts = { worktrees, index: null, activity: null, errorCodes: null };
+      let tenant: Tenant;
+      try {
+        if (!(await hasIndex(resolved))) return none;
+        tenant = await tenantFor(resolved);
+      } catch {
+        return none;
+      }
+      let data: unknown = null;
+      const codes: Record<string, number> = {};
+      await held(tenant.storeId, classFor('status'), async () => {
+        const reply = await tenant.statusEnvelope(DIAGNOSTICS_WINDOW_MS);
+        if (reply.ok) data = reply.data;
+        for (const event of tenant.recentAnswers(DEFAULT_TENANT_TUNING.flightMaxEvents)) {
+          if (event.outcome !== undefined && event.outcome !== 'ok') codes[event.outcome] = (codes[event.outcome] ?? 0) + 1;
+        }
+        return reply;
+      });
+      return { worktrees, ...factsFromStatus(data), errorCodes: codes };
+    } finally {
+      tenantIdle.end(key);
+      if (!tenants.has(key)) tenantIdle.forget(key);
+    }
+  }
+
+  /**
+   * Clear the flight recorder of the repository `selection` names, if its store exists: `diagnostics disable` removes what was
+   * kept locally. It never creates a store or a folder; true when a recorder file was there.
+   */
+  async function diagnosticsClearFlight(selection: Selection): Promise<boolean> {
+    const resolved = await resolveRepository(selection, hostCwd, makeTree);
+    if (resolved === null) return false;
+    const existing = findExistingStore(locationInput(resolved));
+    if (existing === undefined) return false;
+    const dir = path.join(existing.dir, 'flight');
+    const had = [FLIGHT_FILE, FLIGHT_PREVIOUS_FILE].some((name) => existsSync(path.join(dir, name)));
+    createFlightRecorder({ dir, maxEvents: DEFAULT_TENANT_TUNING.flightMaxEvents, maxBytes: DEFAULT_TENANT_TUNING.flightMaxBytes, clock }).clear();
+    return had;
+  }
+
+  /**
+   * `diagnostics` (SKL-03): the user's choices and the reports built from them. It needs the user's directory and the
+   * version, never a repository file; the data it collects is assembled here and nowhere else. The module registry is read
+   * from the user's roots only (a repository can name a module anything), and a report names built-in modules only.
+   */
+  function diagnosticsRequest(request: Request): Promise<Envelope> {
+    const userDir = options.userDir ?? options.roots.userDir;
+    const deps: DiagnosticsDeps = {
+      userDir,
+      version: options.version ?? '0.0.0',
+      catalogDir: options.diagnostics?.catalogDir,
+      io: options.diagnostics?.io,
+      platform: options.diagnostics?.platform ?? platformFactsOf(os.platform(), os.release(), process.versions.node),
+      agentHost: options.diagnostics?.agentHost ?? 'unknown',
+      transport: origin === 'mcp' ? 'stdio' : 'in-process',
+      modules: () =>
+        resolveModules({ ...options.roots, repoRoot: path.join(userDir, NO_REPOSITORY), npmRoots: [] }).modules.map((entry) => ({
+          name: entry.name,
+          source: entry.source,
+          tiers: entry.tiers.map((tier) => ({ tier: tier.tier, active: tier.active })),
+        })),
+      repoFacts: diagnosticsRepoFacts,
+      clock,
+      stateDir: options.stateDir,
+      clearFlight: diagnosticsClearFlight,
+    };
+    // Not wrapped in a Governor slot of its own: the part that reads a repository takes the repository's slot itself
+    // (`diagnosticsRepoFacts`), and holding an outer slot while waiting for an inner one could starve under load.
+    // The rest is a few small reads and writes in the user's own folders.
+    return handleDiagnostics(request, deps);
+  }
+
   async function dispatch(request: Request): Promise<Envelope> {
     if (request.protocol !== PROTOCOL_VERSION) {
       return errorEnvelope(
@@ -420,6 +525,10 @@ export function createHost(options: HostOptions): Host {
     if (request.kind === HISTORY_KIND) return historyRequest(request);
     // D-15: an agent's server never records an approval, whatever the request carries. Checked before the arguments are read.
     if (request.kind === ALLOW_KIND) return origin === 'mcp' ? errorEnvelope('allow_forbidden', ALLOW_FORBIDDEN) : allowRequest(request);
+    // SKL-03: diagnostics are the user's. An agent's server refuses the whole kind, whatever the arguments, before reading them.
+    if (request.kind === DIAGNOSTICS_KIND) {
+      return origin === 'mcp' ? errorEnvelope('diagnostics_forbidden', DIAGNOSTICS_FORBIDDEN) : diagnosticsRequest(request);
+    }
     // D-16: users rate, agents do not. There is no MCP tool for it; a Host started for MCP also refuses the request kind itself.
     if (request.kind === 'rate' && origin === 'mcp') return errorEnvelope('rate_forbidden', RATE_FORBIDDEN);
     if (isRepoKind(request.kind)) return repoRequest(request, request.kind);

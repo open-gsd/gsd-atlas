@@ -43,6 +43,9 @@ export const FLAGS = {
   session: { type: 'boolean' },
   feature: { type: 'string' },
   last: { type: 'boolean' },
+  note: { type: 'string' },
+  rating: { type: 'string' },
+  save: { type: 'boolean' },
 } as const;
 
 export type FlagName = keyof typeof FLAGS;
@@ -81,8 +84,8 @@ export const HISTORY_TOOLS = ['find', 'refs', 'context', 'impact'] as const;
 export interface Command {
   /** What the user types; `lang list` and `lang test` have two words. */
   readonly name: string;
-  /** `tool`: an MCP tool's twin. `index`: a Host request with no MCP tool. `history`: a code tool as of a commit. `lang`, `init` and `allow` have their own handlers. */
-  readonly kind: 'tool' | 'index' | 'history' | 'lang' | 'init' | 'allow';
+  /** `tool`: an MCP tool's twin. `index`: a Host request with no MCP tool. `history`: a code tool as of a commit. `lang`, `init`, `allow` and `diagnostics` have their own handlers. */
+  readonly kind: 'tool' | 'index' | 'history' | 'lang' | 'init' | 'allow' | 'diagnostics';
   /** The MCP tool whose schema and request builder this command shares. */
   readonly tool?: ToolName;
   /** The Host request kind an `index` command sends. */
@@ -191,6 +194,15 @@ export const COMMANDS: readonly Command[] = [
     flags: [...SELECTION, 'workdir', 'module'],
     usage:
       'gsd-atlas allow [--repo <dir>] [--cwd <dir>] [--workdir <dir>] [--module <name>] -- <executable> <args...>   (approve ONE exact command for this repository, run from <dir> relative to it; --module proposes the command its manifest declares instead of the words after --; needs a terminal, shows the command and asks before it writes)',
+  },
+  {
+    name: 'diagnostics',
+    kind: 'diagnostics',
+    request: 'diagnostics',
+    positional: 'none',
+    flags: [...SELECTION, 'note', 'rating', 'feature', 'save'],
+    usage:
+      'gsd-atlas diagnostics enable|types|preview|disable|history   (user-controlled diagnostics, off by default: enable walks through each data type and asks; types [<type>...] changes approvals; preview [--note <text>] [--rating up|meh|down] [--feature <name>] [--save] shows the exact report from approved types, and --save keeps it on this machine; disable turns everything off and removes local reports; history lists saved reports. Nothing is ever sent by this version)',
   },
   {
     name: 'lang list',
