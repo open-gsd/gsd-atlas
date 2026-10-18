@@ -69,6 +69,11 @@ export interface HostOptions {
   readonly version?: string;
   /** False: record no metrics. Default true. */
   readonly metrics?: boolean;
+  /**
+   * Where diagnostics keeps what is not consent: saved reports, under `<stateDir>/diagnostics`. Set only by the composition
+   * root (it alone knows the environment and the home directory); absent, a report cannot be saved.
+   */
+  readonly stateDir?: string;
   /** Where a store goes when the git common directory is not usable. Default: `<userDir>/cache`. */
   readonly cacheRoot?: string;
   /** Extra environment for every git command (a test's config isolation). */

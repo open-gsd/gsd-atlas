@@ -13,5 +13,7 @@ export { CONSENT_FILE, CONSENT_MAX_BYTES, CONSENT_STATES, emptyConsent, loadCons
 export type { Consent, ConsentEntry, ConsentState, LoadedConsent, SaveResult } from './consent.ts';
 export type { DiagnosticsFs } from './io.ts';
 export { renderReport } from './preview.ts';
+export { REPORTS_MAX, STATE_FOLDER, formatSavedReport, listReports, removeState, reportsDir, saveReport } from './reports.ts';
+export type { RemovedState, ReportEntry, SaveReportResult, SavedReport } from './reports.ts';
 export type { RenderInput, Report } from './preview.ts';
 export { NOTE_CUT_MARKER, NOTE_MAX_CHARS, REMOVED, scrubNote } from './scrub.ts';

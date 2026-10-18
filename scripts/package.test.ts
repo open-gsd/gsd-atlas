@@ -109,6 +109,7 @@ test('package.json identity, license, module type, engines floor, bins and files
   assert.ok(pkg.files?.includes('dist'), 'files must include dist');
   assert.ok(pkg.files?.includes('schemas'), 'files must include schemas');
   assert.ok(pkg.files?.includes('skills'), 'files must include skills (SKL-01, OQ6)');
+  assert.ok(pkg.files?.includes('diagnostics'), 'files must include diagnostics (the shipped catalog, SKL-03)');
 });
 
 test('every dependency is an exact pin, no gsd-core or gsd-graph dependency, better-sqlite3 peer optional', () => {
@@ -256,9 +257,9 @@ interface Run {
   readonly stderr: string;
 }
 
-async function runChild(executable: string, args: string[], cwd: string): Promise<Run> {
+async function runChild(executable: string, args: string[], cwd: string, env: Record<string, string> = {}): Promise<Run> {
   // Explicit limit: `npm pack` and the registry install can take longer than the runner's 60 s default (WR-07).
-  const result = await runner.run({ executable, args, cwd, timeoutMs: 300_000 });
+  const result = await runner.run({ executable, args, cwd, env, timeoutMs: 300_000 });
   assert.equal(result.spawnError, undefined, `could not start ${executable}: ${JSON.stringify(result.spawnError)}`);
   assert.equal(result.denied, undefined);
   return {
@@ -315,9 +316,16 @@ test('pack contents', async () => {
     'schemas/atlas-lang.schema.json',
     // SKL-01, OQ6: the routing skill ships in the package; `gsd-atlas init` does not copy it in Phase 3.
     'skills/gsd-atlas/SKILL.md',
+    // SKL-03: the diagnostics catalog ships, and is the only file under diagnostics/ (checked below).
+    'diagnostics/catalog.v1.json',
   ]) {
     assert.ok(has(required), `tarball must contain ${required}`);
   }
+  assert.deepEqual(
+    files.filter((candidate) => candidate.startsWith('diagnostics/')),
+    ['diagnostics/catalog.v1.json'],
+    'nothing but the catalog ships under diagnostics/',
+  );
   // Every skill folder on disk ships its SKILL.md, and nothing under skills/ is stray.
   for (const entry of readdirSync(path.join(root, 'skills'), { withFileTypes: true })) {
     if (entry.isDirectory()) {
@@ -351,7 +359,7 @@ test('pack contents', async () => {
     assert.ok(!file.split('/').includes('test-kit'), `tarball must not contain test-kit output: ${file}`);
     // Strict whitelist: what the files list names plus what npm adds on its own.
     assert.ok(
-      /^(dist|schemas|modules|skills)\//.test(file) || ['package.json', 'README.md', 'LICENSE'].includes(file),
+      /^(dist|schemas|modules|skills|diagnostics)\//.test(file) || ['package.json', 'README.md', 'LICENSE'].includes(file),
       `unexpected path in tarball: ${file}`,
     );
   }
@@ -384,6 +392,30 @@ test('installed tarball runs the bins', async () => {
   const skillLines = readFileSync(installedSkill, 'utf8').replace(/\r\n/g, '\n').split('\n');
   assert.equal(skillLines[0], '---');
   assert.ok(skillLines.includes('name: gsd-atlas'), 'the installed skill keeps its `name: gsd-atlas` frontmatter line');
+
+  // SKL-03: the diagnostics catalog arrives intact, and the installed bin finds it: with an empty user directory diagnostics
+  // are off, `preview` says so, and nothing is created.
+  const catalogFile = path.join(installed, 'diagnostics', 'catalog.v1.json');
+  assert.ok(existsSync(catalogFile), 'the installed package carries diagnostics/catalog.v1.json');
+  assert.equal(
+    readFileSync(catalogFile, 'utf8'),
+    readFileSync(path.join(root, 'diagnostics', 'catalog.v1.json'), 'utf8'),
+    'the installed catalog is the one in the repository',
+  );
+  const emptyUser = path.join(scratch.path, 'empty user for diagnostics');
+  mkdirSync(emptyUser);
+  const emptyState = path.join(scratch.path, 'empty state for diagnostics');
+  const diagnosticsRun = await runChild(process.execPath, [bin, 'diagnostics', 'preview'], prefix, {
+    GSD_ATLAS_USER_DIR: emptyUser,
+    GSD_ATLAS_STATE_DIR: emptyState,
+  });
+  assert.equal(diagnosticsRun.exitCode, 0, diagnosticsRun.stderr);
+  const preview = JSON.parse(diagnosticsRun.stdout.trim()) as { ok: boolean; data: unknown };
+  assert.equal(preview.ok, true);
+  assert.deepEqual(preview.data, { enabled: false });
+  assert.match(diagnosticsRun.stderr, /Diagnostics are off/);
+  assert.deepEqual(readdirSync(emptyUser), [], 'a preview with diagnostics off creates nothing in the user directory');
+  assert.equal(existsSync(emptyState), false, 'and no state directory');
 
   // No installed production file may load test code (T-01-40): scan every dist .js file's specifiers.
   const distFiles = walk(path.join(installed, 'dist')).filter((file) => file.endsWith('.js'));

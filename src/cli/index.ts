@@ -243,6 +243,10 @@ export async function runCli(argv: readonly string[], io: CliIo): Promise<number
           rest: others,
           repo: typeof values.repo === 'string' ? path.resolve(base, values.repo) : undefined,
           cwd: typeof values.cwd === 'string' ? path.resolve(base, values.cwd) : undefined,
+          note: typeof values.note === 'string' ? values.note : undefined,
+          rating: typeof values.rating === 'string' ? values.rating : undefined,
+          feature: typeof values.feature === 'string' ? values.feature : undefined,
+          save: values.save === true,
         },
         (message) => usageError(io, message),
       );

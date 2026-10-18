@@ -7,12 +7,26 @@
  * read from, and written to, the USER's directory only, and a Host started for MCP refuses the kind itself (an agent can
  * neither enable, approve nor change diagnostics). This phase renders and saves reports locally; submission is Phase 4.
  */
+import path from 'node:path';
 import { z } from 'zod';
-import { collectType, defaultCatalogDir, loadCatalog, loadConsent, renderReport } from '../diagnostics/index.ts';
+import {
+  CONSENT_STATES,
+  collectType,
+  defaultCatalogDir,
+  emptyConsent,
+  listReports,
+  loadCatalog,
+  loadConsent,
+  removeState,
+  renderReport,
+  saveConsent,
+  saveReport,
+} from '../diagnostics/index.ts';
 import type {
   ActivityFacts,
   Catalog,
   Consent,
+  ConsentEntry,
   DiagnosticsFs,
   DiagnosticsSources,
   IndexFacts,
@@ -21,7 +35,7 @@ import type {
   PlatformFacts,
 } from '../diagnostics/index.ts';
 import { diagnostic, okEnvelope } from '../facts/index.ts';
-import type { Diagnostic, Envelope, Request } from '../facts/index.ts';
+import type { Clock, Diagnostic, Envelope, Request } from '../facts/index.ts';
 import { errorEnvelope } from '../query/index.ts';
 import { RATING_FEATURES, RATING_VALUES } from '../tenant/index.ts';
 import { firstProblem } from './route.ts';
@@ -59,6 +73,12 @@ export interface DiagnosticsDeps {
   readonly modules: () => readonly ModuleFacts[];
   /** The facts of the repository a selection names, or null when it is not one or has no index. Opens no store of its own. */
   readonly repoFacts: (selection: Selection) => Promise<RepoFacts | null>;
+  /** Names the saved reports. */
+  readonly clock: Clock;
+  /** Where saved reports live, under `<stateDir>/diagnostics`; set only by the composition root. Absent: nothing can be saved. */
+  readonly stateDir?: string | undefined;
+  /** Clear the flight recorder of the repository a selection names; true when there was one to clear. */
+  readonly clearFlight: (selection: Selection) => Promise<boolean>;
 }
 
 const text = z.string().min(1);
@@ -78,7 +98,15 @@ const previewArgs = z.strictObject({
   include: z.array(typeId).max(32).optional(),
 });
 
-const argsSchema = z.discriminatedUnion('action', [statusArgs, typesArgs, previewArgs]);
+const saveArgs = previewArgs.extend({ action: z.literal('save') });
+const setArgs = z.strictObject({
+  action: z.literal('set'),
+  choices: z.record(typeId, z.enum(CONSENT_STATES)).refine((choices) => Object.keys(choices).length > 0, 'at least one data type is needed'),
+});
+const disableArgs = z.strictObject({ action: z.literal('disable'), ...selection });
+const historyArgs = z.strictObject({ action: z.literal('history') });
+
+const argsSchema = z.discriminatedUnion('action', [statusArgs, typesArgs, previewArgs, saveArgs, setArgs, disableArgs, historyArgs]);
 
 /** One data type as `status` lists it. */
 export interface TypeStatus {
@@ -117,12 +145,29 @@ export interface PreviewData {
   readonly labels?: readonly string[];
   readonly body?: string;
   readonly json?: Readonly<Record<string, unknown>>;
-  /** Types set to "ask each time" that this report left out: ask the person and send them back in `include`. */
-  readonly ask_skipped?: readonly string[];
+  /** Types set to "ask each time" that this report left out: ask the person and send their ids back in `include`. */
+  readonly ask_skipped?: ReadonlyArray<{ readonly id: string; readonly title: string }>;
   /** The note was given but the notes type is not taken for this report, so it was dropped. */
   readonly note_ignored?: true;
   /** The rating was given but the ratings type is not taken for this report, so it was dropped. */
   readonly rating_ignored?: true;
+  /** `save` only: where the report was written. */
+  readonly path?: string;
+}
+
+export interface DisableData {
+  /** True when a valid consent file was rewritten with every type denied. */
+  readonly consent_reset: boolean;
+  readonly removed_reports: number;
+  readonly state_removed: boolean;
+  /** True when the repository the command ran in had a flight recorder, now cleared. */
+  readonly flight_cleared: boolean;
+  /** The consent file fails validation: it is ignored by the loader, so diagnostics are already off, and it was left alone. */
+  readonly consent_file_invalid?: true;
+}
+
+export interface HistoryData {
+  readonly reports: ReadonlyArray<{ readonly file: string; readonly title: string; readonly bytes: number }>;
 }
 
 const OFF_TEXT = 'Diagnostics are off: nothing is collected and nothing is sent. Turn them on, one data type at a time, with "gsd-atlas diagnostics enable".';
@@ -280,7 +325,7 @@ async function types(deps: DiagnosticsDeps, context: Context, ids: readonly stri
   return okEnvelope<TypesData>(DIAGNOSTICS_SCHEMA, { catalog_version: catalog.catalogVersion, types: views }, [...consentWarnings(loaded), ...reviewNotes(loaded)]);
 }
 
-async function preview(deps: DiagnosticsDeps, context: Context, args: z.infer<typeof previewArgs>): Promise<Envelope> {
+async function preview(deps: DiagnosticsDeps, context: Context, args: z.infer<typeof previewArgs> | z.infer<typeof saveArgs>, save: boolean): Promise<Envelope> {
   const { catalog, loaded } = context;
   const notes = [...consentWarnings(loaded), ...reviewNotes(loaded)];
   const header = loaded.consent.types['header'];
@@ -308,7 +353,19 @@ async function preview(deps: DiagnosticsDeps, context: Context, args: z.infer<ty
     ...(notesTaken && args.note !== undefined ? { note: args.note } : {}),
     ...(ratingsTaken && rating !== undefined ? { rating } : {}),
   });
-  const askSkipped = catalog.types.filter((type) => loaded.consent.types[type.id]?.state === 'ask' && !include.includes(type.id)).map((type) => type.id);
+  const askSkipped = catalog.types
+    .filter((type) => loaded.consent.types[type.id]?.state === 'ask' && !include.includes(type.id))
+    .map((type) => ({ id: type.id, title: type.title }));
+  let saved: string | undefined;
+  if (save) {
+    if (deps.stateDir === undefined) {
+      return errorEnvelope('state_dir_unavailable', 'This build was given no state directory, so a report cannot be saved. Use "gsd-atlas diagnostics preview" to read it.');
+    }
+    const stamp = new Date(deps.clock.now()).toISOString().replace(/[:.]/g, '-');
+    const written = saveReport(deps.stateDir, stamp, report, deps.io);
+    if (!written.ok) return errorEnvelope('report_not_saved', 'The report could not be written to the state directory, so nothing was saved.');
+    saved = written.file;
+  }
   const data: PreviewData = {
     enabled: true,
     title: report.title,
@@ -318,8 +375,55 @@ async function preview(deps: DiagnosticsDeps, context: Context, args: z.infer<ty
     ask_skipped: askSkipped,
     ...(args.note !== undefined && !notesTaken ? { note_ignored: true as const } : {}),
     ...(rating !== undefined && !ratingsTaken ? { rating_ignored: true as const } : {}),
+    ...(saved === undefined ? {} : { path: saved }),
   };
   return okEnvelope<PreviewData>(DIAGNOSTICS_SCHEMA, data, notes);
+}
+
+/** Record the person's choices: an approved or "ask" type is saved with the catalog's CURRENT field list, a denied one with none. */
+function setChoices(deps: DiagnosticsDeps, context: Context, choices: Readonly<Record<string, ConsentEntry['state']>>): Envelope {
+  const { catalog, loaded } = context;
+  if (Object.keys(choices).some((id) => !catalog.types.some((type) => type.id === id))) {
+    return errorEnvelope('invalid_args', 'choices: no such data type');
+  }
+  const types: Record<string, ConsentEntry> = { ...loaded.consent.types };
+  for (const type of catalog.types) {
+    const state = choices[type.id];
+    if (state !== undefined) types[type.id] = { state, fields: state === 'denied' ? [] : type.fields.map((field) => field.name) };
+  }
+  const saved = saveConsent(deps.userDir, { catalogVersion: catalog.catalogVersion, types }, deps.io);
+  if (!saved.ok) return errorEnvelope(saved.code, saved.reason);
+  const after: Context = { catalog, loaded: loadConsent(deps.userDir, catalog, deps.io) };
+  return okEnvelope<StatusData>(DIAGNOSTICS_SCHEMA, statusOf(after), reviewNotes(after.loaded));
+}
+
+/**
+ * Turn everything off and remove what was kept locally: the consent file is rewritten with every type denied (only if one
+ * is there: nothing is created), the saved reports and the rest of `<state dir>/diagnostics` are deleted, and the flight
+ * recorder of the repository the command runs in is cleared. A consent file that fails validation is left alone: the loader
+ * already ignores it, so nothing is on.
+ */
+async function disable(deps: DiagnosticsDeps, context: Context, chosen: Selection): Promise<Envelope> {
+  const { catalog, loaded } = context;
+  let consentReset = false;
+  let invalid = false;
+  if (loaded.warning !== undefined) {
+    invalid = true;
+  } else if (loaded.saved) {
+    const saved = saveConsent(deps.userDir, emptyConsent(catalog), deps.io);
+    if (!saved.ok) return errorEnvelope(saved.code, saved.reason);
+    consentReset = true;
+  }
+  const removed = deps.stateDir === undefined ? { reports: 0, folder: false } : removeState(deps.stateDir, deps.io);
+  const flightCleared = await deps.clearFlight(chosen);
+  const data: DisableData = {
+    consent_reset: consentReset,
+    removed_reports: removed.reports,
+    state_removed: removed.folder,
+    flight_cleared: flightCleared,
+    ...(invalid ? { consent_file_invalid: true as const } : {}),
+  };
+  return okEnvelope<DisableData>(DIAGNOSTICS_SCHEMA, data, consentWarnings(loaded));
 }
 
 /** Answer one `diagnostics` request. */
@@ -343,6 +447,32 @@ export async function handleDiagnostics(request: Request, deps: DiagnosticsDeps)
     case 'types':
       return types(deps, context, args.ids, { repo: args.repo, cwd: args.cwd });
     case 'preview':
-      return preview(deps, context, args);
+      return preview(deps, context, args, false);
+    case 'save':
+      return preview(deps, context, args, true);
+    case 'set':
+      return setChoices(deps, context, args.choices);
+    case 'disable':
+      return disable(deps, context, { repo: args.repo, cwd: args.cwd });
+    case 'history':
+      return okEnvelope<HistoryData>(DIAGNOSTICS_SCHEMA, { reports: deps.stateDir === undefined ? [] : listReports(deps.stateDir, deps.io) });
   }
+}
+
+/**
+ * Where diagnostics keeps what is not consent (saved reports): `GSD_ATLAS_STATE_DIR` when it is absolute, else
+ * `$XDG_STATE_HOME/gsd-atlas` or `~/.local/state/gsd-atlas`, and on Windows `%LOCALAPPDATA%\\gsd-atlas`. Pure: the composition
+ * root passes its environment, home and platform; the Host never reads them itself.
+ */
+export function defaultStateDir(env: Readonly<Record<string, string | undefined>>, home: string, platform: string = process.platform): string {
+  const p = platform === 'win32' ? path.win32 : path.posix;
+  const absolute = (value: string | undefined): value is string => value !== undefined && value !== '' && p.isAbsolute(value);
+  const explicit = env['GSD_ATLAS_STATE_DIR'];
+  if (absolute(explicit)) return explicit;
+  if (platform === 'win32') {
+    const local = env['LOCALAPPDATA'];
+    return absolute(local) ? p.join(local, 'gsd-atlas') : p.join(home, 'AppData', 'Local', 'gsd-atlas');
+  }
+  const xdg = env['XDG_STATE_HOME'];
+  return absolute(xdg) ? p.join(xdg, 'gsd-atlas') : p.join(home, '.local', 'state', 'gsd-atlas');
 }

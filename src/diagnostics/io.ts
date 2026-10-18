@@ -9,7 +9,18 @@ import path from 'node:path';
 
 export type DiagnosticsFs = Pick<
   typeof fs,
-  'mkdirSync' | 'openSync' | 'readSync' | 'writeFileSync' | 'fsyncSync' | 'closeSync' | 'renameSync' | 'unlinkSync' | 'realpathSync'
+  | 'mkdirSync'
+  | 'openSync'
+  | 'readSync'
+  | 'writeFileSync'
+  | 'fsyncSync'
+  | 'closeSync'
+  | 'renameSync'
+  | 'unlinkSync'
+  | 'realpathSync'
+  | 'readdirSync'
+  | 'rmSync'
+  | 'statSync'
 >;
 
 export type BoundedRead =

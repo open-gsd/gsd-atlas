@@ -8,6 +8,7 @@
  * pay no store-open or Reconcile cost. Tenants never see each other's requests: the registry key is the store id
  * Source Tree derives from the repository's root commit and its real common git directory.
  */
+import { existsSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { createRealRunner, decide } from '../command-runner/index.ts';
@@ -24,7 +25,7 @@ import { resolveModules } from '../lang/index.ts';
 import { ERROR_SCHEMA, TOOL_NAMES, errorEnvelope } from '../query/index.ts';
 import { createSourceTree } from '../source-tree/index.ts';
 import type { SourceTree } from '../source-tree/index.ts';
-import { DEFAULT_TENANT_TUNING, createTenant, noRecentEnvelope, notIndexedNoStore } from '../tenant/index.ts';
+import { DEFAULT_TENANT_TUNING, FLIGHT_FILE, FLIGHT_PREVIOUS_FILE, createFlightRecorder, createTenant, noRecentEnvelope, notIndexedNoStore } from '../tenant/index.ts';
 import type { Tenant } from '../tenant/index.ts';
 import { ALLOW_KIND, handleAllow, permissionsFor } from './allow.ts';
 import type { AllowDeps } from './allow.ts';
@@ -447,6 +448,21 @@ export function createHost(options: HostOptions): Host {
   }
 
   /**
+   * Clear the flight recorder of the repository `selection` names, if its store exists: `diagnostics disable` removes what was
+   * kept locally. It never creates a store or a folder; true when a recorder file was there.
+   */
+  async function diagnosticsClearFlight(selection: Selection): Promise<boolean> {
+    const resolved = await resolveRepository(selection, hostCwd, makeTree);
+    if (resolved === null) return false;
+    const existing = findExistingStore(locationInput(resolved));
+    if (existing === undefined) return false;
+    const dir = path.join(existing.dir, 'flight');
+    const had = [FLIGHT_FILE, FLIGHT_PREVIOUS_FILE].some((name) => existsSync(path.join(dir, name)));
+    createFlightRecorder({ dir, maxEvents: DEFAULT_TENANT_TUNING.flightMaxEvents, maxBytes: DEFAULT_TENANT_TUNING.flightMaxBytes, clock }).clear();
+    return had;
+  }
+
+  /**
    * `diagnostics` (SKL-03): the user's choices and the reports built from them. It needs the user's directory and the
    * version, never a repository file; the data it collects is assembled here and nowhere else. The module registry is read
    * from the user's roots only (a repository can name a module anything), and a report names built-in modules only.
@@ -468,8 +484,14 @@ export function createHost(options: HostOptions): Host {
           tiers: entry.tiers.map((tier) => ({ tier: tier.tier, active: tier.active })),
         })),
       repoFacts: diagnosticsRepoFacts,
+      clock,
+      stateDir: options.stateDir,
+      clearFlight: diagnosticsClearFlight,
     };
-    return held(DIAGNOSTICS_KIND, classFor('allow'), () => handleDiagnostics(request, deps));
+    // Not wrapped in a Governor slot of its own: the part that reads a repository takes the repository's slot itself
+    // (`diagnosticsRepoFacts`), and holding an outer slot while waiting for an inner one could starve under load.
+    // The rest is a few small reads and writes in the user's own folders.
+    return handleDiagnostics(request, deps);
   }
 
   async function dispatch(request: Request): Promise<Envelope> {
