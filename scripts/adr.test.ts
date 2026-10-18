@@ -36,11 +36,11 @@ const RATIFIED: readonly string[] = [
   'query-and-policy',
   'mcp-contract',
   'value-dashboard',
-  'user-controlled-diagnostics',
 ];
 
 // The ADRs that stay Proposed, and the phase that must ratify each.
 const REMAINING: Readonly<Record<string, string>> = {
+  'user-controlled-diagnostics': 'Phase 3',
   'host-process-model': 'Phase 4',
 };
 

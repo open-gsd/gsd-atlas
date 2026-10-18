@@ -1,8 +1,7 @@
 # ADR: User‑controlled diagnostics, ratings and defect forensics
 
-- **Status:** Accepted
-- **Issue:** [#15](https://github.com/open-gsd/gsd-atlas/issues/15)
-- **Ratified:** 2026-10-18
+- **Status:** Proposed
+- **Issue:** to be opened (rename to `<issue#>-user-controlled-diagnostics.md`)
 - **DESIGN.md:** A16, A52
 - **Supersedes:** the opt‑in `gsd-atlas report` idea in the product‑boundary ADR (review finding P‑3)
 
