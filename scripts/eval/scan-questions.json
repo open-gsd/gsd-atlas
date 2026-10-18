@@ -1,0 +1,711 @@
+{
+  "corpusId": "gsd-core",
+  "corpusSha": "10ac3a7a947903ba50f538a907af036744d759d5",
+  "oracleVersion": "03-04.1",
+  "questions": [
+    {
+      "id": "s-001",
+      "category": "callers",
+      "text": "Which files contain a call to `ensureCommonJsMarker` exported from `src/commonjs-marker.cts`? Include tests and plain JavaScript files. A function with the same name declared elsewhere is not that function, but a file that calls the one from `src/commonjs-marker.cts` under another name still counts.",
+      "key": {
+        "kind": "callers",
+        "symbol": "ensureCommonJsMarker",
+        "definedIn": "src/commonjs-marker.cts",
+        "granularity": "file",
+        "equality": "exact-set"
+      },
+      "expected": {
+        "questionId": "s-001",
+        "kind": "callers",
+        "abstain": false,
+        "items": [
+          {
+            "file": "bin/install.js",
+            "line": 12288,
+            "symbol": "installSharedHooksBundle"
+          },
+          {
+            "file": "src/install-engine.cts",
+            "line": 1881,
+            "symbol": "_installNativePluginIfDeclared"
+          },
+          {
+            "file": "src/runtime-hooks-surface.cts",
+            "line": 304,
+            "symbol": "ensureCommonJsMarker"
+          },
+          {
+            "file": "tests/commonjs-marker.test.cjs",
+            "line": 110,
+            "symbol": "<module>"
+          },
+          {
+            "file": "tests/commonjs-marker.test.cjs",
+            "line": 114,
+            "symbol": "<module>"
+          },
+          {
+            "file": "tests/commonjs-marker.test.cjs",
+            "line": 119,
+            "symbol": "<module>"
+          },
+          {
+            "file": "tests/commonjs-marker.test.cjs",
+            "line": 136,
+            "symbol": "<module>"
+          },
+          {
+            "file": "tests/commonjs-marker.test.cjs",
+            "line": 296,
+            "symbol": "<module>"
+          },
+          {
+            "file": "tests/commonjs-marker.test.cjs",
+            "line": 310,
+            "symbol": "<module>"
+          },
+          {
+            "file": "tests/commonjs-marker.test.cjs",
+            "line": 323,
+            "symbol": "<module>"
+          },
+          {
+            "file": "tests/commonjs-marker.test.cjs",
+            "line": 336,
+            "symbol": "<module>"
+          }
+        ],
+        "granularity": "file",
+        "equality": "exact-set",
+        "needles": [
+          "ensureCommonJsMarker",
+          "ensureCommonJsMarkerOwned"
+        ],
+        "unexplained": [],
+        "notes": {},
+        "oracleVersion": "03-04.1"
+      }
+    },
+    {
+      "id": "s-002",
+      "category": "callers",
+      "text": "Which files call `parseNamedArgsOrExit` from `src/command-arg-projection.cts`? List each file once, including plain JavaScript files.",
+      "key": {
+        "kind": "callers",
+        "symbol": "parseNamedArgsOrExit",
+        "definedIn": "src/command-arg-projection.cts",
+        "granularity": "file",
+        "equality": "exact-set"
+      },
+      "expected": {
+        "questionId": "s-002",
+        "kind": "callers",
+        "abstain": false,
+        "items": [
+          {
+            "file": "gsd-core/bin/gsd-tools.cjs",
+            "line": 1055,
+            "symbol": "routeSelectRevertCommits"
+          },
+          {
+            "file": "gsd-core/bin/gsd-tools.cjs",
+            "line": 1240,
+            "symbol": "routePrSubrepo"
+          },
+          {
+            "file": "gsd-core/bin/gsd-tools.cjs",
+            "line": 1257,
+            "symbol": "routeTemplate"
+          },
+          {
+            "file": "gsd-core/bin/gsd-tools.cjs",
+            "line": 1306,
+            "symbol": "routeFrontmatter"
+          },
+          {
+            "file": "gsd-core/bin/gsd-tools.cjs",
+            "line": 1308,
+            "symbol": "routeFrontmatter"
+          },
+          {
+            "file": "gsd-core/bin/gsd-tools.cjs",
+            "line": 1311,
+            "symbol": "routeFrontmatter"
+          },
+          {
+            "file": "gsd-core/bin/gsd-tools.cjs",
+            "line": 1313,
+            "symbol": "routeFrontmatter"
+          },
+          {
+            "file": "gsd-core/bin/gsd-tools.cjs",
+            "line": 1507,
+            "symbol": "routeQuickTasksAppend"
+          },
+          {
+            "file": "gsd-core/bin/gsd-tools.cjs",
+            "line": 3160,
+            "symbol": "routeUat"
+          },
+          {
+            "file": "gsd-core/bin/gsd-tools.cjs",
+            "line": 3164,
+            "symbol": "routeUat"
+          },
+          {
+            "file": "gsd-core/bin/gsd-tools.cjs",
+            "line": 3169,
+            "symbol": "routeUat"
+          },
+          {
+            "file": "gsd-core/bin/gsd-tools.cjs",
+            "line": 3213,
+            "symbol": "routeScaffold"
+          },
+          {
+            "file": "gsd-core/bin/gsd-tools.cjs",
+            "line": 4760,
+            "symbol": "<module>"
+          },
+          {
+            "file": "src/audit.cts",
+            "line": 1689,
+            "symbol": "cmdAuditAcknowledge"
+          },
+          {
+            "file": "src/init-command-router.cts",
+            "line": 143,
+            "symbol": "routeInitCommand"
+          },
+          {
+            "file": "src/init-command-router.cts",
+            "line": 152,
+            "symbol": "routeInitCommand"
+          },
+          {
+            "file": "src/init-command-router.cts",
+            "line": 173,
+            "symbol": "routeInitCommand"
+          },
+          {
+            "file": "src/init-command-router.cts",
+            "line": 177,
+            "symbol": "routeInitCommand"
+          },
+          {
+            "file": "src/init-command-router.cts",
+            "line": 183,
+            "symbol": "onboard"
+          },
+          {
+            "file": "src/init-command-router.cts",
+            "line": 191,
+            "symbol": "quick"
+          },
+          {
+            "file": "src/init-command-router.cts",
+            "line": 218,
+            "symbol": "routeInitCommand"
+          },
+          {
+            "file": "src/init-command-router.cts",
+            "line": 235,
+            "symbol": "routeInitCommand"
+          },
+          {
+            "file": "src/init-command-router.cts",
+            "line": 240,
+            "symbol": "routeInitCommand"
+          },
+          {
+            "file": "src/init-command-router.cts",
+            "line": 245,
+            "symbol": "routeInitCommand"
+          },
+          {
+            "file": "src/init-command-router.cts",
+            "line": 250,
+            "symbol": "review"
+          },
+          {
+            "file": "src/init-command-router.cts",
+            "line": 255,
+            "symbol": "routeInitCommand"
+          },
+          {
+            "file": "src/init-command-router.cts",
+            "line": 260,
+            "symbol": "todos"
+          },
+          {
+            "file": "src/init-command-router.cts",
+            "line": 266,
+            "symbol": "progress"
+          },
+          {
+            "file": "src/init-command-router.cts",
+            "line": 274,
+            "symbol": "autonomous"
+          },
+          {
+            "file": "src/init-command-router.cts",
+            "line": 282,
+            "symbol": "update"
+          },
+          {
+            "file": "src/init-command-router.cts",
+            "line": 287,
+            "symbol": "debug"
+          },
+          {
+            "file": "src/init-command-router.cts",
+            "line": 293,
+            "symbol": "routeInitCommand"
+          },
+          {
+            "file": "src/state-command-router.cts",
+            "line": 100,
+            "symbol": "get"
+          },
+          {
+            "file": "src/state-command-router.cts",
+            "line": 104,
+            "symbol": "update"
+          },
+          {
+            "file": "src/state-command-router.cts",
+            "line": 140,
+            "symbol": "routeStateCommand"
+          },
+          {
+            "file": "src/state-command-router.cts",
+            "line": 151,
+            "symbol": "routeStateCommand"
+          },
+          {
+            "file": "src/state-command-router.cts",
+            "line": 161,
+            "symbol": "routeStateCommand"
+          },
+          {
+            "file": "src/state-command-router.cts",
+            "line": 165,
+            "symbol": "routeStateCommand"
+          },
+          {
+            "file": "src/state-command-router.cts",
+            "line": 175,
+            "symbol": "routeStateCommand"
+          },
+          {
+            "file": "src/state-command-router.cts",
+            "line": 177,
+            "symbol": "routeStateCommand"
+          },
+          {
+            "file": "src/state-command-router.cts",
+            "line": 184,
+            "symbol": "routeStateCommand"
+          },
+          {
+            "file": "src/state-command-router.cts",
+            "line": 188,
+            "symbol": "routeStateCommand"
+          },
+          {
+            "file": "src/state-command-router.cts",
+            "line": 193,
+            "symbol": "routeStateCommand"
+          },
+          {
+            "file": "src/state-command-router.cts",
+            "line": 204,
+            "symbol": "validate"
+          },
+          {
+            "file": "src/state-command-router.cts",
+            "line": 208,
+            "symbol": "sync"
+          },
+          {
+            "file": "src/state-command-router.cts",
+            "line": 212,
+            "symbol": "prune"
+          },
+          {
+            "file": "src/state-command-router.cts",
+            "line": 216,
+            "symbol": "rebuild"
+          },
+          {
+            "file": "src/state-command-router.cts",
+            "line": 233,
+            "symbol": "routeStateCommand"
+          },
+          {
+            "file": "src/state-command-router.cts",
+            "line": 241,
+            "symbol": "routeStateCommand"
+          },
+          {
+            "file": "src/validate-command-router.cts",
+            "line": 69,
+            "symbol": "context"
+          },
+          {
+            "file": "src/verification.cts",
+            "line": 2622,
+            "symbol": "cmdVerificationAppendAudit"
+          }
+        ],
+        "granularity": "file",
+        "equality": "exact-set",
+        "needles": [
+          "parseNamedArgsOrExit"
+        ],
+        "unexplained": [],
+        "notes": {},
+        "oracleVersion": "03-04.1"
+      }
+    },
+    {
+      "id": "s-003",
+      "category": "heritage",
+      "text": "Which interfaces extend `ModelAdapter` declared in `src/model-adapter.cts`? Give the file and the interface name of each.",
+      "key": {
+        "kind": "heritage",
+        "symbol": "ModelAdapter",
+        "definedIn": "src/model-adapter.cts",
+        "direction": "subtypes",
+        "granularity": "file+symbol",
+        "equality": "exact-set"
+      },
+      "expected": {
+        "questionId": "s-003",
+        "kind": "heritage",
+        "abstain": false,
+        "items": [
+          {
+            "file": "src/model-adapter.cts",
+            "line": 32,
+            "symbol": "PassiveModelAdapter"
+          },
+          {
+            "file": "src/model-adapter.cts",
+            "line": 38,
+            "symbol": "ActiveModelAdapter"
+          }
+        ],
+        "granularity": "file+symbol",
+        "equality": "exact-set",
+        "needles": [
+          "ActiveModelAdapter",
+          "ModelAdapter",
+          "PassiveModelAdapter"
+        ],
+        "unexplained": [],
+        "notes": {},
+        "oracleVersion": "03-04.1"
+      }
+    },
+    {
+      "id": "s-004",
+      "category": "emit",
+      "text": "The TypeScript build compiles `src/commonjs-marker.cts` to a CommonJS `.cjs` file. Which plain JavaScript files (`.js` or `.cjs`) in this repository `require` that compiled file?",
+      "key": {
+        "kind": "emit-consumers",
+        "source": "src/commonjs-marker.cts",
+        "granularity": "file",
+        "equality": "exact-set"
+      },
+      "expected": {
+        "questionId": "s-004",
+        "kind": "emit-consumers",
+        "abstain": false,
+        "items": [
+          {
+            "file": "bin/install.js",
+            "line": 75
+          },
+          {
+            "file": "tests/commonjs-marker.test.cjs",
+            "line": 46
+          },
+          {
+            "file": "tests/kimi-upgrades.test.cjs",
+            "line": 58
+          }
+        ],
+        "granularity": "file",
+        "equality": "exact-set",
+        "needles": [
+          "commonjs-marker.cjs",
+          "require"
+        ],
+        "unexplained": [],
+        "notes": {},
+        "oracleVersion": "03-04.1"
+      }
+    },
+    {
+      "id": "s-005",
+      "category": "adr",
+      "text": "Which files cite ADR-58 in a code comment? List every file that does, including tests and scripts.",
+      "key": {
+        "kind": "adr-citers",
+        "number": 58,
+        "granularity": "file",
+        "equality": "exact-set"
+      },
+      "expected": {
+        "questionId": "s-005",
+        "kind": "adr-citers",
+        "abstain": false,
+        "items": [
+          {
+            "file": "scripts/gen-adr-index.cjs",
+            "line": 763
+          },
+          {
+            "file": "scripts/gen-adr-index.cjs",
+            "line": 939
+          },
+          {
+            "file": "scripts/gen-adr-index.cjs",
+            "line": 984
+          },
+          {
+            "file": "src/command-roster.cts",
+            "line": 12
+          },
+          {
+            "file": "src/commonjs-marker.cts",
+            "line": 34
+          },
+          {
+            "file": "src/install-engine.cts",
+            "line": 37
+          },
+          {
+            "file": "src/install-engine.cts",
+            "line": 1178
+          },
+          {
+            "file": "src/install-fs-adapter.cts",
+            "line": 4
+          },
+          {
+            "file": "src/install-profiles.cts",
+            "line": 13
+          },
+          {
+            "file": "src/installer-migrations.cts",
+            "line": 24
+          },
+          {
+            "file": "src/retired-artifact-cleanup.cts",
+            "line": 15
+          },
+          {
+            "file": "src/runtime-artifact-conversion.cts",
+            "line": 22
+          },
+          {
+            "file": "src/runtime-artifact-layout.cts",
+            "line": 19
+          },
+          {
+            "file": "tests/executed-plan.test.cjs",
+            "line": 6
+          },
+          {
+            "file": "tests/install-fs-adapter-seam.test.cjs",
+            "line": 8
+          },
+          {
+            "file": "tests/install-runtime-artifacts.test.cjs",
+            "line": 7914
+          },
+          {
+            "file": "tests/runtime-config-adapter-registry.test.cjs",
+            "line": 396
+          }
+        ],
+        "granularity": "file",
+        "equality": "exact-set",
+        "needles": [
+          "ADR"
+        ],
+        "unexplained": [],
+        "notes": {
+          "excludedNonComment": 0
+        },
+        "oracleVersion": "03-04.1"
+      }
+    },
+    {
+      "id": "s-006",
+      "category": "impact",
+      "text": "If the return shape of `composeWithinBudget` in `src/context-composer.cts` changed, which files would be affected, either because they call it directly or because they call a function that does? Include test files and plain JavaScript files. List each file once.",
+      "key": {
+        "kind": "impact",
+        "symbol": "composeWithinBudget",
+        "definedIn": "src/context-composer.cts",
+        "depth": 2,
+        "granularity": "file",
+        "equality": "exact-set"
+      },
+      "expected": {
+        "questionId": "s-006",
+        "kind": "impact",
+        "abstain": false,
+        "items": [
+          {
+            "file": "bin/install.js"
+          },
+          {
+            "file": "gsd-core/bin/gsd-tools.cjs"
+          },
+          {
+            "file": "src/prompt-budget.cts"
+          },
+          {
+            "file": "src/reviewer-step-dispatch.cts"
+          },
+          {
+            "file": "src/workflow-fragments.cts"
+          },
+          {
+            "file": "tests/agent-marker-documentation-guard.test.cjs"
+          },
+          {
+            "file": "tests/context-composer.property.test.cjs"
+          },
+          {
+            "file": "tests/context-composer.test.cjs"
+          },
+          {
+            "file": "tests/load-bearing-contract-gate.test.cjs"
+          },
+          {
+            "file": "tests/mcp-catalog.test.cjs"
+          },
+          {
+            "file": "tests/phase-estimation.test.cjs"
+          },
+          {
+            "file": "tests/prompt-budget-parity.test.cjs"
+          },
+          {
+            "file": "tests/prompt-budget.property.test.cjs"
+          },
+          {
+            "file": "tests/prompt-budget.test.cjs"
+          },
+          {
+            "file": "tests/prompt-budget.unit.test.cjs"
+          },
+          {
+            "file": "tests/resolver-hoist-guard.test.cjs"
+          },
+          {
+            "file": "tests/reviewer-step-dispatch.test.cjs"
+          },
+          {
+            "file": "tests/section-marker-inversion-guard.test.cjs"
+          },
+          {
+            "file": "tests/workflow-fragments-emission.install.test.cjs"
+          },
+          {
+            "file": "tests/workflow-fragments.property.test.cjs"
+          },
+          {
+            "file": "tests/workflow-fragments.test.cjs"
+          }
+        ],
+        "granularity": "file",
+        "equality": "exact-set",
+        "needles": [
+          "composeWithinBudget"
+        ],
+        "unexplained": [],
+        "notes": {
+          "depth": 2
+        },
+        "oracleVersion": "03-04.1"
+      }
+    },
+    {
+      "id": "s-007",
+      "category": "definition",
+      "text": "Where is `normalizeRelPath` defined? List every file that defines a function with that name.",
+      "key": {
+        "kind": "definition",
+        "symbol": "normalizeRelPath",
+        "granularity": "file",
+        "equality": "exact-set"
+      },
+      "expected": {
+        "questionId": "s-007",
+        "kind": "definition",
+        "abstain": false,
+        "items": [
+          {
+            "file": "src/code-review-depth.cts",
+            "line": 123,
+            "symbol": "normalizeRelPath"
+          },
+          {
+            "file": "src/installer-migrations.cts",
+            "line": 410,
+            "symbol": "normalizeRelPath"
+          },
+          {
+            "file": "src/installer-migrations/000-first-time-baseline.cts",
+            "line": 50,
+            "symbol": "normalizeRelPath"
+          },
+          {
+            "file": "src/installer-migrations/005-opencode-baseline-commands-dir.cts",
+            "line": 87,
+            "symbol": "normalizeRelPath"
+          }
+        ],
+        "granularity": "file",
+        "equality": "exact-set",
+        "needles": [
+          "normalizeRelPath"
+        ],
+        "unexplained": [],
+        "notes": {},
+        "oracleVersion": "03-04.1"
+      }
+    },
+    {
+      "id": "s-008",
+      "category": "abstain",
+      "text": "Where is the function `reconcileWorkstreamLocks` defined, and which files call it? If this repository has no such function, say so.",
+      "key": {
+        "kind": "abstain",
+        "probe": {
+          "symbol": "reconcileWorkstreamLocks"
+        },
+        "granularity": "file",
+        "equality": "exact-set"
+      },
+      "expected": {
+        "questionId": "s-008",
+        "kind": "abstain",
+        "abstain": true,
+        "items": [],
+        "granularity": "file",
+        "equality": "exact-set",
+        "needles": [],
+        "unexplained": [],
+        "notes": {},
+        "oracleVersion": "03-04.1"
+      }
+    }
+  ]
+}

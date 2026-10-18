@@ -1,0 +1,341 @@
+{
+  "schemaVersion": 1,
+  "tool": {
+    "id": "claude-code-lsp",
+    "label": "Claude Code LSP plugin",
+    "version": "typescript-language-server 6.0.2 (typescript 6.0.3) via local plugin dir",
+    "installMethod": "npm install --prefix scratch --ignore-scripts; local plugin directory loaded with --plugin-dir"
+  },
+  "claudeCodeVersion": "2.1.302",
+  "model": "claude-sonnet-5-5",
+  "date": "2026-10-18",
+  "corpus": {
+    "id": "gsd-core",
+    "sha": "10ac3a7a947903ba50f538a907af036744d759d5"
+  },
+  "limits": {
+    "maxBudgetUsdPerSession": 3,
+    "sessionWallClockMs": 900000
+  },
+  "isolation": {
+    "settingSources": "",
+    "strictMcpConfig": true,
+    "tools": [
+      "Bash",
+      "Read",
+      "LSP"
+    ],
+    "allowedTools": [
+      "Read",
+      "Bash(git grep:*)",
+      "Bash(git ls-files:*)",
+      "Bash(rg:*)",
+      "Bash(grep:*)",
+      "Bash(ls:*)",
+      "Bash(cat:*)",
+      "Bash(head:*)",
+      "Bash(tail:*)",
+      "Bash(wc:*)",
+      "LSP"
+    ]
+  },
+  "couldNotRun": null,
+  "rows": [
+    {
+      "questionId": "s-001",
+      "category": "callers",
+      "status": "ok",
+      "correct": "yes",
+      "tokens": {
+        "input": 8,
+        "output": 1200,
+        "cacheCreation": 14233,
+        "cacheRead": 31109,
+        "billable": 46550
+      },
+      "toolCalls": 3,
+      "toolCallsByName": {
+        "Bash": 3
+      },
+      "initTools": [
+        "Bash",
+        "LSP",
+        "Read"
+      ],
+      "mcpServers": [],
+      "wallMs": 10743,
+      "costUsd": 0.07205890000000001,
+      "numTurns": 4,
+      "answer": {
+        "parsed": true,
+        "abstain": false,
+        "itemCount": 4,
+        "matched": 4,
+        "expected": 4,
+        "extra": 0
+      },
+      "gapNote": "The LSP tool was listed in the init event with --plugin-dir pointing at the local plugin directory, and was never called; the answer came from shell search. Whether the server would answer for .cts files was not tested in this run."
+    },
+    {
+      "questionId": "s-002",
+      "category": "callers",
+      "status": "ok",
+      "correct": "yes",
+      "tokens": {
+        "input": 10,
+        "output": 856,
+        "cacheCreation": 5234,
+        "cacheRead": 39221,
+        "billable": 45321
+      },
+      "toolCalls": 4,
+      "toolCallsByName": {
+        "Bash": 4
+      },
+      "initTools": [
+        "Bash",
+        "LSP",
+        "Read"
+      ],
+      "mcpServers": [],
+      "wallMs": 8248,
+      "costUsd": 0.033438100000000005,
+      "numTurns": 5,
+      "answer": {
+        "parsed": true,
+        "abstain": false,
+        "itemCount": 6,
+        "matched": 6,
+        "expected": 6,
+        "extra": 0
+      },
+      "gapNote": "No call to the LSP tool; answered by shell search alone."
+    },
+    {
+      "questionId": "s-003",
+      "category": "heritage",
+      "status": "ok",
+      "correct": "yes",
+      "tokens": {
+        "input": 6,
+        "output": 432,
+        "cacheCreation": 3346,
+        "cacheRead": 18805,
+        "billable": 22589
+      },
+      "toolCalls": 2,
+      "toolCallsByName": {
+        "Bash": 2
+      },
+      "initTools": [
+        "Bash",
+        "LSP",
+        "Read"
+      ],
+      "mcpServers": [],
+      "wallMs": 5249,
+      "costUsd": 0.0195965,
+      "numTurns": 3,
+      "answer": {
+        "parsed": true,
+        "abstain": false,
+        "itemCount": 2,
+        "matched": 2,
+        "expected": 2,
+        "extra": 0
+      },
+      "gapNote": "No call to the LSP tool; answered by shell search alone."
+    },
+    {
+      "questionId": "s-004",
+      "category": "emit",
+      "status": "ok",
+      "correct": "yes",
+      "tokens": {
+        "input": 10,
+        "output": 997,
+        "cacheCreation": 5535,
+        "cacheRead": 39681,
+        "billable": 46223
+      },
+      "toolCalls": 4,
+      "toolCallsByName": {
+        "Bash": 4
+      },
+      "initTools": [
+        "Bash",
+        "LSP",
+        "Read"
+      ],
+      "mcpServers": [],
+      "wallMs": 10433,
+      "costUsd": 0.0360981,
+      "numTurns": 5,
+      "answer": {
+        "parsed": true,
+        "abstain": false,
+        "itemCount": 3,
+        "matched": 3,
+        "expected": 3,
+        "extra": 0
+      },
+      "gapNote": "No call to the LSP tool; answered by shell search alone."
+    },
+    {
+      "questionId": "s-005",
+      "category": "adr",
+      "status": "ok",
+      "correct": "yes",
+      "tokens": {
+        "input": 8,
+        "output": 954,
+        "cacheCreation": 11999,
+        "cacheRead": 44416,
+        "billable": 57377
+      },
+      "toolCalls": 3,
+      "toolCallsByName": {
+        "Bash": 3
+      },
+      "initTools": [
+        "Bash",
+        "LSP",
+        "Read"
+      ],
+      "mcpServers": [],
+      "wallMs": 11956,
+      "costUsd": 0.0619936,
+      "numTurns": 4,
+      "answer": {
+        "parsed": true,
+        "abstain": false,
+        "itemCount": 14,
+        "matched": 14,
+        "expected": 14,
+        "extra": 0
+      },
+      "gapNote": "No call to the LSP tool; answered by shell search alone."
+    },
+    {
+      "questionId": "s-006",
+      "category": "impact",
+      "status": "ok",
+      "correct": "partial",
+      "tokens": {
+        "input": 22,
+        "output": 3797,
+        "cacheCreation": 15439,
+        "cacheRead": 148997,
+        "billable": 168255
+      },
+      "toolCalls": 10,
+      "toolCallsByName": {
+        "Bash": 10
+      },
+      "initTools": [
+        "Bash",
+        "LSP",
+        "Read"
+      ],
+      "mcpServers": [],
+      "wallMs": 31886,
+      "costUsd": 0.1146697,
+      "numTurns": 11,
+      "answer": {
+        "parsed": true,
+        "abstain": false,
+        "itemCount": 22,
+        "matched": 16,
+        "expected": 21,
+        "extra": 6
+      },
+      "gapNote": "No call to the LSP tool; shell search only. Partial: 16 of the 21 key files, 6 files outside the key."
+    },
+    {
+      "questionId": "s-007",
+      "category": "definition",
+      "status": "ok",
+      "correct": "yes",
+      "tokens": {
+        "input": 4,
+        "output": 611,
+        "cacheCreation": 1598,
+        "cacheRead": 11968,
+        "billable": 14181
+      },
+      "toolCalls": 1,
+      "toolCallsByName": {
+        "Bash": 1
+      },
+      "initTools": [
+        "Bash",
+        "LSP",
+        "Read"
+      ],
+      "mcpServers": [],
+      "wallMs": 5674,
+      "costUsd": 0.0137068,
+      "numTurns": 2,
+      "answer": {
+        "parsed": true,
+        "abstain": false,
+        "itemCount": 4,
+        "matched": 4,
+        "expected": 4,
+        "extra": 0
+      },
+      "gapNote": "No call to the LSP tool; answered by shell search alone."
+    },
+    {
+      "questionId": "s-008",
+      "category": "abstain",
+      "status": "ok",
+      "correct": "yes",
+      "tokens": {
+        "input": 4,
+        "output": 182,
+        "cacheCreation": 1418,
+        "cacheRead": 11981,
+        "billable": 13585
+      },
+      "toolCalls": 1,
+      "toolCallsByName": {
+        "Bash": 1
+      },
+      "initTools": [
+        "Bash",
+        "LSP",
+        "Read"
+      ],
+      "mcpServers": [],
+      "wallMs": 3511,
+      "costUsd": 0.0086981,
+      "numTurns": 2,
+      "answer": {
+        "parsed": true,
+        "abstain": true,
+        "itemCount": 0,
+        "matched": 1,
+        "expected": 1,
+        "extra": 0
+      },
+      "gapNote": "No call to the LSP tool; answered by shell search alone."
+    }
+  ],
+  "totals": {
+    "sessions": 8,
+    "yes": 7,
+    "partial": 1,
+    "no": 0,
+    "tokens": {
+      "input": 72,
+      "output": 9029,
+      "cacheCreation": 58802,
+      "cacheRead": 346178,
+      "billable": 414081
+    },
+    "toolCalls": 28,
+    "wallMs": 87700,
+    "costUsd": 0.36026
+  }
+}

@@ -1,0 +1,331 @@
+{
+  "schemaVersion": 1,
+  "tool": {
+    "id": "aider-repo-map",
+    "label": "Aider repo-map",
+    "version": "aider-chat 0.86.2 (scipy 1.16.3 override)",
+    "installMethod": "uv tool install aider-chat==0.86.2 (managed Python 3.12) in a scratch prefix; map from --show-repo-map"
+  },
+  "claudeCodeVersion": "2.1.302",
+  "model": "claude-sonnet-5-5",
+  "date": "2026-10-18",
+  "corpus": {
+    "id": "gsd-core",
+    "sha": "10ac3a7a947903ba50f538a907af036744d759d5"
+  },
+  "limits": {
+    "maxBudgetUsdPerSession": 3,
+    "sessionWallClockMs": 900000
+  },
+  "isolation": {
+    "settingSources": "",
+    "strictMcpConfig": true,
+    "tools": [
+      "Bash",
+      "Read"
+    ],
+    "allowedTools": [
+      "Read",
+      "Bash(git grep:*)",
+      "Bash(git ls-files:*)",
+      "Bash(rg:*)",
+      "Bash(grep:*)",
+      "Bash(ls:*)",
+      "Bash(cat:*)",
+      "Bash(head:*)",
+      "Bash(tail:*)",
+      "Bash(wc:*)"
+    ]
+  },
+  "couldNotRun": null,
+  "rows": [
+    {
+      "questionId": "s-001",
+      "category": "callers",
+      "status": "ok",
+      "correct": "yes",
+      "tokens": {
+        "input": 8,
+        "output": 1075,
+        "cacheCreation": 22077,
+        "cacheRead": 61981,
+        "billable": 85141
+      },
+      "toolCalls": 3,
+      "toolCallsByName": {
+        "Bash": 3
+      },
+      "initTools": [
+        "Bash",
+        "Read"
+      ],
+      "mcpServers": [],
+      "wallMs": 10719,
+      "costUsd": 0.1052721,
+      "numTurns": 4,
+      "answer": {
+        "parsed": true,
+        "abstain": false,
+        "itemCount": 4,
+        "matched": 4,
+        "expected": 4,
+        "extra": 0
+      },
+      "gapNote": "The 4,096-token repo map in the prompt covers 21 files of 3,976 tracked; no .cts file appears in it and none of the question symbols is listed in it. The session ignored it and used shell search. The map adds roughly 11,000 cache-creation tokens per session compared with the shell-only sessions (149,246 over eight sessions against 58,802 for the plugin row)."
+    },
+    {
+      "questionId": "s-002",
+      "category": "callers",
+      "status": "ok",
+      "correct": "yes",
+      "tokens": {
+        "input": 8,
+        "output": 876,
+        "cacheCreation": 16501,
+        "cacheRead": 60032,
+        "billable": 77417
+      },
+      "toolCalls": 3,
+      "toolCallsByName": {
+        "Bash": 3
+      },
+      "initTools": [
+        "Bash",
+        "Read"
+      ],
+      "mcpServers": [],
+      "wallMs": 8370,
+      "costUsd": 0.0807832,
+      "numTurns": 4,
+      "answer": {
+        "parsed": true,
+        "abstain": false,
+        "itemCount": 6,
+        "matched": 6,
+        "expected": 6,
+        "extra": 0
+      },
+      "gapNote": "The map held nothing for this question; shell search alone."
+    },
+    {
+      "questionId": "s-003",
+      "category": "heritage",
+      "status": "ok",
+      "correct": "yes",
+      "tokens": {
+        "input": 6,
+        "output": 492,
+        "cacheCreation": 13265,
+        "cacheRead": 39293,
+        "billable": 53056
+      },
+      "toolCalls": 2,
+      "toolCallsByName": {
+        "Bash": 2
+      },
+      "initTools": [
+        "Bash",
+        "Read"
+      ],
+      "mcpServers": [],
+      "wallMs": 5508,
+      "costUsd": 0.0619213,
+      "numTurns": 3,
+      "answer": {
+        "parsed": true,
+        "abstain": false,
+        "itemCount": 2,
+        "matched": 2,
+        "expected": 2,
+        "extra": 0
+      },
+      "gapNote": "The map held nothing for this question; shell search alone."
+    },
+    {
+      "questionId": "s-004",
+      "category": "emit",
+      "status": "ok",
+      "correct": "yes",
+      "tokens": {
+        "input": 8,
+        "output": 1102,
+        "cacheCreation": 15777,
+        "cacheRead": 60743,
+        "billable": 77630
+      },
+      "toolCalls": 3,
+      "toolCallsByName": {
+        "Bash": 3
+      },
+      "initTools": [
+        "Bash",
+        "Read"
+      ],
+      "mcpServers": [],
+      "wallMs": 10365,
+      "costUsd": 0.08021829999999999,
+      "numTurns": 4,
+      "answer": {
+        "parsed": true,
+        "abstain": false,
+        "itemCount": 3,
+        "matched": 3,
+        "expected": 3,
+        "extra": 0
+      },
+      "gapNote": "The map held nothing for this question; shell search alone."
+    },
+    {
+      "questionId": "s-005",
+      "category": "adr",
+      "status": "ok",
+      "correct": "yes",
+      "tokens": {
+        "input": 6,
+        "output": 1183,
+        "cacheCreation": 23591,
+        "cacheRead": 48796,
+        "billable": 73576
+      },
+      "toolCalls": 2,
+      "toolCallsByName": {
+        "Bash": 2
+      },
+      "initTools": [
+        "Bash",
+        "Read"
+      ],
+      "mcpServers": [],
+      "wallMs": 9573,
+      "costUsd": 0.11108559999999999,
+      "numTurns": 3,
+      "answer": {
+        "parsed": true,
+        "abstain": false,
+        "itemCount": 14,
+        "matched": 14,
+        "expected": 14,
+        "extra": 0
+      },
+      "gapNote": "The map held nothing for this question; shell search alone."
+    },
+    {
+      "questionId": "s-006",
+      "category": "impact",
+      "status": "ok",
+      "correct": "partial",
+      "tokens": {
+        "input": 16,
+        "output": 3344,
+        "cacheCreation": 23381,
+        "cacheRead": 161841,
+        "billable": 188582
+      },
+      "toolCalls": 7,
+      "toolCallsByName": {
+        "Bash": 7
+      },
+      "initTools": [
+        "Bash",
+        "Read"
+      ],
+      "mcpServers": [],
+      "wallMs": 25015,
+      "costUsd": 0.1431801,
+      "numTurns": 8,
+      "answer": {
+        "parsed": true,
+        "abstain": false,
+        "itemCount": 28,
+        "matched": 17,
+        "expected": 21,
+        "extra": 11
+      },
+      "gapNote": "The map held nothing for this question; shell search only. Partial: 17 of the 21 key files, 11 files outside the key."
+    },
+    {
+      "questionId": "s-007",
+      "category": "definition",
+      "status": "ok",
+      "correct": "yes",
+      "tokens": {
+        "input": 8,
+        "output": 805,
+        "cacheCreation": 17765,
+        "cacheRead": 61387,
+        "billable": 79965
+      },
+      "toolCalls": 3,
+      "toolCallsByName": {
+        "Bash": 3
+      },
+      "initTools": [
+        "Bash",
+        "Read"
+      ],
+      "mcpServers": [],
+      "wallMs": 8530,
+      "costUsd": 0.0852647,
+      "numTurns": 4,
+      "answer": {
+        "parsed": true,
+        "abstain": false,
+        "itemCount": 4,
+        "matched": 4,
+        "expected": 4,
+        "extra": 0
+      },
+      "gapNote": "The map held nothing for this question; shell search alone."
+    },
+    {
+      "questionId": "s-008",
+      "category": "abstain",
+      "status": "ok",
+      "correct": "yes",
+      "tokens": {
+        "input": 6,
+        "output": 295,
+        "cacheCreation": 16889,
+        "cacheRead": 39206,
+        "billable": 56396
+      },
+      "toolCalls": 2,
+      "toolCallsByName": {
+        "Bash": 2
+      },
+      "initTools": [
+        "Bash",
+        "Read"
+      ],
+      "mcpServers": [],
+      "wallMs": 6017,
+      "costUsd": 0.07443860000000001,
+      "numTurns": 3,
+      "answer": {
+        "parsed": true,
+        "abstain": true,
+        "itemCount": 0,
+        "matched": 1,
+        "expected": 1,
+        "extra": 0
+      },
+      "gapNote": "The map held nothing for this question; shell search alone."
+    }
+  ],
+  "totals": {
+    "sessions": 8,
+    "yes": 7,
+    "partial": 1,
+    "no": 0,
+    "tokens": {
+      "input": 66,
+      "output": 9172,
+      "cacheCreation": 149246,
+      "cacheRead": 533279,
+      "billable": 691763
+    },
+    "toolCalls": 25,
+    "wallMs": 84097,
+    "costUsd": 0.742164
+  }
+}

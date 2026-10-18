@@ -1,0 +1,420 @@
+{
+  "schemaVersion": 1,
+  "tool": {
+    "id": "mcp-language-server",
+    "label": "mcp-language-server",
+    "version": "v0.1.1 (typescript-language-server 6.0.2)",
+    "installMethod": "go install of the pinned module version with Go 1.27.2 in a scratch prefix"
+  },
+  "claudeCodeVersion": "2.1.302",
+  "model": "claude-sonnet-5-5",
+  "date": "2026-10-18",
+  "corpus": {
+    "id": "gsd-core",
+    "sha": "10ac3a7a947903ba50f538a907af036744d759d5"
+  },
+  "limits": {
+    "maxBudgetUsdPerSession": 3,
+    "sessionWallClockMs": 900000
+  },
+  "isolation": {
+    "settingSources": "",
+    "strictMcpConfig": true,
+    "tools": [
+      "Bash",
+      "Read"
+    ],
+    "allowedTools": [
+      "Read",
+      "Bash(git grep:*)",
+      "Bash(git ls-files:*)",
+      "Bash(rg:*)",
+      "Bash(grep:*)",
+      "Bash(ls:*)",
+      "Bash(cat:*)",
+      "Bash(head:*)",
+      "Bash(tail:*)",
+      "Bash(wc:*)",
+      "mcp__mcp-language-server"
+    ]
+  },
+  "couldNotRun": null,
+  "rows": [
+    {
+      "questionId": "s-001",
+      "category": "callers",
+      "status": "ok",
+      "correct": "yes",
+      "tokens": {
+        "input": 6,
+        "output": 1053,
+        "cacheCreation": 14819,
+        "cacheRead": 20907,
+        "billable": 36785
+      },
+      "toolCalls": 2,
+      "toolCallsByName": {
+        "Bash": 2
+      },
+      "initTools": [
+        "Bash",
+        "Read",
+        "mcp__mcp-language-server__definition",
+        "mcp__mcp-language-server__diagnostics",
+        "mcp__mcp-language-server__edit_file",
+        "mcp__mcp-language-server__hover",
+        "mcp__mcp-language-server__references",
+        "mcp__mcp-language-server__rename_symbol"
+      ],
+      "mcpServers": [
+        {
+          "name": "mcp-language-server",
+          "status": "connected"
+        }
+      ],
+      "wallMs": 10067,
+      "costUsd": 0.07190869999999999,
+      "numTurns": 3,
+      "answer": {
+        "parsed": true,
+        "abstain": false,
+        "itemCount": 4,
+        "matched": 4,
+        "expected": 4,
+        "extra": 0
+      },
+      "gapNote": "The session had the six tools (definition, references, hover, diagnostics, rename_symbol, edit_file) with the server connected but called none; the answer came from shell search. A separate non-model probe on the same checkout (no claude session) got \"No Project\" from the language server on a cold start for symbol-name queries, and \"not found\" after one plain JavaScript file was opened; the checkout has no .ts file, only .cts and .cjs."
+    },
+    {
+      "questionId": "s-002",
+      "category": "callers",
+      "status": "ok",
+      "correct": "yes",
+      "tokens": {
+        "input": 8,
+        "output": 917,
+        "cacheCreation": 5104,
+        "cacheRead": 33645,
+        "billable": 39674
+      },
+      "toolCalls": 3,
+      "toolCallsByName": {
+        "Bash": 3
+      },
+      "initTools": [
+        "Bash",
+        "Read",
+        "mcp__mcp-language-server__definition",
+        "mcp__mcp-language-server__diagnostics",
+        "mcp__mcp-language-server__edit_file",
+        "mcp__mcp-language-server__hover",
+        "mcp__mcp-language-server__references",
+        "mcp__mcp-language-server__rename_symbol"
+      ],
+      "mcpServers": [
+        {
+          "name": "mcp-language-server",
+          "status": "connected"
+        }
+      ],
+      "wallMs": 9479,
+      "costUsd": 0.032966499999999996,
+      "numTurns": 4,
+      "answer": {
+        "parsed": true,
+        "abstain": false,
+        "itemCount": 6,
+        "matched": 6,
+        "expected": 6,
+        "extra": 0
+      },
+      "gapNote": "No call to the tool's own tools; answered by shell search alone."
+    },
+    {
+      "questionId": "s-003",
+      "category": "heritage",
+      "status": "ok",
+      "correct": "yes",
+      "tokens": {
+        "input": 6,
+        "output": 468,
+        "cacheCreation": 1837,
+        "cacheRead": 20000,
+        "billable": 22311
+      },
+      "toolCalls": 2,
+      "toolCallsByName": {
+        "Bash": 2
+      },
+      "initTools": [
+        "Bash",
+        "Read",
+        "mcp__mcp-language-server__definition",
+        "mcp__mcp-language-server__diagnostics",
+        "mcp__mcp-language-server__edit_file",
+        "mcp__mcp-language-server__hover",
+        "mcp__mcp-language-server__references",
+        "mcp__mcp-language-server__rename_symbol"
+      ],
+      "mcpServers": [
+        {
+          "name": "mcp-language-server",
+          "status": "connected"
+        }
+      ],
+      "wallMs": 6205,
+      "costUsd": 0.01404,
+      "numTurns": 3,
+      "answer": {
+        "parsed": true,
+        "abstain": false,
+        "itemCount": 2,
+        "matched": 2,
+        "expected": 2,
+        "extra": 0
+      },
+      "gapNote": "No call to the tool's own tools; answered by shell search alone."
+    },
+    {
+      "questionId": "s-004",
+      "category": "emit",
+      "status": "ok",
+      "correct": "yes",
+      "tokens": {
+        "input": 8,
+        "output": 792,
+        "cacheCreation": 5278,
+        "cacheRead": 33832,
+        "billable": 39910
+      },
+      "toolCalls": 3,
+      "toolCallsByName": {
+        "Bash": 3
+      },
+      "initTools": [
+        "Bash",
+        "Read",
+        "mcp__mcp-language-server__definition",
+        "mcp__mcp-language-server__diagnostics",
+        "mcp__mcp-language-server__edit_file",
+        "mcp__mcp-language-server__hover",
+        "mcp__mcp-language-server__references",
+        "mcp__mcp-language-server__rename_symbol"
+      ],
+      "mcpServers": [
+        {
+          "name": "mcp-language-server",
+          "status": "connected"
+        }
+      ],
+      "wallMs": 9519,
+      "costUsd": 0.0324312,
+      "numTurns": 4,
+      "answer": {
+        "parsed": true,
+        "abstain": false,
+        "itemCount": 3,
+        "matched": 3,
+        "expected": 3,
+        "extra": 0
+      },
+      "gapNote": "No call to the tool's own tools; answered by shell search alone."
+    },
+    {
+      "questionId": "s-005",
+      "category": "adr",
+      "status": "ok",
+      "correct": "yes",
+      "tokens": {
+        "input": 8,
+        "output": 1381,
+        "cacheCreation": 11990,
+        "cacheRead": 45959,
+        "billable": 59338
+      },
+      "toolCalls": 3,
+      "toolCallsByName": {
+        "Bash": 3
+      },
+      "initTools": [
+        "Bash",
+        "Read",
+        "mcp__mcp-language-server__definition",
+        "mcp__mcp-language-server__diagnostics",
+        "mcp__mcp-language-server__edit_file",
+        "mcp__mcp-language-server__hover",
+        "mcp__mcp-language-server__references",
+        "mcp__mcp-language-server__rename_symbol"
+      ],
+      "mcpServers": [
+        {
+          "name": "mcp-language-server",
+          "status": "connected"
+        }
+      ],
+      "wallMs": 12771,
+      "costUsd": 0.0663819,
+      "numTurns": 4,
+      "answer": {
+        "parsed": true,
+        "abstain": false,
+        "itemCount": 17,
+        "matched": 14,
+        "expected": 14,
+        "extra": 0
+      },
+      "gapNote": "No call to the tool's own tools; answered by shell search alone."
+    },
+    {
+      "questionId": "s-006",
+      "category": "impact",
+      "status": "ok",
+      "correct": "partial",
+      "tokens": {
+        "input": 28,
+        "output": 5364,
+        "cacheCreation": 17695,
+        "cacheRead": 219045,
+        "billable": 242132
+      },
+      "toolCalls": 14,
+      "toolCallsByName": {
+        "Bash": 14
+      },
+      "initTools": [
+        "Bash",
+        "Read",
+        "mcp__mcp-language-server__definition",
+        "mcp__mcp-language-server__diagnostics",
+        "mcp__mcp-language-server__edit_file",
+        "mcp__mcp-language-server__hover",
+        "mcp__mcp-language-server__references",
+        "mcp__mcp-language-server__rename_symbol"
+      ],
+      "mcpServers": [
+        {
+          "name": "mcp-language-server",
+          "status": "connected"
+        }
+      ],
+      "wallMs": 39270,
+      "costUsd": 0.1463805,
+      "numTurns": 15,
+      "answer": {
+        "parsed": true,
+        "abstain": false,
+        "itemCount": 22,
+        "matched": 17,
+        "expected": 21,
+        "extra": 4
+      },
+      "gapNote": "No call to the tool's own tools; shell search only. Partial: 17 of the 21 key files, 4 files outside the key."
+    },
+    {
+      "questionId": "s-007",
+      "category": "definition",
+      "status": "ok",
+      "correct": "yes",
+      "tokens": {
+        "input": 6,
+        "output": 667,
+        "cacheCreation": 1827,
+        "cacheRead": 19965,
+        "billable": 22465
+      },
+      "toolCalls": 2,
+      "toolCallsByName": {
+        "Bash": 2
+      },
+      "initTools": [
+        "Bash",
+        "Read",
+        "mcp__mcp-language-server__definition",
+        "mcp__mcp-language-server__diagnostics",
+        "mcp__mcp-language-server__edit_file",
+        "mcp__mcp-language-server__hover",
+        "mcp__mcp-language-server__references",
+        "mcp__mcp-language-server__rename_symbol"
+      ],
+      "mcpServers": [
+        {
+          "name": "mcp-language-server",
+          "status": "connected"
+        }
+      ],
+      "wallMs": 7342,
+      "costUsd": 0.0159865,
+      "numTurns": 3,
+      "answer": {
+        "parsed": true,
+        "abstain": false,
+        "itemCount": 4,
+        "matched": 4,
+        "expected": 4,
+        "extra": 0
+      },
+      "gapNote": "No call to the tool's own tools; answered by shell search alone."
+    },
+    {
+      "questionId": "s-008",
+      "category": "abstain",
+      "status": "ok",
+      "correct": "yes",
+      "tokens": {
+        "input": 4,
+        "output": 177,
+        "cacheCreation": 1414,
+        "cacheRead": 12762,
+        "billable": 14357
+      },
+      "toolCalls": 1,
+      "toolCallsByName": {
+        "Bash": 1
+      },
+      "initTools": [
+        "Bash",
+        "Read",
+        "mcp__mcp-language-server__definition",
+        "mcp__mcp-language-server__diagnostics",
+        "mcp__mcp-language-server__edit_file",
+        "mcp__mcp-language-server__hover",
+        "mcp__mcp-language-server__references",
+        "mcp__mcp-language-server__rename_symbol"
+      ],
+      "mcpServers": [
+        {
+          "name": "mcp-language-server",
+          "status": "connected"
+        }
+      ],
+      "wallMs": 4335,
+      "costUsd": 0.0087102,
+      "numTurns": 2,
+      "answer": {
+        "parsed": true,
+        "abstain": true,
+        "itemCount": 0,
+        "matched": 1,
+        "expected": 1,
+        "extra": 0
+      },
+      "gapNote": "No call to the tool's own tools; answered by shell search alone."
+    }
+  ],
+  "totals": {
+    "sessions": 8,
+    "yes": 7,
+    "partial": 1,
+    "no": 0,
+    "tokens": {
+      "input": 74,
+      "output": 10819,
+      "cacheCreation": 59964,
+      "cacheRead": 406115,
+      "billable": 476972
+    },
+    "toolCalls": 30,
+    "wallMs": 98988,
+    "costUsd": 0.388806
+  }
+}
