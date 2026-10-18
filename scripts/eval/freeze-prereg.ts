@@ -1,12 +1,26 @@
 /**
  * node scripts/eval/freeze-prereg.ts --stage A --by <name> [--prereg <path>] [--constants <path>]
+ * node scripts/eval/freeze-prereg.ts --stage B --by <name> [--prereg <path>]
  *
  * The mechanical half of the freeze (D-01, D-04, D-08, EVL-02). Given a Draft pre-registration it checks everything
  * a person must have settled, computes the sha256 of the sixteen Stage A files (CRLF read as LF), writes them into
  * the single `prereg-json` block, sets `Status: Frozen (Stage A, <date>, by <name>)` and runs `verifyPrereg` on the
  * result. It writes nothing unless every check passed, and it never writes a hash it did not just compute.
  *
- * Refusals, each leaving the document byte for byte as it was:
+ * Stage B (plan 03-33, D-09, D-23) adds the two things Stage A could not know: the sha256 of the skill file
+ * (`skills/gsd-atlas/SKILL.md`, CRLF read as LF) and the atlas commit, which is the full id of HEAD. It changes the
+ * block's `stage` to B, adds `stageB`, and writes `Status: Frozen (Stage B, <date>, by <name>)` on a new line below
+ * the Stage A status line, which stays. Nothing else in the document or in a registered file changes. Its refusals:
+ * - `stage_a_not_frozen`: the document is not a Frozen Stage A one, or `verifyPrereg` finds a problem with it (a
+ *   registered file changed since Stage A, a hash missing).
+ * - `already_frozen_b`: the document already holds a Stage B record. A change after Stage B is a new registered run.
+ * - `skill_missing` / `skill_dirty`: the skill file is absent, or is modified, staged, untracked or ignored (the hash
+ *   must be of committed bytes).
+ * - `tree_dirty`: any other file is modified or untracked (apart from `node_modules`), because the atlas commit has to
+ *   be the commit that was built and that will run.
+ * - `build_failed`: `tsc -p tsconfig.build.json` exited non-zero, so the package does not build from this commit.
+ *
+ * Stage A refusals, each leaving the document byte for byte as it was:
  * - `dirty_registered_file`: a Stage A file is modified, untracked or ignored (the hashes must be of committed bytes).
  * - `missing_file`: a Stage A path does not exist.
  * - `parameter_mismatch`: a registered parameter differs from the approved constants (03-CONSTANTS.md), or the
@@ -15,7 +29,7 @@
  *   `OQ4 confirmed by the user: point_estimate|wilson_lower_bound`, equal to `params.citationJudgedOn`. A Draft value
  *   of `citationJudgedOn` alone never satisfies the check (OQ4 has no default).
  * - `tests_failed`: the eval test command exited non-zero.
- * - `already_frozen`, `invalid_document`, `invalid_reviewer`, `stage_unsupported`, `git_unavailable`,
+ * - `already_frozen`, `invalid_document`, `invalid_reviewer`, `git_unavailable`,
  *   `verification_failed`: the document or the call is not one this tool can freeze.
  *
  * Exit codes of the command: 0 frozen, 1 refused, 2 usage error.
@@ -25,7 +39,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { parseArgs } from 'node:util';
-import { DEFAULT_PREREG_PATH, hashFile, readPrereg, replacePreregBlock, STAGE_A_FILES } from './prereg.ts';
+import { DEFAULT_PREREG_PATH, hashFile, readPrereg, replacePreregBlock, SKILL_PATH, STAGE_A_FILES } from './prereg.ts';
 import type { Prereg } from './prereg.ts';
 import { verifyPrereg } from './verify-prereg.ts';
 
@@ -66,9 +80,12 @@ export interface FreezeOptions {
   readonly stage: 'A' | 'B';
   readonly approvedBy: string;
   readonly now: Date;
-  readonly approved: ApprovedConstants;
+  /** The approved constants Stage A compares the registered parameters with; Stage B does not read them. */
+  readonly approved?: ApprovedConstants;
   /** The eval test command; default `node --test` over every `scripts/eval/*.test.ts`. */
   readonly testCommand?: TestCommand;
+  /** Stage B: the command that builds the package; default `tsc -p tsconfig.build.json` of the repository's own TypeScript. */
+  readonly buildCommand?: TestCommand;
 }
 
 export type RefusalReason =
@@ -80,12 +97,23 @@ export type RefusalReason =
   | 'already_frozen'
   | 'invalid_document'
   | 'invalid_reviewer'
-  | 'stage_unsupported'
   | 'git_unavailable'
-  | 'verification_failed';
+  | 'verification_failed'
+  | 'stage_a_not_frozen'
+  | 'already_frozen_b'
+  | 'skill_missing'
+  | 'skill_dirty'
+  | 'tree_dirty'
+  | 'build_failed';
 
 export type FreezeResult =
-  | { readonly ok: true; readonly status: string; readonly files: Readonly<Record<string, string>> }
+  | {
+      readonly ok: true;
+      readonly status: string;
+      readonly files: Readonly<Record<string, string>>;
+      /** Stage B only: what was recorded. */
+      readonly stageB?: { readonly skillSha256: string; readonly atlasCommit: string };
+    }
   | { readonly ok: false; readonly reason: RefusalReason; readonly details: string[] };
 
 // ---------------------------------------------------------------------------------------------
@@ -227,9 +255,8 @@ function runGit(root: string, args: string[]): { ok: boolean; stdout: string; st
   return { ok: true, stdout: result.stdout, stderr: result.stderr };
 }
 
-/** Registered paths that are not committed as they are on disk: modified, staged, untracked or ignored. */
-function dirtyPaths(root: string): { ok: true; dirty: string[] } | { ok: false; error: string } {
-  const paths = [...STAGE_A_FILES];
+/** Of `paths`, those that are not committed as they are on disk: modified, staged, untracked or ignored. */
+function dirtyPaths(root: string, paths: readonly string[] = STAGE_A_FILES): { ok: true; dirty: string[] } | { ok: false; error: string } {
   const tracked = runGit(root, ['ls-files', '-z', '--', ...paths]);
   if (!tracked.ok) return { ok: false, error: tracked.stderr.trim() || 'git ls-files failed' };
   const trackedSet = new Set(tracked.stdout.split('\0').filter((line) => line !== ''));
@@ -308,7 +335,9 @@ function refuse(reason: RefusalReason, ...details: string[]): FreezeResult {
  * document is untouched.
  */
 export function freezePrereg(options: FreezeOptions): FreezeResult {
-  if (options.stage !== 'A') return refuse('stage_unsupported', 'only Stage A is frozen by this tool; Stage B is added by plan 03-33');
+  if (options.stage === 'B') return freezeStageB(options);
+  const approved = options.approved;
+  if (approved === undefined) return refuse('parameter_mismatch', 'Stage A compares the registered parameters with the approved constants, and none were given');
   const approvedBy = options.approvedBy.trim();
   if (approvedBy === '' || /[\r\n()]/.test(approvedBy)) {
     return refuse('invalid_reviewer', 'the reviewer name must be non-empty and contain no line break or parenthesis');
@@ -341,7 +370,7 @@ export function freezePrereg(options: FreezeOptions): FreezeResult {
   if (!dirty.ok) return refuse('git_unavailable', dirty.error);
   if (dirty.dirty.length > 0) return refuse('dirty_registered_file', ...dirty.dirty);
 
-  const mismatches = [...checkParams(prereg, options.approved), ...checkQuestionFiles(options.root, prereg)];
+  const mismatches = [...checkParams(prereg, approved), ...checkQuestionFiles(options.root, prereg)];
   if (mismatches.length > 0) return refuse('parameter_mismatch', ...mismatches);
 
   const oq4 = oq4Confirmation(original);
@@ -385,6 +414,114 @@ export function freezePrereg(options: FreezeOptions): FreezeResult {
 }
 
 // ---------------------------------------------------------------------------------------------
+// Stage B
+
+/** Untracked or modified paths of the whole tree, except `node_modules` (a worktree links it to the main checkout). */
+function dirtyTree(root: string): { ok: true; dirty: string[] } | { ok: false; error: string } {
+  const status = runGit(root, ['status', '--porcelain', '--untracked-files=all', '-z']);
+  if (!status.ok) return { ok: false, error: status.stderr.trim() || 'git status failed' };
+  const dirty = status.stdout
+    .split('\0')
+    .filter((entry) => entry !== '')
+    .map((entry) => ({ code: entry.slice(0, 2).trim() || 'changed', rel: entry.slice(3) }))
+    .filter(({ rel }) => rel !== 'node_modules' && !rel.startsWith('node_modules/'))
+    .map(({ code, rel }) => `${rel} (${code})`);
+  return { ok: true, dirty: dirty.sort() };
+}
+
+/** The repository's own `tsc -p tsconfig.build.json`, run through `node` (never a shell or an npm shim). */
+function defaultBuildCommand(root: string): TestCommand {
+  return { command: process.execPath, args: [path.join(root, 'node_modules', 'typescript', 'bin', 'tsc'), '-p', 'tsconfig.build.json'] };
+}
+
+const STAGE_A_STATUS_LINE = /^Status:[ \t]*Frozen \(Stage A,[^\n]*$/m;
+
+/**
+ * Records Stage B (D-09, D-23): the skill's hash and the atlas commit. See the header for the refusals. The document is
+ * written only after every check and the build passed, and `verifyPrereg` has the last word.
+ */
+function freezeStageB(options: FreezeOptions): FreezeResult {
+  const approvedBy = options.approvedBy.trim();
+  if (approvedBy === '' || /[\r\n()]/.test(approvedBy)) {
+    return refuse('invalid_reviewer', 'the reviewer name must be non-empty and contain no line break or parenthesis');
+  }
+  const file = path.resolve(options.root, options.path);
+  let original: string;
+  let prereg: Prereg;
+  try {
+    original = fs.readFileSync(file, 'utf8');
+    prereg = readPrereg(file);
+  } catch (error) {
+    return refuse('invalid_document', error instanceof Error ? error.message : String(error));
+  }
+  if (prereg.stage === 'B' || prereg.stageB !== undefined || /^Status:.*\(Stage B,/m.test(original)) {
+    return refuse('already_frozen_b', `${options.path} already holds a Stage B record; a change after it is a new registered run`);
+  }
+  const statusLines = original.split(/\r?\n/).filter((line) => /^Status:/.test(line));
+  if (prereg.status !== 'Frozen' || statusLines.length !== 1 || !STAGE_A_STATUS_LINE.test(statusLines[0] as string)) {
+    return refuse('stage_a_not_frozen', 'expected a Frozen Stage A block and exactly one line "Status: Frozen (Stage A, <date>, by <name>)"');
+  }
+  const verified = verifyPrereg(file, options.root);
+  if (!verified.ok) return refuse('stage_a_not_frozen', 'Stage A does not verify:', ...verified.problems);
+
+  const skill = path.join(options.root, ...SKILL_PATH.split('/'));
+  let skillIsFile = false;
+  try {
+    skillIsFile = fs.statSync(skill).isFile();
+  } catch {
+    skillIsFile = false;
+  }
+  if (!skillIsFile) return refuse('skill_missing', SKILL_PATH);
+  const skillDirty = dirtyPaths(options.root, [SKILL_PATH]);
+  if (!skillDirty.ok) return refuse('git_unavailable', skillDirty.error);
+  if (skillDirty.dirty.length > 0) return refuse('skill_dirty', ...skillDirty.dirty);
+  const registeredDirty = dirtyPaths(options.root);
+  if (!registeredDirty.ok) return refuse('git_unavailable', registeredDirty.error);
+  if (registeredDirty.dirty.length > 0) return refuse('dirty_registered_file', ...registeredDirty.dirty);
+  const tree = dirtyTree(options.root);
+  if (!tree.ok) return refuse('git_unavailable', tree.error);
+  if (tree.dirty.length > 0) return refuse('tree_dirty', ...tree.dirty);
+
+  const head = runGit(options.root, ['rev-parse', 'HEAD']);
+  const atlasCommit = head.stdout.trim();
+  if (!head.ok || !/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/.test(atlasCommit)) {
+    return refuse('git_unavailable', head.stderr.trim() || 'git rev-parse HEAD did not print a commit id');
+  }
+
+  const build = options.buildCommand ?? defaultBuildCommand(options.root);
+  const built = spawnSync(build.command, [...build.args], { cwd: options.root, env: cleanGitEnv(), encoding: 'utf8', windowsHide: true });
+  if (built.error !== undefined || built.status !== 0) {
+    const tail = `${built.stdout ?? ''}${built.stderr ?? ''}`.trim().split(/\r?\n/).slice(-15);
+    return refuse('build_failed', `exit ${String(built.error?.message ?? built.status ?? built.signal)}`, ...tail);
+  }
+  // The build must not have changed what is committed; a build that writes a tracked file would break "this commit".
+  const afterBuild = dirtyTree(options.root);
+  if (!afterBuild.ok) return refuse('git_unavailable', afterBuild.error);
+  if (afterBuild.dirty.length > 0) return refuse('tree_dirty', 'the build changed the tree:', ...afterBuild.dirty);
+
+  const skillSha256 = hashFile(skill);
+  const status = `Frozen (Stage B, ${options.now.toISOString().slice(0, 10)}, by ${approvedBy})`;
+  let next: string;
+  try {
+    next = replacePreregBlock(original, { ...prereg, stage: 'B', stageB: { skillSha256, atlasCommit } });
+  } catch (error) {
+    return refuse('invalid_document', error instanceof Error ? error.message : String(error));
+  }
+  // The Stage A line stays; the Stage B line goes on a line of its own directly below it, in the file's line ending.
+  next = next.replace(/^(Status:[ \t]*Frozen \(Stage A,[^\r\n]*)(\r?\n)/m, (_whole, line: string, eol: string) => `${line}${eol}Status: ${status}${eol}`);
+
+  const temp = `${file}.freeze-tmp`;
+  fs.writeFileSync(temp, next);
+  fs.renameSync(temp, file);
+  const recheck = verifyPrereg(file, options.root);
+  if (!recheck.ok) {
+    fs.writeFileSync(file, original);
+    return refuse('verification_failed', ...recheck.problems);
+  }
+  return { ok: true, status, files: prereg.files, stageB: { skillSha256, atlasCommit } };
+}
+
+// ---------------------------------------------------------------------------------------------
 // Command
 
 export interface Io {
@@ -396,10 +533,13 @@ export interface Io {
 export interface CliDeps {
   readonly approved?: ApprovedConstants;
   readonly testCommand?: TestCommand;
+  readonly buildCommand?: TestCommand;
   readonly now?: Date;
 }
 
-const USAGE = 'usage: node scripts/eval/freeze-prereg.ts --stage A --by <name> [--prereg <path>] [--constants <path>]\n';
+const USAGE =
+  'usage: node scripts/eval/freeze-prereg.ts --stage A --by <name> [--prereg <path>] [--constants <path>]\n' +
+  '       node scripts/eval/freeze-prereg.ts --stage B --by <name> [--prereg <path>]\n';
 
 /** The command body. Returns the exit code. */
 export function runCli(argv: string[], io: Io, root: string, deps: CliDeps = {}): number {
@@ -416,19 +556,22 @@ export function runCli(argv: string[], io: Io, root: string, deps: CliDeps = {})
     return 2;
   }
   if (values.stage !== 'A' && values.stage !== 'B') {
-    io.err(`freeze-prereg: --stage must be A (Stage B belongs to plan 03-33)\n${USAGE}`);
+    io.err(`freeze-prereg: --stage must be A or B\n${USAGE}`);
     return 2;
   }
   if (values.by === undefined || values.by.trim() === '') {
     io.err(`freeze-prereg: --by <name> is required: the freeze records who approved it\n${USAGE}`);
     return 2;
   }
-  let approved: ApprovedConstants;
-  try {
-    approved = deps.approved ?? readApprovedConstants(path.resolve(root, values.constants ?? APPROVED_CONSTANTS_PATH));
-  } catch (error) {
-    io.err(`freeze-prereg: ${error instanceof Error ? error.message : String(error)}\n`);
-    return 1;
+  // Stage B compares nothing with the constants, so a missing constants file must not stop it.
+  let approved: ApprovedConstants | undefined;
+  if (values.stage === 'A') {
+    try {
+      approved = deps.approved ?? readApprovedConstants(path.resolve(root, values.constants ?? APPROVED_CONSTANTS_PATH));
+    } catch (error) {
+      io.err(`freeze-prereg: ${error instanceof Error ? error.message : String(error)}\n`);
+      return 1;
+    }
   }
   const result = freezePrereg({
     root,
@@ -436,8 +579,9 @@ export function runCli(argv: string[], io: Io, root: string, deps: CliDeps = {})
     stage: values.stage,
     approvedBy: values.by,
     now: deps.now ?? new Date(),
-    approved,
+    ...(approved === undefined ? {} : { approved }),
     ...(deps.testCommand === undefined ? {} : { testCommand: deps.testCommand }),
+    ...(deps.buildCommand === undefined ? {} : { buildCommand: deps.buildCommand }),
   });
   if (!result.ok) {
     io.err(`freeze-prereg: refused: ${result.reason}\n`);
@@ -445,7 +589,12 @@ export function runCli(argv: string[], io: Io, root: string, deps: CliDeps = {})
     return 1;
   }
   io.out(`freeze-prereg: ${result.status}\n`);
-  io.out(`freeze-prereg: registered ${String(Object.keys(result.files).length)} files\n`);
+  if (result.stageB === undefined) {
+    io.out(`freeze-prereg: registered ${String(Object.keys(result.files).length)} files\n`);
+  } else {
+    io.out(`freeze-prereg: skillSha256 ${result.stageB.skillSha256}\n`);
+    io.out(`freeze-prereg: atlasCommit ${result.stageB.atlasCommit}\n`);
+  }
   return 0;
 }
 

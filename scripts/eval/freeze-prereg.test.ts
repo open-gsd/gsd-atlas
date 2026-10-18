@@ -13,7 +13,7 @@ import {
   runCli,
 } from './freeze-prereg.ts';
 import type { ApprovedConstants, FreezeOptions, FreezeResult } from './freeze-prereg.ts';
-import { DEFAULT_PREREG_PATH, hashFile, PREREG_BLOCK_LABEL, readPrereg, replacePreregBlock, STAGE_A_FILES } from './prereg.ts';
+import { DEFAULT_PREREG_PATH, hashFile, PREREG_BLOCK_LABEL, readPrereg, replacePreregBlock, SKILL_PATH, STAGE_A_FILES } from './prereg.ts';
 import type { Prereg } from './prereg.ts';
 import { verifyPrereg } from './verify-prereg.ts';
 
@@ -57,6 +57,8 @@ const PARAMS: Prereg['params'] = {
 
 const OK_TESTS = { command: process.execPath, args: ['-e', 'process.exit(0)'] };
 const BAD_TESTS = { command: process.execPath, args: ['-e', 'process.exit(1)'] };
+const OK_BUILD = { command: process.execPath, args: ['-e', 'process.exit(0)'] };
+const BAD_BUILD = { command: process.execPath, args: ['-e', 'console.error("tsc: error TS0000"); process.exit(1)'] };
 const NOW = new Date('2026-10-18T12:00:00Z');
 
 let root = '';
@@ -310,9 +312,9 @@ describe('freezePrereg', () => {
     assert.equal(refusal(freezePrereg(options())).reason, 'citation_criterion_unconfirmed');
   });
 
-  test('a Stage B freeze is not this tool: it refuses with stage_unsupported', () => {
+  test('a Stage B freeze of a Draft Stage A document refuses: Stage B needs a frozen Stage A', () => {
     setup();
-    assert.equal(refusal(freezePrereg(options({ stage: 'B' }))).reason, 'stage_unsupported');
+    assert.equal(refusal(freezePrereg(options({ stage: 'B', buildCommand: OK_BUILD }))).reason, 'stage_a_not_frozen');
   });
 
   test('an empty reviewer name refuses', () => {
@@ -323,6 +325,169 @@ describe('freezePrereg', () => {
   test('a document that is not a Draft Stage A block with one Status line refuses as invalid_document', () => {
     setup(documentText(draftPrereg()).replace('Status: Draft\n', ''));
     assert.equal(refusal(freezePrereg(options())).reason, 'invalid_document');
+  });
+});
+
+describe('freezePrereg, Stage B', () => {
+  const SKILL_TEXT = '---\nname: gsd-atlas\n---\n\n# stand-in skill\n';
+
+  function optionsB(overrides: Partial<FreezeOptions> = {}): FreezeOptions {
+    return {
+      root,
+      path: DEFAULT_PREREG_PATH,
+      stage: 'B',
+      approvedBy: 'Test Reviewer',
+      now: new Date('2026-11-02T09:00:00Z'),
+      buildCommand: OK_BUILD,
+      ...overrides,
+    };
+  }
+
+  /** A repository whose Stage A is frozen and committed, with the skill file committed beside it. */
+  function setupStageB(): void {
+    setup();
+    assert.equal(freezePrereg(options()).ok, true);
+    writeFile(SKILL_PATH, SKILL_TEXT);
+    git('add', '--all');
+    git('commit', '--quiet', '-m', 'stage A frozen, skill');
+  }
+
+  const head = (): string => git('rev-parse', 'HEAD').trim();
+
+  test('records the skill hash (CRLF read as LF) and the HEAD commit, adds the Stage B status line, and verifyPrereg passes', () => {
+    setup();
+    assert.equal(freezePrereg(options()).ok, true);
+    writeFile(SKILL_PATH, SKILL_TEXT.replace(/\n/g, '\r\n'));
+    git('add', '--all');
+    git('commit', '--quiet', '-m', 'stage A frozen, skill (CRLF)');
+    const result = freezePrereg(optionsB());
+    assert.equal(result.ok, true, JSON.stringify(result));
+    const text = docBytes();
+    const lines = text.split('\n').filter((line) => line.startsWith('Status:'));
+    assert.deepEqual(lines, ['Status: Frozen (Stage A, 2026-10-18, by Test Reviewer)', 'Status: Frozen (Stage B, 2026-11-02, by Test Reviewer)']);
+    const prereg = readPrereg(abs(DEFAULT_PREREG_PATH));
+    assert.equal(prereg.stage, 'B');
+    assert.equal(prereg.status, 'Frozen');
+    assert.match(prereg.stageB?.skillSha256 ?? '', /^[0-9a-f]{64}$/);
+    writeFile('skill-lf.txt', SKILL_TEXT);
+    assert.equal(prereg.stageB?.skillSha256, hashFile(abs('skill-lf.txt')));
+    assert.equal(prereg.stageB?.atlasCommit, head());
+    // The sixteen Stage A hashes are exactly what Stage A recorded.
+    for (const rel of STAGE_A_FILES) assert.equal(prereg.files[rel], hashFile(abs(rel)), rel);
+    const verified = verifyPrereg(abs(DEFAULT_PREREG_PATH), root);
+    assert.deepEqual(verified.problems, []);
+    assert.match(text, /^## Approvals$/m);
+  });
+
+  test('after the freeze, one changed byte of the skill makes verifyPrereg fail and name the skill path', () => {
+    setupStageB();
+    assert.equal(freezePrereg(optionsB()).ok, true);
+    fs.appendFileSync(abs(SKILL_PATH), ' ');
+    const verified = verifyPrereg(abs(DEFAULT_PREREG_PATH), root);
+    assert.equal(verified.ok, false);
+    assert.ok(verified.problems.some((problem) => problem.includes(SKILL_PATH)), verified.problems.join('\n'));
+  });
+
+  test('stage_a_not_frozen: a Draft document refuses and is left unchanged', () => {
+    setup();
+    writeFile(SKILL_PATH, SKILL_TEXT);
+    git('add', '--all');
+    git('commit', '--quiet', '-m', 'skill');
+    const before = docBytes();
+    assert.equal(refusal(freezePrereg(optionsB())).reason, 'stage_a_not_frozen');
+    assert.equal(docBytes(), before);
+  });
+
+  test('stage_a_not_frozen: a Stage A document whose registered file changed since the freeze refuses and names the file', () => {
+    setupStageB();
+    fs.appendFileSync(abs('scripts/eval/oracle.ts'), '// changed after Stage A\n');
+    git('add', '--all');
+    git('commit', '--quiet', '-m', 'edit a registered file');
+    const before = docBytes();
+    const refused = refusal(freezePrereg(optionsB()));
+    assert.equal(refused.reason, 'stage_a_not_frozen');
+    assert.ok(refused.details.some((line) => line.includes('scripts/eval/oracle.ts')), refused.details.join('\n'));
+    assert.equal(docBytes(), before);
+  });
+
+  test('skill_missing: no skill file refuses', () => {
+    setup();
+    assert.equal(freezePrereg(options()).ok, true);
+    git('add', '--all');
+    git('commit', '--quiet', '-m', 'stage A frozen');
+    const before = docBytes();
+    assert.equal(refusal(freezePrereg(optionsB())).reason, 'skill_missing');
+    assert.equal(docBytes(), before);
+  });
+
+  test('skill_dirty: a modified, an untracked and a staged-only skill all refuse', () => {
+    setupStageB();
+    const before = docBytes();
+    fs.appendFileSync(abs(SKILL_PATH), 'edited\n');
+    assert.equal(refusal(freezePrereg(optionsB())).reason, 'skill_dirty');
+    git('checkout', '--', SKILL_PATH);
+    git('rm', '--quiet', '--cached', SKILL_PATH);
+    git('commit', '--quiet', '-m', 'untrack the skill');
+    const untracked = refusal(freezePrereg(optionsB()));
+    assert.equal(untracked.reason, 'skill_dirty');
+    assert.ok(untracked.details.some((line) => line.includes(SKILL_PATH)));
+    assert.equal(docBytes(), before);
+  });
+
+  test('dirty_registered_file: a modified Stage A file refuses even though the skill is clean', () => {
+    setupStageB();
+    fs.appendFileSync(abs('scripts/eval/harness.ts'), '// uncommitted\n');
+    const refused = refusal(freezePrereg(optionsB()));
+    assert.ok(['dirty_registered_file', 'stage_a_not_frozen'].includes(refused.reason), refused.reason);
+    assert.ok(refused.details.some((line) => line.includes('scripts/eval/harness.ts')), refused.details.join('\n'));
+  });
+
+  test('tree_dirty: any other uncommitted or untracked file refuses, because the build must be of HEAD', () => {
+    setupStageB();
+    writeFile('src/new-file.ts', 'export const x = 1;\n');
+    const refused = refusal(freezePrereg(optionsB()));
+    assert.equal(refused.reason, 'tree_dirty');
+    assert.ok(refused.details.some((line) => line.includes('src/new-file.ts')), refused.details.join('\n'));
+  });
+
+  test('an untracked node_modules (a link to the main checkout in a worktree) does not count as dirty', () => {
+    setupStageB();
+    writeFile('node_modules/pkg/index.js', 'module.exports = 1;\n');
+    assert.equal(freezePrereg(optionsB()).ok, true);
+  });
+
+  test('build_failed: a failing build refuses, shows its output and leaves the document unchanged', () => {
+    setupStageB();
+    const before = docBytes();
+    const refused = refusal(freezePrereg(optionsB({ buildCommand: BAD_BUILD })));
+    assert.equal(refused.reason, 'build_failed');
+    assert.ok(refused.details.some((line) => line.includes('TS0000')), refused.details.join('\n'));
+    assert.equal(docBytes(), before);
+  });
+
+  test('already_frozen_b: a second Stage B freeze refuses and changes nothing', () => {
+    setupStageB();
+    assert.equal(freezePrereg(optionsB()).ok, true);
+    git('add', '--all');
+    git('commit', '--quiet', '-m', 'stage B');
+    const frozen = docBytes();
+    const refused = refusal(freezePrereg(optionsB({ now: new Date('2027-01-01T00:00:00Z'), approvedBy: 'Someone Else' })));
+    assert.equal(refused.reason, 'already_frozen_b');
+    assert.equal(docBytes(), frozen);
+  });
+
+  test('an empty reviewer name refuses', () => {
+    setupStageB();
+    assert.equal(refusal(freezePrereg(optionsB({ approvedBy: '' }))).reason, 'invalid_reviewer');
+  });
+
+  test('the Stage B record changes nothing but the block and one status line', () => {
+    setupStageB();
+    const before = docBytes();
+    assert.equal(freezePrereg(optionsB()).ok, true);
+    const after = docBytes();
+    const strip = (text: string): string => text.replace(/```prereg-json[\s\S]*?```/, '').replace(/^Status: Frozen \(Stage B[^\n]*\n/m, '');
+    assert.equal(strip(after), strip(before));
   });
 });
 
@@ -467,6 +632,29 @@ describe('runCli', () => {
     const code = runCli(['--stage', 'A', '--by', 'Tester'], sink.sinks, root, { approved: APPROVED, testCommand: OK_TESTS, now: NOW });
     assert.equal(code, 0);
     assert.match(sink.out.join(''), /Frozen \(Stage A, 2026-10-18, by Tester\)/);
+  });
+
+  test('--stage B: exits 0 and prints the status line, the skill hash and the commit; needs no constants file', () => {
+    setup();
+    assert.equal(runCli(['--stage', 'A', '--by', 'Tester'], io().sinks, root, { approved: APPROVED, testCommand: OK_TESTS, now: NOW }), 0);
+    writeFile(SKILL_PATH, '# skill\n');
+    git('add', '--all');
+    git('commit', '--quiet', '-m', 'stage A, skill');
+    const sink = io();
+    const code = runCli(['--stage', 'B', '--by', 'Tester'], sink.sinks, root, { buildCommand: OK_BUILD, now: new Date('2026-11-02T00:00:00Z') });
+    assert.equal(code, 0, sink.err.join(''));
+    const out = sink.out.join('');
+    assert.match(out, /Frozen \(Stage B, 2026-11-02, by Tester\)/);
+    assert.match(out, /skillSha256 [0-9a-f]{64}/);
+    assert.match(out, /atlasCommit [0-9a-f]{40}/);
+  });
+
+  test('--stage B: a refusal exits 1 and prints its reason', () => {
+    setup();
+    const sink = io();
+    const code = runCli(['--stage', 'B', '--by', 'Tester'], sink.sinks, root, { buildCommand: OK_BUILD });
+    assert.equal(code, 1);
+    assert.match(sink.err.join(''), /stage_a_not_frozen/);
   });
 });
 
