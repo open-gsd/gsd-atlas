@@ -16,9 +16,9 @@
  */
 import { UnknownWorktree, formatHandle } from '../fact-store/index.ts';
 import type { CitationRecord, Reader, RelationRecord, SymbolRecord } from '../fact-store/index.ts';
-import type { DegradedCode, Envelope, ExportSite, FileFacts, ImportSite, LocalSymbol, Span, SymbolIdentity } from '../facts/index.ts';
+import type { DegradedCode, Diagnostic, Envelope, ExportSite, FileFacts, ImportSite, LocalSymbol, Span, SymbolIdentity } from '../facts/index.ts';
 import { okEnvelope, symbolKey } from '../facts/index.ts';
-import { linkConfidence, lookupAdr } from './adr.ts';
+import { citationGapDiagnostic, linkConfidence, lookupAdr } from './adr.ts';
 import { cleanField, createCitations, memoLineText } from './cite.ts';
 import { CODE_CONTEXT_SCHEMA, errorEnvelope, withDegraded } from './envelope.ts';
 import { CURSOR_TOO_LONG_HINT, OUTPUT_TOO_LARGE_MESSAGE, TRUNCATED_HINT, notIndexed } from './find.ts';
@@ -221,6 +221,8 @@ export async function runContext(ctx: FindContext, input: CodeContextInput): Pro
     let watermark = search.watermark;
     const degraded = new Set<DegradedCode>([...ctx.fresh.degraded, ...search.degraded]);
     let entries: Entry[] = [];
+    /** The diagnostic for a citation gap in the file that defines the symbol (plan 03-28); none when that file has none. */
+    let gapNotes: Diagnostic[] = [];
     let refsCapped = false;
     let relationsCapped = false;
     /** What the project's compiler writes for the defining file (TSM-03); empty when it says nothing. */
@@ -278,6 +280,8 @@ export async function runContext(ctx: FindContext, input: CodeContextInput): Pro
       const cited = await reader.citations({ symbol: best.identity });
       watermark = laterOf(watermark, cited.watermark);
       for (const code of cited.degraded ?? []) degraded.add(code);
+      // Only the defining file's own gap matters here: a mention the index could not store in that file may belong to this symbol.
+      if ((await reader.citationGaps({ path: best.source_path })).data.files > 0) gapNotes = [citationGapDiagnostic(1, true)];
       const known = new Map<number, Promise<AdrLookup>>();
       for (const [ordinal, record] of cited.data.entries()) {
         let lookup = known.get(record.number);
@@ -439,7 +443,7 @@ export async function runContext(ctx: FindContext, input: CodeContextInput): Pro
         ...(subtypes.length === 0 ? {} : { subtypes }),
         ...(adrCitations.length === 0 ? {} : { citations: adrCitations }),
       };
-      const envelope = okEnvelope(CODE_CONTEXT_SCHEMA, data, ctx.fresh.diagnostics, {
+      const envelope = okEnvelope(CODE_CONTEXT_SCHEMA, data, [...ctx.fresh.diagnostics, ...gapNotes], {
         ...(cites.citations.length === 0 ? {} : { citations: cites.citations }),
         watermark,
         ...(cites.entries.length === 0 ? {} : { untrusted_text: { nonce: ctx.nonce, entries: cites.entries } }),

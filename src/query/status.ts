@@ -53,6 +53,12 @@ export interface StatusSnapshot {
     readonly lastIndexedAt: number | null;
   } | null;
   readonly governor: { readonly queued: number; readonly running: number; readonly leases: number };
+  /**
+   * Citations the index holds (plan 03-28, amendment of 2026-10-18). `filesWithGaps` is how many files, summed over the listed
+   * worktrees, hold ADR mentions the index could not store (a comment over the comment size bound, or more mentions than the
+   * per-file cap). A count only: it adds no health reason and no degraded code, so a benign repository stays `ok`.
+   */
+  readonly citations: { readonly filesWithGaps: number };
   readonly tiers: readonly { readonly module: string; readonly grammar: boolean; readonly precise: boolean; readonly platform: boolean }[];
   readonly policy: PolicyMode;
   readonly health: 'ok' | 'degraded';
@@ -105,6 +111,7 @@ export async function runStatus(ports: StatusPort | undefined, repo: string | un
               lastIndexedAt: indexer.lastIndexedAt,
             },
       governor: { queued: governor.queued, running: governor.running, leases: governor.leases },
+      citations: { filesWithGaps: store.worktrees.reduce((sum, entry) => sum + entry.citationGapFiles, 0) },
       tiers: ports.tiers().map((entry) => ({
         module: cleanField(entry.module),
         grammar: entry.tiers.some((tier) => tier.tier === 'grammar' && tier.active),

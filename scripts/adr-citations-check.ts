@@ -89,6 +89,8 @@ export interface CheckOptions {
   readonly readStoreCitations?: (dir: string, workDir: string) => Promise<readonly StoreHit[]>;
   /** `--resolve` only: replaces the build and the questions put to the Host. Tests inject one to force a disagreement. */
   readonly resolveNumbers?: (dir: string, workDir: string, numbers: readonly number[]) => Promise<ReadonlyMap<number, Resolution>>;
+  /** Replaces the read of the store's citation gaps. Tests inject one; the default reads the store the run built, if there is one. */
+  readonly readFilesWithGaps?: (workDir: string) => Promise<number | null>;
 }
 
 export interface CheckReport {
@@ -103,6 +105,8 @@ export interface CheckReport {
   readonly oracleTotal: number;
   /** Mentions inside string literals the oracle excluded, over the compared numbers. */
   readonly excludedNonComment: number;
+  /** Files of the store this run built that hold a citation gap; null when the store side was injected. */
+  readonly filesWithGaps: number | null;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -238,6 +242,30 @@ export async function buildAndReadCitations(dir: string, workDir: string): Promi
   }
 }
 
+/**
+ * How many files of the store the run built hold a citation gap (plan 03-28, amendment of 2026-10-18), counted read-only over the
+ * overlay joined to `citation_gaps` the way the citations are read. Null when `workDir` holds no store (the store side was
+ * injected by a test) or the store cannot be read. On the pinned gsd-core this is 0, so no scored-run answer gains a diagnostic.
+ */
+export async function readFilesWithGaps(workDir: string): Promise<number | null> {
+  const storeRoot = path.join(workDir, 'stores');
+  if (!fs.existsSync(storeRoot)) return null;
+  let db;
+  try {
+    db = await openDatabase(storeFileUnder(storeRoot), { readOnly: true, timeoutMs: STORE_READ_BUSY_MS });
+  } catch {
+    return null;
+  }
+  try {
+    const row = db.prepare('SELECT count(*) AS n FROM overlay_files o JOIN citation_gaps g ON g.file_id = o.file_id').get();
+    return Number(row?.['n'] ?? 0);
+  } catch {
+    return null;
+  } finally {
+    db.close();
+  }
+}
+
 // ---------------------------------------------------------------------------------------------
 // Resolution: the store-and-directory side of `--resolve` (plan 03-28)
 
@@ -285,6 +313,8 @@ export interface ResolveReport {
   readonly compared: number;
   /** One line per number whose status or file set differs. */
   readonly disagreements: readonly string[];
+  /** Files of the store this run built that hold a citation gap; null when the store side was injected. */
+  readonly filesWithGaps: number | null;
 }
 
 /**
@@ -332,7 +362,9 @@ export async function runResolveCheck(options: CheckOptions): Promise<ResolveRep
     out(`compared ${String(sample.length)}`);
     out(`disagreements ${String(disagreements.length)}`);
     for (const line of disagreements.slice(0, LISTED_DIFFERENCES)) out(`disagreement: ${line}`);
-    return { ok: disagreements.length === 0, ...counts, census: census.length, compared: sample.length, disagreements };
+    const filesWithGaps = await (options.readFilesWithGaps ?? readFilesWithGaps)(workDir);
+    if (filesWithGaps !== null) out(`filesWithGaps ${String(filesWithGaps)}`);
+    return { ok: disagreements.length === 0, ...counts, census: census.length, compared: sample.length, disagreements, filesWithGaps };
   } finally {
     removeTree(workDir);
   }
@@ -417,6 +449,9 @@ export async function runCheck(options: CheckOptions): Promise<CheckReport> {
     out(`oracle_only ${String(oracleOnly)}`);
     for (const entry of storeOnlyEntries.slice(0, LISTED_DIFFERENCES)) out(`store_only: ${entry}`);
     for (const entry of oracleOnlyEntries.slice(0, LISTED_DIFFERENCES)) out(`oracle_only: ${entry}`);
+    // The files whose ADR mentions the index could not store, read from the store this run built (0 on the pinned gsd-core).
+    const filesWithGaps = await (options.readFilesWithGaps ?? readFilesWithGaps)(workDir);
+    if (filesWithGaps !== null) out(`filesWithGaps ${String(filesWithGaps)}`);
     out(
       `adr-citations-check: the oracle's total over these numbers is ${String(oracleTotal)}; differences ${String(storeOnly + oracleOnly)} ` +
         `(${percent(oracleTotal === 0 ? 0 : (storeOnly + oracleOnly) / oracleTotal)}, limit ${percent(MAX_DIFFERENCE_RATIO)}); ` +
@@ -431,6 +466,7 @@ export async function runCheck(options: CheckOptions): Promise<CheckReport> {
       census: census.length,
       oracleTotal,
       excludedNonComment: excluded,
+      filesWithGaps,
     };
   } finally {
     removeTree(workDir);

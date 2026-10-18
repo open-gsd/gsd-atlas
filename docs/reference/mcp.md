@@ -121,6 +121,13 @@ A code comment that says `ADR-3473`, `adr 3473`, `ADR #3473` or `ADR#3473` (any 
 
 An ADR file is recognised by a leading number, a dash and a name, ending in `.md` (`0001-first.md`, `2-second.md`; `README.md`, `12.md` and `adr-0003.md` are not ADR files). The directory is found from the language modules' manifests (`project.adrDirs`, manifest schema version 2; the built-in modules name `docs/adr`, `docs/adrs`, `doc/adr` and `adr`), and a repository's `.gsd-atlas/config.json` can replace that list with its own `adrDirs`. The repository file is untrusted data: only `adrDirs` is read (at most 8 relative paths inside the repository), every other key is ignored, and the answer then carries one `repo_config_ignored` info diagnostic with fixed text; a file over 64 KiB or that is not valid JSON is ignored whole. Directories are listed through a confined reader (a path that leaves the repository, or a link that points outside it, lists nothing), and only file names are used: no ADR document is read, indexed or returned.
 
+**When the index could not store every citation.** A comment over the comment size bound (32,768 UTF-16 units) is skipped whole, and a file with more than 200 mentions keeps the first 200. Both leave a trace stored with the file version, and an ADR answer does not pretend to be complete while the worktree holds such a file. Every `kind: adr` answer of `code_refs` and `code_find` (on every page of a cursor-paged answer) carries one `info` diagnostic with the code `citation_comment_too_long` and no `subject`, when at least one file of the answered worktree holds a gap. Its text is fixed and its only variable is one integer, the number of such files:
+
+- when the answer holds a citation: `Citations may be missing from this answer: 2 files have ADR mentions that were not indexed (a comment over the comment size bound, or more than 200 mentions in one file).` (`1 file has` for one file);
+- when it holds none (a number nobody was found to cite, or one that has an ADR file but no found citation): `No citation of this ADR was found, but 2 files have ADR mentions that were not indexed, so a citation may exist that this answer cannot show.`
+
+The count is worktree-wide and names no file, because the number in a skipped comment was never read, so any such file may hide a citation of the number asked. `code_context` carries the first text, with `1 file has`, only when the file that defines the symbol holds a gap, and not when only another file does. This is a diagnostic and not a degraded code: the set of degraded codes is unchanged, and `degraded` is not set for it. `atlas_status` reports the count as `citations.filesWithGaps`. A development store built before the gap table existed reports no gap until it is rebuilt (remove `facts.db` from the store directory and run `gsd-atlas build` again); the store schema version is still 2.
+
 `code_explain` accepts the `cit/` handle of a citation (the `debug` value of its citation entry): `explanation.kind` is `citation`, the extractor is the grammar tier, `resolution` is `null`, `explanation.citation` is `{ number, detail? }` and `data.adr` is the number's `{ number, status, files[] }`.
 
 ### code_impact
@@ -156,9 +163,10 @@ Result `data`:
 | --- | --- |
 | `repo` | The repository path the request named, or `null`. |
 | `worktrees[]` | One entry per worktree the index holds: `worktree`, `seq` (its watermark), `staleCount`. |
-| `store` | `schemaVersion` (2 since Phase 3 added the stored ADR citations; a store written by version 1 is derived data, deleted and recreated when this build opens it, and reports `not_indexed` until `gsd-atlas build` has run once), `sizeBytes`, `writerLeaseHeld` (this process holds the writer lease), `rebuilt` (a corrupt store was found, moved aside and rebuilt). |
+| `store` | `schemaVersion` (2 since Phase 3 added the stored ADR citations; it stays 2 when a development store gains the table of citation gaps, which is additive derived data; a store written by version 1 is derived data, deleted and recreated when this build opens it, and reports `not_indexed` until `gsd-atlas build` has run once), `sizeBytes`, `writerLeaseHeld` (this process holds the writer lease), `rebuilt` (a corrupt store was found, moved aside and rebuilt). |
 | `indexer` | `null` when this process runs no indexer; otherwise `watchMode` (`native`, `poll` or `reconcile-only`), `queued`, `running`, `failed` (a count; the paths are not listed), `reconciling`, `lastReconcileAt` and `lastIndexedAt` (milliseconds since the epoch, or `null`). |
 | `governor` | `queued`, `running`, `leases`. |
+| `citations` | `filesWithGaps`: how many files, summed over the listed worktrees, hold ADR mentions the index could not store (a comment over the comment size bound, or more than 200 mentions in one file). A count only, always present (0 when there is none). It adds no health reason and no degraded code, so a repository with a gap stays `ok`. A development store built before the gap table existed reports 0 until it is rebuilt: remove `facts.db` from the store directory and run `gsd-atlas build` again. |
 | `tiers[]` | One entry per loaded language module: `module`, `grammar`, `precise`, `platform` (whether each tier is active). |
 | `policy` | `off`. |
 | `health` | `ok` or `degraded`. |
@@ -169,7 +177,7 @@ The answer carries `degraded` codes for the reasons `follower`, `rebuilding`, `r
 Example `data` (trimmed; the path is the directory the server was asked about):
 
 ```json
-{"repo":"/path/to/atlas-demo","worktrees":[{"worktree":"/path/to/atlas-demo","seq":4,"staleCount":0}],"store":{"schemaVersion":2,"sizeBytes":110592,"writerLeaseHeld":true,"rebuilt":false},"indexer":{"watchMode":"native","queued":0,"running":0,"failed":0,"reconciling":false,"lastReconcileAt":1792284788463,"lastIndexedAt":null},"governor":{"queued":0,"running":1,"leases":0},"tiers":[{"module":"javascript","grammar":true,"precise":false,"platform":false},{"module":"typescript","grammar":true,"precise":false,"platform":false}],"policy":"off","health":"ok","reasons":[]}
+{"repo":"/path/to/atlas-demo","worktrees":[{"worktree":"/path/to/atlas-demo","seq":4,"staleCount":0}],"store":{"schemaVersion":2,"sizeBytes":110592,"writerLeaseHeld":true,"rebuilt":false},"indexer":{"watchMode":"native","queued":0,"running":0,"failed":0,"reconciling":false,"lastReconcileAt":1792284788463,"lastIndexedAt":null},"governor":{"queued":0,"running":1,"leases":0},"citations":{"filesWithGaps":0},"tiers":[{"module":"javascript","grammar":true,"precise":false,"platform":false},{"module":"typescript","grammar":true,"precise":false,"platform":false}],"policy":"off","health":"ok","reasons":[]}
 ```
 
 ### lang_list
@@ -273,7 +281,7 @@ Only `build` creates an index. No MCP tool creates, opens for writing or changes
 | Code | Meaning |
 | --- | --- |
 | `emit_output_not_indexed` | Some files are the emit output of an included source (for example `lib.cjs` built from `lib.cts`) and are not indexed. |
-| `citation_comment_too_long` | Some files have comments that mention an ADR but are over the comment size bound, so the citations in those comments are not indexed. |
+| `citation_comment_too_long` | Some files have ADR mentions that are not indexed (a comment over the comment size bound, or more than 200 mentions in one file), so citations from them are missing. The count is the number of files of the worktree that hold such a gap, read from the store, so a build that parses nothing repeats it. |
 | `resolver_timeout` | The compiler pass that follows a build did not finish within its bound. The build succeeded; `gsd-atlas maintain resolve` continues the pass. |
 
 These are diagnostics, not degraded codes: they do not appear in `degraded`, and the set of degraded codes is unchanged. Any other note a build collects is counted in `skipped` only.

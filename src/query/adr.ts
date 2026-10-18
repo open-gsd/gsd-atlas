@@ -14,9 +14,9 @@
  */
 import path from 'node:path';
 import { UnknownWorktree } from '../fact-store/index.ts';
-import type { CitationRecord } from '../fact-store/index.ts';
-import type { Confidence, DegradedCode, Envelope, Watermark } from '../facts/index.ts';
-import { okEnvelope } from '../facts/index.ts';
+import type { CitationRecord, Reader } from '../fact-store/index.ts';
+import type { Confidence, DegradedCode, Diagnostic, Envelope, Watermark } from '../facts/index.ts';
+import { MAX_CITATIONS_PER_FILE, diagnostic, okEnvelope } from '../facts/index.ts';
 import { cleanField, createCitations, memoLineText } from './cite.ts';
 import { CODE_FIND_SCHEMA, CODE_REFS_SCHEMA, errorEnvelope, withDegraded } from './envelope.ts';
 import { CURSOR_TOO_LONG_HINT, OUTPUT_TOO_LARGE_MESSAGE, TRUNCATED_HINT, notIndexed } from './find.ts';
@@ -70,6 +70,33 @@ export async function lookupAdr(deps: Pick<QueryDeps, 'adr'>, worktree: string, 
   }
 }
 
+/** The code of the info diagnostic that says the index could not store every ADR mention. It is not a degraded code. */
+export const CITATION_GAP_CODE = 'citation_comment_too_long';
+
+const filesHave = (files: number): string => (files === 1 ? '1 file has' : `${String(files)} files have`);
+
+/**
+ * The diagnostic an ADR answer carries when the worktree holds files whose ADR mentions the index could not store (amendment of
+ * 2026-10-18, D-20). It is fixed text whose only variable is one integer, the number of such files: it names no file, no comment
+ * text and no number from a skipped comment, because a skipped comment's number was never read, so any such file may hide a
+ * citation of the number asked.
+ *
+ * `found` says whether the answer holds a citation. When it does, the answer is possibly incomplete; when it holds none, "no
+ * citation was found" must not be read as "nobody cites this ADR".
+ */
+export function citationGapDiagnostic(files: number, found: boolean): Diagnostic {
+  const message = found
+    ? `Citations may be missing from this answer: ${filesHave(files)} ADR mentions that were not indexed (a comment over the comment size bound, or more than ${String(MAX_CITATIONS_PER_FILE)} mentions in one file).`
+    : `No citation of this ADR was found, but ${filesHave(files)} ADR mentions that were not indexed, so a citation may exist that this answer cannot show.`;
+  return diagnostic(CITATION_GAP_CODE, 'info', message);
+}
+
+/** The gap diagnostic for an answer read through `reader`, or none: one count query per request, nothing when no file has a gap. */
+async function gapDiagnostics(reader: Reader, found: boolean): Promise<Diagnostic[]> {
+  const files = (await reader.citationGaps()).data.files;
+  return files === 0 ? [] : [citationGapDiagnostic(files, found)];
+}
+
 /** The confidence of the link from a citation to its ADR file: one file is `EXTRACTED`; several, or none, are not. */
 export const linkConfidence = (status: AdrStatus): Confidence => (status === 'resolved' ? 'EXTRACTED' : 'INFERRED');
 
@@ -115,6 +142,7 @@ export async function runAdrRefs(ctx: FindContext, input: CodeRefsInput): Promis
     const candidateLimit = config.maxLimit * CANDIDATE_FACTOR;
     const found = await reader.citations({ number }, { limit: candidateLimit });
     const lookup = await lookupAdr(ctx.deps, ctx.worktree, number);
+    const gaps = await gapDiagnostics(reader, found.data.length > 0);
     const confidence = linkConfidence(lookup.status);
     const capped = found.data.length >= candidateLimit;
     const watermark: Watermark = found.watermark;
@@ -168,7 +196,7 @@ export async function runAdrRefs(ctx: FindContext, input: CodeRefsInput): Promis
       if (state.cut) hints.push(state.more === null ? CURSOR_TOO_LONG_HINT : TRUNCATED_HINT);
       if (capped) hints.push(CITATIONS_CAPPED_HINT);
 
-      const envelope = okEnvelope(CODE_REFS_SCHEMA, { adr: adrData(number, lookup), results }, [...ctx.fresh.diagnostics, ...(lookup.diagnostics ?? [])], {
+      const envelope = okEnvelope(CODE_REFS_SCHEMA, { adr: adrData(number, lookup), results }, [...ctx.fresh.diagnostics, ...(lookup.diagnostics ?? []), ...gaps], {
         ...(cites.citations.length === 0 ? {} : { citations: cites.citations }),
         watermark,
         ...(cites.entries.length === 0 ? {} : { untrusted_text: { nonce: ctx.nonce, entries: cites.entries } }),
@@ -214,6 +242,7 @@ export async function runAdrFind(ctx: FindContext, input: CodeFindInput): Promis
     const candidateLimit = config.maxLimit * CANDIDATE_FACTOR;
     const found = await reader.citations({ number }, { limit: candidateLimit });
     const lookup = await lookupAdr(ctx.deps, ctx.worktree, number);
+    const gaps = await gapDiagnostics(reader, found.data.length > 0);
     const confidence = linkConfidence(lookup.status);
     const capped = found.data.length >= candidateLimit;
     const watermark = found.watermark;
@@ -252,7 +281,7 @@ export async function runAdrFind(ctx: FindContext, input: CodeFindInput): Promis
         ...(lookup.listTruncated === true ? { listTruncated: true } : {}),
         results,
       };
-      const envelope = okEnvelope(CODE_FIND_SCHEMA, data, [...ctx.fresh.diagnostics, ...(lookup.diagnostics ?? [])], {
+      const envelope = okEnvelope(CODE_FIND_SCHEMA, data, [...ctx.fresh.diagnostics, ...(lookup.diagnostics ?? []), ...gaps], {
         ...(cites.citations.length === 0 ? {} : { citations: cites.citations }),
         watermark,
         ...(state.cut || capped ? { truncated: true } : {}),
