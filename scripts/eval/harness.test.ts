@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { spawn } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -18,7 +18,7 @@ import {
   expectedToolSet,
 } from './arms.ts';
 import type { InitEvent } from './claude-session.ts';
-import { buildPrompt, isInfrastructureFailure, runAll, runCell, runCli, runningCostUsd } from './harness.ts';
+import { ATLAS_BUILD_INPUTS, buildPrompt, checkAtlasBuild, isInfrastructureFailure, runAll, runCell, runCli, runningCostUsd } from './harness.ts';
 import type { CellDeps, Io } from './harness.ts';
 import { STAGE_A_FILES, hashFile } from './prereg.ts';
 import { ResultsStore } from './results.ts';
@@ -842,7 +842,7 @@ interface Registered {
 }
 
 /** A repository root with every Stage A file, a skill and a Frozen Stage B registration of them. */
-function makeRegistered(options: { status?: 'Draft' | 'Frozen'; stage?: 'A' | 'B'; model?: string } = {}): Registered {
+function makeRegistered(options: { status?: 'Draft' | 'Frozen'; stage?: 'A' | 'B'; model?: string; atlasCommit?: string } = {}): Registered {
   const root = fs.mkdtempSync(path.join(fs.realpathSync.native(os.tmpdir()), 'harness-reg-'));
   roots.push(root);
   for (const rel of STAGE_A_FILES) {
@@ -878,7 +878,7 @@ function makeRegistered(options: { status?: 'Draft' | 'Frozen'; stage?: 'A' | 'B
     },
     files,
     questionSet: { count: 2, byCategory: { definition: 2 } },
-    ...(stage === 'B' ? { stageB: { skillSha256: hashFile(skill), atlasCommit: 'b'.repeat(40) } } : {}),
+    ...(stage === 'B' ? { stageB: { skillSha256: hashFile(skill), atlasCommit: options.atlasCommit ?? 'b'.repeat(40) } } : {}),
   };
   const prereg = path.join(root, 'docs', 'eval', 'preregistration.md');
   fs.mkdirSync(path.dirname(prereg), { recursive: true });
@@ -977,6 +977,8 @@ describe('scored gate', () => {
     env: { ...(env.deps.env ?? {}), PATH: path.join(env.root, 'no-bin') },
     claudeVersion: () => Promise.resolve('2.1.302 (Claude Code)'),
     readPrepared: () => ({ sha: SHA, npmCi: true }),
+    // These cases use a fake atlas binary that is in no checkout of its own; the atlas build gate has its own cases below.
+    atlasBuildCheck: (): string[] => [],
     ...over,
   });
   const refuses = async (env: Env, reg: Registered, extra: string[] = [], over: Record<string, unknown> = {}): Promise<string> => {
@@ -1088,6 +1090,208 @@ function writeRows(dir: string, rows: readonly ResultRow[]): void {
   fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(path.join(dir, 'results.jsonl'), rows.map((r) => `${JSON.stringify(r)}\n`).join(''));
 }
+
+// ---------------------------------------------------------------------------------------------
+// Plan 03-38: the atlas build under test is the build that Stage B registered (T-03-334)
+
+describe('atlas build gate (T-03-334)', () => {
+  interface AtlasRepo {
+    dir: string;
+    bin: string;
+    git: (...args: string[]) => string;
+    head: () => string;
+    write: (rel: string, text: string) => void;
+    commit: (message: string) => string;
+  }
+
+  /** A repository holding every build input, a docs file and a built (ignored) `dist/bin/gsd-atlas.js` newer than the sources. */
+  function makeAtlasRepo(): AtlasRepo {
+    const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'atlas-build-')));
+    roots.push(dir);
+    const env: NodeJS.ProcessEnv = { ...process.env, GIT_CONFIG_GLOBAL: os.devNull, GIT_CONFIG_NOSYSTEM: '1' };
+    for (const key of ['GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE']) delete env[key];
+    const git = (...args: string[]): string =>
+      execFileSync('git', ['-c', 'user.name=Test', '-c', 'user.email=test@example.invalid', '-c', 'commit.gpgsign=false', '-c', 'core.autocrlf=false', ...args], {
+        cwd: dir,
+        env,
+        encoding: 'utf8',
+      });
+    const write = (rel: string, text: string): void => {
+      fs.mkdirSync(path.dirname(path.join(dir, rel)), { recursive: true });
+      fs.writeFileSync(path.join(dir, rel), text);
+    };
+    const commit = (message: string): string => {
+      git('add', '--all');
+      git('commit', '--quiet', '-m', message);
+      return git('rev-parse', 'HEAD').trim();
+    };
+    git('init', '--quiet');
+    write('.gitignore', 'dist/\n');
+    write('src/a.ts', 'export const a = 1;\n');
+    write('modules/m.ts', 'export const m = 1;\n');
+    write('schemas/s.json', '{}\n');
+    write('diagnostics/d.json', '{}\n');
+    write('package.json', '{"name":"x"}\n');
+    write('package-lock.json', '{"lockfileVersion":3}\n');
+    write('tsconfig.json', '{}\n');
+    write('tsconfig.build.json', '{}\n');
+    write('docs/notes.md', 'notes\n');
+    commit('initial');
+    const bin = path.join(dir, 'dist', 'bin', 'gsd-atlas.js');
+    write('dist/bin/gsd-atlas.js', '// built\n');
+    const later = new Date(Date.now() + 60_000);
+    fs.utimesSync(bin, later, later);
+    return { dir, bin, git, head: () => git('rev-parse', 'HEAD').trim(), write, commit };
+  }
+
+  it('the build inputs are exactly the eight the plan names', () => {
+    assert.deepEqual([...ATLAS_BUILD_INPUTS], ['src', 'modules', 'schemas', 'diagnostics', 'package.json', 'package-lock.json', 'tsconfig.json', 'tsconfig.build.json']);
+  });
+
+  it('atlas build matches the Stage B commit: HEAD is that commit, nothing changed, the binary is newer', () => {
+    const repo = makeAtlasRepo();
+    assert.deepEqual(checkAtlasBuild(repo.bin, repo.head()), []);
+  });
+
+  it('atlas build matches the Stage B commit when HEAD is a later commit that changed no build input (the Stage B commit itself)', () => {
+    const repo = makeAtlasRepo();
+    const registered = repo.head();
+    repo.write('docs/notes.md', 'notes after Stage B\n');
+    repo.commit('docs only');
+    assert.notEqual(repo.head(), registered);
+    assert.deepEqual(checkAtlasBuild(repo.bin, registered), []);
+  });
+
+  it('atlas build from another commit: the registered commit is neither HEAD nor an ancestor of it', () => {
+    const repo = makeAtlasRepo();
+    const base = repo.head();
+    repo.git('checkout', '--quiet', '-b', 'other');
+    repo.write('docs/notes.md', 'another line of history\n');
+    const other = repo.commit('other history');
+    repo.git('checkout', '--quiet', base);
+    const problems = checkAtlasBuild(repo.bin, other);
+    assert.equal(problems.length, 1, problems.join('; '));
+    assert.match(problems[0] ?? '', /another commit|not HEAD or an ancestor/);
+  });
+
+  it('the registered commit is not in the checkout at all', () => {
+    const repo = makeAtlasRepo();
+    const problems = checkAtlasBuild(repo.bin, 'd'.repeat(40));
+    assert.equal(problems.length, 1, problems.join('; '));
+    assert.match(problems[0] ?? '', /not in the checkout|does not exist/);
+  });
+
+  it('a binary that is not inside a git checkout is refused with the cause named', () => {
+    const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'atlas-plain-')));
+    roots.push(dir);
+    fs.mkdirSync(path.join(dir, 'dist', 'bin'), { recursive: true });
+    fs.writeFileSync(path.join(dir, 'dist', 'bin', 'gsd-atlas.js'), '// built\n');
+    const problems = checkAtlasBuild(path.join(dir, 'dist', 'bin', 'gsd-atlas.js'), 'a'.repeat(40));
+    assert.equal(problems.length, 1, problems.join('; '));
+    assert.match(problems[0] ?? '', /git checkout/);
+  });
+
+  it('build input changed since the Stage B commit: each input is caught and the message names the first changed path', () => {
+    for (const rel of ['src/a.ts', 'modules/m.ts', 'schemas/s.json', 'diagnostics/d.json', 'package.json', 'package-lock.json', 'tsconfig.json', 'tsconfig.build.json']) {
+      const repo = makeAtlasRepo();
+      const registered = repo.head();
+      repo.write(rel, `${fs.readFileSync(path.join(repo.dir, rel), 'utf8')}\n`);
+      repo.commit(`change ${rel}`);
+      const later = new Date(Date.now() + 120_000);
+      fs.utimesSync(repo.bin, later, later); // the binary is newer than every source: only the commit comparison can catch it
+      const problems = checkAtlasBuild(repo.bin, registered);
+      assert.equal(problems.length, 1, `${rel}: ${problems.join('; ')}`);
+      assert.ok((problems[0] ?? '').includes(rel), `${rel}: ${problems[0] ?? ''}`);
+    }
+  });
+
+  it('build input has an uncommitted change: a modified, a staged and an untracked file all refuse', () => {
+    const modified = makeAtlasRepo();
+    modified.write('src/a.ts', 'export const a = 2;\n');
+    const later = new Date(Date.now() + 120_000);
+    fs.utimesSync(modified.bin, later, later);
+    const m = checkAtlasBuild(modified.bin, modified.head());
+    assert.equal(m.length, 1, m.join('; '));
+    assert.ok((m[0] ?? '').includes('src/a.ts'));
+    const staged = makeAtlasRepo();
+    staged.write('package.json', '{"name":"y"}\n');
+    staged.git('add', 'package.json');
+    fs.utimesSync(staged.bin, later, later);
+    assert.ok((checkAtlasBuild(staged.bin, staged.head())[0] ?? '').includes('package.json'));
+    const untracked = makeAtlasRepo();
+    untracked.write('modules/new.ts', 'export const n = 1;\n');
+    fs.utimesSync(untracked.bin, later, later);
+    assert.ok((checkAtlasBuild(untracked.bin, untracked.head())[0] ?? '').includes('modules/new.ts'));
+  });
+
+  it('a change outside the build inputs is not a problem', () => {
+    const repo = makeAtlasRepo();
+    repo.write('docs/notes.md', 'uncommitted note\n');
+    repo.write('scripts/other.ts', 'export {};\n');
+    assert.deepEqual(checkAtlasBuild(repo.bin, repo.head()), []);
+  });
+
+  it('atlas binary older than a build input: the build is stale', () => {
+    const repo = makeAtlasRepo();
+    const old = new Date(Date.now() - 3_600_000);
+    fs.utimesSync(repo.bin, old, old);
+    const problems = checkAtlasBuild(repo.bin, repo.head());
+    assert.equal(problems.length, 1, problems.join('; '));
+    assert.match(problems[0] ?? '', /older than/);
+  });
+
+  describe('in the scored gate', () => {
+    const baseArgs = (env: Env, reg: Registered, bin: string): string[] => {
+      const files = writeQuestionFiles(env.root);
+      return [
+        'run', '--scored', '--dry-run', '--questions', files.questions, '--answers', files.answers, '--corpus-dir', CORPUS,
+        '--out-dir', path.join(env.root, 'scored-out'), '--atlas-bin', bin, '--skill', reg.skill,
+        '--prereg', reg.prereg, '--scratch-dir', env.scratch,
+      ];
+    };
+    const depsFor = (env: Env, reg: Registered) => ({
+      repoRoot: reg.root,
+      env: { ...(env.deps.env ?? {}), PATH: path.join(env.root, 'no-bin') },
+      claudeVersion: () => Promise.resolve('2.1.302 (Claude Code)'),
+      readPrepared: () => ({ sha: SHA, npmCi: true }),
+    });
+
+    it('passes and says so when the build matches the Stage B commit', async () => {
+      const env = makeEnv();
+      const repo = makeAtlasRepo();
+      const reg = makeRegistered({ atlasCommit: repo.head() });
+      const c = capture();
+      const code = await runCli(baseArgs(env, reg, repo.bin), c.io, depsFor(env, reg));
+      assert.equal(code, 0, c.err());
+      assert.match(c.out(), /gate: ok/);
+      assert.match(c.out(), /atlas build matches the Stage B commit/);
+    });
+
+    it('refuses with the cause when a build input changed since the Stage B commit, and starts nothing', async () => {
+      const env = makeEnv();
+      const repo = makeAtlasRepo();
+      const reg = makeRegistered({ atlasCommit: repo.head() });
+      repo.write('src/a.ts', 'export const a = 3;\n');
+      repo.commit('a later change to src');
+      const later = new Date(Date.now() + 120_000);
+      fs.utimesSync(repo.bin, later, later);
+      const c = capture();
+      assert.equal(await runCli(baseArgs(env, reg, repo.bin), c.io, depsFor(env, reg)), 2);
+      assert.match(c.err(), /scored gate: .*src\/a\.ts/);
+      assert.equal(fs.existsSync(env.eventsFile), false, 'no session started');
+      assert.equal(fs.existsSync(path.join(env.root, 'scored-out')), false);
+    });
+
+    it('a Stage A registration is refused before the build is looked at', async () => {
+      const env = makeEnv();
+      const repo = makeAtlasRepo();
+      const reg = makeRegistered({ stage: 'A', atlasCommit: repo.head() });
+      const c = capture();
+      assert.equal(await runCli(baseArgs(env, reg, repo.bin), c.io, depsFor(env, reg)), 2);
+      assert.match(c.err(), /Stage B/);
+    });
+  });
+});
 
 describe('summary', () => {
   it('summary per arm: sessions, statuses, tokens, cache reads, tool calls, wall time, cost and disagreement', async () => {
