@@ -142,7 +142,11 @@ function degradedMentions(text: string): string[] {
   for (let index = 0; index < lines.length; index += 1) {
     if (!/^\s*(?:[-*]\s+)?Degraded codes\b/i.test(lines[index] as string)) continue;
     const paragraph: string[] = [];
-    for (let next = index; next < lines.length && (lines[next] as string).trim() !== ''; next += 1) paragraph.push(lines[next] as string);
+    // The paragraph ends at a blank line or at the next list item, so a neighbouring bullet is not read as codes.
+    for (let next = index; next < lines.length && (lines[next] as string).trim() !== ''; next += 1) {
+      if (next > index && /^\s*[-*]\s/.test(lines[next] as string)) break;
+      paragraph.push(lines[next] as string);
+    }
     found.push(...tickTokens(paragraph.join('\n')));
   }
   return found;
@@ -248,16 +252,18 @@ test('degraded codes are real', () => {
   for (const code of ROUTER_REQUIRED_CODES) {
     assert.ok(named.includes(code), `skills/${ROUTER} must explain the degraded code ${code}`);
   }
-  // No other snake-case identifier may pose as a code anywhere in a skill (a typo outside the paragraph).
+  // No other snake-case identifier may pose as a code anywhere in the router (a typo outside the paragraph). The
+  // author skill is exempt: it names grammar node types such as import_statement, which are not codes.
   const known = new Set<string>([...TOOL_NAMES, ...DEGRADED_CODES, ...OTHER_IDENTIFIERS]);
-  for (const skill of allSkills()) {
-    for (const token of tickTokens(skill.text)) {
-      if (!/^[a-z]+(?:_[a-z]+)+$/.test(token)) continue;
-      assert.ok(known.has(token), `skills/${skill.folder} puts "${token}" in code ticks; it is not a tool, a degraded code or a listed identifier`);
-    }
+  for (const token of tickTokens(router.text)) {
+    if (!/^[a-z]+(?:_[a-z]+)+$/.test(token)) continue;
+    assert.ok(known.has(token), `skills/${ROUTER} puts "${token}" in code ticks; it is not a tool, a degraded code or a listed identifier`);
+  }
+  for (const code of degradedMentions(skillNamed(AUTHOR).body)) {
+    assert.ok(isDegradedCode(code), `skills/${AUTHOR} names the degraded code "${code}", which is not a member of DEGRADED_CODES`);
   }
   // The check can fail: an invented code and a misspelt one are both found.
-  const sample = degradedMentions('Intro.\n\nDegraded codes: `stale`, `bogus_code`, `stalee`.\nMore `fresh_timeout`.\n\nOther `memory_budget`.');
+  const sample = degradedMentions('Intro.\n\n- Degraded codes: `stale`, `bogus_code`, `stalee`.\n  More `fresh_timeout`.\n- Next `fresh`.\n\nOther `memory_budget`.');
   assert.deepEqual(sample, ['stale', 'bogus_code', 'stalee', 'fresh_timeout']);
   assert.deepEqual(sample.filter((code) => !isDegradedCode(code)), ['bogus_code', 'stalee']);
 });
