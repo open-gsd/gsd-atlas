@@ -1,11 +1,22 @@
 /**
- * Identity mapping (plan 03-23, research Pitfall 2).
+ * Identity mapping (plan 03-23, research Pitfall 2; follow-up fix 2026-10-18).
  *
- * The store accepts an edge only when its target equals a grammar symbol's identity. The compiler speaks in
- * declarations; this file maps each to the grammar symbol whose span contains the declaration's name token, through the
- * store's read-only lookup. A declaration with no containing symbol (a destructured binding, a parameter), or with two
- * equally tight ones, produces no edge: nothing is guessed. Every outcome is counted per compiler declaration kind, so
- * the ratio of edges to declarations asked is visible.
+ * The store accepts an edge only when its target equals a grammar symbol's identity. The compiler speaks in declarations;
+ * this file maps each to the grammar symbol that IS that declaration, through the store's read-only lookup. A symbol is the
+ * declaration when all of these hold:
+ *
+ * - it has the declaration's name and its span contains the name token;
+ * - its kind is one the grammar tier records for that kind of compiler declaration (`GRAMMAR_KINDS`): a property signature is
+ *   never a function, and a parameter, an enum member or an object literal member is no symbol at all;
+ * - it starts no earlier than the declaration node does (a symbol that begins before the declaration is wider than it: it holds
+ *   the name token without being the declaration), and it ends where the declaration ends, give or take the one separator
+ *   (`;` or `,`) that one tier counts and the other does not.
+ *
+ * The first version accepted any same-named symbol whose span merely contained the token, so a property of an inline type
+ * declared inside a function of the same name was stored as a reference to that function. Among the symbols that pass, the
+ * innermost wins (a method inside a class); two equally tight ones are ambiguous. A declaration with no such symbol (a
+ * destructured binding, a parameter, a member of a type literal) produces no edge: nothing is guessed. Every outcome is counted
+ * per compiler declaration kind, so the ratio of edges to declarations asked is visible.
  */
 import type { LocatedSymbol, SymbolIdentity, SymbolLookup } from '../../facts/index.ts';
 import type { Target } from './protocol.ts';
@@ -70,16 +81,56 @@ function tighter(a: LocatedSymbol['span'], b: LocatedSymbol['span']): number {
 }
 
 /**
- * The identity of the grammar symbol `target` is the name token of, or null. Among the symbols called `target.name` in
- * `target.path` whose span contains the token, the innermost wins (a method inside a class); two equally tight ones are
- * ambiguous and give null.
+ * The grammar kinds that can be the symbol of a compiler declaration kind (modules/typescript/queries/tags.scm): functions are
+ * function declarations and const, let or var bound function values; a constant or variable is a variable declaration; methods
+ * are class methods, accessors and interface method signatures; properties are class fields and interface property signatures.
+ * A compiler declaration kind not listed here (a parameter, a binding element, an enum member, an object literal member, a type
+ * parameter, an expando assignment) is one the grammar tier does not record, so it has no symbol and gives no edge.
+ */
+const GRAMMAR_KINDS: ReadonlyMap<string, ReadonlySet<string>> = new Map(
+  (
+    [
+      ['FunctionDeclaration', ['function']],
+      ['VariableDeclaration', ['function', 'constant', 'variable']],
+      ['ClassDeclaration', ['class']],
+      ['InterfaceDeclaration', ['interface']],
+      ['TypeAliasDeclaration', ['type']],
+      ['EnumDeclaration', ['enum']],
+      ['ModuleDeclaration', ['namespace']],
+      ['MethodDeclaration', ['method']],
+      ['MethodSignature', ['method']],
+      ['GetAccessor', ['method']],
+      ['SetAccessor', ['method']],
+      ['PropertyDeclaration', ['property']],
+      ['PropertySignature', ['property']],
+    ] as const
+  ).map(([compilerKind, grammarKinds]) => [compilerKind, new Set<string>(grammarKinds)] as const),
+);
+
+/**
+ * True when `symbol` is the declaration `target` is the name token of, not a symbol that only holds the token. The span of
+ * the symbol and the extent of the declaration must agree: the symbol starts at or after the declaration's start (a grammar
+ * definition may leave out `export` or `declare`, never begin before the declaration) and ends on its row, at most one column
+ * away (the `;` or `,` closing a member or a type alias, which one tier counts and the other does not).
+ */
+function isDeclarationOf(target: Target, symbol: LocatedSymbol): boolean {
+  if (!(GRAMMAR_KINDS.get(target.kind)?.has(symbol.kind) ?? false)) return false;
+  const { span } = symbol;
+  if (span.startLine < target.startRow || (span.startLine === target.startRow && span.startColumn < target.startCol)) return false;
+  return span.endLine === target.endRow && Math.abs(span.endColumn - target.endCol) <= 1;
+}
+
+/**
+ * The identity of the grammar symbol that is the declaration `target` is the name token of, or null. Among the symbols called
+ * `target.name` in `target.path` that are the declaration (`isDeclarationOf`) and whose span contains the token, the innermost
+ * wins (a method inside a class); two equally tight ones are ambiguous and give null.
  */
 export async function mapTarget(target: Target, symbols: SymbolLookup): Promise<SymbolIdentity | null> {
   // The worker is untrusted (it may run the project's own compiler): a path that is not a plain repository-relative POSIX path
   // is refused before the store is asked anything about it (T-03-232).
   if (!isRepositoryPath(target.path)) return null;
   const candidates = await symbols.findIn(target.path, target.name);
-  const containing = candidates.filter((symbol) => holds(symbol.span, target.row, target.col));
+  const containing = candidates.filter((symbol) => holds(symbol.span, target.row, target.col) && isDeclarationOf(target, symbol));
   if (containing.length === 0) return null;
   containing.sort((a, b) => tighter(a.span, b.span));
   const [best, second] = containing as [LocatedSymbol, ...LocatedSymbol[]];

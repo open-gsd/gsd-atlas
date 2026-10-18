@@ -4,7 +4,7 @@ import { PRECISE_LIMITS, PROTOCOL_VERSION, encodeRequest, encodeResponse, parseR
 import type { Request, Response } from './protocol.ts';
 
 const SITE = { path: 'src/user.cts', row: 4, col: 12, name: 'compute' };
-const TARGET = { path: 'src/lib.cts', row: 0, col: 16, name: 'compute', kind: 'FunctionDeclaration' };
+const TARGET = { path: 'src/lib.cts', row: 0, col: 16, name: 'compute', kind: 'FunctionDeclaration', startRow: 0, startCol: 7, endRow: 2, endCol: 1 };
 
 const REQUESTS: readonly Request[] = [
   { t: 'init', protocol: 1, worktreeRoot: '/work/repo', compilerDir: null, bundledDir: '/pkg/typescript', configs: ['tsconfig.json'], heapMb: 2048 },
