@@ -512,6 +512,40 @@ const AMENDED: readonly AmendedAdr[] = [
         title: 'Maintenance options and lease holder',
         keywords: ['IDLE_MAINTENANCE', 'StoreMaintainOptions', 'leaseHolder', 'StoreClosed'],
       },
+      {
+        title: 'Phase 3 interface additions',
+        keywords: [
+          'findIn',
+          'relations',
+          'provenance',
+          'emittedAs',
+          'citations',
+          'ProjectContext',
+          'listDirectory',
+          'schema',
+          'not_indexed',
+          'gsd-atlas build',
+          'resolve(worktree',
+        ],
+      },
+    ],
+  },
+  {
+    slug: 'fact-model',
+    preserved: [
+      'Two layers of facts.',
+      'Fixed vocabulary per release:',
+      'Local definitions and imports are `EXTRACTED`.',
+      'supersedes an `INFERRED` edge at the same reference site.',
+      'not part of its identity',
+      'A rename or move is a remove plus an add',
+      'the ambiguity is reported.',
+    ],
+    amendments: [
+      {
+        title: 'Phase 3 fact kinds',
+        keywords: ['cites_adr', 'unresolved', 'emitted_as', 'relations', 'negative', 'resolved_relations', 'outDir', 'INFERRED'],
+      },
     ],
   },
   {
@@ -623,6 +657,10 @@ const AMENDED: readonly AmendedAdr[] = [
     ],
     amendments: [
       { title: 'Phase 2 shape', keywords: ['chain_confidence', 'readText', 'untrusted_text', 'in-process'] },
+      {
+        title: 'explain as a Query request kind',
+        keywords: ['explain', 'read-only', 'answer_id', 'code_explain', 'Host'],
+      },
     ],
   },
   {
@@ -679,6 +717,10 @@ const AMENDED: readonly AmendedAdr[] = [
       {
         title: 'Metrics migrations and retention',
         keywords: ['user_version', 'forward-only', 'dropped_events', '30 days'],
+      },
+      {
+        title: 'Ratings table',
+        keywords: ['ratings', 'answer id', 'closed', 'free text', 'migration'],
       },
     ],
   },
