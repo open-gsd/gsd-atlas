@@ -120,6 +120,11 @@ export interface DescribeInput {
   readonly overlayPaths: readonly string[];
   /** The reader to use. Falls back to the one the model was created with. */
   readonly fs?: ProjectFs;
+  /**
+   * Repo-relative paths of configs to describe in addition to the ones found by directory and by `references`
+   * (a `tsconfig.build.json` that nothing references, for instance). A path that does not exist is skipped.
+   */
+  readonly extraConfigs?: readonly string[];
 }
 
 /** A built-in, compiler-free ProjectModel (ADR 5, seam amendment of 2026-10-15). */

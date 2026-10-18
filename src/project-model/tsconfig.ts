@@ -74,8 +74,6 @@ export interface ConfigNode {
   readonly files?: SpecList;
   readonly include?: SpecList;
   readonly exclude?: SpecList;
-  /** This config's own `outDir` and `declarationDir` as written: the compiler excludes only these when `exclude` is absent. */
-  readonly ownOutputDirs: readonly string[];
   /** This config's own `references`, resolved to config paths (never inherited). */
   readonly references: readonly string[];
 }
@@ -216,10 +214,6 @@ async function loadNode(ctx: ReadContext, p: string, stack: readonly string[], a
   include = listOf('include', include);
   exclude = listOf('exclude', exclude);
 
-  const ownOutputDirs = ['outDir', 'declarationDir']
-    .map((key) => ownOptions[key])
-    .filter((v): v is string => typeof v === 'string' && v !== '');
-
   return {
     path: p,
     dir,
@@ -230,7 +224,6 @@ async function loadNode(ctx: ReadContext, p: string, stack: readonly string[], a
     ...(files === undefined ? {} : { files }),
     ...(include === undefined ? {} : { include }),
     ...(exclude === undefined ? {} : { exclude }),
-    ownOutputDirs,
     references: referencesOf(ctx, p, dir, own['references']),
   };
 }
@@ -258,10 +251,14 @@ function ancestorDirs(overlayPaths: readonly string[]): string[] {
  * for existence). At most {@link MAX_CONFIGS} are kept, first in lexical order, with a `too_many_configs`
  * diagnostic. Returns the parsed nodes, sorted by path; configs that cannot be read are left out.
  */
-export async function discoverConfigs(ctx: ReadContext, overlayPaths: readonly string[]): Promise<ConfigNode[]> {
-  const candidates = ancestorDirs(overlayPaths).flatMap((d) => CONFIG_FILE_NAMES.map((name) => (d === '' ? name : `${d}/${name}`)));
+export async function discoverConfigs(ctx: ReadContext, overlayPaths: readonly string[], extraConfigs: readonly string[] = []): Promise<ConfigNode[]> {
+  const extras = extraConfigs.map((p) => resolveRepoPath('', p)).filter((p) => p !== '' && p.endsWith('.json'));
+  const candidates = [
+    ...ancestorDirs(overlayPaths).flatMap((d) => CONFIG_FILE_NAMES.map((name) => (d === '' ? name : `${d}/${name}`))),
+    ...extras,
+  ];
   const present = await ctx.fs.exists(candidates);
-  const found = candidates.filter((c) => present.has(c)).sort(compareCodeUnits);
+  const found = [...new Set(candidates.filter((c) => present.has(c)))].sort(compareCodeUnits);
   let overflow = found.length > MAX_CONFIGS;
   const seen = new Set(found.slice(0, MAX_CONFIGS));
   const nodes = new Map<string, ConfigNode>();
@@ -338,26 +335,27 @@ function optionPath(node: ConfigNode, key: string): string | undefined {
 
 /**
  * The config's effective settings: `files`, `include` and `exclude` resolved against the config that wrote them,
- * the default include when neither `files` nor `include` is set, the output directories as the default exclude
- * when `exclude` is absent (the config's own `outDir` and `declarationDir`, as the compiler does), and the
- * options the model reports. A `jsconfig.json` defaults `allowJs` to true.
+ * the default include when neither `files` nor `include` is set, the output directories (`outDir`,
+ * `declarationDir`) as the default exclude when `exclude` is absent, and the options the model reports. A `jsconfig.json` defaults `allowJs` to true.
  */
 export function effectiveConfig(ctx: ReadContext, node: ConfigNode): EffectiveConfig {
   const files = node.files === undefined ? [] : resolveList(ctx, node, node.files, 'files');
   let include: string[];
   if (node.include !== undefined) include = resolveList(ctx, node, node.include, 'include');
   else include = node.files === undefined ? [resolveSpec('**/*', node.dir, node.dir)] : [];
+  const rootDir = optionPath(node, 'rootDir');
+  const outDir = optionPath(node, 'outDir');
+  const declarationDir = optionPath(node, 'declarationDir');
+  // With no `exclude` anywhere in the chain the output directories are excluded (the merged options, each read
+  // against the config that set it: measured against the compiler, plan 03-18 Task 2).
   const exclude =
     node.exclude !== undefined
       ? resolveList(ctx, node, node.exclude, 'exclude')
-      : node.ownOutputDirs.filter((dir) => !isAbsoluteSpec(dir)).map((dir) => resolveSpec(dir, node.dir, node.dir));
+      : [outDir, declarationDir].filter((dir): dir is string => dir !== undefined);
 
   const allowJsOption = node.options.get('allowJs')?.value;
   const allowJs = typeof allowJsOption === 'boolean' ? allowJsOption : baseName(node.path) === 'jsconfig.json';
   const jsx = node.options.get('jsx')?.value;
-  const rootDir = optionPath(node, 'rootDir');
-  const outDir = optionPath(node, 'outDir');
-  const declarationDir = optionPath(node, 'declarationDir');
   return {
     hashes: node.hashes,
     info: {

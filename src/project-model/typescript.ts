@@ -54,7 +54,7 @@ export function createTypeScriptProjectModel(defaultFs?: ProjectFs, options: Typ
       const overlaySet = new Set(overlay);
       const ctx = createReadContext(fs);
 
-      const nodes = await discoverConfigs(ctx, overlay);
+      const nodes = await discoverConfigs(ctx, overlay, input.extraConfigs);
       const effective = nodes.map((node) => effectiveConfig(ctx, node));
       const configs: ConfigInfo[] = effective.map((e) => e.info);
 
