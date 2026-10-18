@@ -446,6 +446,126 @@ function preservedNotes(text: string): string {
   return text.slice(at);
 }
 
+/** The blob id of a file of `dir`, from the version control tool itself. */
+function blobHash(dir: string, rel: string): string {
+  const result = spawnSync('git', ['hash-object', '--no-filters', rel], { cwd: dir, encoding: 'utf8', env: cleanGitEnv(), windowsHide: true });
+  assert.equal(result.status, 0, result.stderr);
+  return result.stdout.trim();
+}
+
+/** The span (0-based line, UTF-16 column) of the first occurrence of `needle` in `fileText`. */
+function spanOfText(fileText: string, needle: string): { startLine: number; startColumn: number; endLine: number; endColumn: number } {
+  const at = fileText.indexOf(needle);
+  assert.ok(at >= 0, `${needle} is not in the text`);
+  const place = (offset: number): [number, number] => {
+    const before = fileText.slice(0, offset).split('\n');
+    return [before.length - 1, (before[before.length - 1] as string).length];
+  };
+  const [startLine, startColumn] = place(at);
+  const [endLine, endColumn] = place(at + needle.length);
+  return { startLine, startColumn, endLine, endColumn };
+}
+
+describe('verifier regressions found by the audit of the whole pinned gsd-core population', () => {
+  const files: Record<string, string> = {
+    'tsconfig.json': JSON.stringify({
+      compilerOptions: { module: 'nodenext', moduleResolution: 'nodenext', target: 'es2023', strict: true, noEmit: true, types: [], allowJs: true },
+      include: ['src'],
+    }),
+    'src/chain.cjs': 'exports.SaxesParser = exports.EVENTS = void 0;\n',
+    'src/scopes.cjs': [
+      'var Unicode = class Unicode {',
+      '  static MAX = 1;',
+      '  static isPrint() {}',
+      '};',
+      'const rule = {',
+      '  create(context) {',
+      '    function helper() {}',
+      '    return helper;',
+      '  },',
+      '};',
+      'var bundle = wrap({',
+      "  'file.js'(exports2) {",
+      '    function inner() {}',
+      '  },',
+      '});',
+      'function outer() {',
+      '  function nested() {}',
+      '}',
+      '',
+    ].join('\n'),
+    'src/vendor.d.cts': 'export interface Prog {\n  size: number;\n}\nexport declare function make(): Prog;\n',
+    'src/comment.cts': '// ADR 12 §5d and ADR 13 §OpenCode and ADR 14 §2\nexport const x = 1;\n',
+  };
+  let dir = '';
+  let env: VerifyEnv;
+  const fileFact = (rel: string): { path: string; hash: string } => ({ path: rel, hash: blobHash(dir, rel) });
+
+  before(() => {
+    dir = tempRepo(files);
+    env = createVerifyEnv({ repoDir: dir, overlayPaths: new Set(Object.keys(files)) });
+  });
+
+  after(() => {
+    removeTree(dir);
+  });
+
+  it('export verifier: a chained CommonJS assignment exports each name at its own span', () => {
+    const chain = files['src/chain.cjs'] as string;
+    const base = { stratum: 'export' as const, key: 'k', ...fileFact('src/chain.cjs'), local: null, fromPath: null };
+    assert.equal(verifyExport({ ...base, name: 'EVENTS', span: spanOfText(chain, 'exports.EVENTS = void 0') }, env).verdict, 'correct');
+    assert.equal(verifyExport({ ...base, name: 'SaxesParser', span: spanOfText(chain, 'exports.SaxesParser = exports.EVENTS = void 0;') }, env).verdict, 'correct');
+    assert.equal(verifyExport({ ...base, name: 'OTHER', span: spanOfText(chain, 'exports.EVENTS = void 0') }, env).verdict, 'wrong');
+  });
+
+  it('definition verifier: qualified names follow the documented scoping, not every enclosing declaration', () => {
+    const scopes = files['src/scopes.cjs'] as string;
+    const base = { stratum: 'definition' as const, key: 'k', ...fileFact('src/scopes.cjs') };
+    const check = (needle: string, kind: string, name: string, qualifiedName: string): string =>
+      verifyDefinition({ ...base, name, qualifiedName, kind, span: spanOfText(scopes, needle) }, env).verdict;
+    // A class expression is not a class definition, so its members carry no container.
+    assert.equal(check('static MAX = 1;', 'property', 'MAX', 'MAX'), 'correct');
+    assert.equal(check('static isPrint() {}', 'method', 'isPrint', 'isPrint'), 'correct');
+    assert.equal(check('static MAX = 1;', 'property', 'MAX', 'Unicode.MAX'), 'wrong');
+    // An object literal method is not a definition; the top-level constant around it is the container.
+    assert.equal(check('function helper() {}', 'function', 'helper', 'rule.helper'), 'correct');
+    assert.equal(check('function helper() {}', 'function', 'helper', 'create.helper'), 'wrong');
+    assert.equal(check('function inner() {}', 'function', 'inner', 'bundle.inner'), 'correct');
+    // A function declaration is a container.
+    assert.equal(check('function nested() {}', 'function', 'nested', 'outer.nested'), 'correct');
+    assert.equal(check('function nested() {}', 'function', 'nested', 'nested'), 'wrong');
+  });
+
+  it('reference edge verifier: a site in a declaration file is checked in the program that includes it', () => {
+    const vendor = files['src/vendor.d.cts'] as string;
+    const fact = {
+      stratum: 'reference_edge' as const,
+      key: 'k',
+      ...fileFact('src/vendor.d.cts'),
+      name: 'Prog',
+      targetPath: 'src/vendor.d.cts',
+      targetQualifiedName: 'Prog',
+      targetKind: 'interface',
+      resolver: 'typescript',
+      span: spanOfText(vendor, 'Prog;'),
+    };
+    // The site is the `Prog` in `make(): Prog;`: the span without the semicolon.
+    const site = { ...fact.span, endColumn: fact.span.endColumn - 1 };
+    assert.equal(verifyReferenceEdge({ ...fact, span: site }, env).verdict, 'correct', verifyReferenceEdge({ ...fact, span: site }, env).reason);
+    assert.equal(verifyReferenceEdge({ ...fact, span: site, targetQualifiedName: 'Other' }, env).verdict, 'wrong');
+  });
+
+  it('citation verifier: a stored section detail may be longer than the digits the oracle reads', () => {
+    const comment = files['src/comment.cts'] as string;
+    const base = { stratum: 'citation' as const, key: 'k', ...fileFact('src/comment.cts') };
+    assert.equal(verifyCitation({ ...base, number: 12, detail: '§5d', span: spanOfText(comment, 'ADR 12 §5d') }, env).verdict, 'correct');
+    assert.equal(verifyCitation({ ...base, number: 13, detail: '§OpenCode', span: spanOfText(comment, 'ADR 13 §OpenCode') }, env).verdict, 'correct');
+    assert.equal(verifyCitation({ ...base, number: 14, detail: '§2', span: spanOfText(comment, 'ADR 14 §2') }, env).verdict, 'correct');
+    assert.equal(verifyCitation({ ...base, number: 13, detail: '§Other', span: spanOfText(comment, 'ADR 13 §OpenCode') }, env).verdict, 'wrong');
+    assert.equal(verifyCitation({ ...base, number: 12, detail: null, span: spanOfText(comment, 'ADR 12 §5d') }, env).verdict, 'wrong');
+  });
+});
+
 describe('edge-sample keeps its verifiers independent of atlas', () => {
   it('imports nothing from src/', () => {
     const source = fs.readFileSync(path.join(import.meta.dirname, 'edge-sample.ts'), 'utf8');
