@@ -1,18 +1,14 @@
 ---
-status: testing
+status: complete
 phase: 02-grammar-tier-store-and-stdio-host
 source: [02-VERIFICATION.md]
 started: 2026-10-17T17:03:28Z
-updated: 2026-10-17T19:42:00Z
+updated: 2026-10-18T00:26:30.395Z
 ---
 
 ## Current Test
 
-number: 2
-name: Cursor and Codex init config shapes
-expected: |
-  Each real host lists and starts the gsd-atlas MCP server from the entry init wrote; init changes nothing else
-awaiting: user response (human-only: needs real Cursor and Codex installs)
+[testing complete]
 
 ## Tests
 
