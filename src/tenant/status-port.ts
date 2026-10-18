@@ -21,6 +21,8 @@ export interface StatusPortParts {
   readonly knownAdapters?: readonly string[];
   /** The known adapter ids the user turned off (`providers.disabled`). */
   readonly disabledAdapters?: readonly string[];
+  /** True when one of the flight recorder's newest answers was an internal error (plan 03-32). Absent: no recorder. */
+  readonly recentInternalError?: () => boolean;
 }
 
 export function createStatusPort(parts: StatusPortParts): StatusPort {
@@ -37,5 +39,6 @@ export function createStatusPort(parts: StatusPortParts): StatusPort {
         tiers: entry.tiers.map((tier) => ({ tier: tier.tier, active: tier.active })),
       })),
     policy: () => POLICY_OFF,
+    ...(parts.recentInternalError === undefined ? {} : { recentInternalError: parts.recentInternalError }),
   };
 }

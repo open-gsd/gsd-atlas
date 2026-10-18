@@ -100,6 +100,11 @@ export interface StatusPort {
   /** The loaded language modules and their tiers (from the module registry). */
   tiers(): readonly { readonly module: string; readonly tiers: readonly TierActive[] }[];
   policy(): PolicyMode;
+  /**
+   * True when one of the flight recorder's newest answers (plan 03-32: the newest 50) ended in an internal error. A flag
+   * only: `atlas_status` turns it into the fixed `gsd-atlas bug` hint. Absent means the host keeps no recorder.
+   */
+  recentInternalError?(): boolean;
 }
 
 /** The state of the precise tier as `code_explain` reports it (plan 03-26). All are fixed words. */

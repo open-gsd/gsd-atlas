@@ -168,6 +168,11 @@ export interface BugDeps {
    * records nothing, and gathers only what `want` asks for.
    */
   readonly repoData: (selection: Selection, want: BugWant) => Promise<BugRepoData | null>;
+  /**
+   * Empty the flight recorder of the repository a selection names: the number of answers it held (0 when the repository has no
+   * store), or null when the selection is not a repository. It never creates a store or a folder.
+   */
+  readonly clearFlight: (selection: Selection) => Promise<number | null>;
   /** The version of this build; it is the bundle's `atlas_version`. */
   readonly version: string;
   /** The folder the shipped catalog is read from (`catalog_version` comes from it). */
@@ -191,6 +196,7 @@ const MISMATCH = 'The confirmation does not match a bundle that was collected wi
 const ALREADY = 'That bundle was already written. Nothing was changed; run the command again for a new one.';
 const NOT_SAVED = 'The bundle could not be written to the cache directory, so nothing was saved.';
 const NO_CATALOG = 'The diagnostics catalog that ships with this build could not be read.';
+const NOT_A_REPO = 'repo must be an existing directory inside a git repository.';
 
 /** The arguments of a call in a fixed form: sorted keys, `include` sorted and unique, no `action` and no `confirm`. */
 function fingerprintOf(args: BugArgs): string {
@@ -456,7 +462,10 @@ export async function handleBug(request: Request, deps: BugDeps): Promise<Envelo
       return collect(deps, args, chosen);
     case 'write':
       return write(deps, args);
-    case 'clear':
-      return errorEnvelope('invalid_args', 'clear is not available yet');
+    case 'clear': {
+      // Empties what `bug` would copy into a bundle, and nothing else: no store is opened, created or touched.
+      const removed = await deps.clearFlight(chosen);
+      return removed === null ? errorEnvelope('not_a_repo', NOT_A_REPO) : okEnvelope(BUG_SCHEMA, { cleared: removed });
+    }
   }
 }

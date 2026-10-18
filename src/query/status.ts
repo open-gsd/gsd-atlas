@@ -16,6 +16,13 @@ import type { PolicyMode, StatusPort } from './types.ts';
  */
 export const POLICY_OFF: PolicyMode = 'off';
 
+/**
+ * The one sentence `atlas_status` and `status` carry as a hint when the store was rebuilt after corruption or one of the
+ * flight recorder's newest answers was an internal error (plan 03-32, DIAGNOSTICS 9.1). Fixed: it names no path, no code and
+ * no cause. It is a hint, not a health reason or a degraded code, so a benign repository stays `ok`.
+ */
+export const BUG_HINT = 'something went wrong; run gsd-atlas bug';
+
 /** Why the index is degraded, in the fixed order reasons are reported. */
 export const HEALTH_REASONS = ['follower', 'rebuilding', 'reconciling', 'stale_files', 'watch_fallback', 'indexer_failures'] as const;
 
@@ -72,6 +79,7 @@ const unavailable = (message: string): Envelope => errorEnvelope('unavailable', 
 export async function runStatus(ports: StatusPort | undefined, repo: string | undefined): Promise<Envelope> {
   if (ports === undefined) return unavailable('atlas_status needs the host to supply its status ports; this host has none.');
   let snapshot: StatusSnapshot;
+  let hinted = false;
   try {
     const store = await ports.store();
     const indexer = ports.indexer();
@@ -122,6 +130,7 @@ export async function runStatus(ports: StatusPort | undefined, repo: string | un
       health: reasons.length === 0 ? 'ok' : 'degraded',
       reasons,
     };
+    hinted = store.rebuiltAfterCorruption !== undefined || recentInternalError(ports);
   } catch {
     // The port's own error text is not echoed: it can quote paths.
     return unavailable(UNAVAILABLE_MESSAGE);
@@ -132,5 +141,14 @@ export async function runStatus(ports: StatusPort | undefined, repo: string | un
     const code = REASON_CODE[reason];
     if (code !== undefined) codes.push(code);
   }
-  return withDegraded(okEnvelope(ATLAS_STATUS_SCHEMA, snapshot), codes);
+  return withDegraded(okEnvelope(ATLAS_STATUS_SCHEMA, snapshot, [], hinted ? { hints: [BUG_HINT] } : undefined), codes);
+}
+
+/** True when the recorder port says a recent answer was an internal error. A port that throws, or none, says no. */
+function recentInternalError(ports: StatusPort): boolean {
+  try {
+    return ports.recentInternalError?.() === true;
+  } catch {
+    return false;
+  }
 }

@@ -108,6 +108,8 @@ async function send(io: CliIo, request: Request, confirm?: (data: unknown) => st
     return EXIT_FAILURE;
   }
   printEnvelope(io, envelope);
+  // A hint rides on the envelope (the fixed `gsd-atlas bug` sentence of `status` and `health`); the person at the terminal is told too.
+  for (const hint of envelope.hints ?? []) io.stderr.write(`gsd-atlas: hint: ${oneLine(hint)}\n`);
   const code = exitCodeFor(envelope);
   if (code === EXIT_OK && confirm !== undefined) {
     const line = confirm(envelope.data);

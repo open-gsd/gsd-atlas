@@ -581,6 +581,19 @@ export function createHost(options: HostOptions): Host {
     }
   }
 
+  /**
+   * `bug --clear`: empty the flight recorder of the repository `selection` names, if its store exists, and report how many
+   * answers it held. It never creates a store or a folder. Null: the selection is not a repository.
+   */
+  async function bugClearFlight(selection: Selection): Promise<number | null> {
+    const resolved = await resolveRepository(selection, hostCwd, makeTree);
+    if (resolved === null) return null;
+    const existing = findExistingStore(locationInput(resolved));
+    if (existing === undefined) return 0;
+    const dir = path.join(existing.dir, 'flight');
+    return createFlightRecorder({ dir, maxEvents: DEFAULT_TENANT_TUNING.flightMaxEvents, maxBytes: DEFAULT_TENANT_TUNING.flightMaxBytes, clock }).clear();
+  }
+
   function bugRequest(request: Request): Promise<Envelope> {
     const userDir = options.userDir ?? options.roots.userDir;
     const deps: BugDeps = {
@@ -606,6 +619,7 @@ export function createHost(options: HostOptions): Host {
       }),
       hostHealth: () => ({ tenantsLoaded: tenants.size, transport: origin === 'mcp' ? 'stdio' : 'in-process', uptimeMs: Math.max(0, clock.now() - startedAt) }),
       repoData: bugRepoData,
+      clearFlight: bugClearFlight,
       excerptEvents: options.bug?.excerptEvents,
       bundleMaxBytes: options.bug?.bundleMaxBytes,
       random: options.bug?.random,

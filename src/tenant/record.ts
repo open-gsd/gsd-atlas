@@ -39,6 +39,27 @@ export function answerEvent(kind: string, envelope: Envelope, latencyMs: number)
 }
 
 /**
+ * What the flight recorder keeps of a request that failed INSIDE the Tenant (plan 03-32): the tool and its arguments, the
+ * outcome `internal_error` and a latency label, nothing of the error (its message can quote paths). It is what makes the
+ * `gsd-atlas bug` hint reachable, and what a bug report names as the failing answer. Null for a request that is not a tool answer.
+ */
+export function flightFailure(request: Request, latencyMs: number, answerId: string): FlightEventInput | null {
+  if (!ANSWERED.has(request.kind)) return null;
+  const args = typeof request.args === 'object' && request.args !== null && !Array.isArray(request.args) ? (request.args as Record<string, unknown>) : undefined;
+  return {
+    kind: 'answer',
+    id: answerId,
+    tool: request.kind,
+    ...(args === undefined ? {} : { args }),
+    outcome: 'internal_error',
+    ms: bucketLabelFor(LATENCY_BUCKETS_MS, Number.isFinite(latencyMs) ? Math.max(0, latencyMs) : 0),
+    degraded: [],
+    count: 0,
+    handles: [],
+  };
+}
+
+/**
  * What the flight recorder keeps of an answer (plan 03-17, DIAGNOSTICS.md 9.1), or null when `request.kind` is not a
  * tool answer. The id is the one stamped on the envelope. The event holds the request arguments (the recorder cuts
  * long strings), the outcome (`ok`, or the first diagnostic code), a latency bucket label, the degraded codes of the

@@ -5,7 +5,7 @@
 export { DEFAULT_QUERY_CONFIG, resolveQueryConfig } from './defaults.ts';
 export { ERROR_SCHEMA, errorEnvelope } from './envelope.ts';
 export { createQuery } from './query.ts';
-export { HEALTH_REASONS, POLICY_OFF } from './status.ts';
+export { BUG_HINT, HEALTH_REASONS, POLICY_OFF } from './status.ts';
 export type { HealthReason, StatusSnapshot } from './status.ts';
 export { TOOLS, TOOL_NAMES, buildRequest } from './tools.ts';
 export type { ToolDefinition, ToolName } from './tools.ts';

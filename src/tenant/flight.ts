@@ -78,8 +78,11 @@ export interface FlightRecorder {
   lastAnswer(): FlightEvent | null;
   /** The id of the newest session marker, or null. */
   sessionId(): string | null;
-  /** Remove both segments (what `bug --clear` will call). Never throws; another process's recorder sees the folder empty. */
-  clear(): void;
+  /**
+   * Remove both segments (what `bug --clear` calls). Never throws; another process's recorder sees the folder empty. The
+   * result is how many answers the recorder held (session markers are not counted): what the person is told was removed.
+   */
+  clear(): number;
   close(): void;
 }
 
@@ -346,6 +349,12 @@ export function createFlightRecorder(options: FlightRecorderOptions): FlightReco
     lastAnswer: () => newest('answer'),
     sessionId: () => newest('session')?.id ?? null,
     clear() {
+      let removed = 0;
+      try {
+        removed = readAll().filter((event) => event.kind === 'answer').length;
+      } catch {
+        removed = 0;
+      }
       for (const file of [previous, current]) {
         try {
           io.rmSync(file, { force: true });
@@ -354,6 +363,7 @@ export function createFlightRecorder(options: FlightRecorderOptions): FlightReco
         }
       }
       known = null;
+      return removed;
     },
     close() {
       // Nothing is held open between appends.
