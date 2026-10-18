@@ -3,6 +3,8 @@
  * every analysis parameter and the sha256 of every file that decides the claim. The freeze is mechanical: a later
  * edit to a registered file, or to a registered parameter, shows up as a hash or schema failure in verify-prereg.
  */
+import { createHash } from 'node:crypto';
+import fs from 'node:fs';
 import { z } from 'zod';
 
 /** The fenced block label that holds the registration. */
@@ -93,11 +95,69 @@ export const PreregSchema = z
   });
 export type Prereg = z.infer<typeof PreregSchema>;
 
-// RED stubs: the reader and the hash are not written yet.
-export function readPrereg(_path: string): Prereg {
-  throw new Error('readPrereg is implemented in Task 3');
+/**
+ * The bytes with every CRLF pair replaced by LF, so a Windows checkout with `core.autocrlf` hashes like a Linux
+ * one (T-03-53). A lone CR is left alone.
+ */
+export function normalizeLineEndings(bytes: Uint8Array): Uint8Array {
+  const out = new Uint8Array(bytes.length);
+  let n = 0;
+  for (let i = 0; i < bytes.length; i += 1) {
+    if (bytes[i] === 0x0d && bytes[i + 1] === 0x0a) continue;
+    out[n] = bytes[i] as number;
+    n += 1;
+  }
+  return out.subarray(0, n);
 }
 
-export function hashFile(_path: string): string {
-  return '';
+/** The lower-case hex sha256 of the file bytes after CRLF is normalised to LF: the registered form of a hash. */
+export function hashFile(file: string): string {
+  return createHash('sha256').update(normalizeLineEndings(fs.readFileSync(file))).digest('hex');
+}
+
+/** The text of every fenced block with the given label; throws when a labelled block is never closed. */
+export function extractBlocks(text: string, label: string, source: string): string[] {
+  const opening = `\`\`\`${label}`;
+  const blocks: string[] = [];
+  let current: string[] | null = null;
+  for (const line of text.split(/\r?\n/)) {
+    const trimmed = line.trimEnd();
+    if (current === null) {
+      if (trimmed === opening) current = [];
+    } else if (trimmed === '```') {
+      blocks.push(current.join('\n'));
+      current = null;
+    } else {
+      current.push(line);
+    }
+  }
+  if (current !== null) throw new Error(`${source}: the ${label} block is not closed`);
+  return blocks;
+}
+
+/**
+ * Reads the pre-registration at `file`: exactly one fenced block labelled `prereg-json`, parsed with
+ * `PreregSchema`. Zero blocks, two blocks, invalid JSON and any schema violation throw an error that names the
+ * file and, for a schema violation, each offending field (for example `params.citationJudgedOn`, which has no
+ * default and so can only come from a registered, human-confirmed block).
+ */
+export function readPrereg(file: string): Prereg {
+  const text = fs.readFileSync(file, 'utf8').replace(/^\uFEFF/, '');
+  const blocks = extractBlocks(text, PREREG_BLOCK_LABEL, file);
+  if (blocks.length === 0) throw new Error(`${file}: no ${PREREG_BLOCK_LABEL} block found`);
+  if (blocks.length > 1) throw new Error(`${file}: ${String(blocks.length)} ${PREREG_BLOCK_LABEL} blocks found, exactly one is allowed`);
+  let raw: unknown;
+  try {
+    raw = JSON.parse(blocks[0] as string);
+  } catch (error) {
+    throw new Error(`${file}: the ${PREREG_BLOCK_LABEL} block is not valid JSON: ${error instanceof Error ? error.message : String(error)}`, {
+      cause: error,
+    });
+  }
+  const parsed = PreregSchema.safeParse(raw);
+  if (!parsed.success) {
+    const issues = parsed.error.issues.map((issue) => `${issue.path.join('.') || '(root)'}: ${issue.message}`);
+    throw new Error(`${file}: invalid ${PREREG_BLOCK_LABEL} block: ${issues.join('; ')}`);
+  }
+  return parsed.data;
 }

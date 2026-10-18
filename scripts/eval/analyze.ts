@@ -1,14 +1,30 @@
 /**
+ * node scripts/eval/analyze.ts <results.jsonl> [--prereg <file>] [--out <file>] [--questions <file>]
+ *
  * The analysis of the MVP eval (D-04, D-06, EVL-02, EVL-03): result rows in, registered verdicts out.
  *
  * Every parameter (margin, interval level, resample count, seed, token rule, citation threshold and rule, Wilson
- * z) arrives in the config object and nothing here supplies a value for one, so changing a parameter after the
- * freeze is a visible change to the registered pre-registration and not a quiet edit of this file.
+ * z) arrives in the config object, and the command reads that object from the registered pre-registration block
+ * (`readPrereg`); nothing here supplies a value for one, so changing a parameter after the freeze is a visible
+ * change to the registered file and not a quiet edit of this one.
+ *
+ * Exit codes: 0 for a complete run, whatever the verdict (the report carries it); 2 for an incomplete run, an
+ * invalid or unverifiable pre-registration, a question set that disagrees with the registration, unreadable rows,
+ * or a usage error. An incomplete run never gets a verdict.
  */
+import fs from 'node:fs';
+import path from 'node:path';
+import readline from 'node:readline';
+import { pathToFileURL } from 'node:url';
+import { parseArgs } from 'node:util';
+import { DEFAULT_PREREG_PATH, readPrereg } from './prereg.ts';
+import type { Prereg } from './prereg.ts';
+import { loadQuestions } from './questions.ts';
+import { ResultRowSchema } from './rows.ts';
+import type { Arm, ResultRow, SessionStatus } from './rows.ts';
 import { mean, pairedClusterBootstrap, wilsonInterval } from './stats.ts';
 import type { QuestionSeries } from './stats.ts';
-import type { Prereg } from './prereg.ts';
-import type { Arm, ResultRow, SessionStatus } from './rows.ts';
+import { verifyPrereg } from './verify-prereg.ts';
 import type { Io } from './verify-prereg.ts';
 
 export type TokenCriterion = 'point' | 'upper-bound';
@@ -540,11 +556,185 @@ export function renderReport(analysis: Analysis): string {
   return `${lines.join('\n')}\n`;
 }
 
-// RED stubs for Task 3: the pre-registration wiring and the command are not written yet.
-export function configFromPrereg(_prereg: Prereg): AnalysisConfig {
-  throw new Error('configFromPrereg is implemented in Task 3');
+/** The analysis parameters exactly as registered; nothing is added, defaulted or rounded. */
+export function configFromPrereg(prereg: Prereg): AnalysisConfig {
+  const p = prereg.params;
+  return {
+    marginPoints: p.marginPoints,
+    intervalLevel: p.intervalLevel,
+    resamples: p.resamples,
+    seed: p.seed,
+    tokenCriterion: p.tokenCriterion,
+    citationRate: p.citationRate,
+    citationJudgedOn: p.citationJudgedOn,
+    zForWilson: p.wilsonZ,
+  };
 }
 
-export function runCli(_argv: string[], _io: Io, _root: string): Promise<number> {
-  return Promise.resolve(99);
+/** Where the registered question file lives, relative to the repository root. */
+const DEFAULT_QUESTIONS_PATH = 'scripts/eval/questions/gsd-core.questions.json';
+
+const USAGE = 'usage: node scripts/eval/analyze.ts <results.jsonl> [--prereg <file>] [--out <file>] [--questions <file>]\n';
+
+/** Reads and validates result rows line by line (a results file has about 300 rows; nothing is held but the rows). */
+async function readRows(file: string): Promise<ResultRow[]> {
+  const rows: ResultRow[] = [];
+  const lines = readline.createInterface({ input: fs.createReadStream(file, { encoding: 'utf8' }), crlfDelay: Infinity });
+  let number = 0;
+  for await (const line of lines) {
+    number += 1;
+    if (line.trim() === '') continue;
+    let value: unknown;
+    try {
+      value = JSON.parse(line);
+    } catch {
+      throw new Error(`line ${String(number)}: not valid JSON`);
+    }
+    const parsed = ResultRowSchema.safeParse(value);
+    if (!parsed.success) {
+      const issues = parsed.error.issues.map((issue) => `${issue.path.join('.') || '(row)'}: ${issue.message}`);
+      throw new Error(`line ${String(number)}: not a valid result row: ${issues.join('; ')}`);
+    }
+    rows.push(parsed.data);
+  }
+  return rows;
+}
+
+function countsOf(categories: readonly string[]): Record<string, number> {
+  const counts: Record<string, number> = {};
+  for (const category of categories) counts[category] = (counts[category] ?? 0) + 1;
+  return counts;
+}
+
+function sameCounts(a: Readonly<Record<string, number>>, b: Readonly<Record<string, number>>): boolean {
+  const keys = new Set([...Object.keys(a), ...Object.keys(b)]);
+  for (const key of keys) {
+    if ((a[key] ?? 0) !== (b[key] ?? 0)) return false;
+  }
+  return true;
+}
+
+/**
+ * The expected cells of the registered design. The question ids come from the registered question file when it
+ * exists (so a question with no row at all is listed as missing) and from the rows otherwise; either way the number
+ * of questions and their categories must equal the registered `questionSet`.
+ */
+function expectedCells(prereg: Prereg, rows: readonly ResultRow[], questionsFile: string): ExpectedCells {
+  let ids: string[];
+  let categories: string[];
+  let source: string;
+  if (fs.existsSync(questionsFile)) {
+    const questions = loadQuestions(questionsFile).questions;
+    ids = questions.map((question) => question.id);
+    categories = questions.map((question) => question.category);
+    source = 'the question file';
+  } else {
+    const byId = new Map<string, string>();
+    for (const row of rows) byId.set(row.questionId, row.category);
+    ids = [...byId.keys()];
+    categories = [...byId.values()];
+    source = 'the result rows (no question file was found)';
+  }
+  const registered = prereg.questionSet;
+  if (ids.length !== registered.count || !sameCounts(countsOf(categories), registered.byCategory)) {
+    throw new Error(
+      `the question set in ${source} (${String(ids.length)} questions ${JSON.stringify(countsOf(categories))}) does not match the registered question set ` +
+        `(${String(registered.count)} questions ${JSON.stringify(registered.byCategory)}): the run is incomplete or the registration is wrong`,
+    );
+  }
+  return { questionIds: ids, arms: ['atlas', 'grep'], runsPerCell: prereg.params.runsPerCell };
+}
+
+const MISSING_SHOWN = 20;
+
+/** The command body, with the output sinks injected so tests can run it in-process. Returns the exit code. */
+export async function runCli(argv: string[], io: Io, root: string): Promise<number> {
+  let positionals: string[];
+  let values: { prereg?: string | undefined; out?: string | undefined; questions?: string | undefined };
+  try {
+    const parsed = parseArgs({
+      args: argv,
+      options: { prereg: { type: 'string' }, out: { type: 'string' }, questions: { type: 'string' } },
+      strict: true,
+      allowPositionals: true,
+    });
+    positionals = parsed.positionals;
+    values = parsed.values;
+  } catch (error) {
+    io.err(`analyze: ${error instanceof Error ? error.message : String(error)}\n${USAGE}`);
+    return 2;
+  }
+  if (positionals.length !== 1) {
+    io.err(`analyze: expected exactly one results file\n${USAGE}`);
+    return 2;
+  }
+  const resultsFile = path.resolve(positionals[0] as string);
+  const preregFile = values.prereg === undefined ? path.resolve(root, DEFAULT_PREREG_PATH) : path.resolve(values.prereg);
+  const questionsFile = values.questions === undefined ? path.resolve(root, DEFAULT_QUESTIONS_PATH) : path.resolve(values.questions);
+
+  let prereg: Prereg;
+  try {
+    prereg = readPrereg(preregFile);
+  } catch (error) {
+    io.err(`analyze: ${error instanceof Error ? error.message : String(error)}\n`);
+    return 2;
+  }
+  if (prereg.status === 'Frozen') {
+    const verified = verifyPrereg(preregFile, root);
+    if (!verified.ok) {
+      io.err(`analyze: the Frozen pre-registration does not verify, so no verdict is produced:\n${verified.problems.map((problem) => `  ${problem}\n`).join('')}`);
+      return 2;
+    }
+  } else {
+    io.err('analyze: warning: the pre-registration is a Draft, so this analysis is not a registered result\n');
+  }
+
+  let analysis: Analysis;
+  try {
+    const rows = await readRows(resultsFile);
+    analysis = analyzeResults(rows, configFromPrereg(prereg), expectedCells(prereg, rows, questionsFile));
+  } catch (error) {
+    io.err(`analyze: ${resultsFile}: ${error instanceof Error ? error.message : String(error)}\n`);
+    return 2;
+  }
+
+  const report = renderReport(analysis);
+  if (values.out === undefined) {
+    io.out(report);
+  } else {
+    const outFile = path.resolve(values.out);
+    fs.mkdirSync(path.dirname(outFile), { recursive: true });
+    fs.writeFileSync(outFile, report, 'utf8');
+    io.out(`analyze: wrote ${values.out}\n`);
+  }
+  if (!analysis.complete) {
+    const names = analysis.missing.slice(0, MISSING_SHOWN).map(cellName);
+    const more = analysis.missing.length > MISSING_SHOWN ? ` and ${String(analysis.missing.length - MISSING_SHOWN)} more` : '';
+    io.err(
+      `analyze: incomplete run: ${String(analysis.presentCells)} of ${String(analysis.expectedCells)} cells have a row; missing ${names.join(', ')}${more}. No verdict was produced.\n`,
+    );
+    return 2;
+  }
+  return 0;
+}
+
+function isEntryPoint(): boolean {
+  const entry = process.argv[1];
+  return entry !== undefined && import.meta.url === pathToFileURL(fs.realpathSync(entry)).href;
+}
+
+if (isEntryPoint()) {
+  runCli(
+    process.argv.slice(2),
+    { out: (text) => process.stdout.write(text), err: (text) => process.stderr.write(text) },
+    path.resolve(import.meta.dirname, '..', '..'),
+  ).then(
+    (code) => {
+      process.exitCode = code;
+    },
+    (error: unknown) => {
+      process.stderr.write(`analyze: ${error instanceof Error ? error.message : String(error)}\n`);
+      process.exitCode = 2;
+    },
+  );
 }

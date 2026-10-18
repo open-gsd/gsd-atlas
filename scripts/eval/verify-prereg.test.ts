@@ -51,11 +51,19 @@ function writeStageAStandIns(): void {
   for (const rel of STAGE_A_FILES) writeFile(rel, `// stand-in for ${rel}\n`);
 }
 
+/** Creates the stand-ins that do not exist yet, so a block can be built from their hashes. */
+function ensureStageAStandIns(): void {
+  for (const rel of STAGE_A_FILES) {
+    if (!fs.existsSync(abs(rel))) writeFile(rel, `// stand-in for ${rel}\n`);
+  }
+}
+
 function hashesOf(paths: readonly string[]): Record<string, string> {
   return Object.fromEntries(paths.map((rel) => [rel, hashFile(abs(rel))]));
 }
 
 function frozenA(overrides: Partial<Prereg> = {}): Prereg {
+  ensureStageAStandIns();
   return {
     stage: 'A',
     status: 'Frozen',
@@ -257,8 +265,11 @@ describe('verifyPrereg', () => {
 
   test('draft mode: only internal consistency is checked, so absent files are fine', () => {
     const file = writePrereg(frozenA({ files: Object.fromEntries(STAGE_A_FILES.map((rel) => [rel, 'e'.repeat(64)])) }));
+    fs.rmSync(abs('scripts'), { recursive: true }); // none of the registered files exists any more
     assert.equal(verifyPrereg(file, root, { draft: true }).ok, true);
-    assert.equal(verifyPrereg(file, root).ok, false); // without draft the same block fails on the missing files
+    const strict = verifyPrereg(file, root);
+    assert.equal(strict.ok, false); // without draft the same block fails on the missing files
+    assert.ok(strict.problems.some((problem) => /missing/.test(problem)));
   });
 
   test('draft mode still reports a schema error and an inconsistent block', () => {
@@ -342,6 +353,7 @@ describe('verify-prereg command', () => {
 
   test('draft mode checks an existing block without reading the registered files', () => {
     writePrereg(frozenA());
+    fs.rmSync(abs('scripts'), { recursive: true });
     assert.equal(capture(['--draft']).code, 0);
     assert.equal(capture([]).code, 1);
   });
