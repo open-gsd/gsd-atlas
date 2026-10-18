@@ -92,7 +92,15 @@ export const ResponseSchema = z.discriminatedUnion('t', [
   z.strictObject({ t: z.literal('edge'), id: Id, site: Site, targets: z.array(Target).max(64) }),
   /** Plan 03-25: one relation between two declarations, both as the name token of the declaration plus its kind. */
   z.strictObject({ t: z.literal('relation'), id: Id, from: Target, to: Target, relation: RelationName }),
-  z.strictObject({ t: z.literal('done'), id: Id, asked: z.int().min(0), answered: z.int().min(0) }),
+  z.strictObject({
+    t: z.literal('done'),
+    id: Id,
+    asked: z.int().min(0),
+    answered: z.int().min(0),
+    /** Plan 03-27 (observation only): programs this worker holds after the request, and its resident memory in megabytes. */
+    programs: z.int().min(0).max(100_000).optional(),
+    rssMb: z.number().min(0).max(1_048_576).optional(),
+  }),
   z.strictObject({
     t: z.literal('error'),
     id: Id.nullable(),

@@ -3,7 +3,8 @@
  *
  * One machine-wide budget, a share of RAM (25 percent by default). `deriveBudget` turns the machine's RAM into the three
  * numbers a worker is started with: the budget itself, the V8 heap flag (`--max-old-space-size`, the backstop) and the RSS
- * limit the worker's sampler thread enforces. `createMemoryBudget` carries those numbers for the Host.
+ * limit the worker's sampler thread enforces. `createMemoryBudget` is the ledger the worker pool reserves against, with a
+ * least-recently-used order so that a request which does not fit can ask the pool to stop an idle worker.
  *
  * The numbers are the approved constants of 03-CONSTANTS.md (`precise.memoryBudgetPercent`, `precise.heapShareOfBudget`,
  * `precise.rssSampleMs`, `precise.minBudgetMb`, `precise.idleExitMs`); nothing here is invented. Pure: no process, no timer.
@@ -89,13 +90,28 @@ export interface BudgetStatus {
   readonly owners: ReadonlyArray<{ readonly owner: string; readonly mb: number }>;
 }
 
+/**
+ * Asked to stop the worker of `victim`. Returns true when it did (the reservation is then released by the budget), false
+ * when it must not be stopped (a request is in flight).
+ */
+export type Evict = (victim: string) => Promise<boolean>;
+
 export interface MemoryBudget {
   /** The numbers this machine's RAM gives. */
   readonly derived: DerivedBudget;
+  /**
+   * Reserve `mb` for `owner`. When it does not fit, idle owners are asked to give theirs up, least recently used first,
+   * through `evict`, until it fits. False when it still does not fit (or when the budget is not usable, or `mb` is more
+   * than the whole budget): nothing is reserved then. An owner that already holds a reservation keeps it and is touched.
+   */
+  reserve(owner: string, mb: number, evict: Evict): Promise<boolean>;
+  /** Give `owner`'s reservation back. Safe when it holds none. */
+  release(owner: string): void;
+  /** Mark `owner` as the most recently used. */
+  touch(owner: string): void;
   status(): BudgetStatus;
 }
 
-/** The values of a machine. The reservation ledger (least recently used first) arrives with the pool. */
 export function createMemoryBudget(options: MemoryBudgetOptions): MemoryBudget {
   const derived = deriveBudget({
     totalMemBytes: options.totalMemBytes,
@@ -103,8 +119,53 @@ export function createMemoryBudget(options: MemoryBudgetOptions): MemoryBudget {
     heapShare: options.config?.heapShare ?? MEMORY_DEFAULTS.heapShare,
     minMb: options.config?.minMb ?? MEMORY_DEFAULTS.minMb,
   });
+  // Insertion order of a Map is the recency order: `touch` re-inserts, so the first entry is the least recently used.
+  const held = new Map<string, number>();
+  let reserved = 0;
+  // Reservations are decided one at a time: two concurrent requests must not both count the same free megabytes.
+  let queue: Promise<unknown> = Promise.resolve();
+
+  function release(owner: string): void {
+    const mb = held.get(owner);
+    if (mb === undefined) return;
+    held.delete(owner);
+    reserved -= mb;
+  }
+
+  function touch(owner: string): void {
+    const mb = held.get(owner);
+    if (mb === undefined) return;
+    held.delete(owner);
+    held.set(owner, mb);
+  }
+
+  async function decide(owner: string, mb: number, evict: Evict): Promise<boolean> {
+    if (!derived.usable || !Number.isInteger(mb) || mb < 1 || mb > derived.budgetMb) return false;
+    if (held.has(owner)) {
+      touch(owner);
+      return true;
+    }
+    for (const victim of [...held.keys()]) {
+      if (reserved + mb <= derived.budgetMb) break;
+      if (await evict(victim)) release(victim);
+    }
+    if (reserved + mb > derived.budgetMb) return false;
+    held.set(owner, mb);
+    reserved += mb;
+    return true;
+  }
+
   return {
     derived,
-    status: () => ({ budgetMb: derived.budgetMb, reservedMb: 0, usable: derived.usable, owners: [] }),
+    reserve(owner, mb, evict) {
+      const run = queue.then(() => decide(owner, mb, evict));
+      queue = run.catch(() => undefined);
+      return run;
+    },
+    release,
+    touch,
+    status() {
+      return { budgetMb: derived.budgetMb, reservedMb: reserved, usable: derived.usable, owners: [...held].map(([owner, mb]) => ({ owner, mb })) };
+    },
   };
 }

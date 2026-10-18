@@ -426,10 +426,12 @@ describe('composeHost: the built-in TypeScript tier (SEC-02)', () => {
     const tmp = makeTempDir();
     const first = await createTempGitRepo({ runner: setupRunner, world: { committed: { 'a.ts': 'export const a = 1;\n' } } });
     const second = await createTempGitRepo({ runner: setupRunner, world: { committed: { 'b.ts': 'export const b = 2;\n' } } });
+    const third = await createTempGitRepo({ runner: setupRunner, world: { committed: { 'c.ts': 'export const c = 3;\n' } } });
     t.after(() => {
       tmp.cleanup();
       first.cleanup();
       second.cleanup();
+      third.cleanup();
     });
     const tiers: PreciseTier[] = [];
     const compose = (totalMemBytes: number): Composed =>
@@ -462,11 +464,11 @@ describe('composeHost: the built-in TypeScript tier (SEC-02)', () => {
     t.after(async () => {
       await other.dispose();
     });
-    const built = await other.client.handle({ protocol: PROTOCOL_VERSION, kind: 'build', args: { repo: first.dir } });
+    const built = await other.client.handle({ protocol: PROTOCOL_VERSION, kind: 'build', args: { repo: third.dir } });
     assert.equal(built.ok, true, JSON.stringify(built.diagnostics));
-    const third = tiers[2];
-    assert.ok(third !== undefined);
-    assert.notEqual(third.memory, one.memory);
-    assert.equal(third.memory.budget.derived.budgetMb, 1024);
+    const last = tiers[2];
+    assert.ok(last !== undefined);
+    assert.notEqual(last.memory, one.memory);
+    assert.equal(last.memory.budget.derived.budgetMb, 1024);
   });
 });

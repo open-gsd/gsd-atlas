@@ -14,7 +14,7 @@
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import type ts from 'typescript';
-import { MEMORY_DEFAULTS } from './budget.ts';
+import { MEMORY_DEFAULTS, PROGRAM_EVICT_FRACTION } from './budget.ts';
 import { lineStarts, offsetOf, positionOf, stripBom } from './positions.ts';
 import { PRECISE_LIMITS, encodeResponse, parseRequest } from './protocol.ts';
 import type { Request, Response, Site, Target } from './protocol.ts';
@@ -53,6 +53,8 @@ let rootPosix = '';
 let known = new Set<string>();
 const programs = new Map<string, ProgramEntry>();
 let samplerRunning = false;
+/** The RSS limit the parent gave this worker, in bytes; undefined for a worker started without a sampler. */
+let rssLimitBytes: number | undefined;
 
 const send = (message: Response): void => {
   process.stdout.write(encodeResponse(message));
@@ -82,6 +84,7 @@ function init(message: Extract<Request, { t: 'init' }>): void {
   // The memory watch (plan 03-27, D-21): a thread of this process that ends it past the RSS limit. It starts before the
   // compiler loads, so loading a compiler into a budget that cannot hold it is stopped too; the V8 heap flag of the exact
   // worker shape is the backstop. Absent only for a worker started by a test that wants the heap flag alone.
+  if (message.rssLimitMb !== undefined) rssLimitBytes = message.rssLimitMb * 1_048_576;
   if (message.rssLimitMb !== undefined && !samplerRunning) {
     startSampler({ rssLimitMb: message.rssLimitMb, sampleMs: message.sampleMs ?? MEMORY_DEFAULTS.sampleMs });
     samplerRunning = true;
@@ -219,6 +222,32 @@ function resolveSite(api: Compiler, entry: ProgramEntry, site: Site): Target[] {
   return symbol === undefined ? [] : targetsOf(api, entry, symbol);
 }
 
+/**
+ * Programs are kept most recently used first (the Map's insertion order is the recency order). Once the process passes
+ * `PROGRAM_EVICT_FRACTION` of its RSS limit the least recently used programs are dropped, never `keep`, the program a
+ * request is using (research Pitfall 4 and 8: an incremental update holds the old and the new program, and a repository
+ * such as gsd-pi has several large configs). V8 gives memory back later than the drop, so the RSS read here may stay high
+ * for a while; the rule then drops every older program, which costs a rebuild and never a wrong answer.
+ */
+function trimPrograms(keep: string | undefined): void {
+  if (rssLimitBytes === undefined) return;
+  const threshold = rssLimitBytes * PROGRAM_EVICT_FRACTION;
+  while (process.memoryUsage.rss() > threshold) {
+    let victim: string | undefined;
+    for (const config of programs.keys()) {
+      if (config !== keep) {
+        victim = config;
+        break;
+      }
+    }
+    if (victim === undefined) return;
+    programs.delete(victim);
+  }
+}
+
+/** What a finished request reports besides its counts: the programs held and the resident memory (observation only). */
+const status = (): { programs: number; rssMb: number } => ({ programs: programs.size, rssMb: process.memoryUsage.rss() / 1_048_576 });
+
 /** The compiler and the program of an owner config, or undefined after the failure has been reported for request `id`. */
 function programFor(id: number, config: string): { readonly api: Compiler; readonly entry: ProgramEntry } | undefined {
   const api = compiler;
@@ -232,11 +261,18 @@ function programFor(id: number, config: string): { readonly api: Compiler; reado
   }
   let entry = programs.get(config);
   if (entry === undefined) {
+    // Room first: building a program while the process is already large is what the limit is for.
+    trimPrograms(undefined);
     entry = createEntry(config);
     if (entry === undefined) {
       fail(id, 'config_unreadable', 'the config could not be read');
       return undefined;
     }
+    programs.set(config, entry);
+    trimPrograms(config);
+  } else {
+    // Most recently used: re-insert at the end.
+    programs.delete(config);
     programs.set(config, entry);
   }
   return { api, entry };
@@ -259,7 +295,8 @@ function relations(message: Extract<Request, { t: 'relations' }>): void {
     if (found.length > 0) answered += 1;
     for (const item of found) send({ t: 'relation', id: message.id, from: item.from, to: item.to, relation: item.relation });
   }
-  send({ t: 'done', id: message.id, asked: message.files.length, answered });
+  trimPrograms(message.config);
+  send({ t: 'done', id: message.id, asked: message.files.length, answered, ...status() });
 }
 
 function resolve(message: Extract<Request, { t: 'resolve' }>): void {
@@ -273,7 +310,8 @@ function resolve(message: Extract<Request, { t: 'resolve' }>): void {
     answered += 1;
     send({ t: 'edge', id: message.id, site, targets });
   }
-  send({ t: 'done', id: message.id, asked: message.sites.length, answered });
+  trimPrograms(message.config);
+  send({ t: 'done', id: message.id, asked: message.sites.length, answered, ...status() });
 }
 
 function handle(line: string): void {

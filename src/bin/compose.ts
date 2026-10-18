@@ -17,11 +17,11 @@ import { createGovernor } from '../governor/index.ts';
 import { createPooledGrammarEngine } from '../grammar-engine/index.ts';
 import { createInProcessHostClient } from '../host-client/index.ts';
 import type { HostClient, Roots } from '../host-client/index.ts';
-import { createHost, defaultStateDir, loadUserConfig, permissionsFor } from '../host/index.ts';
+import { createHost, createTierMemory, defaultStateDir, loadUserConfig, permissionsFor } from '../host/index.ts';
 import type { Host, HostOrigin } from '../host/index.ts';
 import { createParcelEventSource } from '../indexer/index.ts';
 import { resolveWorkerPath } from '../precise-resolver/index.ts';
-import type { PreciseTier } from '../precise-resolver/index.ts';
+import type { PreciseTier, TypeScriptTierTuning } from '../precise-resolver/index.ts';
 
 /** The package root: two levels up from src/bin (dev) or dist/bin (published). */
 export const PACKAGE_ROOT = fileURLToPath(new URL('../../', import.meta.url));
@@ -56,6 +56,13 @@ export interface ComposeOptions {
   readonly allowBuild?: boolean;
   /** TEST HOOK. Called with each precise tier the Host builds (the trace script reads its statistics). Production omits it. */
   readonly tierHook?: (tier: PreciseTier) => void;
+  /**
+   * The machine's RAM in bytes, from which the compiler memory budget (25 percent by default) is derived. Default:
+   * `os.totalmem()`. A test injects it; the trace script sets it to run a small budget (plan 03-27).
+   */
+  readonly totalMemBytes?: number;
+  /** TEST HOOK. Tuning of the TypeScript tier (limits, sampler period). The memory budget and pool are always the Host's own. */
+  readonly precise?: Omit<TypeScriptTierTuning, 'memory'>;
 }
 
 export interface Composed {
@@ -95,6 +102,9 @@ export function composeHost(options: ComposeOptions): Composed {
   // The pooled engine with the approved defaults: its pool size, recycle interval and parse deadline are the
   // constants of 02-CONSTANTS.md, carried by the pool itself.
   const engine = createPooledGrammarEngine();
+  // Plan 03-27 (D-21): ONE memory budget and worker pool for the whole Host, from the machine's RAM and the approved
+  // constants. Every tenant's tier draws on it, so the compiler's memory is bounded machine-wide, not per repository.
+  const memory = createTierMemory({ totalMemBytes: options.totalMemBytes ?? os.totalmem() });
   const runner = makeRunner({ env: options.env, permissions: config.permissions, origin, allowBuild });
   const host = createHost({
     roots,
@@ -113,6 +123,7 @@ export function composeHost(options: ComposeOptions): Composed {
     stateDir: defaultStateDir(options.env, home),
     eventSource: () => createParcelEventSource(),
     knownAdapters: KNOWN_ADAPTERS,
+    precise: { ...options.precise, memory },
     ...(options.tierHook === undefined ? {} : { tierHook: options.tierHook }),
   });
   const client = createInProcessHostClient({ roots, engine, host });
@@ -125,6 +136,7 @@ export function composeHost(options: ComposeOptions): Composed {
     dispose(): Promise<void> {
       disposing ??= (async () => {
         await host.close();
+        await memory.pool.close();
         await engine.dispose();
       })();
       return disposing;

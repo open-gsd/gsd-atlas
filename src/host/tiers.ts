@@ -7,8 +7,8 @@
  * off starts no process at all.
  */
 import type { CommandRunner } from '../command-runner/index.ts';
-import { createTypeScriptTier } from '../precise-resolver/index.ts';
-import type { PreciseTier, TypeScriptTierTuning } from '../precise-resolver/index.ts';
+import { createResolverMemory, createTypeScriptTier } from '../precise-resolver/index.ts';
+import type { PreciseTier, ResolverMemory, TypeScriptTierTuning } from '../precise-resolver/index.ts';
 
 /** What a tier needs from the Host. */
 export interface TierDeps {
@@ -21,6 +21,15 @@ export interface TierDeps {
 }
 
 export type TierFactory = (deps: TierDeps) => PreciseTier;
+
+/**
+ * The one memory budget and worker pool of a Host (plan 03-27, D-21): a share of the machine's RAM (25 percent by default)
+ * that every tenant's tier draws on, so many repositories can not each take their own. The composition root builds it once
+ * from `os.totalmem()` (a test injects the figure) and hands it to the Host through the tier tuning; the Host closes it.
+ */
+export function createTierMemory(options: { readonly totalMemBytes?: number } = {}): ResolverMemory {
+  return createResolverMemory(options);
+}
 
 /** The built-in tiers by adapter id. */
 export const BUILTIN_TIERS: ReadonlyMap<string, TierFactory> = new Map<string, TierFactory>([
