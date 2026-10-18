@@ -12,11 +12,12 @@ import path from 'node:path';
 import { IDLE_MAINTENANCE, StoreClosed, UnknownWorktree, WriterBusy, openFactStore, resolveStoreLocation } from '../fact-store/index.ts';
 import type { FactStore, MaintenanceResult, Resolver } from '../fact-store/index.ts';
 import { createAnswerId, createSessionId, okEnvelope } from '../facts/index.ts';
-import type { Envelope, Request } from '../facts/index.ts';
+import type { Diagnostic, Envelope, ProjectContextProvider, Request } from '../facts/index.ts';
 import { DEFAULT_INDEXER_CONFIG, IndexerError, createIndexer, createModuleHost } from '../indexer/index.ts';
 import type { BuildResult, Indexer, IndexerNotice, ModuleHost } from '../indexer/index.ts';
 import { createNoopMetrics, openMetrics } from '../metrics/index.ts';
 import type { Metrics } from '../metrics/index.ts';
+import type { PreciseTier } from '../precise-resolver/index.ts';
 import { createQuery, errorEnvelope } from '../query/index.ts';
 import type { FreshPort } from '../query/index.ts';
 import { DEFAULT_TENANT_TUNING } from './defaults.ts';
@@ -29,7 +30,8 @@ import type { RateInput } from './rate.ts';
 import { answerEvent, flightAnswer, isAnsweredKind } from './record.ts';
 import { leaseHeldEnvelope, notIndexedEnvelope, storeUnavailableEnvelope } from './messages.ts';
 import type { LeaseHolderName } from './messages.ts';
-import { createOutputFilter, createTenantProjectProvider } from './project.ts';
+import { createOutputFilter, createTenantProjectProvider, preciseAdapterIds } from './project.ts';
+import type { ProjectProvider } from './project.ts';
 import { createStatusPort } from './status-port.ts';
 import { BUILD_SCHEMA, MAINTAIN_SCHEMA, STATUS_SCHEMA } from './types.ts';
 import type { MaintainOptions, MaintainTask, TaskReport, Tenant, TenantDeps, TenantStatus, TenantTuning } from './types.ts';
@@ -48,12 +50,41 @@ const WORKTREE_TASKS: ReadonlySet<SingleTask> = new Set<SingleTask>(['reconcile'
  */
 const MAX_SLICES = 10_000;
 
-/** Phase 2 has no precise tier: the store's resolver resolves nothing, and every edge stays grammar-tier. */
+/** A repository whose modules name no known precise adapter has no precise tier: the store resolves nothing, and every edge stays grammar-tier. */
 const noPreciseTier: Resolver = async function* () {
   // resolves nothing
 };
 
 const ignore = (): void => {};
+
+/**
+ * The precise tier the manifests of the repository's modules name (plan 03-23): the first id, in code-unit order, that the
+ * Host's table can build. An id nobody knows starts nothing (T-03-235).
+ */
+function openTier(tiers: TenantDeps['tiers'], roots: TenantDeps['roots']): PreciseTier | undefined {
+  if (tiers === undefined) return undefined;
+  for (const id of preciseAdapterIds(roots)) {
+    const tier = tiers(id);
+    if (tier !== undefined) return tier;
+  }
+  return undefined;
+}
+
+/**
+ * While the tier is switched off, every read that has sites to resolve carries `precise_unavailable`, and the cache is keyed
+ * apart from the one a running tier fills (so a "nothing found" recorded while it was off is not believed after it is on).
+ */
+function keyedByTier(provider: ProjectProvider | undefined, tier: PreciseTier | undefined): ProjectContextProvider | undefined {
+  if (provider === undefined || tier === undefined || tier.active) return provider;
+  return async (scope) => {
+    const project = await provider(scope);
+    return {
+      ...project,
+      context: { ...project.context, id: `${project.context.id}+${tier.id}:off` },
+      degraded: [...(project.degraded ?? []), 'precise_unavailable'],
+    };
+  };
+}
 
 const codeOf = (error: unknown): string => {
   const code = (error as { readonly code?: unknown } | null)?.code;
@@ -109,18 +140,30 @@ export async function createTenant(deps: TenantDeps): Promise<Tenant> {
   // the Indexer both read the same description. No module names a model: no provider, and Phase 2 behaviour as it was.
   const projectProvider = createTenantProjectProvider(tree, roots);
 
-  const store: FactStore = await (deps.openStore ?? openFactStore)(
-    location.dir,
-    { resolver: noPreciseTier, clock, gitHas: (hash) => tree.hasObject(hash) },
-    {
-      lease: 'acquire',
-      ...(projectProvider === undefined ? {} : { projectContext: projectProvider }),
-      takeover: { retryMinMs: tuning.takeoverRetryMinMs, retryMaxMs: tuning.takeoverRetryMaxMs },
-      onLeaseChange,
-      ...(deps.version === undefined ? {} : { version: deps.version }),
-      ...(deps.graceMs === undefined ? {} : { graceMs: deps.graceMs }),
-    },
-  );
+  // Plan 03-23: the precise tier the modules' manifests name through `precise.adapter`, from the Host's own table. The
+  // test hook, when given, replaces its resolver. Nothing is started here: the tier starts its worker on the first read.
+  const tier = openTier(deps.tiers, roots);
+  const resolver: Resolver = deps.resolverFactory?.(deps.repoDir) ?? tier?.resolver ?? noPreciseTier;
+  const projectContext = keyedByTier(projectProvider, tier);
+
+  let store: FactStore;
+  try {
+    store = await (deps.openStore ?? openFactStore)(
+      location.dir,
+      { resolver, clock, gitHas: (hash) => tree.hasObject(hash) },
+      {
+        lease: 'acquire',
+        ...(projectContext === undefined ? {} : { projectContext }),
+        takeover: { retryMinMs: tuning.takeoverRetryMinMs, retryMaxMs: tuning.takeoverRetryMaxMs },
+        onLeaseChange,
+        ...(deps.version === undefined ? {} : { version: deps.version }),
+        ...(deps.graceMs === undefined ? {} : { graceMs: deps.graceMs }),
+      },
+    );
+  } catch (error) {
+    await tier?.close().catch(ignore);
+    throw error;
+  }
   storeOpened();
 
   // IN-10: from here on a throw must not leave the store, and with it the writer lease, held by an object nobody
@@ -131,6 +174,7 @@ export async function createTenant(deps: TenantDeps): Promise<Tenant> {
     closed = true;
     await followerModules?.dispose().catch(ignore);
     await openedMetrics?.close().catch(ignore);
+    await tier?.close().catch(ignore);
     await store.close().catch(ignore);
     throw error;
   }
@@ -242,6 +286,23 @@ export async function createTenant(deps: TenantDeps): Promise<Tenant> {
     throw error;
   }
 
+  /**
+   * An answer that carries a degraded code of the precise tier gains the tier's fixed-text diagnostic for it (plan 03-23):
+   * `compiler_fallback` names why the bundled compiler was used, `precise_unavailable` says the tier is off or no config
+   * covers a file. The text holds no repository text. Failures and answers without such a code are returned as they are.
+   */
+  function explained(envelope: Envelope, worktree: string): Envelope {
+    const codes = envelope.degraded ?? [];
+    if (tier === undefined || !envelope.ok || codes.length === 0) return envelope;
+    const facts = projectProvider?.precise(worktree);
+    const added: Diagnostic[] = [];
+    for (const code of codes) {
+      const note = tier.explain(code, facts);
+      if (note !== undefined && !envelope.diagnostics.some((known) => known.code === note.code && known.message === note.message)) added.push(note);
+    }
+    return added.length === 0 ? envelope : { ...envelope, diagnostics: [...envelope.diagnostics, ...added] };
+  }
+
   /** True when this process holds the writer lease: the only process that indexes or runs maintenance (STO-08). */
   const isLeader = async (): Promise<boolean> => !leaseLost && (await store.status()).writerLeaseHeld;
 
@@ -301,7 +362,14 @@ export async function createTenant(deps: TenantDeps): Promise<Tenant> {
       store,
       text: tree,
       fresh,
-      status: createStatusPort({ store, indexer: () => indexer, governor, roots }),
+      status: createStatusPort({
+        store,
+        indexer: () => indexer,
+        governor,
+        roots,
+        ...(deps.knownAdapters === undefined ? {} : { knownAdapters: deps.knownAdapters }),
+        ...(deps.providers?.disabled === undefined ? {} : { disabledAdapters: deps.providers.disabled }),
+      }),
       clock,
     });
   } catch (error) {
@@ -556,7 +624,13 @@ export async function createTenant(deps: TenantDeps): Promise<Tenant> {
         return { complete: true, spentMs: outcome.durationMs, processed: outcome.changed };
       }
       case 'resolve':
-        return { complete: true, spentMs: 0, processed: 0, note: 'no precise tier is active' };
+        // Eager resolution is plan 03-29; until then an active tier resolves when a read asks.
+        return {
+          complete: true,
+          spentMs: 0,
+          processed: 0,
+          note: tier?.active === true ? 'the precise tier resolves on demand, when a read asks' : 'no precise tier is active',
+        };
       case 'refresh': {
         const { processed } = await getIndexer().refresh(options.worktree);
         return { complete: true, spentMs: took(), processed };
@@ -592,10 +666,11 @@ export async function createTenant(deps: TenantDeps): Promise<Tenant> {
         throw error;
       }
       // Until the start-up Reconcile settles, an answer may lag the working tree: say so (D-02).
-      const envelope =
+      const lagging =
         answered.ok && starting !== undefined && !(answered.degraded ?? []).includes('reconciling')
           ? { ...answered, degraded: [...(answered.degraded ?? []), 'reconciling' as const] }
           : answered;
+      const envelope = explained(lagging, worktree);
       const elapsed = clock.now() - started;
       // The answer id is added once the answer exists (D-16); it holds no content. The same id goes to the recorder.
       const id = isAnsweredKind(request.kind) ? createAnswerId() : undefined;
@@ -707,6 +782,8 @@ export async function createTenant(deps: TenantDeps): Promise<Tenant> {
         // The start-up may have created the Indexer after the stop above looked; it is stopped now.
         if (indexer !== undefined && indexer !== running) await indexer.stop().catch(ignore);
         await followerModulesLazy.dispose().catch(ignore);
+        // The compiler worker ends with the Tenant (TSM-05): its stdin is closed, and it is killed after the grace period.
+        await tier?.close().catch(ignore);
         await metrics.close();
         await store.close();
       })();

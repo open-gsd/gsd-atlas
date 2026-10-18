@@ -3,6 +3,34 @@ import type { OverlaySnapshot, RefSiteKey, ResolutionContext, ResolvedEdge, Symb
 export { asStoreResolver } from './store-adapter.ts';
 export { createScriptedResolver } from './stub.ts';
 export type { ScriptedEdge, ScriptedResolverOptions } from './stub.ts';
+export {
+  BUNDLED_TYPESCRIPT_VERSION,
+  PRECISE_DEFAULTS,
+  PRECISE_LIMITS,
+  TYPESCRIPT_RESOLVER_ID,
+  bundledCompilerDir,
+  compilerFallbackText,
+  compilerForRequest,
+  createStats,
+  createTypeScriptResolver,
+  defaultHeapMb,
+  mapTarget,
+  PROVIDER_OFF_TEXT,
+  createTypeScriptTier,
+  resolveWorkerPath,
+  resolveWorkerUrl,
+} from './typescript/index.ts';
+export type {
+  KindStats,
+  PreciseLimits,
+  PreciseTier,
+  Stats,
+  TypeScriptResolver,
+  TypeScriptResolverDeps,
+  TypeScriptTierDeps,
+  TypeScriptTierTuning,
+  WorkerInfo,
+} from './typescript/index.ts';
 
 /**
  * The PreciseResolver seam (PRD 4.5, FND-05). A compiler- or index-backed resolver that binds

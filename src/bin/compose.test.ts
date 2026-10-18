@@ -7,8 +7,9 @@ import { allowAll, commandHash, createRealRunner } from '../command-runner/index
 import type { CommandRunner, CommandSpec, UserPermissions } from '../command-runner/index.ts';
 import { PROTOCOL_VERSION } from '../facts/index.ts';
 import { loadUserConfig, needsApprovalFrom } from '../host/index.ts';
+import { resolveWorkerPath } from '../precise-resolver/index.ts';
 import { createTempGitRepo, makeTempDir, realPath } from '../test-kit/index.ts';
-import { composeHost, makeRunner, parseMcpFlags } from './compose.ts';
+import { KNOWN_ADAPTERS, composeHost, makeRunner, parseMcpFlags } from './compose.ts';
 
 const toyModule = path.resolve(import.meta.dirname, '..', '..', 'test', 'fixtures', 'modules', 'toy');
 const setupRunner = createRealRunner({ decide: allowAll });
@@ -349,5 +350,73 @@ describe('parseMcpFlags: the arguments of gsd-atlas-mcp', () => {
       const parsed = parseMcpFlags([flag]);
       assert.deepEqual({ ok: parsed.ok, help: parsed.ok && parsed.help }, { ok: true, help: true });
     }
+  });
+});
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Plan 03-23: the real composition starts the compiler worker only as the exact built-in shape, and knows the typescript tier.
+// ---------------------------------------------------------------------------------------------------------------------
+
+describe('composeHost: the built-in TypeScript tier (SEC-02)', () => {
+  const worker = resolveWorkerPath();
+  const workerSpec = (extra: Partial<CommandSpec> = {}): CommandSpec => ({
+    executable: process.execPath,
+    args: ['--max-old-space-size=256', worker],
+    builtinId: 'typescript-resolver',
+    env: { GSD_ATLAS_WORKER: '1' },
+    ...extra,
+  });
+
+  it('makeRunner accepts the exact worker shape and refuses a changed one', async () => {
+    const runner = makeRunner({ env: process.env });
+    // No stdin: the worker ends at once, as it does when its host dies. It was allowed to start; that is the point.
+    const started = await runner.run(workerSpec({ stdin: '' }));
+    assert.equal(started.denied, undefined, JSON.stringify(started.diagnostics));
+    for (const changed of [
+      workerSpec({ args: ['--max-old-space-size=256', worker, 'extra'] }),
+      workerSpec({ args: ['--inspect', worker] }),
+      workerSpec({ env: { GSD_ATLAS_WORKER: '1', NODE_OPTIONS: '--require ./x.js' } }),
+      workerSpec({ executable: 'node' }),
+    ]) {
+      const refused = await runner.run(changed);
+      assert.equal(refused.denied?.code, 'command_denied', JSON.stringify(changed.args));
+    }
+  });
+
+  it('the composed Host knows the typescript adapter: lang_list shows the TypeScript module precise tier active', async (t) => {
+    const tmp = makeTempDir();
+    t.after(() => {
+      tmp.cleanup();
+    });
+    const composed = composeHost({ cwd: tmp.path, env: { ...process.env, GSD_ATLAS_USER_DIR: path.join(tmp.path, 'user') }, home: path.join(tmp.path, 'home'), stderr: sink() });
+    t.after(async () => {
+      await composed.dispose();
+    });
+    assert.deepEqual(KNOWN_ADAPTERS, ['typescript']);
+    const listed = await composed.client.handle({ protocol: PROTOCOL_VERSION, kind: 'lang_list' });
+    const modules = (listed.data as { modules: Array<{ name: string; tiers: Array<{ tier: string; active: boolean; reason?: string }> }> }).modules;
+    const typescript = modules.find((entry) => entry.name === 'typescript');
+    assert.deepEqual(typescript?.tiers.find((tier) => tier.tier === 'precise'), { tier: 'precise', active: true });
+  });
+
+  it('the user can turn the provider off: lang_list then says provider_disabled', async (t) => {
+    const tmp = makeTempDir();
+    t.after(() => {
+      tmp.cleanup();
+    });
+    const userDir = path.join(tmp.path, 'user');
+    fs.mkdirSync(userDir, { recursive: true });
+    fs.writeFileSync(path.join(userDir, 'config.json'), JSON.stringify({ providers: { disabled: ['typescript'] } }));
+    const composed = composeHost({ cwd: tmp.path, env: { ...process.env, GSD_ATLAS_USER_DIR: userDir }, home: path.join(tmp.path, 'home'), stderr: sink() });
+    t.after(async () => {
+      await composed.dispose();
+    });
+    const listed = await composed.client.handle({ protocol: PROTOCOL_VERSION, kind: 'lang_list' });
+    const modules = (listed.data as { modules: Array<{ name: string; tiers: Array<{ tier: string; active: boolean; reason?: string }> }> }).modules;
+    assert.deepEqual(modules.find((entry) => entry.name === 'typescript')?.tiers.find((tier) => tier.tier === 'precise'), {
+      tier: 'precise',
+      active: false,
+      reason: 'provider_disabled',
+    });
   });
 });

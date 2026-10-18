@@ -4,11 +4,13 @@
  */
 import type { CommandRunner, UserPermissions } from '../command-runner/index.ts';
 import type { DiagnosticsFs, PlatformFacts } from '../diagnostics/index.ts';
+import type { Resolver } from '../fact-store/index.ts';
 import type { Clock, Envelope, Request } from '../facts/index.ts';
 import type { Governor } from '../governor/index.ts';
 import type { GrammarEngine } from '../grammar-engine/index.ts';
 import type { EventSource, Indexer, IndexerDeps, ModuleHost } from '../indexer/index.ts';
 import type { Roots } from '../lang/index.ts';
+import type { PreciseTier, TypeScriptTierTuning } from '../precise-resolver/index.ts';
 import type { Tenant, TenantDeps, TenantTuning } from '../tenant/index.ts';
 
 /**
@@ -78,6 +80,22 @@ export interface HostOptions {
   readonly cacheRoot?: string;
   /** Extra environment for every git command (a test's config isolation). */
   readonly gitEnv?: Readonly<Record<string, string>>;
+  /**
+   * The built-in precise adapter ids this composition knows (plan 03-23, SEC-02): `typescript` for the real bins. Only a
+   * listed id is ever started, and only when the user has not turned it off; `lang_list` and `atlas_status` show a module's
+   * precise tier as active only for these. Absent: none is known, so no precise tier exists (a Host built by a test, a
+   * history question) and every answer stays grammar-tier.
+   */
+  readonly knownAdapters?: readonly string[];
+  /** TEST HOOK. Tuning of the TypeScript tier (worker heap, limits, worker path). Production omits it. */
+  readonly precise?: TypeScriptTierTuning;
+  /** TEST HOOK. Called with each precise tier the Host builds, so a test or the trace script can read its statistics. */
+  readonly tierHook?: (tier: PreciseTier) => void;
+  /**
+   * TEST HOOK. The store's resolver for a repository, given its directory; it replaces the tier table. Production leaves
+   * it unset and the tier the module manifest names is used.
+   */
+  readonly resolverFactory?: (repoDir: string) => Resolver;
   /** Builds the event source of a tenant's Indexer. Absent: Indexers are reconcile-only. */
   readonly eventSource?: () => EventSource;
   /** TEST HOOK. Builds a tenant's Indexer; production omits it. */

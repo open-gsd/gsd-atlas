@@ -3,13 +3,14 @@
  * per-repository state: Source Tree, Fact Store (with the writer lease), Indexer, Query and Metrics. The Grammar
  * Engine, the CommandRunner and the Governor are shared across tenants and arrive as dependencies.
  */
-import type { StoreLocation, StoreStatus, openFactStore } from '../fact-store/index.ts';
+import type { Resolver, StoreLocation, StoreStatus, openFactStore } from '../fact-store/index.ts';
 import type { Clock, Envelope, Request } from '../facts/index.ts';
 import type { Governor, GovernorStatus } from '../governor/index.ts';
 import type { GrammarEngine } from '../grammar-engine/index.ts';
 import type { EventSource, Indexer, IndexerConfig, IndexerDeps, IndexerStatus } from '../indexer/index.ts';
 import type { Roots } from '../lang/index.ts';
 import type { Metrics, MetricsStatus } from '../metrics/index.ts';
+import type { PreciseTier } from '../precise-resolver/index.ts';
 import type { SourceTree, SourceTreeIdentity } from '../source-tree/index.ts';
 import type { FlightEvent } from './flight.ts';
 import type { RateInput } from './rate.ts';
@@ -66,6 +67,17 @@ export interface TenantDeps {
    * first-party provider runs. An id nobody knows has no effect. The Host passes it; the provider table reads it.
    */
   readonly providers?: { readonly disabled?: readonly string[] };
+  /**
+   * Builds the precise tier a module manifest names through `precise.adapter` (plan 03-23): the Host's table of built-in
+   * tiers, closed over its runner and the user's `providers` list. Absent, or answering undefined for an id, means that
+   * adapter is not known and nothing is started for it. The id is data from the manifest; it picks from the table and
+   * never names a path or a command.
+   */
+  readonly tiers?: (adapterId: string) => PreciseTier | undefined;
+  /** The adapter ids the composition root knows; `atlas_status` reports a module's precise tier active only for these. */
+  readonly knownAdapters?: readonly string[];
+  /** TEST HOOK. The store's resolver for this repository, given its directory; wins over `tiers`. Production omits it. */
+  readonly resolverFactory?: (repoDir: string) => Resolver;
   /** The version of this build, recorded in a new store. */
   readonly version?: string;
   /**

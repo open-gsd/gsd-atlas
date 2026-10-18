@@ -35,17 +35,21 @@ export type {
   UntrustedEntry,
   UntrustedText,
 } from './request.ts';
-export { DEFAULT_PROJECT_CONTEXT, symbolKey } from './resolution.ts';
+export { DEFAULT_PROJECT_CONTEXT, ResolverFailure, degradedCodeOf, isResolverNotice, symbolKey } from './resolution.ts';
 export type {
+  CompilerFacts,
   EmitLookup,
   LocatedSymbol,
   OverlaySnapshot,
+  PreciseFacts,
   ProjectContext,
   ProjectContextProvider,
   RefSiteKey,
   ResolutionContext,
   ResolvedEdge,
   ResolveScope,
+  NoticingResolverPort,
+  ResolverNotice,
   ResolverPort,
   SymbolIdentity,
   SymbolLookup,

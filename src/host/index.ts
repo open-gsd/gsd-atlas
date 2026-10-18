@@ -15,6 +15,8 @@ export type { IndexStateData } from './host.ts';
 export { HISTORY_KIND, HISTORY_MAX_FILES, HISTORY_SCHEMA, HISTORY_TOOLS } from './history.ts';
 export type { HistoryArgs } from './history.ts';
 export { LANG_LIST_SCHEMA, LANG_TEST_SCHEMA } from './lang.ts';
+export { BUILTIN_TIERS, createTier } from './tiers.ts';
+export type { TierDeps, TierFactory } from './tiers.ts';
 // The closed lists a rating may name (plan 03-17), for the CLI to check a flag with the Host's own lists.
 export { RATE_SCHEMA, RATING_FEATURES, RATING_SCOPES, RATING_VALUES } from '../tenant/index.ts';
 export type { LangListData } from './lang.ts';
