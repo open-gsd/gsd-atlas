@@ -30,8 +30,17 @@ export const PHASE2_SLUGS: readonly string[] = [
   'value-dashboard',
 ];
 
-/** Every ADR that adr-ratify may ratify: the Phase 1 set followed by the Phase 2 set (FND-12, D-18). */
-export const RATIFIED_SLUGS: readonly string[] = [...PHASE1_SLUGS, ...PHASE2_SLUGS];
+/**
+ * The ADR scheduled for Phase 3: user-controlled diagnostics (SKL-03; ROADMAP Planning Notes
+ * row 3 requires it ratified before any Phase 3 diagnostics code lands).
+ */
+export const PHASE3_SLUGS: readonly string[] = ['user-controlled-diagnostics'];
+
+/**
+ * Every ADR that adr-ratify may ratify: the Phase 1 set, then the Phase 2 set (FND-12, D-18),
+ * then the Phase 3 set (SKL-03, ROADMAP Planning Notes row 3).
+ */
+export const RATIFIED_SLUGS: readonly string[] = [...PHASE1_SLUGS, ...PHASE2_SLUGS, ...PHASE3_SLUGS];
 
 export interface BrokenLink {
   /** Path of the file holding the link, relative to the root, forward slashes. */
