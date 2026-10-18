@@ -1,6 +1,6 @@
 # Phase 3 Constants
 
-Status: Proposed
+Status: Approved (2026-10-18, by the user)
 
 ## Purpose
 
@@ -164,4 +164,8 @@ Verdict: OK. The package declares no `scripts` at all (none printed), so there i
 
 ## Approvals
 
-Pending. Task 2 of plan 03-02 (blocking-human checkpoint) records the user's reply here verbatim after the human answers; Task 3 then sets the Status line to Approved.
+Task 2 of plan 03-02 (blocking-human checkpoint) was answered by the user on 2026-10-18. Reply, verbatim:
+
+> approve-all
+
+Meaning: every constant in the table above is approved unchanged, including the three `gate.*PrCeilingMs` D-10 ceilings (`gate.buildPrCeilingMs` 90000, `gate.updatePrCeilingMs` 15000, `gate.warmQueryPrCeilingMs` 6000), and all three packages are approved for install: typescript 6.0.3 (runtime, moved from devDependencies, exact), jsonc-parser 3.3.1 (runtime, exact) and typescript-7 = npm:typescript@7.0.2 (dev, exact). No package was refused. `eval.maxBudgetUsdPerSession` and `eval.sessionWallClockMs` remain deferred to plans 03-14 and 03-16.

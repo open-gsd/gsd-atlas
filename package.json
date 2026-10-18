@@ -41,6 +41,8 @@
   "dependencies": {
     "@modelcontextprotocol/server": "2.3.1",
     "@parcel/watcher": "2.6.0",
+    "jsonc-parser": "3.3.1",
+    "typescript": "6.0.3",
     "web-tree-sitter": "0.27.1",
     "zod": "4.6.7"
   },
@@ -52,7 +54,7 @@
     "c8": "12.0.0",
     "eslint": "10.12.0",
     "tree-sitter-cli": "0.27.1",
-    "typescript": "6.0.3",
+    "typescript-7": "npm:typescript@7.0.2",
     "typescript-eslint": "8.71.2"
   },
   "peerDependencies": {
