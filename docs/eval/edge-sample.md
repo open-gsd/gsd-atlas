@@ -195,3 +195,42 @@ The audits exist to test the verifiers, not to choose a sample: their results ar
 Status: pending
 
 PRD criterion 1 asks for a hand-verified sample. A person opens the twenty rows whose # is a multiple of five (5, 10, ..., 100), reads the cited file at the cited line in the prepared checkout, and confirms that the stated fact is true. Record the person, the date and the result here.
+
+## Re-audit after the mapTarget fix (2026-10-18)
+
+The one atlas defect of the audits above (`lockMod.withLedgerLock(cwd, fn)` at src/refactor-trigger-command-router.cts:436, stored as a reference to the module-local function) was fixed in 267253d (`fix(03-23): map a compiler declaration to the grammar symbol that is it, not one that holds its name`, regression test added in 56f44e3). This section is the fresh evidence. The table above is the original run and is not regenerated; the Human confirmation above is unchanged and still pending.
+
+- Atlas commit under test: 2f2afa5 (current main, contains 267253d); corpus gsd-core at 10ac3a7a947903ba50f538a907af036744d759d5 (a new preparation, `typescript 6.0.3`, `npm ci --ignore-scripts`); Node 26.11.1, macOS arm64.
+- Index: new scratch store and user dir (no old store), `npm run build`, `gsd-atlas build`, then `refs` for each of the 16 interfaces (22 `extends` relations stored, as before).
+- Commands (the same steps as "How the index and this table were made" above, with `<scratch>` a fresh directory):
+
+```
+node scripts/eval/prepare-corpus.ts --corpus gsd-core --dest <scratch>/checkout
+npm run build
+export GSD_ATLAS_STORE_DIR=<scratch>/store GSD_ATLAS_USER_DIR=<scratch>/user
+node dist/bin/gsd-atlas.js build --repo <checkout>        # files 1689, parsed 1686, failed 0
+node dist/bin/gsd-atlas.js refs <Name> --path <file> --kind interface --repo <checkout>   # 16 times
+node scripts/edge-sample.ts --dir <checkout> --n 70000 --seed 20261017 --prepared --out <scratch>/full.md   # every fact
+node scripts/edge-sample.ts --dir <checkout> --n 100   --seed 20261017 --prepared --out <scratch>/sample100.md
+```
+
+`--n 70000` is larger than the population, so the draw takes every fact of every stratum: this is the full-population audit with the same verifiers as the sample. Its output is not committed (61,013 rows).
+
+| Run | Facts | Correct | Wrong | Unverifiable |
+| --- | --- | --- | --- | --- |
+| full population, all six strata | 61,013 | 61,013 | 0 | 0 |
+| seeded sample (seed 20261017, n 100) | 100 | 100 | 0 | 0 |
+
+| Stratum | Population before | Population now | Correct in the full audit |
+| --- | --- | --- | --- |
+| definition | 25,230 | 25,230 | 25,230 |
+| import | 13,771 | 13,771 | 13,771 |
+| export | 3,465 | 3,465 | 3,465 |
+| reference_edge | 15,273 | 15,272 | 15,272 |
+| relation (22 extends) | 22 | 22 | 22 |
+| citation | 3,253 | 3,253 | 3,253 |
+
+- **Zero wrong facts in the full population** (before the fix: one wrong reference edge of 15,273). The seeded sample is 100 of 100, Wilson 95% interval 0.963 to 1.000, gate 0.98 met, exit 0.
+- **The defective edge is gone, not remapped:** the store holds no edge whose site is src/refactor-trigger-command-router.cts:436. The reference population fell from 15,273 to 15,272, which is the removed edge. The legitimate `withLedgerLock` edges of the same file (lines 461 and 520, to the function at line 417) remain and are among the 15,272 audited correct. The compiler resolves the member at line 436 to a property signature of a type literal; atlas now stores no edge for that site (an absence, not a wrong target).
+- **The sample rows moved slightly.** The draw is by position inside each stratum, so removing one reference edge shifts which reference edges the same seed picks: 92 of 100 rows are identical to the table above; the 8 that differ are all reference edges (# 60, 61, 64, 66, 69, 70, 72, 75) and all verify as correct. Rows 60, 70 and 75 are among the twenty that a person confirms (a multiple of five); the confirmation reads the table above, which is unchanged, and the facts in its rows are still true.
+- Atlas commit in the re-run header: 2f2afa5. The commit that holds this section follows it and changes only documents.
