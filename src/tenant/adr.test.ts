@@ -6,7 +6,8 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { createFakeSourceTree } from '../source-tree/index.ts';
 import type { DirectoryListing, SourceTree } from '../source-tree/index.ts';
-import { createAdrDirectory, parseAdrFileName } from './adr.ts';
+import { DEFAULT_ADR_DIRS, chooseAdrDirs, createAdrDirectory, parseAdrFileName } from './adr.ts';
+import { readRepoConfig } from './repo-config.ts';
 
 const WORKTREE = '/fake';
 
@@ -195,5 +196,143 @@ describe('createAdrDirectory: memo per mtime', () => {
     assert.equal((await adr.lookup(WORKTREE, 1)).status, 'resolved');
     counting.world = {};
     assert.deepEqual(await adr.lookup(WORKTREE, 1), { status: 'unresolved', files: [] });
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// The repository config file and the choice of directories (plan 03-28, Task 2; ADR 5 amendment, point 4)
+
+const CONFIG = '.gsd-atlas/config.json';
+const IGNORED = 'repo_config_ignored';
+
+const repoTree = (files: Readonly<Record<string, string>>) => createFakeSourceTree({ committed: files });
+
+describe('readRepoConfig: untrusted data that can only name ADR directories', () => {
+  it('no file is no config and no diagnostic', async () => {
+    assert.deepEqual(await readRepoConfig(repoTree({ 'a.txt': 'x\n' }), WORKTREE), { diagnostics: [] });
+  });
+
+  it('repo config replaces the list: a file with adrDirs gives exactly those directories', async () => {
+    const config = await readRepoConfig(repoTree({ [CONFIG]: '{"adrDirs":["documentation/decisions","adr"]}' }), WORKTREE);
+    assert.deepEqual(config, { adrDirs: ['documentation/decisions', 'adr'], diagnostics: [] });
+  });
+
+  it('hostile keys ignored: permissions, commands, diagnostics, autoSubmit and unknown keys have no effect and give one fixed diagnostic', async () => {
+    const hostile = JSON.stringify({
+      adrDirs: ['docs/adr'],
+      permissions: { allow: [{ executable: 'node' }] },
+      commands: [{ executable: 'node', args: ['mark.js'] }],
+      diagnostics: { enabled: true },
+      autoSubmit: true,
+      somethingNew: 1,
+    });
+    const config = await readRepoConfig(repoTree({ [CONFIG]: hostile }), WORKTREE);
+    assert.deepEqual(config.adrDirs, ['docs/adr']);
+    assert.equal(config.diagnostics.length, 1, 'one diagnostic however many keys were ignored');
+    const [note] = config.diagnostics;
+    assert.equal(note?.code, IGNORED);
+    assert.equal(note?.severity, 'info');
+    assert.equal(note?.subject, undefined);
+    assert.ok(!/permissions|commands|autoSubmit|somethingNew|mark/.test(note?.message ?? ''), 'fixed text: nothing from the file is repeated');
+    // The same kind of file with other keys in another order gives the same fixed text.
+    const again = await readRepoConfig(repoTree({ [CONFIG]: JSON.stringify({ autoSubmit: true, adrDirs: ['docs/adr'] }) }), WORKTREE);
+    assert.equal(again.diagnostics[0]?.message, note?.message);
+    // Without adrDirs the hostile file is only noted: no directories, nothing enabled.
+    const only = await readRepoConfig(repoTree({ [CONFIG]: '{"permissions":{"allow":[]}}' }), WORKTREE);
+    assert.deepEqual(only, { diagnostics: [{ code: IGNORED, severity: 'info', message: note?.message ?? '' }] });
+  });
+
+  it('an adrDirs entry that is not a plain relative path is dropped and the rest are kept', async () => {
+    const entries = ['good/adr', '../../etc', '/abs', 'C:/x', 'docs\\adr', '', 7, 'also/good'];
+    const config = await readRepoConfig(repoTree({ [CONFIG]: JSON.stringify({ adrDirs: entries }) }), WORKTREE);
+    assert.deepEqual(config.adrDirs, ['good/adr', 'also/good']);
+    assert.deepEqual(config.diagnostics.map((d) => d.code), [IGNORED]);
+  });
+
+  it('more than eight entries keep the first eight, and an adrDirs that is not a list is ignored', async () => {
+    const nine = Array.from({ length: 9 }, (_, i) => `d${String(i)}`);
+    const config = await readRepoConfig(repoTree({ [CONFIG]: JSON.stringify({ adrDirs: nine }) }), WORKTREE);
+    assert.deepEqual(config.adrDirs, nine.slice(0, 8));
+    assert.equal(config.diagnostics.length, 1);
+    const text = await readRepoConfig(repoTree({ [CONFIG]: '{"adrDirs":"docs/adr"}' }), WORKTREE);
+    assert.equal(text.adrDirs, undefined);
+    assert.equal(text.diagnostics.length, 1);
+  });
+
+  it('a file over 64 KiB, invalid JSON and a JSON value that is not an object are ignored whole', async () => {
+    const big = JSON.stringify({ adrDirs: ['docs/adr'], pad: 'x'.repeat(64 * 1024) });
+    for (const text of [big, '{ nope', '[1,2]', '"adrDirs"', 'null', '']) {
+      const config = await readRepoConfig(repoTree({ [CONFIG]: text }), WORKTREE);
+      assert.equal(config.adrDirs, undefined, text.slice(0, 20));
+      assert.deepEqual(config.diagnostics.map((d) => d.code), [IGNORED], text.slice(0, 20));
+    }
+    // Exactly the cap is read: 64 KiB of valid JSON.
+    const base = JSON.stringify({ adrDirs: ['docs/adr'] });
+    const exact = `${base.slice(0, -1)}${' '.repeat(64 * 1024 - base.length)}}`;
+    assert.equal(Buffer.byteLength(exact), 64 * 1024);
+    assert.deepEqual((await readRepoConfig(repoTree({ [CONFIG]: exact }), WORKTREE)).adrDirs, ['docs/adr']);
+  });
+
+  it('a config that cannot be read at all (the tree throws) is no config, never an error', async () => {
+    const throwing = { readText: () => Promise.reject(new Error('boom')) };
+    assert.deepEqual(await readRepoConfig(throwing, WORKTREE), { diagnostics: [] });
+  });
+});
+
+describe('chooseAdrDirs: repository config, then module manifests, then the convention list', () => {
+  it('repo config replaces the list: the repository list wins over every module, even an empty one', () => {
+    assert.deepEqual(chooseAdrDirs({ diagnostics: [], adrDirs: ['documentation/decisions'] }, [['docs/adr'], ['adr']]), ['documentation/decisions']);
+    assert.deepEqual(chooseAdrDirs({ diagnostics: [], adrDirs: [] }, [['docs/adr']]), []);
+  });
+
+  it('the union of the modules lists, first seen first and deduplicated, when the repository names none', () => {
+    assert.deepEqual(chooseAdrDirs({ diagnostics: [] }, [['docs/adr', 'adr'], ['adr', 'doc/adr'], []]), ['docs/adr', 'adr', 'doc/adr']);
+  });
+
+  it('the convention list when nothing names a directory', () => {
+    assert.deepEqual(chooseAdrDirs({ diagnostics: [] }, []), ['docs/adr', 'docs/adrs', 'doc/adr', 'adr']);
+    assert.deepEqual(chooseAdrDirs({ diagnostics: [] }, [[], []]), DEFAULT_ADR_DIRS);
+  });
+});
+
+describe('createAdrDirectory with the repository config: what is listed', () => {
+  const files = {
+    'documentation/decisions/0001-config-dir.md': '# one\n',
+    'docs/adr/0001-manifest-dir.md': '# one too\n',
+    'docs/adr/0002-second.md': '# two\n',
+  };
+
+  it('repo config replaces the list: only the configured directory is listed, and its diagnostics reach the lookup', async () => {
+    const tree = repoTree({ ...files, [CONFIG]: JSON.stringify({ adrDirs: ['documentation/decisions'], autoSubmit: true }) });
+    const adr = createAdrDirectory({
+      tree,
+      dirsFor: async (worktree) => {
+        const config = await readRepoConfig(tree, worktree);
+        return { dirs: chooseAdrDirs(config, [['docs/adr']]), diagnostics: config.diagnostics };
+      },
+    });
+    const index = await adr.known(WORKTREE);
+    assert.deepEqual(index.dirs.map((entry) => entry.dir), ['documentation/decisions']);
+    assert.deepEqual(await adr.lookup(WORKTREE, 2), { status: 'unresolved', files: [], diagnostics: index.diagnostics });
+    const one = await adr.lookup(WORKTREE, 1);
+    assert.equal(one.status, 'resolved');
+    assert.deepEqual(one.files, ['documentation/decisions/0001-config-dir.md']);
+    assert.deepEqual(one.diagnostics?.map((d) => d.code), [IGNORED]);
+  });
+
+  it('escape refused: a directory that leaves the repository lists nothing and is reported escape', async () => {
+    const tree = repoTree({ ...files });
+    const adr = createAdrDirectory({ tree, dirsFor: () => ['../../etc', '/etc', 'docs/adr', 'C:/Windows'] });
+    const index = await adr.known(WORKTREE);
+    assert.deepEqual(
+      index.dirs.map((entry) => [entry.dir, entry.status]),
+      [
+        ['../../etc', 'escape'],
+        ['/etc', 'escape'],
+        ['docs/adr', 'ok'],
+        ['C:/Windows', 'escape'],
+      ],
+    );
+    assert.deepEqual([...index.byNumber.keys()].sort(), [1, 2]);
   });
 });

@@ -49,8 +49,20 @@ function objectNodes(node: unknown, found: Array<Record<string, unknown>> = []):
   }
   objectNodes(n.items, found);
   if (Array.isArray(n.anyOf)) for (const child of n.anyOf) objectNodes(child, found);
+  if (Array.isArray(n.oneOf)) for (const child of n.oneOf) objectNodes(child, found);
   return found;
 }
+
+type Node = Record<string, unknown>;
+
+/** The schema of each manifest version: the committed document is one `oneOf` over version 1 and version 2. */
+function variants(): readonly [Node, Node] {
+  const list = committed.oneOf as Node[];
+  assert.equal(Array.isArray(list) && list.length, 2, 'the one document describes both versions');
+  return [list[0] as Node, list[1] as Node];
+}
+
+const versionOf = (variant: Node): unknown => ((variant.properties as Record<string, Node>).schemaVersion as Node).const;
 
 describe('committed JSON Schema', () => {
   it('equals the generated schema byte for byte, with LF endings', () => {
@@ -71,33 +83,46 @@ describe('committed JSON Schema', () => {
     for (const node of nodes) assert.equal(node.additionalProperties, false);
   });
 
-  it('requires exactly the required fields (defaulted fields are not required)', () => {
-    assert.deepEqual(
-      [...(committed.required as string[])].sort(),
-      ['extensions', 'grammar', 'name', 'queries', 'schemaVersion'],
-    );
-    const properties = committed.properties as Record<string, Record<string, unknown>>;
-    assert.deepEqual(
-      [...(properties.grammar?.required as string[])].sort(),
-      ['lock', 'wasm'],
-    );
-    assert.deepEqual(properties.queries?.required, ['tags']);
+  it('requires exactly the required fields in each version (defaulted fields are not required)', () => {
+    const [one, two] = variants();
+    assert.deepEqual([versionOf(one), versionOf(two)], [1, 2]);
+    for (const variant of [one, two]) {
+      assert.deepEqual([...(variant.required as string[])].sort(), ['extensions', 'grammar', 'name', 'queries', 'schemaVersion']);
+      const properties = variant.properties as Record<string, Record<string, unknown>>;
+      assert.deepEqual([...(properties.grammar?.required as string[])].sort(), ['lock', 'wasm']);
+      assert.deepEqual(properties.queries?.required, ['tags']);
+    }
   });
 
-  it('carries the shared path rule as a pattern on every asset path field', () => {
-    const properties = committed.properties as Record<string, Record<string, unknown>>;
-    const grammar = properties.grammar?.properties as Record<string, Record<string, unknown>>;
-    const queries = properties.queries?.properties as Record<string, Record<string, unknown>>;
-    const patterns = [
-      grammar.wasm?.pattern,
-      grammar.lock?.pattern,
-      queries.tags?.pattern,
-      queries.refs?.pattern,
-      queries.imports?.pattern,
-      properties.features?.pattern,
-    ];
-    for (const p of patterns) assert.equal(typeof p, 'string');
-    assert.equal(new Set(patterns).size, 1, 'one shared pattern for all asset paths');
+  it('carries the shared path rule as a pattern on every asset path field, adrDirs included', () => {
+    const [one, two] = variants();
+    const all = new Set<unknown>();
+    for (const variant of [one, two]) {
+      const properties = variant.properties as Record<string, Record<string, unknown>>;
+      const grammar = properties.grammar?.properties as Record<string, Record<string, unknown>>;
+      const queries = properties.queries?.properties as Record<string, Record<string, unknown>>;
+      const patterns = [
+        grammar.wasm?.pattern,
+        grammar.lock?.pattern,
+        queries.tags?.pattern,
+        queries.refs?.pattern,
+        queries.imports?.pattern,
+        properties.features?.pattern,
+      ];
+      for (const p of patterns) assert.equal(typeof p, 'string');
+      assert.equal(new Set(patterns).size, 1, 'one shared pattern for all asset paths');
+      for (const p of patterns) all.add(p);
+    }
+    const adrDirs = (((two.properties as Record<string, Node>).project as Node).properties as Record<string, Node>).adrDirs as Node;
+    assert.equal(adrDirs.maxItems, 8);
+    assert.equal((adrDirs.items as Node).pattern, [...all][0], 'adrDirs entries follow the same path rule');
+  });
+
+  it('documents project.adrDirs in version 2 only', () => {
+    const [one, two] = variants();
+    const projectKeys = (variant: Node): string[] => Object.keys(((variant.properties as Record<string, Node>).project as Node).properties as Node).sort();
+    assert.deepEqual(projectKeys(one), ['markers', 'model']);
+    assert.deepEqual(projectKeys(two), ['adrDirs', 'markers', 'model']);
   });
 });
 
@@ -105,7 +130,7 @@ describe('Zod and Ajv agree on every fixture', () => {
   const files = fixtures();
 
   it('exercises the full fixture set', () => {
-    assert.equal(files.length, 12);
+    assert.equal(files.length, 14);
   });
 
   for (const file of files) {
@@ -152,6 +177,25 @@ describe('Zod and Ajv agree on inline edge cases', () => {
     ['project model not kebab', { ...base, project: { model: 'Not Kebab' } }],
     ['replace not boolean', { ...base, replace: 'yes' }],
     ['$schema number', { ...base, $schema: 1 }],
+    ['v2 adrDirs', { ...base, schemaVersion: 2, project: { adrDirs: ['docs/adr', 'adr'] } }],
+    ['v2 empty adrDirs', { ...base, schemaVersion: 2, project: { adrDirs: [] } }],
+    ['v2 eight adrDirs', { ...base, schemaVersion: 2, project: { adrDirs: Array.from({ length: 8 }, (_, i) => `d${String(i)}`) } }],
+    ['v2 nine adrDirs', { ...base, schemaVersion: 2, project: { adrDirs: Array.from({ length: 9 }, (_, i) => `d${String(i)}`) } }],
+    ['v2 adrDirs dotdot', { ...base, schemaVersion: 2, project: { adrDirs: ['../adr'] } }],
+    ['v2 adrDirs nested dotdot', { ...base, schemaVersion: 2, project: { adrDirs: ['a/../../b'] } }],
+    ['v2 adrDirs absolute', { ...base, schemaVersion: 2, project: { adrDirs: ['/etc'] } }],
+    ['v2 adrDirs drive letter', { ...base, schemaVersion: 2, project: { adrDirs: ['C:/adr'] } }],
+    ['v2 adrDirs backslash', { ...base, schemaVersion: 2, project: { adrDirs: ['docs\\adr'] } }],
+    ['v2 adrDirs NUL', { ...base, schemaVersion: 2, project: { adrDirs: ['a\u0000b'] } }],
+    ['v2 adrDirs empty entry', { ...base, schemaVersion: 2, project: { adrDirs: [''] } }],
+    ['v2 adrDirs not a list', { ...base, schemaVersion: 2, project: { adrDirs: 'docs/adr' } }],
+    ['v2 project unknown key', { ...base, schemaVersion: 2, project: { other: 1 } }],
+    ['v1 adrDirs', { ...base, schemaVersion: 1, project: { adrDirs: ['docs/adr'] } }],
+    ['v1 empty adrDirs', { ...base, schemaVersion: 1, project: { adrDirs: [] } }],
+    ['version 3', { ...base, schemaVersion: 3 }],
+    ['version 0', { ...base, schemaVersion: 0 }],
+    ['version as text', { ...base, schemaVersion: '2' }],
+    ['version missing', { name: 'edge', extensions: ['.e'], grammar: { wasm: 'g/a.wasm', lock: 'g/lock' }, queries: { tags: 'q/tags.scm' } }],
     ['not an object', 'text'],
     ['array', []],
     ['null', null],

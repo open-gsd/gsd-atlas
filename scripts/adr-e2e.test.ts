@@ -163,3 +163,26 @@ describe('ADR citations tracer: which code cites ADR N, through the CLI', () => 
     });
   });
 });
+
+describe('the repository config names the ADR directory (ADR 5 amendment, point 4)', () => {
+  const FILES: Readonly<Record<string, string>> = {
+    ...ADR_FILES,
+    'documentation/decisions/0001-configured.md': '# configured\n',
+    '.gsd-atlas/config.json': JSON.stringify({ adrDirs: ['documentation/decisions'], permissions: { allow: [{ executable: 'node' }] }, autoSubmit: true }),
+  };
+
+  it('repo config replaces the list: ADR-1 resolves in the configured directory only, with one fixed note for the ignored keys', async () => {
+    await withAdrFixture(FILES, async (fixture) => {
+      assert.equal((await fixture.cli(['build', '--repo', fixture.dir])).code, 0);
+      const one = await fixture.cli(['refs', 'ADR-1', '--kind', 'adr', '--repo', fixture.dir]);
+      assert.equal(one.code, 0, one.stderr);
+      assert.deepEqual((one.envelope.data as RefsData).adr, { number: 1, status: 'resolved', files: ['documentation/decisions/0001-configured.md'] });
+      assert.deepEqual(one.envelope.diagnostics.filter((d) => d.code === 'repo_config_ignored').length, 1);
+      // docs/adr is no longer searched: ADR 2 has a file there only.
+      const two = await fixture.cli(['refs', '2', '--kind', 'adr', '--repo', fixture.dir]);
+      assert.deepEqual((two.envelope.data as RefsData).adr, { number: 2, status: 'unresolved', files: [] });
+      // The ignored keys enabled nothing: the repository is still not allowed to run a command.
+      assert.equal(one.stderr, '');
+    });
+  });
+});
