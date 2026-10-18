@@ -29,7 +29,7 @@ const TSCONFIG = JSON.stringify({ compilerOptions: { module: 'nodenext', moduleR
 /** Packages in name order: the big one is last, so a memory stop (which latches the project) comes after the small ones. */
 const SMALL = ['alpha', 'beta', 'gamma'] as const;
 const BIG = 'zeta';
-const BIG_FILES = 400;
+const BIG_FILES = 1200;
 
 function generated(index: number): string {
   const lines: string[] = [`export interface Shape${String(index)} { id: number; name: string; tags: string[]; nested: { a: number; b: string; c: boolean } }`];
@@ -84,10 +84,15 @@ describe('--nobreak (D-21, D-22)', () => {
     const afterSmall = rss[SMALL.length - 1] ?? 0;
     const afterBig = rss[SMALL.length] ?? 0;
     assert.ok(afterBig - afterSmall >= 40, `the big package must be clearly bigger than the rest: ${JSON.stringify(rss)}`);
-    // Between the two: the small packages fit, the big one does not.
-    limitMb = Math.ceil((afterSmall + afterBig) / 2);
+    // Between the two: the small packages fit, the big one does not. The calibration run has no heap pressure, so its figure
+    // for the big package carries garbage the bounded run (whose heap flag is derived from the limit) collects as it goes: on
+    // hosted Linux and Windows the big program's resident set under the limit came out 35 to 150 MB under the calibrated one,
+    // below a midpoint limit in about half of the runs (plan 03-30, CI run 39158876628 and the repeats after it). So the limit
+    // sits a sixth of the way up, and the big package is three times larger than it was, so its live set is far above the
+    // margin the small packages need.
+    limitMb = Math.ceil(afterSmall + (afterBig - afterSmall) / 6);
     bounded = await run({ lazy: true, precise: { rssLimitMb: limitMb, sampleMs: 50 } });
-    console.log('DIAG', JSON.stringify({ rss, limitMb, calibration: calibration.answers.map((a) => [a.package, a.outcome, a.workerRssMb, a.peakRssMb, a.ms]), bounded: bounded.answers.map((a) => [a.package, a.outcome, a.degraded, a.workerRssMb, a.peakRssMb, a.ms]), workers: bounded.workers, machine: bounded.machine, budget: bounded.budget }));
+    console.log('DIAG', JSON.stringify({ rss, limitMb, calibration: calibration.answers.map((a) => [a.package, a.outcome, a.workerRssMb, a.peakRssMb, a.ms]), bounded: bounded.answers.map((a) => [a.package, a.outcome, a.degraded, a.workerRssMb, a.peakRssMb, a.ms]), workers: bounded.workers }));
   });
 
   it('nobreak on a multi-config fixture: four packages, one symbol each, every answer explained, exit 0', async () => {

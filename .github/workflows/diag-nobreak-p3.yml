@@ -1,6 +1,6 @@
 name: diag-nobreak-p3
 
-# Throwaway (plan 03-30 Task 3): prints the calibration and the bounded run of the no-break fixture test on hosted Linux and
+# Throwaway (plan 03-30 Task 3, second round: limit a sixth up, big package three times larger): prints the calibration and the bounded run of the no-break fixture test on hosted Linux and
 # Windows, three times each. Removed from the branch once the evidence is recorded.
 on:
   push:
