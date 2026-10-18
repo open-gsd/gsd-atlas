@@ -236,6 +236,24 @@ export function symbolsIn(snap: Snapshot, path: string, name: string): LocatedSy
     .map((symbol) => ({ ...identityOf(snap, path, symbol), span: symbol.span }));
 }
 
+/**
+ * What `symbolsIn` answers for every name at once: the symbols of the overlay's version of the file at `path`, by name, each
+ * list in definition order. An unknown or pending path gives an empty map. One read of the file serves every later ask of it
+ * (plan 03-30: the eager pass asks for a few thousand targets in a few hundred files).
+ */
+export function symbolsByNameIn(snap: Snapshot, path: string): Map<string, LocatedSymbol[]> {
+  const byName = new Map<string, LocatedSymbol[]>();
+  const fileId = fileIdAt(snap, path);
+  if (fileId === null) return byName;
+  for (const symbol of fileSymbols(snap, fileId)) {
+    const located: LocatedSymbol = { ...identityOf(snap, path, symbol), span: symbol.span };
+    const list = byName.get(symbol.name);
+    if (list === undefined) byName.set(symbol.name, [located]);
+    else list.push(located);
+  }
+  return byName;
+}
+
 /** Every path of the overlay, loaded once per read. */
 export function overlayView(snap: Snapshot): OverlayView {
   if (snap.views.overlay !== undefined) return snap.views.overlay;

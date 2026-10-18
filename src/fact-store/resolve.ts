@@ -11,6 +11,7 @@ import type {
   Clock,
   DegradedCode,
   EmitLookup,
+  LocatedSymbol,
   OverlaySnapshot,
   ProjectContext,
   RefKind,
@@ -63,7 +64,7 @@ import {
   resolveImport,
   spanOf,
   str,
-  symbolsIn,
+  symbolsByNameIn,
   toAnswer,
 } from './snapshot.ts';
 import type { FileSymbol, ImportRow, Snapshot, SnapshotRead } from './snapshot.ts';
@@ -619,11 +620,22 @@ type Settled<T> =
 
 /** The read-only lookup of the grammar tier's symbols a resolver is given (it never reads the store itself). */
 function symbolLookupOf(parts: StoreParts, worktree: WorktreeId): SymbolLookup {
+  // The symbols of each file by name, read once per lookup (plan 03-30): one lookup serves one resolver call, and a build asks
+  // for the declaration of every target of a few thousand edges in a few hundred files. A save that lands during the call is
+  // not seen by it; an edge is stored only when the overlay is still the one it was asked about (`store`), so nothing stale stays.
+  const files = new Map<string, ReadonlyMap<string, readonly LocatedSymbol[]>>();
   return {
     // Read back through the read-only connection, one short transaction per call (never held across an await).
     find: async (name) =>
       readSnapshot(parts, worktree, (snap) => findRecords(snap, name, { mode: 'exact' }).map((record) => record.identity)).value,
-    findIn: async (path, name) => readSnapshot(parts, worktree, (snap) => symbolsIn(snap, path, name)).value,
+    findIn: async (path, name) => {
+      let byName = files.get(path);
+      if (byName === undefined) {
+        byName = readSnapshot(parts, worktree, (snap) => symbolsByNameIn(snap, path)).value;
+        files.set(path, byName);
+      }
+      return [...(byName.get(name) ?? [])];
+    },
   };
 }
 
