@@ -10,7 +10,9 @@ export { createIdleMaintainer } from './idle.ts';
 export type { IdleMaintainer, IdleMaintainerOptions } from './idle.ts';
 export { leaseHeldEnvelope, notIndexedEnvelope, notIndexedNoStore, storeUnavailableEnvelope } from './messages.ts';
 export type { LeaseHolderName } from './messages.ts';
-export { answerEvent } from './record.ts';
+export { CURRENT_FILE as FLIGHT_FILE, createFlightRecorder } from './flight.ts';
+export type { FlightEvent, FlightEventInput, FlightFs, FlightRecorder, FlightRecorderOptions } from './flight.ts';
+export { answerEvent, flightAnswer, isAnsweredKind } from './record.ts';
 export { BUILD_SCHEMA, MAINTAIN_SCHEMA, MAINTAIN_TASKS, STATUS_SCHEMA } from './types.ts';
 export type {
   MaintainOptions,

@@ -12,6 +12,7 @@ export {
   LATENCY_BUCKETS_MS,
   METRICS_DEFAULTS,
   TOOL_NAMES,
+  bucketLabelFor,
 } from './types.ts';
 export type {
   AnswerEvent,

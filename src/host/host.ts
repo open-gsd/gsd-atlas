@@ -13,13 +13,13 @@ import { createRealRunner, decide } from '../command-runner/index.ts';
 import type { CommandRunner } from '../command-runner/index.ts';
 import { SchemaTooNew, findExistingStore, probeStore } from '../fact-store/index.ts';
 import type { ResolveStoreLocationInput } from '../fact-store/index.ts';
-import { PROTOCOL_VERSION, diagnostic, failEnvelope, okEnvelope, systemClock } from '../facts/index.ts';
+import { PROTOCOL_VERSION, createAnswerId, diagnostic, failEnvelope, okEnvelope, systemClock } from '../facts/index.ts';
 import type { Envelope, Request } from '../facts/index.ts';
 import { createGovernor } from '../governor/index.ts';
 import type { Governor, JobClass } from '../governor/index.ts';
 import { createModuleHost } from '../indexer/index.ts';
 import type { IndexerConfig, ModuleHost } from '../indexer/index.ts';
-import { ERROR_SCHEMA, errorEnvelope } from '../query/index.ts';
+import { ERROR_SCHEMA, TOOL_NAMES, errorEnvelope } from '../query/index.ts';
 import { createSourceTree } from '../source-tree/index.ts';
 import type { SourceTree } from '../source-tree/index.ts';
 import { createTenant, notIndexedNoStore } from '../tenant/index.ts';
@@ -386,6 +386,22 @@ export function createHost(options: HostOptions): Host {
       );
     }
     if (closed) return errorEnvelope('host_closed', 'This host was closed.');
+    return stampAnswer(request.kind, await route(request));
+  }
+
+  /**
+   * D-16: a tool answer carries an `answer_id`, added once the answer exists, so the CLI's and the MCP server's JSON both
+   * name it and a later `rate --last` or `bug` can point at it without keeping its content. A Tenant stamps (and
+   * records) the answers it gives itself, with the same id it hands the flight recorder; the Host stamps the rest of
+   * the tool answers: `lang_list`, which needs no Tenant, and a tool request refused before a Tenant saw it. The kinds
+   * that are not tool answers (`build`, `maintain`, `status`, `index_state`, `history`, `allow`, `lang_test`) get none.
+   */
+  function stampAnswer(kind: string, envelope: Envelope): Envelope {
+    if (envelope.answer_id !== undefined || !(TOOL_NAMES as readonly string[]).includes(kind)) return envelope;
+    return { ...envelope, answer_id: createAnswerId() };
+  }
+
+  async function route(request: Request): Promise<Envelope> {
     if ((LANG_KINDS as readonly string[]).includes(request.kind)) {
       const approved = await approvalCheck(request);
       return handleLang(request, { roots: options.roots, engine: options.engine, ...(approved === undefined ? {} : { approved }) });

@@ -30,3 +30,19 @@ export function createAnswerId(random: RandomBytes = randomBytes): string {
 export function isAnswerId(value: unknown): value is string {
   return typeof value === 'string' && ANSWER_ID_PATTERN.test(value);
 }
+
+/**
+ * A session id is `s_` followed by sixteen lower-case hex characters. It names one run of answers (the flight
+ * recorder writes a marker with it) so a user can rate a session; like an answer id it is random and holds no content.
+ */
+export const SESSION_ID_PATTERN = /^s_[0-9a-f]{16}$/;
+
+/** Make a fresh session id (plan 03-17). */
+export function createSessionId(random: RandomBytes = randomBytes): string {
+  return `s_${createAnswerId(random).slice(2)}`;
+}
+
+/** True only for a string of exactly the shape `createSessionId` produces. */
+export function isSessionId(value: unknown): value is string {
+  return typeof value === 'string' && SESSION_ID_PATTERN.test(value);
+}

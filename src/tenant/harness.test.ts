@@ -75,9 +75,12 @@ export const request = (kind: string, args: Record<string, unknown>, extra: Part
 export const find = (name: string, repo: string, extra: Partial<Request> = {}): Request =>
   request('code_find', { name, repo }, extra);
 
-/** The envelope with the per-response fence nonce (random by design) replaced by a fixed word, also inside the fenced text. */
+/**
+ * The envelope with the per-response fence nonce (random by design) replaced by a fixed word, also inside the fenced
+ * text, and without the random `answer_id` (plan 03-17) that every tool answer carries.
+ */
 export function withoutNonce(envelope: Envelope): unknown {
-  const { untrusted_text: text, ...rest } = envelope;
+  const { untrusted_text: text, answer_id: _answerId, ...rest } = envelope;
   if (text === undefined) return rest;
   const entries = text.entries.map((entry) => ({ ...entry, text: entry.text.split(text.nonce).join('NONCE') }));
   return { ...rest, untrusted_text: { nonce: 'NONCE', entries } };
