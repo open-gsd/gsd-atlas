@@ -7,13 +7,15 @@ import { after, before, describe, it } from 'node:test';
 
 import {
   buildAndReadCitations,
+  buildAndResolve,
   compareLines,
   runCheck,
   runCli,
+  runResolveCheck,
   sampleNumbers,
   withinThreshold,
 } from './adr-citations-check.ts';
-import type { StoreHit } from './adr-citations-check.ts';
+import type { Resolution, StoreHit } from './adr-citations-check.ts';
 
 /** The oracle's own fixture repository: ADR-1 in a JSDoc, ADR #2 §3 and adr 0003 in comments, ADR-9 only in a string. */
 const FIXTURE = path.join(import.meta.dirname, 'eval', '__fixtures__', 'oracle-repo');
@@ -41,13 +43,18 @@ function listFiles(dir: string, base = dir): string[] {
   return out.sort();
 }
 
-/** A copy of the fixture in a fresh git repository under the OS temp directory. */
-function tempRepo(): string {
+/** A copy of the fixture in a fresh git repository under the OS temp directory, plus any `extra` files (path to text). */
+function tempRepo(extra: Readonly<Record<string, string>> = {}): string {
   const dir = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'adr-check-test-')));
   for (const rel of listFiles(FIXTURE)) {
     const target = path.join(dir, ...rel.split('/'));
     fs.mkdirSync(path.dirname(target), { recursive: true });
     fs.copyFileSync(path.join(FIXTURE, ...rel.split('/')), target);
+  }
+  for (const [rel, text] of Object.entries(extra)) {
+    const target = path.join(dir, ...rel.split('/'));
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    fs.writeFileSync(target, text);
   }
   git(dir, ['init', '-q']);
   git(dir, ['add', '-A']);
@@ -214,5 +221,87 @@ describe('adr-citations-check against the oracle fixture repository', () => {
     written = '';
     assert.equal(await runCli(['--dir', dir, '--bogus'], (text) => { written += text; }), 2);
     assert.match(written, /usage|unknown/i);
+  });
+});
+
+describe('adr-citations-check --resolve: the store-and-directory resolution against the oracle (plan 03-28)', () => {
+  const DUPLICATES: Readonly<Record<string, string>> = {
+    'docs/adr/0010-b-second.md': '# b\n',
+    'docs/adr/0010-a-first.md': '# a\n',
+    'src/dup.cts': '// ADR-10 is a duplicated id\nexport function dup(): number {\n  return 10;\n}\n',
+  };
+  const repos: string[] = [];
+  const works: string[] = [];
+
+  after(() => {
+    for (const each of [...repos, ...works]) removeTree(each);
+  });
+
+  const workDir = (): string => {
+    const made = fs.mkdtempSync(path.join(os.tmpdir(), 'adr-resolve-work-'));
+    works.push(made);
+    return made;
+  };
+
+  it('buildAndResolve asks the composed Host: 1 and 2 are resolved to their files, 3 has none, and a duplicated id is ambiguous', async () => {
+    const dir = tempRepo(DUPLICATES);
+    repos.push(dir);
+    const resolutions = await buildAndResolve(dir, workDir(), [1, 2, 3, 10]);
+    assert.deepEqual(
+      [...resolutions].map(([number, resolution]) => [number, resolution.status, resolution.files]),
+      [
+        [1, 'resolved', ['docs/adr/0001-first.md']],
+        [2, 'resolved', ['docs/adr/2-second.md']],
+        [3, 'unresolved', []],
+        [10, 'ambiguous', ['docs/adr/0010-a-first.md', 'docs/adr/0010-b-second.md']],
+      ],
+    );
+  });
+
+  it('agrees with the oracle on the fixture: zero disagreements, the counts of resolved, ambiguous and unresolved numbers, exit 0', async () => {
+    const dir = tempRepo(DUPLICATES);
+    repos.push(dir);
+    const lines: string[] = [];
+    const report = await runResolveCheck({ dir, sample: 20, seed: 7, out: (line) => lines.push(line) });
+    assert.equal(report.ok, true, lines.join('\n'));
+    assert.deepEqual(report.disagreements, []);
+    assert.deepEqual({ resolved: report.resolved, ambiguous: report.ambiguous, unresolved: report.unresolved, census: report.census }, { resolved: 2, ambiguous: 1, unresolved: 1, census: 4 });
+    const text = lines.join('\n');
+    assert.match(text, /^resolved 2$/m);
+    assert.match(text, /^ambiguous 1$/m);
+    assert.match(text, /^unresolved 1$/m);
+    assert.match(text, /^disagreements 0$/m);
+  });
+
+  it('reports a disagreement when the store side names another file or another status, and exits 1', async () => {
+    const dir = tempRepo();
+    repos.push(dir);
+    const wrong = async (): Promise<ReadonlyMap<number, Resolution>> =>
+      new Map<number, Resolution>([
+        [1, { status: 'resolved', files: ['docs/adr/0001-first.md'] }],
+        [2, { status: 'unresolved', files: [] }],
+        [3, { status: 'resolved', files: ['docs/adr/0003-invented.md'] }],
+      ]);
+    const lines: string[] = [];
+    const report = await runResolveCheck({ dir, resolveNumbers: wrong, out: (line) => lines.push(line) });
+    assert.equal(report.ok, false);
+    assert.equal(report.disagreements.length, 2);
+    assert.match(lines.join('\n'), /^disagreement: ADR-2 /m);
+    assert.match(lines.join('\n'), /^disagreement: ADR-3 /m);
+    let written = '';
+    const code = await runCli(['--dir', dir, '--resolve'], (text) => { written += text; }, { resolveNumbers: wrong });
+    assert.equal(code, 1);
+    assert.match(written, /adr-citations-check: FAILED/);
+  });
+
+  it('through the command line, --resolve runs the resolution check and exits 0 when it agrees', async () => {
+    const dir = tempRepo();
+    repos.push(dir);
+    let written = '';
+    const code = await runCli(['--dir', dir, '--resolve', '--sample', '20', '--seed', '7'], (text) => { written += text; });
+    assert.equal(code, 0, written);
+    assert.match(written, /^resolved 2$/m);
+    assert.match(written, /^unresolved 1$/m);
+    assert.match(written, /adr-citations-check: OK/);
   });
 });

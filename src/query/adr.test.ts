@@ -214,3 +214,254 @@ describe('code_refs kind adr: which code cites ADR N', () => {
     assert.deepEqual(nine.results, []);
   });
 });
+
+// ---------------------------------------------------------------------------------------------
+// Task 3: code_find kind adr, code_context citations, cit handles in code_explain, ambiguity, paging
+
+interface FindData {
+  readonly number: number;
+  readonly status: string;
+  readonly citations: number;
+  readonly listTruncated?: true;
+  readonly results: ReadonlyArray<{ readonly path: string; readonly number: number; readonly confidence: string; readonly citation: string }>;
+}
+
+/** gsd-core's shape: duplicate ids 0010 (two files) and 0011, a citation of 10, 11 and 12 (no file), and a number cited many times. */
+async function dupWorld(): Promise<{ h: Harness; query: Query; reads: string[] }> {
+  const h = await createHarness();
+  open.push(h);
+  h.repo.write('docs/adr/0010-b-second.md', '# b\n');
+  h.repo.write('docs/adr/0010-a-first.md', '# a\n');
+  h.repo.write('docs/adr/0011-only.md', '# c\n');
+  await addCited(h, 'src/a.cts', '/** ADR-10. */\nexport function ten(): number {\n  return 10;\n}\n', [fn('ten', 1, 3)], [{ number: 10, span: span(0, 4, 10), enclosing: 0 }]);
+  await addCited(h, 'src/b.cts', '// ADR #11 §2\nexport function eleven(): number {\n  return 11;\n}\n', [fn('eleven', 1, 3)], [
+    { number: 11, detail: '§2', span: span(0, 3, 13) },
+  ]);
+  await addCited(h, 'src/c.cts', '// ADR-12\nexport function twelve(): number {\n  return 12;\n}\n', [fn('twelve', 1, 3)], [{ number: 12, span: span(0, 3, 9) }]);
+  // Seven mentions of ADR 5, one per line, for the paging cases.
+  const lines = Array.from({ length: 7 }, (_, i) => `// ADR-5 line ${String(i)}`).join('\n');
+  await addCited(h, 'src/many.cts', `${lines}\n`, [], Array.from({ length: 7 }, (_, i) => ({ number: 5, span: span(i, 3, 8) })));
+  const adr = createAdrDirectory({ tree: h.tree, dirsFor: () => ['docs/adr'] });
+  const reads: string[] = [];
+  const query = h.query({
+    adr: { lookup: (worktree, number) => adr.lookup(worktree, number) },
+    text: {
+      readText: (worktree, rel, options) => {
+        reads.push(rel);
+        return h.tree.readText(worktree, rel, options);
+      },
+    },
+  });
+  return { h, query, reads };
+}
+
+describe('code_find kind adr: where is ADR N', () => {
+  it('find resolved: the ADR file as an item with its path, number, a citation at line 1 and EXTRACTED confidence, and the citation count', async () => {
+    const { h, query, reads } = await adrWorld();
+    const envelope = await ask(query, h, 'code_find', 'ADR-1');
+    assert.equal(envelope.ok, true, JSON.stringify(envelope.diagnostics));
+    assert.equal(envelope.schema, 'gsd-atlas.code-find/1');
+    const data = envelope.data as FindData;
+    assert.deepEqual({ number: data.number, status: data.status, citations: data.citations }, { number: 1, status: 'resolved', citations: 1 });
+    assert.equal(data.results.length, 1);
+    assert.deepEqual({ path: data.results[0]?.path, number: data.results[0]?.number, confidence: data.results[0]?.confidence }, { path: 'docs/adr/0001-first.md', number: 1, confidence: 'EXTRACTED' });
+    const cite = envelope.citations?.find((entry) => entry.id === data.results[0]?.citation);
+    assert.deepEqual({ path: cite?.path, line: cite?.line, col: cite?.col, confidence: cite?.confidence }, { path: 'docs/adr/0001-first.md', line: 1, col: 1, confidence: 'EXTRACTED' });
+    assert.equal(cite?.text_ref, undefined, 'an ADR document is never read, so there is no text');
+    assert.equal(envelope.untrusted_text, undefined);
+    assert.equal(envelope.degraded, undefined, 'a document without text is not a stale answer');
+    assert.deepEqual(envelope.hints ?? [], []);
+    assert.ok(!reads.some((rel) => rel.startsWith('docs/')), 'no ADR file is read');
+  });
+
+  it('find ambiguous: two files with one number are both returned with INFERRED confidence, sorted, and the status says ambiguous', async () => {
+    const { h, query } = await dupWorld();
+    const ten = (await ask(query, h, 'code_find', 'ADR-10')).data as FindData;
+    assert.equal(ten.status, 'ambiguous');
+    assert.deepEqual(ten.results.map((row) => [row.path, row.confidence]), [
+      ['docs/adr/0010-a-first.md', 'INFERRED'],
+      ['docs/adr/0010-b-second.md', 'INFERRED'],
+    ]);
+    const eleven = (await ask(query, h, 'code_find', '11')).data as FindData;
+    assert.equal(eleven.status, 'resolved');
+    assert.deepEqual(eleven.results.map((row) => [row.path, row.confidence]), [['docs/adr/0011-only.md', 'EXTRACTED']]);
+    // The statuses of code_refs agree.
+    const refs = (await ask(query, h, 'code_refs', 'ADR-10')).data as RefsData;
+    assert.equal(refs.adr.status, 'ambiguous');
+    assert.deepEqual(refs.adr.files, ['docs/adr/0010-a-first.md', 'docs/adr/0010-b-second.md']);
+    assert.equal(refs.results[0]?.confidence, 'INFERRED', 'a citation of a duplicated id links to each file by name only');
+  });
+
+  it('find unresolved with count: no file gives no items, the status unresolved, how many citations exist and a hint', async () => {
+    const { h, query } = await dupWorld();
+    const envelope = await ask(query, h, 'code_find', 'adr-12');
+    const data = envelope.data as FindData;
+    assert.deepEqual({ status: data.status, citations: data.citations, results: data.results }, { status: 'unresolved', citations: 1, results: [] });
+    assert.equal((envelope.hints ?? []).length, 1);
+    // A number nobody cites and nobody documents: unresolved, count 0, still an ok answer.
+    const none = (await ask(query, h, 'code_find', 'ADR-404')).data as FindData;
+    assert.deepEqual({ status: none.status, citations: none.citations, results: none.results }, { status: 'unresolved', citations: 0, results: [] });
+  });
+
+  it('paging: a number cited more often than the page keeps its order across pages and ends cleanly', async () => {
+    const { h, query } = await dupWorld();
+    const seen: number[] = [];
+    let more: string | undefined;
+    let pages = 0;
+    do {
+      const envelope = await ask(query, h, 'code_refs', 'ADR-5', { limit: 3, ...(more === undefined ? {} : { more }) });
+      assert.equal(envelope.ok, true, JSON.stringify(envelope.diagnostics));
+      const data = envelope.data as RefsData;
+      assert.ok(data.results.length <= 3);
+      seen.push(...data.results.map((row) => row.line));
+      more = envelope.more;
+      pages += 1;
+    } while (more !== undefined && pages < 10);
+    assert.deepEqual(seen, [1, 2, 3, 4, 5, 6, 7], 'every citation exactly once, in line order');
+    assert.equal(pages, 3);
+    // A cursor from another question is refused.
+    const first = await ask(query, h, 'code_refs', 'ADR-5', { limit: 3 });
+    const other = await ask(query, h, 'code_refs', 'ADR-10', { limit: 3, more: first.more ?? '' });
+    assert.equal(other.ok, false);
+    assert.equal(other.diagnostics[0]?.code, 'bad_cursor');
+  });
+
+  it('paging: ambiguous files page too, and a cursor continues after the last file', async () => {
+    const { h, query } = await dupWorld();
+    const first = await ask(query, h, 'code_find', 'ADR-10', { limit: 1 });
+    const firstData = first.data as FindData;
+    assert.deepEqual(firstData.results.map((row) => row.path), ['docs/adr/0010-a-first.md']);
+    assert.ok(first.more !== undefined);
+    const second = await ask(query, h, 'code_find', 'ADR-10', { limit: 1, more: first.more as string });
+    assert.deepEqual((second.data as FindData).results.map((row) => row.path), ['docs/adr/0010-b-second.md']);
+    assert.equal(second.more, undefined);
+  });
+
+  it('the tool descriptions say that kind adr asks about ADRs, in fixed text', async () => {
+    const { codeFindSchema, codeRefsSchema } = await import('./tools.ts');
+    for (const schema of [codeFindSchema, codeRefsSchema]) {
+      const text = schema.shape.kind.description ?? '';
+      assert.match(text, /\badr\b/);
+      assert.ok(!/[0-9]/.test(text.replace('ADR', '')), 'a fixed sentence: nothing derived from a repository');
+    }
+  });
+});
+
+describe('code_context citations: the ADR mentions attached to a symbol', () => {
+  interface ContextData {
+    readonly results: ReadonlyArray<{ readonly section: string; readonly name: string }>;
+    readonly citations?: ReadonlyArray<{ readonly number: number; readonly detail?: string; readonly status: string; readonly files: readonly string[]; readonly citation: string; readonly line: number }>;
+  }
+
+  it('context citations: a symbol lists its attached citations with the status and files of each number, sorted by line', async () => {
+    const h = await createHarness();
+    open.push(h);
+    h.repo.write('docs/adr/0001-first.md', '# first\n');
+    const content = '/** ADR-1 §2 and ADR-3 */\nexport function load(): number {\n  // ADR-2\n  return 1;\n}\n';
+    await addCited(h, 'src/lib.cts', content, [fn('load', 1, 4)], [
+      { number: 3, span: span(0, 17, 22), enclosing: 0 },
+      { number: 1, detail: '§2', span: span(0, 4, 12), enclosing: 0 },
+      { number: 2, span: span(2, 5, 10), enclosing: 0 },
+    ]);
+    const adr = createAdrDirectory({ tree: h.tree, dirsFor: () => ['docs/adr'] });
+    const query = h.query({ adr: { lookup: (worktree, number) => adr.lookup(worktree, number) } });
+    const envelope = await query.ask({ protocol: 1, kind: 'code_context', args: { name: 'load', repo: h.dir }, worktree: h.dir });
+    assert.equal(envelope.ok, true, JSON.stringify(envelope.diagnostics));
+    const data = envelope.data as ContextData;
+    assert.deepEqual(
+      data.citations?.map((entry) => [entry.number, entry.detail, entry.status, entry.files, entry.line]),
+      [
+        [1, '§2', 'resolved', ['docs/adr/0001-first.md'], 1],
+        [3, undefined, 'unresolved', [], 1],
+        [2, undefined, 'unresolved', [], 3],
+      ],
+      'sorted by line then column',
+    );
+    for (const entry of data.citations ?? []) {
+      const cite = envelope.citations?.find((each) => each.id === entry.citation);
+      assert.match(cite?.debug ?? '', /^cit\/src%2Flib\.cts\/[0-9a-f]{40}\/[0-9]+$/);
+    }
+    assert.equal(data.results[0]?.section, 'definition', 'the definition still comes first');
+  });
+
+  it('context citations: absent when the symbol has none', async () => {
+    const { h, query } = await adrWorld();
+    await addCited(h, 'src/plain.cts', 'export function plain(): number {\n  return 1;\n}\n', [fn('plain', 0, 2)], []);
+    const envelope = await query.ask({ protocol: 1, kind: 'code_context', args: { name: 'plain', repo: h.dir }, worktree: h.dir });
+    assert.equal(envelope.ok, true);
+    assert.ok(!('citations' in (envelope.data as object)));
+  });
+
+  it('context citations: pages like every other section and the definition is never cut for them', async () => {
+    const { h, query } = await adrWorld();
+    const many = Array.from({ length: 6 }, (_, i) => ({ number: 20 + i, span: span(0, 4 + i, 9 + i), enclosing: 0 as const }));
+    await addCited(h, 'src/busy.cts', '/* ADRs */\nexport function busy(): number {\n  return 1;\n}\n', [fn('busy', 1, 3)], many);
+    const numbers: number[] = [];
+    let more: string | undefined;
+    let pages = 0;
+    do {
+      const envelope = await query.ask({
+        protocol: 1,
+        kind: 'code_context',
+        args: { name: 'busy', repo: h.dir, limit: 3, ...(more === undefined ? {} : { more }) },
+        worktree: h.dir,
+      });
+      assert.equal(envelope.ok, true, JSON.stringify(envelope.diagnostics));
+      const data = envelope.data as ContextData;
+      if (pages === 0) assert.equal(data.results[0]?.section, 'definition', 'the definition leads the first page');
+      numbers.push(...(data.citations ?? []).map((entry) => entry.number));
+      more = envelope.more;
+      pages += 1;
+    } while (more !== undefined && pages < 10);
+    assert.deepEqual(numbers, [20, 21, 22, 23, 24, 25], 'every citation once, in position order');
+    assert.equal(pages, 3, 'one definition and six citations make seven items: three pages of at most three');
+  });
+});
+
+describe('cit handles in code_explain', () => {
+  it('cit handle explained: kind citation, the grammar extractor, no resolution, the number and the ADR status', async () => {
+    const { h, query } = await adrWorld();
+    const refs = await ask(query, h, 'code_refs', 'ADR-1');
+    const handle = refs.citations?.[0]?.debug ?? '';
+    assert.match(handle, /^cit\//);
+    const explained = await query.ask({ protocol: 1, kind: 'code_explain', args: { handle, repo: h.dir }, worktree: h.dir });
+    assert.equal(explained.ok, true, JSON.stringify(explained.diagnostics));
+    const data = explained.data as {
+      explanation: { kind: string; handle: string; fact: { extractor: string; tier: string; confidence: string; path: string }; resolution: unknown; citation?: { number: number; detail?: string } };
+      adr?: { number: number; status: string; files: string[] };
+    };
+    assert.equal(data.explanation.kind, 'citation');
+    assert.equal(data.explanation.handle, handle);
+    assert.deepEqual({ extractor: data.explanation.fact.extractor, tier: data.explanation.fact.tier, confidence: data.explanation.fact.confidence, path: data.explanation.fact.path }, {
+      extractor: 'grammar:typescript@0.23.2',
+      tier: 'grammar',
+      confidence: 'EXTRACTED',
+      path: 'src/lib.cts',
+    });
+    assert.equal(data.explanation.resolution, null);
+    assert.deepEqual(data.explanation.citation, { number: 1 });
+    assert.deepEqual(data.adr, { number: 1, status: 'resolved', files: ['docs/adr/0001-first.md'] });
+    assert.equal(explained.untrusted_text, undefined, 'no source text is returned');
+    // A mention with a section detail carries it.
+    const two = await ask(query, h, 'code_refs', '2');
+    const detailed = await query.ask({ protocol: 1, kind: 'code_explain', args: { handle: two.citations?.[0]?.debug ?? '', repo: h.dir }, worktree: h.dir });
+    assert.deepEqual((detailed.data as { explanation: { citation?: unknown } }).explanation.citation, { number: 2, detail: '§3' });
+  });
+
+  it('cit handle explained: a handle of a file that changed since is stale_handle, and a made-up one is invalid_handle', async () => {
+    const { h, query } = await adrWorld();
+    const refs = await ask(query, h, 'code_refs', 'ADR-1');
+    const handle = refs.citations?.[0]?.debug ?? '';
+    await addCited(h, 'src/lib.cts', '/** See ADR-1. Edited. */\nexport function load(): number {\n  return 2;\n}\n', [fn('load', 1, 3)], [
+      { number: 1, span: span(0, 8, 13), enclosing: 0 },
+    ]);
+    const stale = await query.ask({ protocol: 1, kind: 'code_explain', args: { handle, repo: h.dir }, worktree: h.dir });
+    assert.equal(stale.ok, false);
+    assert.equal(stale.diagnostics[0]?.code, 'stale_handle');
+    for (const bad of [handle.replace(/\/[0-9]+$/, '/99'), 'cit/src%2Flib.cts/abc/0', 'cit/../x/' + 'a'.repeat(40) + '/0']) {
+      const answer = await query.ask({ protocol: 1, kind: 'code_explain', args: { handle: bad, repo: h.dir }, worktree: h.dir });
+      assert.equal(answer.ok, false, bad);
+      assert.equal(answer.diagnostics[0]?.code, 'invalid_handle', bad);
+    }
+  });
+});

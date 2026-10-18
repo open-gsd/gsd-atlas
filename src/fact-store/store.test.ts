@@ -250,6 +250,39 @@ for (const driver of ['node:sqlite', 'better-sqlite3'] as const satisfies readon
       });
     });
 
+    it('cit handle: provenance explains a citation from the grammar tier with no resolution, a changed file is stale and an unknown ordinal is null', async () => {
+      await withRig(driver, async (rig) => {
+        const store = await rig.open();
+        const writer = store.writer();
+        await writer.commitFile({ worktree: 'main', path: 'src/a.ts', hash: H(1), facts: citedFacts('src/a.ts', H(1)) });
+        const reader = store.at('main');
+        const handles = (await reader.citations({ number: 2143 })).data.map((record) => record.debug);
+        assert.equal(handles.length, 1);
+        const explained = (await reader.provenance(handles[0] as string)).data;
+        assert.ok(explained !== null && explained !== 'stale');
+        assert.equal(explained.kind, 'citation');
+        assert.equal(explained.handle, handles[0]);
+        assert.deepStrictEqual(
+          { extractor: explained.fact.extractor, tier: explained.fact.tier, confidence: explained.fact.confidence, path: explained.fact.path, contentHash: explained.fact.contentHash, span: explained.fact.span },
+          { extractor: 'grammar:typescript@0.23.2', tier: 'grammar', confidence: 'EXTRACTED', path: 'src/a.ts', contentHash: H(1), span: span(0, 20, 0, 31) },
+        );
+        assert.equal(explained.resolution, null);
+        assert.deepStrictEqual(explained.citation, { number: 2143, detail: '§3' });
+        const plain = (await reader.provenance(`cit/${encodeURIComponent('src/a.ts')}/${H(1)}/1`)).data;
+        assert.ok(plain !== null && plain !== 'stale');
+        assert.deepStrictEqual(plain.citation, { number: 3473 });
+
+        assert.equal((await reader.provenance(`cit/${encodeURIComponent('src/a.ts')}/${H(1)}/3`)).data, null, 'the file has three citations: ordinal 3 is none');
+        assert.equal((await reader.provenance(`cit/${encodeURIComponent('src/none.ts')}/${H(1)}/0`)).data, null);
+        assert.equal((await reader.provenance(`cit/${encodeURIComponent('src/a.ts')}/${H(1)}/00`)).data, null, 'a non-canonical ordinal is not a handle');
+
+        const next: FileFacts = { ...citedFacts('src/a.ts', H(2)), citations: [{ number: 9, span: span(1, 3, 1, 8) }] };
+        await writer.commitFile({ worktree: 'main', path: 'src/a.ts', hash: H(2), facts: next });
+        assert.equal((await reader.provenance(handles[0] as string)).data, 'stale', 'the file changed since the handle was issued');
+        writer.release();
+      });
+    });
+
     it('version 1 store is recreated: the derived data of the old schema is dropped, reported as not built, and the new store works', async () => {
       await withRig(driver, async (rig) => {
         const old = await rig.open({ schemaVersion: SCHEMA_VERSION - 1 });

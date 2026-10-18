@@ -186,3 +186,99 @@ describe('the repository config names the ADR directory (ADR 5 amendment, point 
     });
   });
 });
+
+// ---------------------------------------------------------------------------------------------
+// Task 3: the three surfaces, CLI and MCP parity, duplicate and missing ADR ids, cit handles
+
+/** gsd-core's shape: ADR 0010 has two files, 0011 one, and 12 is cited but has none; a string literal mentions ADR-12 too. */
+export const DUPLICATE_FILES: Readonly<Record<string, string>> = {
+  'docs/adr/0010-b-second.md': '# b\n',
+  'docs/adr/0010-a-first.md': '# a\n',
+  'docs/adr/0011-only.md': '# c\n',
+  'src/a.cts': '/** Uses ADR-10. */\nexport function ten(): number {\n  return 10;\n}\n',
+  'src/b.cts': '// ADR #11 §2\nexport function eleven(): number {\n  return 11;\n}\n',
+  'src/c.cts': 'const note = "ADR-12 is in a string";\n// but ADR-12 is cited here\nexport function twelve(): number {\n  return 12;\n}\n',
+};
+
+interface FindRows {
+  readonly number: number;
+  readonly status: string;
+  readonly citations: number;
+  readonly results: ReadonlyArray<{ readonly path: string; readonly confidence: string }>;
+}
+
+describe('code_find, code_refs and code_context with ADR citations: CLI and MCP agree (TSM-04)', () => {
+  it('statuses: 10 is ambiguous, 11 resolved, 12 unresolved with its one real citation; the mention inside a string literal is not a citation', async () => {
+    await withAdrFixture(DUPLICATE_FILES, async (fixture) => {
+      assert.equal((await fixture.cli(['build', '--repo', fixture.dir])).code, 0);
+      const ten = await fixture.cli(['find', 'ADR-10', '--kind', 'adr', '--repo', fixture.dir]);
+      const tenData = ten.envelope.data as FindRows;
+      assert.deepEqual({ status: tenData.status, citations: tenData.citations }, { status: 'ambiguous', citations: 1 });
+      assert.deepEqual(tenData.results.map((row) => [row.path, row.confidence]), [
+        ['docs/adr/0010-a-first.md', 'INFERRED'],
+        ['docs/adr/0010-b-second.md', 'INFERRED'],
+      ]);
+      const eleven = (await fixture.cli(['find', '11', '--kind', 'adr', '--repo', fixture.dir])).envelope.data as FindRows;
+      assert.deepEqual([eleven.status, eleven.results.map((row) => row.path)], ['resolved', ['docs/adr/0011-only.md']]);
+      const twelve = await fixture.cli(['find', 'adr 12', '--kind', 'adr', '--repo', fixture.dir]);
+      const twelveData = twelve.envelope.data as FindRows;
+      assert.deepEqual({ status: twelveData.status, citations: twelveData.citations, results: twelveData.results }, { status: 'unresolved', citations: 1, results: [] });
+      assert.equal((twelve.envelope.hints ?? []).length, 1);
+
+      const refs = await fixture.cli(['refs', 'ADR-12', '--kind', 'adr', '--repo', fixture.dir]);
+      const refsData = refs.envelope.data as RefsData;
+      assert.equal(refsData.results.length, 1, 'only the comment on line 2, not the string literal on line 1');
+      assert.equal(refsData.results[0]?.line, 2);
+    });
+  });
+
+  it('CLI and MCP return the same JSON for code_find, code_refs and code_context', async () => {
+    await withAdrFixture(DUPLICATE_FILES, async (fixture) => {
+      assert.equal((await fixture.cli(['build', '--repo', fixture.dir])).code, 0);
+      const server = fixture.mcp();
+      await server.initialize();
+
+      const pairs: ReadonlyArray<{ readonly label: string; readonly cli: readonly string[]; readonly tool: string; readonly args: Record<string, unknown> }> = [
+        { label: 'code_find', cli: ['find', 'ADR-10', '--kind', 'adr'], tool: 'code_find', args: { name: 'ADR-10', kind: 'adr' } },
+        { label: 'code_refs', cli: ['refs', 'ADR-11', '--kind', 'adr'], tool: 'code_refs', args: { name: 'ADR-11', kind: 'adr' } },
+        { label: 'code_context', cli: ['context', 'ten'], tool: 'code_context', args: { name: 'ten' } },
+      ];
+      for (const pair of pairs) {
+        const cli = await fixture.cli([...pair.cli, '--repo', fixture.dir]);
+        assert.equal(cli.code, 0, cli.stderr);
+        const call = await server.callTool(pair.tool, { ...pair.args, repo: fixture.dir });
+        assert.equal(maskNonce(cli.stdout.trimEnd()), maskNonce(call.result.content[0]?.text ?? ''), pair.label);
+      }
+      const context = (await fixture.cli(['context', 'ten', '--repo', fixture.dir])).envelope.data as {
+        citations?: ReadonlyArray<{ number: number; status: string; files: string[] }>;
+      };
+      assert.deepEqual(context.citations?.map((entry) => [entry.number, entry.status, entry.files]), [[10, 'ambiguous', ['docs/adr/0010-a-first.md', 'docs/adr/0010-b-second.md']]]);
+
+      const exit = await server.close();
+      assert.equal(exit.exitCode, 0, server.stderrText());
+    });
+  });
+
+  it('explain of a citation handle says it is a citation of the grammar tier, with the number and the ADR status, identically over the CLI and MCP', async () => {
+    await withAdrFixture(DUPLICATE_FILES, async (fixture) => {
+      assert.equal((await fixture.cli(['build', '--repo', fixture.dir])).code, 0);
+      const refs = await fixture.cli(['refs', 'ADR-11', '--kind', 'adr', '--repo', fixture.dir]);
+      const handle = (refs.envelope['citations'] as ReadonlyArray<{ debug: string }>)[0]?.debug ?? '';
+      assert.match(handle, /^cit\//);
+      const explained = await fixture.cli(['explain', handle, '--repo', fixture.dir]);
+      assert.equal(explained.code, 0, explained.stderr);
+      const data = explained.envelope.data as { explanation: { kind: string; resolution: unknown; citation: { number: number; detail?: string } }; adr: { status: string; files: string[] } };
+      assert.equal(data.explanation.kind, 'citation');
+      assert.equal(data.explanation.resolution, null);
+      assert.deepEqual(data.explanation.citation, { number: 11, detail: '§2' });
+      assert.deepEqual(data.adr, { number: 11, status: 'resolved', files: ['docs/adr/0011-only.md'] });
+
+      const server = fixture.mcp();
+      await server.initialize();
+      const call = await server.callTool('code_explain', { handle, repo: fixture.dir });
+      assert.equal(maskNonce(explained.stdout.trimEnd()), maskNonce(call.result.content[0]?.text ?? ''));
+      const exit = await server.close();
+      assert.equal(exit.exitCode, 0, server.stderrText());
+    });
+  });
+});
