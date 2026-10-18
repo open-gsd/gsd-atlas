@@ -59,3 +59,15 @@ Phase 2 builds the grammar-tier Query module. Five points differ from, or sharpe
    - hop 2: `c` `main` (via call, INFERRED, chain_confidence INFERRED) and `c` as a file (via import, EXTRACTED, chain_confidence EXTRACTED).
 
    Plan 02-19 reproduces this example as a golden test.
+
+## Amendment 2026-10-18: explain as a Query request kind
+
+Sources: 03-CONTEXT.md D-16 and D-18; 03-RESEARCH.md Pattern 7 and Seam Gap G9; [13-mcp-contract](13-mcp-contract.md), amendment of the same date.
+
+Decision 1 lists `explain` among the tool kinds a request can name, and decision 2 says Query owns it, but through Phase 2 it had no request kind. Phase 3 adds it. The decisions above stand unedited; where this section is more specific, it governs.
+
+1. **The request kind is `code_explain` (decision 1).** The kind that decision 1 calls `explain` is named `code_explain` in the request-kind union, matching the seventh MCP tool and the CLI command `explain`. Adding it adds a variant to the union and not a method to Query, as the Consequences section already says. It takes a `handle`, a fact id taken from any citation's `debug` field, and the usual worktree argument.
+2. **It is read-only.** An explain request never writes, never runs a resolver, never starts a compiler worker and never opens the writer lease. It answers from facts already stored and from a status function the tenant provides, so cost does not depend on the repository's size. It asks the Fact Store reader to explain the handle (`Reader.provenance`, [7-fact-store-interface](7-fact-store-interface.md), amendment of the same date) and adds the module and tier state; it does not probe the compiler. Query still never touches git or SQLite directly (decision 5).
+3. **Handles stay opaque.** Query passes a handle to the reader unchanged and never parses it. A malformed, unknown or stale handle becomes a fixed-text error diagnostic in the envelope, not an exception, and the text does not echo the handle.
+4. **`answer_id` is stamped by the Host, not by Query.** Every envelope may carry an `answer_id` (a random identifier with no content). Query returns the envelope without one. The Host, which sits between the adapters and Query and is the one place every answer passes through, adds it after the answer exists and records the answer in its bounded per-tenant record. Query therefore stays free of identity, clock and file concerns, and the CLI and the MCP tool, which both call the Host, return the same JSON apart from this field. Policy is unaffected: it still never calls Query (decision 8).
+5. **Fencing applies.** Repository text in an explanation appears only inside `untrusted_text` (decision 2); the rest is fact data and fixed sentences.

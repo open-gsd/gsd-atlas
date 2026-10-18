@@ -65,3 +65,15 @@ Phase 2 builds the Metrics module. These points settle what the decisions above 
 4. **Events (decision 5).** Events are an allow-listed union: counters and histograms only, with hashed ids at most. Nothing outside the union can be recorded.
 5. **Retention (decision 13).** Retention is 30 days rolling, with daily rollups made after 7 days. This replaces the provisional "events 30 days or 50,000 rows, rollups 13 months".
 6. **Token figures.** Token figures are serialized characters divided by four and are labelled estimates, as decision 6 requires.
+
+## Amendment 2026-10-18: Ratings table
+
+Sources: 03-CONTEXT.md D-16; 03-RESEARCH.md Pattern 9 and Seam Gap G9; SKL-02; [13-mcp-contract](13-mcp-contract.md) and [12-query-and-policy](12-query-and-policy.md), amendments of the same date.
+
+Phase 3 lets a user rate an answer, and the headline panel "index health and answer quality (including user ratings)" in decision 8 needs somewhere to read those ratings. The decisions above stand unedited; where this section is more specific, it governs.
+
+1. **A ratings table, added by a migration.** Metrics gains a ratings table in `metrics.db` through one more forward-only, numbered migration under the rule of the amendment of 2026-10-16, so an older database is upgraded when opened and a newer one disables recording instead of failing an answer. A rating is an allow-listed event kind in the sense of decision 5 of the amendment of 2026-10-16: nothing outside the closed event union can be recorded.
+2. **A closed vocabulary and no free text.** A row holds a scope, a subject, a value and a minute-resolution time. The scope is one of `answer`, `feature` and `session`. The subject is, by scope, an answer id (the random `answer_id` of the answers envelope, which holds no content), a feature name from a closed list (the tool names plus `skill`, `build` and `init`), or the random session id of the current host start. The value is one of `up`, `meh` and `down`. Each subject is validated against its pattern or list before it is stored, and a value outside the closed set is refused. This keeps decision 5 true: no source text, prose, path, symbol name or prompt is stored.
+3. **No `note` text is ever stored.** The ratings table has no free text column, and the CLI has no note option in this phase. If a note is ever wanted, that is a separate decision with its own amendment, and the text still does not land in `metrics.db`.
+4. **Who writes.** Only the CLI command that rates writes a row, on the user's request. There is no MCP rating tool, because users rate answers and agents do not; decision 10 (value statistics are never placed in agent context) is unchanged. A write on a read-only database reports that the rating was not saved and does not crash.
+5. **Consumption is Phase 8.** Phase 3 stores ratings. The dashboard panel that reads them, with its denominator beside each ratio (decision 7), is built in Phase 8; until then ratings are only rows in the database and the dashboard shows none.
