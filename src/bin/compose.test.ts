@@ -8,8 +8,10 @@ import type { CommandRunner, CommandSpec, UserPermissions } from '../command-run
 import { PROTOCOL_VERSION } from '../facts/index.ts';
 import { loadUserConfig, needsApprovalFrom } from '../host/index.ts';
 import { resolveWorkerPath } from '../precise-resolver/index.ts';
+import type { PreciseTier } from '../precise-resolver/index.ts';
 import { createTempGitRepo, makeTempDir, realPath } from '../test-kit/index.ts';
 import { KNOWN_ADAPTERS, composeHost, makeRunner, parseMcpFlags } from './compose.ts';
+import type { Composed } from './compose.ts';
 
 const toyModule = path.resolve(import.meta.dirname, '..', '..', 'test', 'fixtures', 'modules', 'toy');
 const setupRunner = createRealRunner({ decide: allowAll });
@@ -418,5 +420,53 @@ describe('composeHost: the built-in TypeScript tier (SEC-02)', () => {
       active: false,
       reason: 'provider_disabled',
     });
+  });
+
+  it('one pool per host: every tenant of a composed Host gets the same budget and pool, built from the machine RAM', async (t) => {
+    const tmp = makeTempDir();
+    const first = await createTempGitRepo({ runner: setupRunner, world: { committed: { 'a.ts': 'export const a = 1;\n' } } });
+    const second = await createTempGitRepo({ runner: setupRunner, world: { committed: { 'b.ts': 'export const b = 2;\n' } } });
+    t.after(() => {
+      tmp.cleanup();
+      first.cleanup();
+      second.cleanup();
+    });
+    const tiers: PreciseTier[] = [];
+    const compose = (totalMemBytes: number): Composed =>
+      composeHost({
+        cwd: first.dir,
+        env: { ...process.env, ...first.envOverlay, ...second.envOverlay, GSD_ATLAS_USER_DIR: path.join(tmp.path, 'user') },
+        home: path.join(tmp.path, 'home'),
+        stderr: sink(),
+        totalMemBytes,
+        tierHook: (tier) => tiers.push(tier),
+      });
+    // 8 GiB of RAM: a 2048 MB budget at 25 percent.
+    const composed = compose(8 * 1024 ** 3);
+    t.after(async () => {
+      await composed.dispose();
+    });
+    for (const repo of [first, second]) {
+      const built = await composed.client.handle({ protocol: PROTOCOL_VERSION, kind: 'build', args: { repo: repo.dir } });
+      assert.equal(built.ok, true, JSON.stringify(built.diagnostics));
+    }
+    assert.equal(tiers.length, 2, 'one tier per tenant');
+    const [one, two] = tiers;
+    assert.ok(one !== undefined && two !== undefined);
+    assert.equal(one.memory, two.memory, 'the tenants share one budget and one pool');
+    assert.equal(one.memory.budget.derived.budgetMb, 2048);
+    assert.equal(one.memory.budget.derived.heapMb, 1638);
+
+    // Another Host has its own.
+    const other = compose(4 * 1024 ** 3);
+    t.after(async () => {
+      await other.dispose();
+    });
+    const built = await other.client.handle({ protocol: PROTOCOL_VERSION, kind: 'build', args: { repo: first.dir } });
+    assert.equal(built.ok, true, JSON.stringify(built.diagnostics));
+    const third = tiers[2];
+    assert.ok(third !== undefined);
+    assert.notEqual(third.memory, one.memory);
+    assert.equal(third.memory.budget.derived.budgetMb, 1024);
   });
 });

@@ -96,3 +96,70 @@ describe('createMemoryBudget: the values of a machine', () => {
     assert.deepStrictEqual(budget.status(), { budgetMb: 4096, reservedMb: 0, usable: true, owners: [] });
   });
 });
+
+describe('createMemoryBudget: the reservation ledger (plan 03-27, LRU)', () => {
+  /** 4000 MB of RAM is a 1000 MB budget at 25 percent. */
+  const make = () => createMemoryBudget({ totalMemBytes: 4000 * 1024 * 1024 });
+  const refuse = async (): Promise<boolean> => false;
+
+  it('reserves what fits, keeps the order of use, and releases', async () => {
+    const budget = make();
+    assert.equal(await budget.reserve('a', 400, refuse), true);
+    assert.equal(await budget.reserve('b', 400, refuse), true);
+    assert.deepStrictEqual(budget.status(), { budgetMb: 1000, reservedMb: 800, usable: true, owners: [{ owner: 'a', mb: 400 }, { owner: 'b', mb: 400 }] });
+    budget.touch('a');
+    assert.deepStrictEqual(budget.status().owners.map((entry) => entry.owner), ['b', 'a'], 'a touched owner becomes the most recently used');
+    budget.release('b');
+    budget.release('nobody');
+    assert.equal(budget.status().reservedMb, 400);
+  });
+
+  it('asks the least recently used owners to give theirs up until the request fits', async () => {
+    const budget = make();
+    await budget.reserve('a', 400, refuse);
+    await budget.reserve('b', 400, refuse);
+    await budget.reserve('c', 200, refuse);
+    budget.touch('a');
+    const asked: string[] = [];
+    const evict = async (victim: string): Promise<boolean> => {
+      asked.push(victim);
+      return true;
+    };
+    assert.equal(await budget.reserve('d', 500, evict), true);
+    assert.deepStrictEqual(asked, ['b', 'c'], 'the least recently used first, and no more than needed');
+    assert.deepStrictEqual(budget.status().owners.map((entry) => entry.owner), ['a', 'd']);
+  });
+
+  it('skips an owner that refuses (a request in flight) and fails when nothing else can go', async () => {
+    const budget = make();
+    await budget.reserve('a', 600, refuse);
+    await budget.reserve('b', 400, refuse);
+    const asked: string[] = [];
+    const evict = async (victim: string): Promise<boolean> => {
+      asked.push(victim);
+      return victim === 'b';
+    };
+    assert.equal(await budget.reserve('c', 600, evict), false, 'a still holds 600');
+    assert.deepStrictEqual(asked, ['a', 'b']);
+    assert.deepStrictEqual(budget.status().owners.map((entry) => entry.owner), ['a'], 'b was given up, and nothing is reserved for c');
+  });
+
+  it('an owner that holds a reservation keeps it; a request above the whole budget, or a budget below the floor, is refused', async () => {
+    const budget = make();
+    assert.equal(await budget.reserve('a', 400, refuse), true);
+    assert.equal(await budget.reserve('a', 400, refuse), true);
+    assert.equal(budget.status().reservedMb, 400);
+    assert.equal(await budget.reserve('big', 1001, async () => true), false);
+    const small = createMemoryBudget({ totalMemBytes: 1024 * 1024 * 1024 });
+    assert.equal(await small.reserve('a', 100, async () => true), false);
+    assert.equal(small.status().usable, false);
+    for (const mb of [0, -1, 1.5, Number.NaN]) assert.equal(await budget.reserve('x', mb, refuse), false);
+  });
+
+  it('two requests that cannot both fit are decided one at a time', async () => {
+    const budget = make();
+    const results = await Promise.all([budget.reserve('a', 700, refuse), budget.reserve('b', 700, refuse)]);
+    assert.deepStrictEqual(results, [true, false]);
+    assert.equal(budget.status().reservedMb, 700);
+  });
+});

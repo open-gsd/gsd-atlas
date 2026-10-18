@@ -16,8 +16,11 @@ import type { Envelope, OverlaySnapshot, PreciseFacts, RefSiteKey, ResolutionCon
 import { createGrammarEngine } from '../../grammar-engine/index.ts';
 import { createHost } from '../../host/index.ts';
 import { createManualEventSource } from '../../indexer/index.ts';
-import { createTempGitRepo, makeTempDir, realPath } from '../../test-kit/index.ts';
-import { bundledCompilerDir, createTypeScriptResolver, resolveWorkerPath } from './index.ts';
+import { FakeClock, createTempGitRepo, makeTempDir, realPath } from '../../test-kit/index.ts';
+import { PROGRAM_EVICT_FRACTION, createMemoryBudget } from './budget.ts';
+import { bundledCompilerDir, createResolverMemory, createTypeScriptResolver, resolveWorkerPath } from './index.ts';
+import { createWorkerPool } from './pool.ts';
+import type { PoolWorker } from './pool.ts';
 import type { PreciseTier, TypeScriptResolver, TypeScriptResolverDeps, TypeScriptTierTuning } from './index.ts';
 
 const WORKER = resolveWorkerPath();
@@ -392,5 +395,324 @@ describe('a read over a project that does not fit (TSM-05, D-21)', () => {
     expectOk(answer);
     assert.ok((answer.degraded ?? []).includes('memory_budget'), JSON.stringify(answer.degraded));
     assert.equal((answer.degraded ?? []).includes('resolver_failed'), false);
+  });
+});
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Task 2: the machine-wide pool, with a fake worker factory (no process).
+
+interface FakeWorker extends PoolWorker {
+  readonly tenant: string;
+  alive: boolean;
+}
+
+const MB = 1024 * 1024;
+
+function makePool(options: { readonly totalMb?: number; readonly workerMb?: number; readonly idleExitMs?: number } = {}) {
+  const clock = new FakeClock(0);
+  // 25 percent of the RAM is the budget: 4000 MB of RAM is a 1000 MB budget.
+  const budget = createMemoryBudget({ totalMemBytes: (options.totalMb ?? 4000) * MB });
+  const started: string[] = [];
+  const stopped: string[] = [];
+  let alive = 0;
+  let mostAlive = 0;
+  const pool = createWorkerPool<FakeWorker>({
+    budget,
+    clock,
+    workerMb: options.workerMb ?? 400,
+    ...(options.idleExitMs === undefined ? {} : { idleExitMs: options.idleExitMs }),
+    start: async (tenant) => {
+      started.push(tenant);
+      alive += 1;
+      mostAlive = Math.max(mostAlive, alive);
+      const worker: FakeWorker = {
+        tenant,
+        alive: true,
+        async stop() {
+          if (!worker.alive) return;
+          worker.alive = false;
+          alive -= 1;
+          stopped.push(tenant);
+        },
+      };
+      return worker;
+    },
+  });
+  return { pool, budget, clock, started, stopped, mostAlive: () => mostAlive };
+}
+
+const isMemoryBudget = (error: unknown): boolean => error instanceof ResolverFailure && error.degradedCode === 'memory_budget';
+
+describe('the machine-wide worker pool (D-21, TSM-05)', () => {
+  it('evicts least recently used idle worker: no more than two exist, and an evicted tenant restarts on demand', async () => {
+    const { pool, started, stopped, mostAlive } = makePool();
+    for (const tenant of ['A', 'B']) {
+      await pool.acquire(tenant);
+      pool.release(tenant);
+    }
+    await pool.acquire('C');
+    pool.release('C');
+    assert.deepStrictEqual(stopped, ['A'], 'A was used earliest');
+    // A comes back: B is now the least recently used.
+    const again = await pool.acquire('A');
+    pool.release('A');
+    assert.equal(again.alive, true);
+    assert.deepStrictEqual(stopped, ['A', 'B']);
+    assert.deepStrictEqual(started, ['A', 'B', 'C', 'A'], 'the eviction cost A one cold start');
+    assert.equal(mostAlive(), 2);
+    assert.deepStrictEqual(pool.status().workers.map((entry) => entry.tenant).sort(), ['A', 'C']);
+  });
+
+  it('a worker that is acquired again is the most recently used, even when it was started first', async () => {
+    const { pool, stopped } = makePool();
+    await pool.acquire('A');
+    pool.release('A');
+    await pool.acquire('B');
+    pool.release('B');
+    await pool.acquire('A');
+    pool.release('A');
+    await pool.acquire('C');
+    pool.release('C');
+    assert.deepStrictEqual(stopped, ['B']);
+  });
+
+  it('in-flight worker is not evicted: the newcomer is answered memory_budget and nothing is stopped', async () => {
+    const { pool, started, stopped } = makePool();
+    await pool.acquire('A');
+    await pool.acquire('B');
+    await assert.rejects(pool.acquire('C'), isMemoryBudget);
+    assert.deepStrictEqual(stopped, []);
+    assert.deepStrictEqual(started, ['A', 'B']);
+    pool.release('B');
+    await pool.acquire('C');
+    assert.deepStrictEqual(stopped, ['B'], 'once B is idle it can go');
+    assert.deepStrictEqual(pool.status().workers.map((entry) => entry.tenant).sort(), ['A', 'C']);
+  });
+
+  it('budget too small starts nothing: every tenant is answered memory_budget and no worker starts', async () => {
+    const { pool, started } = makePool({ totalMb: 1024 });
+    for (const tenant of ['A', 'B', 'C']) await assert.rejects(pool.acquire(tenant), isMemoryBudget);
+    assert.deepStrictEqual(started, []);
+    assert.equal(pool.status().usable, false);
+  });
+
+  it('a request larger than the whole budget is memory_budget even for an empty pool', async () => {
+    const { pool, started } = makePool({ workerMb: 1001 });
+    await assert.rejects(pool.acquire('A'), isMemoryBudget);
+    assert.deepStrictEqual(started, []);
+  });
+
+  it('a failed start gives its reservation back and the error reaches the caller', async () => {
+    const clock = new FakeClock(0);
+    const budget = createMemoryBudget({ totalMemBytes: 4000 * MB });
+    const pool = createWorkerPool<FakeWorker>({
+      budget,
+      clock,
+      workerMb: 400,
+      start: async () => {
+        throw new Error('no start');
+      },
+    });
+    await assert.rejects(pool.acquire('A'), /no start/);
+    assert.equal(budget.status().reservedMb, 0);
+  });
+
+  it('idle release and restart: a worker idle for precise.idleExitMs is stopped, a request just before the deadline resets the timer', async () => {
+    const { pool, clock, started, stopped, budget } = makePool({ idleExitMs: 300_000 });
+    await pool.acquire('A');
+    pool.release('A');
+    await clock.advance(299_999);
+    assert.deepStrictEqual(stopped, [], 'not yet');
+    await pool.acquire('A');
+    pool.release('A');
+    await clock.advance(299_999);
+    assert.deepStrictEqual(stopped, [], 'the request at the deadline started the wait again');
+    assert.deepStrictEqual(started, ['A'], 'and it reused the worker');
+    await clock.advance(1);
+    await sleep(0);
+    assert.deepStrictEqual(stopped, ['A']);
+    assert.equal(budget.status().reservedMb, 0, 'its share of the budget is free again');
+    assert.deepStrictEqual(pool.status().workers, []);
+    await pool.acquire('A');
+    assert.deepStrictEqual(started, ['A', 'A'], 'the next request restarts it');
+  });
+
+  it('a busy worker has no idle timer, and close stops everything and leaves no timer armed', async () => {
+    const { pool, clock, stopped } = makePool({ idleExitMs: 1000 });
+    await pool.acquire('A');
+    await clock.advance(5000);
+    await sleep(0);
+    assert.deepStrictEqual(stopped, [], 'a request is in flight');
+    pool.release('A');
+    await pool.acquire('B');
+    pool.release('B');
+    assert.ok(clock.pending() > 0);
+    await pool.close();
+    assert.deepStrictEqual(stopped.sort(), ['A', 'B']);
+    assert.equal(clock.pending(), 0, 'every timer was cancelled');
+    await pool.close();
+    await assert.rejects(pool.acquire('A'), isMemoryBudget);
+  });
+
+  it('a worker that ended by itself is dropped at release and does not hold the budget', async () => {
+    const { pool, budget } = makePool();
+    const worker = await pool.acquire('A');
+    worker.alive = false;
+    pool.release('A');
+    assert.equal(budget.status().reservedMb, 0);
+    assert.deepStrictEqual(pool.status().workers, []);
+  });
+
+  it('a request the running worker was not started for replaces it', async () => {
+    const { pool, started, stopped } = makePool();
+    const first = await pool.acquire('A', { matches: () => true });
+    pool.release('A');
+    const second = await pool.acquire('A', { matches: () => false });
+    pool.release('A');
+    assert.notEqual(first, second);
+    assert.deepStrictEqual(stopped, ['A']);
+    assert.deepStrictEqual(started, ['A', 'A']);
+    assert.equal(pool.status().reservedMb, 400, 'one reservation for the one worker');
+  });
+
+  it('the memory-stop latch is per tenant and per context key', async () => {
+    const { pool } = makePool();
+    assert.equal(pool.memoryStopped('A', 'k1'), false);
+    pool.markMemoryStop('A', 'k1');
+    assert.equal(pool.memoryStopped('A', 'k1'), true);
+    assert.equal(pool.memoryStopped('B', 'k1'), false, 'another tenant is not affected');
+    assert.equal(pool.memoryStopped('A', 'k2'), false, 'a changed context is a new question');
+    assert.equal(pool.memoryStopped('A', 'k1'), false, 'and it cleared the latch');
+    pool.markMemoryStop('A', 'k1');
+    pool.markMemoryStop('B', 'k1');
+    pool.clearMemoryStop('A');
+    assert.equal(pool.memoryStopped('A', 'k1'), false);
+    assert.equal(pool.memoryStopped('B', 'k1'), true);
+    pool.clearMemoryStop();
+    assert.equal(pool.memoryStopped('B', 'k1'), false);
+  });
+
+  it('drop ends a tenant: its worker is stopped, its share freed and its latch forgotten', async () => {
+    const { pool, stopped, budget } = makePool();
+    await pool.acquire('A');
+    pool.release('A');
+    pool.markMemoryStop('A', 'k');
+    await pool.drop('A');
+    assert.deepStrictEqual(stopped, ['A']);
+    assert.equal(budget.status().reservedMb, 0);
+    assert.equal(pool.memoryStopped('A', 'k'), false);
+  });
+});
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Task 2: real workers on the pool.
+
+const MULTI = ['a', 'b', 'c'] as const;
+const MULTI_FILES: Readonly<Record<string, string>> = Object.fromEntries(
+  MULTI.flatMap((dir) => [
+    [`${dir}/tsconfig.json`, TSCONFIG],
+    [`${dir}/src/lib.cts`, LIB],
+    [`${dir}/src/user.cts`, USER],
+  ]),
+);
+const MULTI_FACTS: PreciseFacts = {
+  ownerOf: (p) => (MULTI.some((dir) => p.startsWith(`${dir}/`)) ? `${p.split('/')[0] ?? ''}/tsconfig.json` : undefined),
+  requiresOwner: (p) => /\.(?:[cm]?ts|tsx)$/.test(p),
+  compiler: { source: 'bundled', version: '6.0.3', reason: 'no project compiler', case: 'none' },
+  configs: MULTI.map((dir) => `${dir}/tsconfig.json`),
+};
+const multiSite = (dir: string): RefSiteKey => ({ path: `${dir}/src/user.cts`, span: span(3, 9, 3, 16), name: 'compute' });
+
+async function readDir(resolver: TypeScriptResolver, dir: string): Promise<number> {
+  const edges: unknown[] = [];
+  for await (const item of resolver.resolveScoped(MULTI_FACTS, NO_OVERLAY, contextOf('multi'), [multiSite(dir)], everything)) {
+    if (!('kind' in item && item.kind === 'notice')) edges.push(item);
+  }
+  return edges.length;
+}
+
+describe('programs inside one worker (Pitfall 8, plan 03-27)', () => {
+  it('programs dropped least recently used: past 70 percent of the limit the oldest go, the one in use stays, every answer is right', async () => {
+    const project = writeProject(MULTI_FILES);
+    cleanups.push(() => project.cleanup());
+    // The sampler is switched off by its period (an hour) so that only the program rule is under test.
+    const quiet = { sampleMs: 3_600_000 };
+
+    // Calibrate on this machine: the worker's RSS after one, two and three programs, with a limit nothing reaches.
+    const calibrate = resolverFor(project.dir, countingRunner(), { ...quiet, rssLimitMb: 16_384 }, MULTI_FACTS);
+    const rss: number[] = [];
+    for (const dir of MULTI) {
+      assert.equal(await readDir(calibrate, dir), 1);
+      rss.push(calibrate.info()?.lastRssMb ?? 0);
+    }
+    assert.equal(calibrate.info()?.programs, 3, 'with room, every program stays');
+    await calibrate.close();
+    const [, two, three] = rss;
+    assert.ok(two !== undefined && three !== undefined && three > two, JSON.stringify(rss));
+    // Two programs are under 70 percent of the limit, the third is over it.
+    const limitMb = Math.ceil((two + three) / 2 / PROGRAM_EVICT_FRACTION);
+
+    const bounded = resolverFor(project.dir, countingRunner(), { ...quiet, rssLimitMb: limitMb }, MULTI_FACTS);
+    const seen: number[] = [];
+    for (const dir of ['a', 'b', 'c', 'a']) {
+      assert.equal(await readDir(bounded, dir), 1, `config ${dir} answered`);
+      seen.push(bounded.info()?.programs ?? -1);
+    }
+    const detail = JSON.stringify({ seen, rss, limitMb });
+    assert.ok(seen.every((count) => count >= 1 && count <= 2), detail);
+    assert.ok(seen.some((count, index) => index > 0 && count <= (seen[index - 1] ?? 0)), `a program was dropped: ${detail}`);
+  });
+
+  it('a worker started without a limit never drops a program', async () => {
+    const project = writeProject(MULTI_FILES);
+    cleanups.push(() => project.cleanup());
+    const resolver = resolverFor(project.dir, countingRunner(), { rssLimitMb: null }, MULTI_FACTS);
+    for (const dir of MULTI) assert.equal(await readDir(resolver, dir), 1);
+    assert.equal(resolver.info()?.programs, 3);
+  });
+});
+
+describe('many tenants on one Host memory (TSM-05, D-21)', () => {
+  it('one pool per host: two tenants share the budget, the second evicts the first, and the first restarts cold with right answers', async () => {
+    const one = writeProject(FIXTURE);
+    const two = writeProject(FIXTURE);
+    cleanups.push(() => one.cleanup(), () => two.cleanup());
+    // 4 GiB of RAM: a 1024 MB budget, and a worker is given the whole of it, so only one worker lives at a time.
+    const memory = createResolverMemory({ totalMemBytes: 4 * 1024 * MB });
+    cleanups.push(() => memory.pool.close());
+    const runner = countingRunner();
+    const first = resolverFor(one.dir, runner, { memory });
+    const second = resolverFor(two.dir, runner, { memory });
+
+    assert.equal((await readOnce(first)).edges.length, 1);
+    const firstPid = first.info()?.pid;
+    assert.ok(firstPid !== undefined);
+    assert.equal((await readOnce(second)).edges.length, 1);
+    await waitGone(firstPid);
+    assert.equal(first.info(), undefined, 'the first tenant has no worker now');
+    assert.equal(memory.pool.status().workers.length, 1);
+
+    const again = await readOnce(first);
+    assert.equal(again.failure, undefined);
+    assert.equal(again.edges.length, 1, 'the cold start cost time, not correctness');
+    assert.equal(runner.workers.length, 3);
+    assert.equal(memory.pool.status().workers.length, 1);
+    assert.equal(memory.pool.status().reservedMb <= memory.budget.derived.budgetMb, true);
+
+    // Closing one tenant frees its share without touching the shared pool.
+    await first.close();
+    assert.deepStrictEqual(memory.pool.status().workers, []);
+    assert.equal((await readOnce(second)).edges.length, 1, 'the other tenant is unaffected');
+  });
+
+  it('budget too small starts nothing: a machine below the floor answers memory_budget and never spawns a worker', async () => {
+    const project = writeProject(FIXTURE);
+    cleanups.push(() => project.cleanup());
+    const runner = countingRunner();
+    const resolver = resolverFor(project.dir, runner, { totalMemBytes: 1024 * MB });
+    const { failure, edges } = await readOnce(resolver);
+    assert.equal(edges.length, 0);
+    assert.equal(failure?.degradedCode, 'memory_budget');
+    assert.equal(runner.workers.length, 0);
   });
 });
