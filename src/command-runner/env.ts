@@ -37,6 +37,45 @@ export function isDenied(name: string): boolean {
   return REDIRECTING.has(upper) || SECRET_EXACT.has(upper) || SECRET_LOOKING.test(name);
 }
 
+/**
+ * The only inherited names a shape-matched built-in (the compiler worker, plan 03-19) receives: where the user's home and
+ * temporary directories are, the locale and time zone, and the two Windows variables a Node child needs to start at all.
+ * Deliberately absent: `PATH`, `NODE_OPTIONS`, `NODE_PATH`, `LD_*`, `DYLD_*` and every other name that can change what
+ * code the child loads (T-03-192). Compared upper-cased, as Windows names are case-insensitive.
+ */
+const MINIMAL_INHERITED: ReadonlySet<string> = new Set([
+  'HOME',
+  'USERPROFILE',
+  'TMPDIR',
+  'TMP',
+  'TEMP',
+  'LANG',
+  'LC_ALL',
+  'LC_CTYPE',
+  'TZ',
+  'SYSTEMROOT',
+  'WINDIR',
+]);
+
+/**
+ * The environment of a shape-matched built-in: only {@link MINIMAL_INHERITED} names from the parent, then the spec's own
+ * variables (which `decide` already restricted to the keys and value patterns of the shape).
+ */
+export function minimalEnv(
+  parent: Readonly<Record<string, string | undefined>>,
+  overlay?: Readonly<Record<string, string>>,
+): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [name, value] of Object.entries(parent)) {
+    if (value === undefined || !MINIMAL_INHERITED.has(name.toUpperCase())) continue;
+    out[name] = value;
+  }
+  if (overlay !== undefined) {
+    for (const [name, value] of Object.entries(overlay)) out[name] = value;
+  }
+  return out;
+}
+
 export function scrubEnv(
   parent: Readonly<Record<string, string | undefined>>,
   overlay?: Readonly<Record<string, string>>,

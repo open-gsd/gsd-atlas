@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
+import { minimalEnv } from './env.ts';
 import { scrubEnv } from './index.ts';
 
 describe('scrubEnv', () => {
@@ -95,5 +96,33 @@ describe('scrubEnv', () => {
     assert.deepEqual(out, { PATH: '/bin', A: '1' });
     assert.deepEqual(parent, { PATH: '/bin', GONE: undefined });
     assert.deepEqual(overlay, { A: '1' });
+  });
+});
+
+describe('minimalEnv (shape-matched built-ins, plan 03-19)', () => {
+  it('keeps only the named inherited variables, case-insensitively, and nothing that changes what code loads', () => {
+    const out = minimalEnv({
+      PATH: '/bin',
+      HOME: '/h',
+      SystemRoot: 'C:\\Windows',
+      Temp: 'C:\\Temp',
+      LANG: 'C.UTF-8',
+      NODE_OPTIONS: '--require /x',
+      NODE_PATH: '/x',
+      LD_PRELOAD: '/x.so',
+      LD_LIBRARY_PATH: '/x',
+      DYLD_INSERT_LIBRARIES: '/x.dylib',
+      GITHUB_TOKEN: 't',
+      GONE: undefined,
+    });
+    assert.deepEqual(out, { HOME: '/h', SystemRoot: 'C:\\Windows', Temp: 'C:\\Temp', LANG: 'C.UTF-8' });
+  });
+
+  it('applies the overlay last and does not mutate its inputs', () => {
+    const parent = { HOME: '/h', NODE_OPTIONS: 'x' };
+    const overlay = { GSD_ATLAS_WORKER: '1' };
+    assert.deepEqual(minimalEnv(parent, overlay), { HOME: '/h', GSD_ATLAS_WORKER: '1' });
+    assert.deepEqual(parent, { HOME: '/h', NODE_OPTIONS: 'x' });
+    assert.deepEqual(overlay, { GSD_ATLAS_WORKER: '1' });
   });
 });
