@@ -1,0 +1,112 @@
+{
+  "catalogVersion": 1,
+  "types": [
+    {
+      "id": "header",
+      "title": "Report header",
+      "required": true,
+      "fields": [
+        { "name": "atlas_version", "example": "0.3.1", "kind": "string" },
+        { "name": "catalog_version", "example": "1", "kind": "integer" }
+      ],
+      "howItHelps": "Every other number only means something next to the release that produced it. The version lets us tell a regression introduced in 0.3.1 from a problem that was always there, and the catalog version lets the intake bot check that the report contains only fields that release was allowed to send. Without it, a report can't be validated, so it can't be processed.",
+      "cannotReveal": "Anything about you, your machine or your code."
+    },
+    {
+      "id": "platform",
+      "title": "Platform",
+      "fields": [
+        { "name": "os_family", "example": "macOS", "kind": "string" },
+        { "name": "os_major", "example": "27", "kind": "integer" },
+        { "name": "node_major", "example": "24", "kind": "integer" }
+      ],
+      "howItHelps": "gsd-atlas depends on things that behave differently per platform: file watchers (FSEvents, inotify, Windows), Unix sockets versus named pipes, path and line-ending rules, and node:sqlite, whose behaviour changes between Node versions. When a bug or a slow build clusters on one OS or Node version, we know where to look and which CI job is missing. It also tells us which platforms matter most, so testing effort follows real use.",
+      "cannotReveal": "Your machine name, user, hardware ID or location."
+    },
+    {
+      "id": "agent_setup",
+      "title": "Agent setup",
+      "fields": [
+        { "name": "agent_host", "example": "claude-code", "kind": "string" },
+        { "name": "transport", "example": "in-process", "kind": "string" }
+      ],
+      "howItHelps": "Hooks and MCP behave differently per agent host: which events exist, whether HTTP hooks work, whether session ids are provided. This tells us which hosts people actually use with atlas, where the enforcement design degrades to advise mode, and whether the zero-process transport is being used or people fall back to the stdio shim. It decides which host integrations get attention first.",
+      "cannotReveal": "Your prompts, sessions, agent output or accounts."
+    },
+    {
+      "id": "languages",
+      "title": "Languages and index quality",
+      "fields": [
+        { "name": "languages_active", "example": "[\"typescript\"]", "kind": "list" },
+        { "name": "tiers_active", "example": "{\"typescript\":[\"grammar\",\"precise\"]}", "kind": "map" },
+        { "name": "parse_error_rate", "example": "{\"typescript\":0.004}", "kind": "map" },
+        { "name": "degraded_rate", "example": "0.12", "kind": "number" }
+      ],
+      "howItHelps": "This is how we find out whether atlas's answers are trustworthy on real code, not just on our test repos.\n- Parse error rate shows grammar drift: new syntax the grammar doesn't understand yet.\n- Tiers active shows whether the precise tier actually runs, or quietly falls back to name matching.\n- Degraded rate shows how often answers came back incomplete because precise resolution wasn't available.\nTogether they tell us which language module to fix next and whether the memory budget for compilers is set right.",
+      "cannotReveal": "Which files failed, any code, or any names."
+    },
+    {
+      "id": "scale",
+      "title": "Scale profile",
+      "fields": [
+        { "name": "repo_count_bucket", "example": "2–5", "kind": "bucket" },
+        { "name": "repo_size_bucket", "example": "100K–500K LOC", "kind": "bucket" },
+        { "name": "worktree_count_bucket", "example": "6–20", "kind": "bucket" },
+        { "name": "agent_concurrency_bucket", "example": "51–200", "kind": "bucket" }
+      ],
+      "howItHelps": "The design makes promises at scale: many repos on one host, many worktrees sharing one index, hundreds of concurrent agents. These buckets show whether real setups look like what we designed and tested for. They also put the performance numbers in context: a 30-second build on a 1M-line repo is fine; on a 50K-line repo it's a bug.",
+      "cannotReveal": "Repo names, exact sizes or what the repos contain."
+    },
+    {
+      "id": "performance",
+      "title": "Performance",
+      "fields": [
+        { "name": "build_time_bucket", "example": "10–30 s", "kind": "bucket" },
+        { "name": "store_size_bucket", "example": "50–100 MB", "kind": "bucket" },
+        { "name": "query_latency", "example": "{\"all\":{\"p50_ms\":5,\"p95_ms\":20}}", "kind": "map" },
+        { "name": "hook_latency", "example": "{\"p95_ms\":9}", "kind": "map" },
+        { "name": "budget_breaches", "example": "[\"store_size\"]", "kind": "list" }
+      ],
+      "howItHelps": "Every budget in DESIGN.md is a promise: query times, hook latency, store size (the reason Memtrace-style multi-GB stores won't happen) and build time. These fields check those promises on real machines instead of our CI containers. A budget breach points straight at the design decision that failed and the release that broke it, and store size catches growth long before it becomes a problem for anyone.",
+      "cannotReveal": "What was queried or which files were built."
+    },
+    {
+      "id": "reliability",
+      "title": "Reliability",
+      "fields": [
+        { "name": "error_codes", "example": "{\"invalid_args\":3,\"busy\":1}", "kind": "map" },
+        { "name": "crash_signature", "example": "{\"signature\":\"sha256:3f…\",\"count\":2}", "kind": "map" }
+      ],
+      "howItHelps": "Error reason codes and counts show the commonest failures without any error messages, which can contain paths. A crash signature is a hash of the stack frames inside gsd-atlas only, so crashes from different users that share a cause are grouped into one issue with a count. That turns scattered \"it crashed\" reports into a ranked list of real bugs.",
+      "cannotReveal": "Messages, paths, stack traces or anything outside gsd-atlas's own code."
+    },
+    {
+      "id": "agent_behavior",
+      "title": "Agent behaviour",
+      "fields": [
+        { "name": "gate_stats", "example": "{\"R2\":{\"fired\":14,\"retried\":12,\"overridden\":1}}", "kind": "map" },
+        { "name": "atlas_vs_grep", "example": "{\"atlas\":420,\"grep\":35}", "kind": "map" }
+      ],
+      "howItHelps": "The point of atlas is that agents stop guessing. These counts show whether agents actually choose atlas over grep, and whether the enforcement hooks help or just get in the way: a gate that fires often and is usually overridden is badly tuned. This is the evidence for deciding whether enforce should ever become the default. Hooks do not exist yet, so this type has no data: if you approve it now, its fields are reported as null.",
+      "cannotReveal": "What the agents searched for, edited or said."
+    },
+    {
+      "id": "ratings",
+      "title": "Ratings",
+      "fields": [
+        { "name": "rating", "example": "[{\"about\":\"code_context\",\"value\":\"↔\"}]", "kind": "list" }
+      ],
+      "howItHelps": "Numbers say whether atlas is fast and correct; ratings say whether it's useful. The middle value matters most: ↔ (\"worked but not impressed\") marks features that technically pass every test but don't earn their place. Ratings per feature show where to invest and what to simplify or cut.",
+      "cannotReveal": "The answer that was rated or the code it was about."
+    },
+    {
+      "id": "notes",
+      "title": "Notes",
+      "fields": [
+        { "name": "note", "example": "\"slow on first query after branch switch\"", "kind": "text" }
+      ],
+      "howItHelps": "A short note explains what the numbers can't: what you were doing, what you expected, what felt wrong. One sentence often turns a ↓ into a reproducible bug.",
+      "cannotReveal": "Anything you don't write. Notes are redacted and path-scrubbed, shown for review before every send, and never included in automatic submissions."
+    }
+  ]
+}

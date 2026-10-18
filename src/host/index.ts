@@ -6,6 +6,8 @@
 export { ALLOW_KIND, ALLOW_SCHEMA, addAllowEntry, applyAllow, needsApprovalFrom, permissionsFor, previewAllow } from './allow.ts';
 export type { AddResult, AllowDeps, AllowEntry, AllowInput, AllowPreview, AllowResult, AllowWritten } from './allow.ts';
 export { loadUserConfig } from './config.ts';
+export { DIAGNOSTICS_KIND, DIAGNOSTICS_SCHEMA } from './diagnostics.ts';
+export type { PreviewData, StatusData, TypeStatus } from './diagnostics.ts';
 export type { LoadedUserConfig } from './config.ts';
 export { INDEX_STATE_SCHEMA, createHost } from './host.ts';
 export type { IndexStateData } from './host.ts';

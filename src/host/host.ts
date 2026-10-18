@@ -15,6 +15,7 @@ import { SchemaTooNew, findExistingStore, probeStore } from '../fact-store/index
 import type { ResolveStoreLocationInput } from '../fact-store/index.ts';
 import { PROTOCOL_VERSION, createAnswerId, diagnostic, failEnvelope, okEnvelope, systemClock } from '../facts/index.ts';
 import type { Envelope, Request } from '../facts/index.ts';
+import { CATALOG_VERSION } from '../diagnostics/index.ts';
 import { createGovernor } from '../governor/index.ts';
 import type { Governor, JobClass } from '../governor/index.ts';
 import { createModuleHost } from '../indexer/index.ts';
@@ -27,6 +28,8 @@ import type { Tenant } from '../tenant/index.ts';
 import { ALLOW_KIND, handleAllow, permissionsFor } from './allow.ts';
 import type { AllowDeps } from './allow.ts';
 import { HOST_DEFAULTS } from './defaults.ts';
+import { DIAGNOSTICS_KIND, handleDiagnostics } from './diagnostics.ts';
+import type { DiagnosticsDeps } from './diagnostics.ts';
 import { HISTORY_KIND, runHistory } from './history.ts';
 import type { HistoryDeps } from './history.ts';
 import { createIdleRegistry } from './idle-registry.ts';
@@ -48,6 +51,9 @@ const NOT_A_REPO = 'repo must be an existing directory inside a git repository.'
 const ALLOW_FORBIDDEN = 'Approvals are recorded only by a person at a terminal with "gsd-atlas allow"; this server cannot record one.';
 
 const RATE_FORBIDDEN = 'Ratings are given only by a person at a terminal with "gsd-atlas rate"; this server cannot record one.';
+
+const DIAGNOSTICS_FORBIDDEN =
+  'Diagnostics are controlled only by a person at a terminal with "gsd-atlas diagnostics"; this server cannot change or build them.';
 
 /** Envelope schema of an `index_state` reply (internal, plan 02-44). */
 export const INDEX_STATE_SCHEMA = 'gsd-atlas.index-state/1';
@@ -389,6 +395,21 @@ export function createHost(options: HostOptions): Host {
     };
   }
 
+  /**
+   * `diagnostics` (SKL-03): the user's choices and the reports built from them. It needs the user's directory and the
+   * version, never a repository file; the data it collects is assembled here and nowhere else.
+   */
+  function diagnosticsRequest(request: Request): Promise<Envelope> {
+    const deps: DiagnosticsDeps = {
+      userDir: options.userDir ?? options.roots.userDir,
+      version: options.version ?? '0.0.0',
+      catalogDir: options.diagnostics?.catalogDir,
+      io: options.diagnostics?.io,
+      gather: (_selection) => Promise.resolve({ atlasVersion: options.version ?? '0.0.0', catalogVersion: CATALOG_VERSION }),
+    };
+    return held(DIAGNOSTICS_KIND, classFor('allow'), () => handleDiagnostics(request, deps));
+  }
+
   async function dispatch(request: Request): Promise<Envelope> {
     if (request.protocol !== PROTOCOL_VERSION) {
       return errorEnvelope(
@@ -420,6 +441,10 @@ export function createHost(options: HostOptions): Host {
     if (request.kind === HISTORY_KIND) return historyRequest(request);
     // D-15: an agent's server never records an approval, whatever the request carries. Checked before the arguments are read.
     if (request.kind === ALLOW_KIND) return origin === 'mcp' ? errorEnvelope('allow_forbidden', ALLOW_FORBIDDEN) : allowRequest(request);
+    // SKL-03: diagnostics are the user's. An agent's server refuses the whole kind, whatever the arguments, before reading them.
+    if (request.kind === DIAGNOSTICS_KIND) {
+      return origin === 'mcp' ? errorEnvelope('diagnostics_forbidden', DIAGNOSTICS_FORBIDDEN) : diagnosticsRequest(request);
+    }
     // D-16: users rate, agents do not. There is no MCP tool for it; a Host started for MCP also refuses the request kind itself.
     if (request.kind === 'rate' && origin === 'mcp') return errorEnvelope('rate_forbidden', RATE_FORBIDDEN);
     if (isRepoKind(request.kind)) return repoRequest(request, request.kind);

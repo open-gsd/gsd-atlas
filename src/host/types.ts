@@ -3,6 +3,7 @@
  * routing and the tenants; adapters only call `host.handle(request)`, through the HostClient seam.
  */
 import type { CommandRunner, UserPermissions } from '../command-runner/index.ts';
+import type { DiagnosticsFs } from '../diagnostics/index.ts';
 import type { Clock, Envelope, Request } from '../facts/index.ts';
 import type { Governor } from '../governor/index.ts';
 import type { GrammarEngine } from '../grammar-engine/index.ts';
@@ -92,6 +93,11 @@ export interface HostOptions {
    * how many source files a whole-tree history question reads (default: the approved `history.maxFiles`).
    */
   readonly history?: { readonly tmpRoot?: string; readonly maxFiles?: number; readonly nonce?: () => string };
+  /**
+   * TEST HOOK. The folder the diagnostics catalog is read from (default: the one that ships with the package) and the
+   * file-system calls the diagnostics module makes (default: the real ones), so a test can record which paths it touches.
+   */
+  readonly diagnostics?: { readonly catalogDir?: string; readonly io?: DiagnosticsFs };
 }
 
 export interface Host {
