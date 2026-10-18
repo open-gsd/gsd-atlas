@@ -341,8 +341,8 @@ describe('code_find kind adr: where is ADR N', () => {
     const { codeFindSchema, codeRefsSchema } = await import('./tools.ts');
     for (const schema of [codeFindSchema, codeRefsSchema]) {
       const text = schema.shape.kind.description ?? '';
-      assert.match(text, /\badr\b/);
-      assert.ok(!/[0-9]/.test(text.replace('ADR', '')), 'a fixed sentence: nothing derived from a repository');
+      assert.match(text, /\bkind adr\b/);
+      assert.ok(!/[\n${}]/.test(text), 'a fixed sentence: nothing is interpolated into it');
     }
   });
 });
@@ -458,7 +458,9 @@ describe('cit handles in code_explain', () => {
     const stale = await query.ask({ protocol: 1, kind: 'code_explain', args: { handle, repo: h.dir }, worktree: h.dir });
     assert.equal(stale.ok, false);
     assert.equal(stale.diagnostics[0]?.code, 'stale_handle');
-    for (const bad of [handle.replace(/\/[0-9]+$/, '/99'), 'cit/src%2Flib.cts/abc/0', 'cit/../x/' + 'a'.repeat(40) + '/0']) {
+    const current = (await ask(query, h, 'code_refs', 'ADR-1')).citations?.[0]?.debug ?? '';
+    assert.notEqual(current, handle, 'the file changed, so the handle changed');
+    for (const bad of [current.replace(/\/[0-9]+$/, '/99'), 'cit/src%2Flib.cts/abc/0', 'cit/../x/' + 'a'.repeat(40) + '/0']) {
       const answer = await query.ask({ protocol: 1, kind: 'code_explain', args: { handle: bad, repo: h.dir }, worktree: h.dir });
       assert.equal(answer.ok, false, bad);
       assert.equal(answer.diagnostics[0]?.code, 'invalid_handle', bad);

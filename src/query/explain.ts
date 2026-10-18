@@ -13,6 +13,7 @@ import { UnknownWorktree, parseHandle } from '../fact-store/index.ts';
 import type { FactExplanation } from '../fact-store/index.ts';
 import { ANSWER_ID_PATTERN, isDegradedCode, okEnvelope } from '../facts/index.ts';
 import type { DegradedCode, Envelope, Watermark } from '../facts/index.ts';
+import { adrData, lookupAdr } from './adr.ts';
 import { cleanField, createCitations } from './cite.ts';
 import { CODE_EXPLAIN_SCHEMA, errorEnvelope, withDegraded } from './envelope.ts';
 import { notIndexed } from './find.ts';
@@ -125,7 +126,9 @@ async function explainFact(ctx: ExplainContext, handle: string): Promise<Envelop
   const cites = createCitations(ctx.nonce, config.lineTextMaxChars);
   cites.add({ path: explanation.fact.path, span: explanation.fact.span, confidence: explanation.fact.confidence, debug: explanation.handle, line: { kind: 'unavailable' } });
 
-  const envelope = okEnvelope(CODE_EXPLAIN_SCHEMA, { explanation, tiers: tiersOf(info) }, [], {
+  // A citation also says what its number names in the repository's ADR directory (names only; no document is read).
+  const adr = explanation.citation === undefined ? undefined : adrData(explanation.citation.number, await lookupAdr(ctx.deps, ctx.worktree, explanation.citation.number));
+  const envelope = okEnvelope(CODE_EXPLAIN_SCHEMA, { explanation, tiers: tiersOf(info), ...(adr === undefined ? {} : { adr }) }, [], {
     citations: cites.citations,
     watermark: read.watermark,
   });

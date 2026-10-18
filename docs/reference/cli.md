@@ -60,7 +60,7 @@ A relative `--repo` or `--cwd` resolves against the process working directory. W
 
 | Option | Value | Commands | Meaning |
 | --- | --- | --- | --- |
-| `--kind` | text | `find`, `refs`, `history` | `find`: only symbols of this kind, for example `function` or `class`. `refs`: only definitions of this kind are followed. |
+| `--kind` | text | `find`, `refs`, `history` | `find`: only symbols of this kind, for example `function` or `class`. `refs`: only definitions of this kind are followed. For both, the kind `adr` asks about an ADR number instead of a symbol. |
 | `--mode` | `exact`, `prefix`, `fuzzy` or `auto` | `find`, `history` | How names match. Default `auto`. `exact` reads the exact tier, `prefix` the exact and prefix tiers, `fuzzy` and `auto` all three when the name has at least 3 characters. |
 | `--path` | repo-relative file | `refs`, `context`, `impact`, `history` | `refs`, `context`, `impact`: the defining file, to tell same-named symbols apart. `history`: read only this file of the commit. |
 | `--depth` | whole number, 0 or more | `impact`, `history` | Hops to follow outward from the symbol. Default 2, at most 5 (a larger value is reduced, with a hint). 0 follows none. |
@@ -106,6 +106,7 @@ gsd-atlas find <name> [--kind <kind>] [--mode exact|prefix|fuzzy|auto] [selectio
 - Options: `--repo`, `--cwd`, `--budget`, `--more`, `--fresh`, `--limit`, `--kind`, `--mode`.
 - Result schema: `gsd-atlas.code-find/1`.
 - `data.results[]`: `name`, `kind`, `path`, `line`, `col` (both 1-based), `exported` (when known), `confidence`, `citation`.
+- `--kind adr` asks where an ADR is: `<name>` is then an ADR number (`ADR-3473`, `adr 3473`, `#3473` or `3473`) and `data` is `{ number, status, citations, results[] }` with the ADR file or files that carry the number (see [ADR citations](mcp.md#adr-citations)).
 - Errors: `not_indexed`, `not_a_repo`, `invalid_args`, `bad_cursor`, `output_too_large`.
 
 ### gsd-atlas refs
@@ -119,6 +120,7 @@ gsd-atlas refs <name> [--kind <kind>] [--path <file>] [selection and paging flag
 - `data.targets[]`: the definitions the references are to (at most 5): `name`, `kind`, `path`, `line`, `handle`.
 - `data.results[]`: `target` (a target handle), `path`, `line`, `col`, `kind` (`call`, `new`, `read`, `type`, `heritage` or `member`), `enclosing`, `tier`, `confidence`, `ambiguous`, `candidates`, `citation`.
 - A reference matched by name is `INFERRED`, never `EXTRACTED`.
+- `--kind adr` lists the code comments that cite an ADR: `<name>` is then an ADR number, `data` is `{ adr: { number, status, files[] }, results[] }` and each result has `path`, `line`, `col`, `detail`, `attachedTo`, `confidence` and `citation` (see [ADR citations](mcp.md#adr-citations)).
 
 ### gsd-atlas context
 

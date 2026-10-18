@@ -148,7 +148,7 @@ export interface CitationsOptions {
 }
 
 /** What kind of fact a handle names (plan 03-26): a definition, a reference site, an import or export statement, or a compiler relation. */
-export type FactKind = 'symbol' | 'reference' | 'import' | 'export' | 'relation';
+export type FactKind = 'symbol' | 'reference' | 'import' | 'export' | 'relation' | 'citation';
 
 /**
  * What the resolved-edge cache says about a reference site (or a relation) under the current overlay snapshot and resolution
@@ -165,6 +165,8 @@ export interface FactExplanation {
   /** The handle in its canonical form. */
   readonly handle: string;
   readonly kind: FactKind;
+  /** A `citation` only: the ADR number the comment cites and the section detail, when it has one. */
+  readonly citation?: { readonly number: number; readonly detail?: string };
   readonly fact: {
     /** The extractor that produced it: `grammar:<module>@<version>`, or `precise:<resolver>`. */
     readonly extractor: string;

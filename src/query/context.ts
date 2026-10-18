@@ -6,15 +6,19 @@
  * the same budget cut and keyset cursor apply as for every other code tool: the definition always comes first,
  * and a cut removes the lowest-priority items first.
  *
- * Callees, ADR citations and tests (`callees`, `cites_adr`, `tested_by`) are Phase 3 and are not present.
+ * ADR citations (plan 03-28, `cites_adr`) are the symbol's `citation` section, between its relations and the file's imports:
+ * each is a mention in a comment attached to the symbol, with the number, the section detail, the status of the number against
+ * the repository's ADR directory (`resolved`, `ambiguous` or `unresolved`) and the ADR files. They are rendered under
+ * `data.citations`, which is absent when the symbol has none. Callees and tests (`callees`, `tested_by`) are not present.
  *
  * `data.file.emittedAs` (TSM-03) lists what the project's compiler writes for the file that defines the symbol, when
  * a project model says so; it is absent otherwise.
  */
 import { UnknownWorktree, formatHandle } from '../fact-store/index.ts';
-import type { Reader, RelationRecord, SymbolRecord } from '../fact-store/index.ts';
+import type { CitationRecord, Reader, RelationRecord, SymbolRecord } from '../fact-store/index.ts';
 import type { DegradedCode, Envelope, ExportSite, FileFacts, ImportSite, LocalSymbol, Span, SymbolIdentity } from '../facts/index.ts';
 import { okEnvelope, symbolKey } from '../facts/index.ts';
+import { linkConfidence, lookupAdr } from './adr.ts';
 import { cleanField, createCitations, memoLineText } from './cite.ts';
 import { CODE_CONTEXT_SCHEMA, errorEnvelope, withDegraded } from './envelope.ts';
 import { CURSOR_TOO_LONG_HINT, OUTPUT_TOO_LARGE_MESSAGE, TRUNCATED_HINT, notIndexed } from './find.ts';
@@ -27,6 +31,7 @@ import { NO_DEFINITION_HINT, TARGETS_CAPPED_HINT, describeDefinition, findTarget
 import type { DefinitionInfo, RefItem } from './refs.ts';
 import { createLineReader } from './text.ts';
 import type { CodeContextInput } from './tools.ts';
+import type { AdrLookup } from './types.ts';
 
 /** Other definitions of the name that are listed beside the best-ranked one. */
 export const MAX_ALTERNATIVES = 5;
@@ -82,7 +87,15 @@ interface RelationEntry {
   readonly other: { readonly identity: SymbolIdentity; readonly kind: string; readonly path: string; readonly span: Span };
 }
 
-type Entry = SymbolEntry | ImportEntry | ExportEntry | ReferenceEntry | RelationEntry;
+/** An ADR mention attached to the definition (plan 03-28), with what its number names in the repository's ADR directory. */
+interface CitationEntry {
+  readonly key: SortKey;
+  readonly section: 'citation';
+  readonly record: CitationRecord;
+  readonly lookup: AdrLookup;
+}
+
+type Entry = SymbolEntry | ImportEntry | ExportEntry | ReferenceEntry | RelationEntry | CitationEntry;
 
 const lastSegment = (qualifiedName: string): string => {
   const dot = qualifiedName.lastIndexOf('.');
@@ -260,6 +273,25 @@ export async function runContext(ctx: FindContext, input: CodeContextInput): Pro
         });
         ordinals[section] += 1;
       }
+
+      // The ADR mentions attached to the definition, each with what its number names (one lookup per number).
+      const cited = await reader.citations({ symbol: best.identity });
+      watermark = laterOf(watermark, cited.watermark);
+      for (const code of cited.degraded ?? []) degraded.add(code);
+      const known = new Map<number, Promise<AdrLookup>>();
+      for (const [ordinal, record] of cited.data.entries()) {
+        let lookup = known.get(record.number);
+        if (lookup === undefined) {
+          lookup = lookupAdr(ctx.deps, ctx.worktree, record.number);
+          known.set(record.number, lookup);
+        }
+        entries.push({
+          key: contextKeyOf('citation', ordinal, record.source_path, record.span.startLine, record.span.startColumn),
+          section: 'citation',
+          record,
+          lookup: await lookup,
+        });
+      }
     }
     entries.sort((a, b) => compareRanked(a.key, b.key));
 
@@ -280,8 +312,24 @@ export async function runContext(ctx: FindContext, input: CodeContextInput): Pro
       const results: Record<string, unknown>[] = [];
       const supertypes: Record<string, unknown>[] = [];
       const subtypes: Record<string, unknown>[] = [];
+      const adrCitations: Record<string, unknown>[] = [];
       for (const entry of kept) {
         const section: ContextSection = entry.section;
+        if (entry.section === 'citation') {
+          const { record, lookup } = entry;
+          const line = await textOf(entry, record.source_path, record.span);
+          const id = cites.add({ path: record.source_path, span: record.span, confidence: linkConfidence(lookup.status), debug: record.debug, line });
+          adrCitations.push({
+            number: record.number,
+            ...(record.detail === undefined ? {} : { detail: cleanField(record.detail) }),
+            status: lookup.status,
+            files: lookup.files.map(cleanField),
+            line: record.span.startLine + 1,
+            col: record.span.startColumn + 1,
+            citation: id,
+          });
+          continue;
+        }
         if (entry.section === 'supertype' || entry.section === 'subtype') {
           const line = await textOf(entry, entry.other.path, entry.other.span);
           const id = cites.add({ path: entry.other.path, span: entry.other.span, confidence: 'EXTRACTED', debug: entry.record.debug, line });
@@ -389,6 +437,7 @@ export async function runContext(ctx: FindContext, input: CodeContextInput): Pro
         ...(emittedAs.length === 0 ? {} : { file: { path: cleanField(filePath), emittedAs: emittedAs.map(cleanField) } }),
         ...(supertypes.length === 0 ? {} : { supertypes }),
         ...(subtypes.length === 0 ? {} : { subtypes }),
+        ...(adrCitations.length === 0 ? {} : { citations: adrCitations }),
       };
       const envelope = okEnvelope(CODE_CONTEXT_SCHEMA, data, ctx.fresh.diagnostics, {
         ...(cites.citations.length === 0 ? {} : { citations: cites.citations }),

@@ -21,8 +21,8 @@ import type { CacheState, FactExplanation, FactKind } from './types.ts';
 /** The longest handle the store reads, in characters. A longer string is not a handle. */
 export const MAX_HANDLE_CHARS = 2048;
 
-/** The kinds of handle, as the prefix says. `rel` is a compiler relation between two symbols (plan 03-25). */
-export type HandleKind = 'sym' | 'ref' | 'imp' | 'exp' | 'rel';
+/** The kinds of handle, as the prefix says. `rel` is a compiler relation between two symbols (plan 03-25); `cit` an ADR citation in a comment (plan 03-28). */
+export type HandleKind = 'sym' | 'ref' | 'imp' | 'exp' | 'rel' | 'cit';
 
 /**
  * A parsed handle. `path`, `hash` and `ord` locate the fact in its file (for `rel` the `from` symbol); a `rel` handle also
@@ -38,7 +38,7 @@ export interface Handle {
   readonly toOrd?: number;
 }
 
-const SIMPLE_KINDS: ReadonlySet<string> = new Set(['sym', 'ref', 'imp', 'exp']);
+const SIMPLE_KINDS: ReadonlySet<string> = new Set(['sym', 'ref', 'imp', 'exp', 'cit']);
 
 /** What `encodeURIComponent` can emit: unreserved characters, `!`, `'`, `(`, `)`, `*` and `%XX`. */
 const ENCODED = /^[A-Za-z0-9\-_.!~*'()%]+$/;
@@ -118,6 +118,7 @@ const KIND_OF: Readonly<Record<HandleKind, FactKind>> = {
   imp: 'import',
   exp: 'export',
   rel: 'relation',
+  cit: 'citation',
 };
 
 /** The base name of a worktree id (a path): the only part of it an explanation shows. */
@@ -216,6 +217,17 @@ export function describeFact(snap: Snapshot, handle: Handle, project: ProjectCon
     case 'exp': {
       const span = spanFromRow(snap.db, 'SELECT start_line, start_col, end_line, end_col FROM exports WHERE file_id = ? AND ord = ?', fileId, handle.ord);
       return span === null ? null : explain(span, 'grammar', 'EXTRACTED', grammar, null);
+    }
+    case 'cit': {
+      // An ADR mention in a comment: a fact of the grammar tier. Its link to an ADR file is made at read time by the caller.
+      const row = snap.db
+        .prepare('SELECT number, detail, start_line, start_col, end_line, end_col FROM citations WHERE file_id = ? AND ord = ?')
+        .get(fileId, handle.ord);
+      if (row === undefined) return null;
+      return {
+        ...explain(spanOf(row), 'grammar', 'EXTRACTED', grammar, null),
+        citation: { number: num(row.number), ...(row.detail === null ? {} : { detail: str(row.detail) }) },
+      };
     }
     case 'ref': {
       const row = snap.db

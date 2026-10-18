@@ -235,19 +235,25 @@ describe('code_find, code_refs and code_context with ADR citations: CLI and MCP 
   it('CLI and MCP return the same JSON for code_find, code_refs and code_context', async () => {
     await withAdrFixture(DUPLICATE_FILES, async (fixture) => {
       assert.equal((await fixture.cli(['build', '--repo', fixture.dir])).code, 0);
-      const server = fixture.mcp();
-      await server.initialize();
 
       const pairs: ReadonlyArray<{ readonly label: string; readonly cli: readonly string[]; readonly tool: string; readonly args: Record<string, unknown> }> = [
         { label: 'code_find', cli: ['find', 'ADR-10', '--kind', 'adr'], tool: 'code_find', args: { name: 'ADR-10', kind: 'adr' } },
         { label: 'code_refs', cli: ['refs', 'ADR-11', '--kind', 'adr'], tool: 'code_refs', args: { name: 'ADR-11', kind: 'adr' } },
         { label: 'code_context', cli: ['context', 'ten'], tool: 'code_context', args: { name: 'ten' } },
       ];
+      // The CLI runs first, one process at a time, so each is the writer-lease holder; the MCP server then is, and the answers are
+      // compared like for like (a process that does not hold the lease marks its answers `follower`).
+      const fromCli: string[] = [];
       for (const pair of pairs) {
         const cli = await fixture.cli([...pair.cli, '--repo', fixture.dir]);
         assert.equal(cli.code, 0, cli.stderr);
+        fromCli.push(maskNonce(cli.stdout.trimEnd()));
+      }
+      const server = fixture.mcp();
+      await server.initialize();
+      for (const [index, pair] of pairs.entries()) {
         const call = await server.callTool(pair.tool, { ...pair.args, repo: fixture.dir });
-        assert.equal(maskNonce(cli.stdout.trimEnd()), maskNonce(call.result.content[0]?.text ?? ''), pair.label);
+        assert.equal(fromCli[index], maskNonce(call.result.content[0]?.text ?? ''), pair.label);
       }
       const context = (await fixture.cli(['context', 'ten', '--repo', fixture.dir])).envelope.data as {
         citations?: ReadonlyArray<{ number: number; status: string; files: string[] }>;

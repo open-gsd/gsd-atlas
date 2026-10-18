@@ -71,10 +71,10 @@ export async function lookupAdr(deps: Pick<QueryDeps, 'adr'>, worktree: string, 
 }
 
 /** The confidence of the link from a citation to its ADR file: one file is `EXTRACTED`; several, or none, are not. */
-const linkConfidence = (status: AdrStatus): Confidence => (status === 'resolved' ? 'EXTRACTED' : 'INFERRED');
+export const linkConfidence = (status: AdrStatus): Confidence => (status === 'resolved' ? 'EXTRACTED' : 'INFERRED');
 
 /** The `adr` object of the data: the number, its status and the files (cleaned); `listTruncated` only when it is true. */
-function adrData(number: number, lookup: AdrLookup): Record<string, unknown> {
+export function adrData(number: number, lookup: AdrLookup): Record<string, unknown> {
   return {
     number,
     status: lookup.status,
