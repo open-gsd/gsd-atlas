@@ -104,7 +104,11 @@ export interface BuildResult {
   readonly linked: number;
   /** Paths that left the overlay (deleted, or no longer source). */
   readonly removed: number;
-  /** Snapshot diagnostics plus one diagnostic per file the source set dropped (and one count of unclaimed extensions). */
+  /**
+   * Snapshot diagnostics plus one diagnostic per file the source set dropped (and one count of unclaimed extensions),
+   * one count of emit outputs left out, and one count (`citation_comment_too_long`) of files parsed in this run that
+   * hold an ADR-mentioning comment over the comment size bound, whose citations are therefore not indexed.
+   */
   readonly skipped: readonly Diagnostic[];
   readonly failed: readonly FailedPath[];
 }

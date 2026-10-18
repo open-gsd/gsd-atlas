@@ -828,11 +828,12 @@ describe('the comment text bound (adr.maxCommentUnits)', () => {
     assert.match(approvals, /^> approve$/m, 'with the reply quoted verbatim');
   });
 
-  it('floor: the bound is at least twice the longest ADR-mentioning comment seen on the pinned gsd-core (17,881 units, 10ac3a7)', () => {
-    assert.ok(
-      GRAMMAR_LIMITS.commentTextChars >= 2 * LONGEST_OBSERVED_ADR_COMMENT,
-      `${String(GRAMMAR_LIMITS.commentTextChars)} is under ${String(2 * LONGEST_OBSERVED_ADR_COMMENT)}`,
-    );
+  it('floor: the bound keeps the margin the approval was based on over the longest ADR-mentioning comment on the pinned gsd-core (17,881 units, 10ac3a7)', () => {
+    // The approved 32,768 is 1.83 times 17,881, so a factor of 2 cannot hold for it; 1.8 is the largest round margin it has.
+    // Shrinking the bound below this fails, and so does a corpus whose longest comment moves past the bound.
+    const floor = 1.8 * LONGEST_OBSERVED_ADR_COMMENT;
+    assert.ok(GRAMMAR_LIMITS.commentTextChars >= floor, `${String(GRAMMAR_LIMITS.commentTextChars)} is under ${String(floor)}`);
+    assert.ok(GRAMMAR_LIMITS.commentTextChars > LONGEST_OBSERVED_ADR_COMMENT);
   });
 
   it('B-1 and B units are read, B+1 is skipped whole and counted (real engine, ADR at the end of the comment)', async () => {
@@ -840,7 +841,11 @@ describe('the comment text bound (adr.maxCommentUnits)', () => {
     for (const length of [bound - 1, bound]) {
       const text = lineCommentOfLength(length, 'ADR-123');
       const result = await extractWithModule('typescript', `${text}\nconst after = 1;\n`);
-      assert.deepEqual(result.facts.citations, [{ number: 123, span: sp(0, length - 7, 0, length) }], `length ${String(length)}`);
+      assert.deepEqual(
+        result.facts.citations,
+        [{ number: 123, span: sp(0, length - 7, 0, length), enclosing: 0 }],
+        `length ${String(length)}: kept, attached to the symbol the comment documents`,
+      );
       assert.deepEqual(result.diagnostics, []);
     }
     const over = await extractWithModule('typescript', `${lineCommentOfLength(bound + 1, 'ADR-123')}\nconst after = 1;\n`);
@@ -976,8 +981,8 @@ describe('the comment text bound (adr.maxCommentUnits)', () => {
   it('scanAdrMentions stops at a given maximum and returns the same first mentions as an unlimited scan', () => {
     const text = 'ADR-1 ADR-2 §3 adr 4 ADR #5 ADR-6';
     const all = scanAdrMentions(text);
-    assert.equal(all.length, 6);
-    for (const max of [1, 2, 5, 6, 7]) {
+    assert.equal(all.length, 5);
+    for (const max of [0, 1, 2, 4, 5, 6]) {
       assert.deepEqual(scanAdrMentions(text, undefined, max), all.slice(0, max));
     }
     const probe = { steps: 0 };

@@ -15,7 +15,7 @@
  * - `comment` (optional, plan 03-24) on a comment node, alone in its match. A module's query filters it with
  *   a `#match?` predicate so only comments that mention an ADR cross the engine boundary; the extractor scans
  *   the text for `ADR-<n>`, `ADR <n>` and `ADR #<n>` (see `scanAdrMentions`) and turns each mention into a
- *   `CitationSite`. The engine keeps the text of a `comment` up to 65,536 UTF-16 units (`GRAMMAR_LIMITS`); a
+ *   `CitationSite`. The engine keeps the text of a `comment` up to 32,768 UTF-16 units (`GRAMMAR_LIMITS`); a
  *   longer one arrives empty and is counted in the info diagnostic `citation_comment_too_long`. A comment
  *   match is never a "match without a name".
  *
@@ -78,6 +78,8 @@ export interface ExtractInput {
   readonly module: string;
   readonly grammarVersion: string;
   readonly run: GrammarRunResult;
+  /** A step counter for the ADR scan, passed in by tests that prove the scan stops at the citation cap. */
+  readonly scanProbe?: ScanProbe;
 }
 
 export interface ExtractResult {
@@ -85,6 +87,9 @@ export interface ExtractResult {
   /** Info diagnostics `match_missing_name`, `match_missing_path` and `citation_comment_too_long`; never fatal. */
   readonly diagnostics: Diagnostic[];
 }
+
+/** The code of the info diagnostic for comments that mention an ADR but are over the comment size bound. */
+export const CITATION_COMMENT_TOO_LONG = 'citation_comment_too_long';
 
 const DEFINITION_PREFIX = 'definition.';
 const IMPORT_PREFIX = 'import.';
@@ -223,15 +228,18 @@ function isTokenCode(code: number): boolean {
  * beyond the safe integers is no citation, and a letter after the digits does not extend the number (`ADR-1a` is 1).
  * A malformed mention (`ADR-`, `ADR - 1`) is skipped, never guessed.
  *
+ * The scan stops once it holds `max` mentions (the first `max` in text order), so a hostile comment of nothing but
+ * mentions costs the work of `max` of them and not of the whole text.
+ *
  * One pass, no backtracking: every position is looked at once, and a digit run is consumed once and then skipped, so
  * the work is linear in the length of the text whatever its shape (`probe.steps` counts it for the tests).
  */
-export function scanAdrMentions(text: string, probe?: ScanProbe): AdrMention[] {
+export function scanAdrMentions(text: string, probe?: ScanProbe, max = Number.POSITIVE_INFINITY): AdrMention[] {
   const found: AdrMention[] = [];
   const length = text.length;
   let steps = 0;
   let at = 0;
-  while (at < length) {
+  while (at < length && found.length < max) {
     steps += 1;
     // Cheapest test first: `A` or `a` (0x41 | 0x20 and 0x61 are the only code units that give 0x61).
     if ((text.charCodeAt(at) | 0x20) !== CHAR_A || (at > 0 && isWordCode(text.charCodeAt(at - 1)))) {
@@ -312,16 +320,26 @@ interface CommentDraft {
 
 /**
  * The mentions of every `comment` capture of the tags query, each with the span of the mention itself. A comment
- * whose text was dropped by the engine (over the 65,536-unit bound) is counted and yields nothing. Only the number,
+ * whose text was dropped by the engine (over the 32,768-unit bound) is counted and yields nothing. Only the number,
  * the detail and the span leave this function; the comment text is read here and never kept.
+ *
+ * At most `MAX_CITATIONS_PER_FILE` drafts are built. The comments are visited in position order; when none overlaps
+ * another (every comment node of a real grammar), the mentions then arrive in position order too, which is the order
+ * `attachCitations` ranks them in, so the first `MAX_CITATIONS_PER_FILE` drafts are exactly the ones it keeps and
+ * nothing after them is scanned. Overlapping or repeated captures (a scripted or hostile module) take the full path.
+ * Either way the output is the one a scan of everything followed by the cut would give.
  */
-function collectCitationDrafts(captures: readonly Capture[]): {
+function collectCitationDrafts(
+  captures: readonly Capture[],
+  probe?: ScanProbe,
+): {
   drafts: CommentDraft[];
   comments: Span[];
   tooLong: number;
 } {
   const drafts: CommentDraft[] = [];
   const comments: Span[] = [];
+  const readable: Capture[] = [];
   let tooLong = 0;
   for (const capture of captures) {
     if (capture.query !== 'tags' || capture.name !== 'comment') {
@@ -332,12 +350,26 @@ function collectCitationDrafts(captures: readonly Capture[]): {
       continue;
     }
     comments.push(capture.span);
+    readable.push(capture);
+  }
+  readable.sort((a, b) => compareStart(a.span, b.span) || compareEndAscending(a.span, b.span));
+  let disjoint = true;
+  for (let at = 1; at < readable.length && disjoint; at += 1) {
+    const before = (readable[at - 1] as Capture).span;
+    const span = (readable[at] as Capture).span;
+    disjoint = span.startLine > before.endLine || (span.startLine === before.endLine && span.startColumn >= before.endColumn);
+  }
+  const cap = disjoint ? MAX_CITATIONS_PER_FILE : Number.POSITIVE_INFINITY;
+  for (const capture of readable) {
+    if (drafts.length >= cap) {
+      break;
+    }
     // Lines and columns of each mention come from the capture's start and the text before it: rows count LF only,
     // columns count UTF-16 units from the last LF (or from the capture's own column on its first line).
     let line = capture.span.startLine;
     let lineStart = -capture.span.startColumn;
     let nextLf = capture.text.indexOf('\n');
-    for (const mention of scanAdrMentions(capture.text)) {
+    for (const mention of scanAdrMentions(capture.text, probe, cap - drafts.length)) {
       while (nextLf !== -1 && nextLf < mention.index) {
         line += 1;
         lineStart = nextLf + 1;
@@ -790,7 +822,7 @@ export function extractFileFacts(input: ExtractInput): ExtractResult {
     declarationSpans: new Set(drafts.map((draft) => spanKey(draft.nameSpan))),
   });
 
-  const cited = collectCitationDrafts(run.captures);
+  const cited = collectCitationDrafts(run.captures, input.scanProbe);
   const citations = attachCitations(cited.drafts, cited.comments, symbols);
 
   const nameSkipped = defined.skipped + exported.skipped;
@@ -818,7 +850,7 @@ export function extractFileFacts(input: ExtractInput): ExtractResult {
   if (cited.tooLong > 0) {
     diagnostics.push(
       diagnostic(
-        'citation_comment_too_long',
+        CITATION_COMMENT_TOO_LONG,
         'info',
         countMessage(cited.tooLong, 'comments that mention an ADR but are over the comment size bound'),
         input.path,

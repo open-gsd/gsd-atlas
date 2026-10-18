@@ -13,7 +13,7 @@ export type { PoolOptions, PoolStatus } from './pool/pool.ts';
 export type { ErrorMeasurement } from './measure.ts';
 export { createFakeGrammarEngine } from './fake.ts';
 export type { FakeGrammarScript, ScriptedCapture, ScriptedRunResult } from './fake.ts';
-export { extractFileFacts } from './extract.ts';
+export { CITATION_COMMENT_TOO_LONG, extractFileFacts } from './extract.ts';
 export type { ExtractInput, ExtractResult } from './extract.ts';
 export { stripBom } from './normalize.ts';
 export type {
