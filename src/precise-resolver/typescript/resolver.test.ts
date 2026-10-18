@@ -279,6 +279,46 @@ describe('TypeScript precise tier: a real worker over a fixture project', () => 
   });
 });
 
+describe('TypeScript precise tier: the eager pass of build (plan 03-29)', () => {
+  it('first refs after build is a cache hit: precise EXTRACTED records on the first try and the compiler is not asked at read time', async (t) => {
+    const world = await makeWorld(t, FIXTURE);
+    const built = await world.build();
+    assert.equal(built.ok, true, JSON.stringify(built.diagnostics));
+    assert.deepEqual(built.diagnostics, [], 'a clean build has no notes');
+    const tier = world.tier();
+    assert.ok(tier !== undefined, 'a precise tier was built');
+    const askedByBuild = tier.stats().sites.asked;
+    assert.ok(askedByBuild >= 1, 'the build asked the compiler about the reference sites');
+
+    const envelope = await world.ask('code_refs', { name: 'compute', path: 'src/lib.cts' });
+    assert.equal(envelope.ok, true, JSON.stringify(envelope.diagnostics));
+    assert.equal((envelope.degraded ?? []).includes('resolver_timeout'), false, 'no timeout on the first read');
+    for (const code of envelope.degraded ?? []) assert.equal(code, 'compiler_fallback', `unexpected degraded code ${code}`);
+    const inUser = at(refRows(envelope), 'src/user.cts');
+    assert.equal(inUser.length, 2, JSON.stringify(refRows(envelope)));
+    for (const row of inUser) {
+      assert.equal(row.tier, 'precise');
+      assert.equal(row.confidence, 'EXTRACTED');
+    }
+    assert.equal(tier.stats().sites.asked, askedByBuild, 'the cache answered: the compiler was not asked at read time');
+  });
+
+  it('maintain resolve after a build processes nothing and the tier is not asked again', async (t) => {
+    const world = await makeWorld(t, FIXTURE);
+    assert.equal((await world.build()).ok, true);
+    const tier = world.tier();
+    assert.ok(tier !== undefined);
+    const asked = tier.stats().sites.asked;
+    const reply = await world.ask('maintain', { task: 'resolve' });
+    assert.equal(reply.ok, true, JSON.stringify(reply.diagnostics));
+    const report = (reply.data as { tasks: Record<string, { complete: boolean; processed: number; precise?: { asked: number; complete: boolean } }> }).tasks['resolve'];
+    assert.equal(report?.complete, true);
+    assert.equal(report?.processed, 0);
+    assert.equal(report?.precise?.complete, true);
+    assert.equal(tier.stats().sites.asked, asked);
+  });
+});
+
 /** True once no process has `pid`. */
 async function waitGone(pid: number, timeoutMs = 8000): Promise<void> {
   const until = Date.now() + timeoutMs;

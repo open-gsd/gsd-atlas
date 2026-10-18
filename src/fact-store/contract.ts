@@ -2063,6 +2063,39 @@ export function defineFactStoreContract(label: string, driver: DriverName): void
       );
     });
 
+    it('resolve (eager pass): asks the resolver about every reference site of the overlay once, caches the answers, and a second call asks nothing', async () => {
+      const askedSites: number[] = [];
+      const inner = createScriptedResolver({ id: 'scripted', edges: [{ site: SITE_1, target: RUN_CJS }] });
+      const counting: Resolver = (sites, context) => {
+        for (const site of sites) askedSites.push(site.span.startLine);
+        return inner.resolve({ id: 'overlay', pathToHash: new Map() }, context, sites);
+      };
+      await withStore(
+        driver,
+        async (fx) => {
+          const writer = fx.store.writer();
+          await seedAmbiguous(writer);
+          const peek = await fx.peek();
+          const first = await fx.store.resolve('main', { budgetMs: 10_000 });
+          assert.equal(first.complete, true);
+          assert.equal(first.processed, 3, 'the three reference sites of c.cjs, with or without an edge');
+          assert.deepStrictEqual([...askedSites].sort((a, b) => a - b), [3, 6, 12]);
+          assert.equal(Number(peek.prepare('SELECT count(*) AS n FROM resolved_asked').get()?.n), 3);
+          assert.equal(Number(peek.prepare('SELECT count(*) AS n FROM resolved_edges').get()?.n), 1);
+          const refs = await fx.store.at('main').refs(RUN_CJS);
+          assert.deepStrictEqual(refs.data.map((record) => [record.span.startLine, record.tier]), [[3, 'precise'], [6, 'grammar']]);
+          assert.equal(askedSites.length, 3, 'the read after the pass is served from the cache');
+          const second = await fx.store.resolve('main', { budgetMs: 10_000 });
+          assert.equal(second.complete, true);
+          assert.equal(second.processed, 0);
+          assert.equal(askedSites.length, 3);
+          writer.release();
+        },
+        {},
+        counting,
+      );
+    });
+
     it('[edge STO-03/empty] an overlay with no files returns empty data for refs, callers and importers with the watermark and no error', async () => {
       await withStore(driver, async (fx) => {
         const writer = fx.store.writer();
