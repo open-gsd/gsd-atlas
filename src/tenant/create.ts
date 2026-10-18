@@ -21,7 +21,7 @@ import type { Metrics } from '../metrics/index.ts';
 import type { PreciseTier } from '../precise-resolver/index.ts';
 import { createQuery, errorEnvelope } from '../query/index.ts';
 import type { ExplainPort, FreshPort, TierInfo } from '../query/index.ts';
-import { DEFAULT_ADR_DIRS, createAdrDirectory } from './adr.ts';
+import { chooseAdrDirs, createAdrDirectory } from './adr.ts';
 import { DEFAULT_TENANT_TUNING } from './defaults.ts';
 import { createFollowerFresh } from './follower-overlay.ts';
 import { createFlightRecorder } from './flight.ts';
@@ -29,6 +29,7 @@ import type { FlightRecorder } from './flight.ts';
 import { createIdleMaintainer } from './idle.ts';
 import { declaredPreciseCommands, mergeCommandReports, runApprovedPreciseCommand } from './precise-command.ts';
 import { recordRating } from './rate.ts';
+import { readRepoConfig } from './repo-config.ts';
 import type { RateInput } from './rate.ts';
 import { answerEvent, flightAnswer, isAnsweredKind } from './record.ts';
 import { buildNotes, leaseHeldEnvelope, notIndexedEnvelope, storeUnavailableEnvelope } from './messages.ts';
@@ -442,8 +443,15 @@ export async function createTenant(deps: TenantDeps): Promise<Tenant> {
     grammarVersion: (module) => moduleRegistry().modules.find((entry) => entry.name === module)?.version,
   };
 
-  // Plan 03-28: which ADR file a citation number names, joined at read time against the repository's ADR directory.
-  const adrDirectory = createAdrDirectory({ tree, dirsFor: () => DEFAULT_ADR_DIRS });
+  // Plan 03-28: which ADR file a citation number names, joined at read time against the repository's ADR directory. The directory
+  // comes from the repository's config file when it names one, else from the module manifests, else the convention list.
+  const adrDirectory = createAdrDirectory({
+    tree,
+    dirsFor: async (worktree) => {
+      const config = await readRepoConfig(tree, worktree);
+      return { dirs: chooseAdrDirs(config, moduleRegistry().modules.map((entry) => entry.adrDirs)), diagnostics: config.diagnostics };
+    },
+  });
 
   let query: ReturnType<typeof createQuery>;
   try {

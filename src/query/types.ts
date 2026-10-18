@@ -6,7 +6,7 @@
  * the hooks are adapters that hand it a `Request` and return the `Envelope` unchanged.
  */
 import type { FactStore, Reader, StoreStatus } from '../fact-store/index.ts';
-import type { Clock, DegradedCode, Envelope, Request } from '../facts/index.ts';
+import type { Clock, DegradedCode, Diagnostic, Envelope, Request } from '../facts/index.ts';
 import type { GovernorStatus } from '../governor/index.ts';
 import type { SourceTree } from '../source-tree/index.ts';
 
@@ -167,6 +167,8 @@ export interface AdrLookup {
   readonly status: AdrStatus;
   readonly files: readonly string[];
   readonly listTruncated?: true;
+  /** Notes about how the ADR directories were chosen (fixed text, no repository words); Query adds them to the answer. */
+  readonly diagnostics?: readonly Diagnostic[];
 }
 
 /**

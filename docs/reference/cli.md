@@ -260,7 +260,7 @@ gsd-atlas lang list [root flags]
 
 - Options: the module roots.
 - Result schema: `gsd-atlas.lang-list/1`.
-- `data.modules[]`: `name`, `source` (`repo`, `user`, `npm` or `builtin`), `dir`, `version`, `extensions`, `inactiveExtensions` (extensions another module owns), `tiers[]` (`tier`: `grammar`, `precise` or `platform`; `active`; `reason` when given), `shadowed[]` (`source`, `dir`).
+- `data.modules[]`: `name`, `source` (`repo`, `user`, `npm` or `builtin`), `dir`, `version`, `schemaVersion` (the manifest version the module is written at, 1 or 2), `adrDirs` (the ADR directories its manifest names; empty for a version 1 manifest), `extensions`, `inactiveExtensions` (extensions another module owns), `tiers[]` (`tier`: `grammar`, `precise` or `platform`; `active`; `reason` when given), `shadowed[]` (`source`, `dir`).
 
 ### gsd-atlas lang test
 

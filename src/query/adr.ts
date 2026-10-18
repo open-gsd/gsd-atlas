@@ -168,7 +168,7 @@ export async function runAdrRefs(ctx: FindContext, input: CodeRefsInput): Promis
       if (state.cut) hints.push(state.more === null ? CURSOR_TOO_LONG_HINT : TRUNCATED_HINT);
       if (capped) hints.push(CITATIONS_CAPPED_HINT);
 
-      const envelope = okEnvelope(CODE_REFS_SCHEMA, { adr: adrData(number, lookup), results }, ctx.fresh.diagnostics, {
+      const envelope = okEnvelope(CODE_REFS_SCHEMA, { adr: adrData(number, lookup), results }, [...ctx.fresh.diagnostics, ...(lookup.diagnostics ?? [])], {
         ...(cites.citations.length === 0 ? {} : { citations: cites.citations }),
         watermark,
         ...(cites.entries.length === 0 ? {} : { untrusted_text: { nonce: ctx.nonce, entries: cites.entries } }),
@@ -252,7 +252,7 @@ export async function runAdrFind(ctx: FindContext, input: CodeFindInput): Promis
         ...(lookup.listTruncated === true ? { listTruncated: true } : {}),
         results,
       };
-      const envelope = okEnvelope(CODE_FIND_SCHEMA, data, ctx.fresh.diagnostics, {
+      const envelope = okEnvelope(CODE_FIND_SCHEMA, data, [...ctx.fresh.diagnostics, ...(lookup.diagnostics ?? [])], {
         ...(cites.citations.length === 0 ? {} : { citations: cites.citations }),
         watermark,
         ...(state.cut || capped ? { truncated: true } : {}),

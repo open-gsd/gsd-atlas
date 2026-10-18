@@ -2,165 +2,340 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:gsd-atlas:schema:atlas-lang:1",
   "title": "gsd-atlas language module manifest",
-  "type": "object",
-  "properties": {
-    "$schema": {
-      "type": "string"
-    },
-    "schemaVersion": {
-      "type": "number",
-      "const": 1
-    },
-    "name": {
-      "type": "string",
-      "maxLength": 64,
-      "pattern": "^[a-z][a-z0-9-]*$"
-    },
-    "version": {
-      "type": "string",
-      "pattern": "^\\d+\\.\\d+\\.\\d+(-[0-9A-Za-z.-]+)?$"
-    },
-    "extensions": {
-      "minItems": 1,
-      "maxItems": 32,
-      "type": "array",
-      "items": {
-        "type": "string",
-        "pattern": "^\\.[A-Za-z0-9]+$"
-      }
-    },
-    "replace": {
-      "type": "boolean"
-    },
-    "grammar": {
+  "oneOf": [
+    {
       "type": "object",
       "properties": {
-        "wasm": {
-          "type": "string",
-          "pattern": "^(?![A-Za-z]:)(?!\\/)(?!(?:[^/]*\\/)*\\.\\.(?:\\/|$))[^\\\\\\u0000]+$"
+        "schemaVersion": {
+          "type": "number",
+          "const": 1
         },
-        "lock": {
-          "type": "string",
-          "pattern": "^(?![A-Za-z]:)(?!\\/)(?!(?:[^/]*\\/)*\\.\\.(?:\\/|$))[^\\\\\\u0000]+$"
-        }
-      },
-      "required": [
-        "wasm",
-        "lock"
-      ],
-      "additionalProperties": false
-    },
-    "queries": {
-      "type": "object",
-      "properties": {
-        "tags": {
-          "type": "string",
-          "pattern": "^(?![A-Za-z]:)(?!\\/)(?!(?:[^/]*\\/)*\\.\\.(?:\\/|$))[^\\\\\\u0000]+$"
+        "$schema": {
+          "type": "string"
         },
-        "refs": {
+        "name": {
           "type": "string",
-          "pattern": "^(?![A-Za-z]:)(?!\\/)(?!(?:[^/]*\\/)*\\.\\.(?:\\/|$))[^\\\\\\u0000]+$"
+          "maxLength": 64,
+          "pattern": "^[a-z][a-z0-9-]*$"
         },
-        "imports": {
+        "version": {
           "type": "string",
-          "pattern": "^(?![A-Za-z]:)(?!\\/)(?!(?:[^/]*\\/)*\\.\\.(?:\\/|$))[^\\\\\\u0000]+$"
-        }
-      },
-      "required": [
-        "tags"
-      ],
-      "additionalProperties": false
-    },
-    "tiers": {
-      "default": [
-        "grammar"
-      ],
-      "minItems": 1,
-      "type": "array",
-      "items": {
-        "type": "string",
-        "enum": [
-          "grammar",
-          "precise",
-          "platform"
-        ]
-      }
-    },
-    "parseBudget": {
-      "default": 0.005,
-      "type": "number",
-      "minimum": 0,
-      "maximum": 1
-    },
-    "testGlobs": {
-      "type": "array",
-      "items": {
-        "type": "string"
-      }
-    },
-    "features": {
-      "type": "string",
-      "pattern": "^(?![A-Za-z]:)(?!\\/)(?!(?:[^/]*\\/)*\\.\\.(?:\\/|$))[^\\\\\\u0000]+$"
-    },
-    "project": {
-      "type": "object",
-      "properties": {
-        "markers": {
+          "pattern": "^\\d+\\.\\d+\\.\\d+(-[0-9A-Za-z.-]+)?$"
+        },
+        "extensions": {
+          "minItems": 1,
+          "maxItems": 32,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^\\.[A-Za-z0-9]+$"
+          }
+        },
+        "replace": {
+          "type": "boolean"
+        },
+        "grammar": {
+          "type": "object",
+          "properties": {
+            "wasm": {
+              "type": "string",
+              "pattern": "^(?![A-Za-z]:)(?!\\/)(?!(?:[^/]*\\/)*\\.\\.(?:\\/|$))[^\\\\\\u0000]+$"
+            },
+            "lock": {
+              "type": "string",
+              "pattern": "^(?![A-Za-z]:)(?!\\/)(?!(?:[^/]*\\/)*\\.\\.(?:\\/|$))[^\\\\\\u0000]+$"
+            }
+          },
+          "required": [
+            "wasm",
+            "lock"
+          ],
+          "additionalProperties": false
+        },
+        "queries": {
+          "type": "object",
+          "properties": {
+            "tags": {
+              "type": "string",
+              "pattern": "^(?![A-Za-z]:)(?!\\/)(?!(?:[^/]*\\/)*\\.\\.(?:\\/|$))[^\\\\\\u0000]+$"
+            },
+            "refs": {
+              "type": "string",
+              "pattern": "^(?![A-Za-z]:)(?!\\/)(?!(?:[^/]*\\/)*\\.\\.(?:\\/|$))[^\\\\\\u0000]+$"
+            },
+            "imports": {
+              "type": "string",
+              "pattern": "^(?![A-Za-z]:)(?!\\/)(?!(?:[^/]*\\/)*\\.\\.(?:\\/|$))[^\\\\\\u0000]+$"
+            }
+          },
+          "required": [
+            "tags"
+          ],
+          "additionalProperties": false
+        },
+        "tiers": {
+          "default": [
+            "grammar"
+          ],
+          "minItems": 1,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "grammar",
+              "precise",
+              "platform"
+            ]
+          }
+        },
+        "parseBudget": {
+          "default": 0.005,
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "testGlobs": {
           "type": "array",
           "items": {
             "type": "string"
           }
         },
-        "model": {
+        "features": {
           "type": "string",
-          "maxLength": 64,
-          "pattern": "^[a-z][a-z0-9-]*$"
-        }
-      },
-      "additionalProperties": false
-    },
-    "precise": {
-      "anyOf": [
-        {
+          "pattern": "^(?![A-Za-z]:)(?!\\/)(?!(?:[^/]*\\/)*\\.\\.(?:\\/|$))[^\\\\\\u0000]+$"
+        },
+        "precise": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "command": {
+                  "minItems": 1,
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                }
+              },
+              "required": [
+                "command"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "adapter": {
+                  "type": "string",
+                  "maxLength": 64,
+                  "pattern": "^[a-z][a-z0-9-]*$"
+                }
+              },
+              "required": [
+                "adapter"
+              ],
+              "additionalProperties": false
+            }
+          ]
+        },
+        "project": {
           "type": "object",
           "properties": {
-            "command": {
-              "minItems": 1,
+            "markers": {
               "type": "array",
               "items": {
-                "type": "string",
-                "minLength": 1
+                "type": "string"
               }
-            }
-          },
-          "required": [
-            "command"
-          ],
-          "additionalProperties": false
-        },
-        {
-          "type": "object",
-          "properties": {
-            "adapter": {
+            },
+            "model": {
               "type": "string",
               "maxLength": 64,
               "pattern": "^[a-z][a-z0-9-]*$"
             }
           },
-          "required": [
-            "adapter"
-          ],
           "additionalProperties": false
         }
-      ]
+      },
+      "required": [
+        "schemaVersion",
+        "name",
+        "extensions",
+        "grammar",
+        "queries"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "schemaVersion": {
+          "type": "number",
+          "const": 2
+        },
+        "$schema": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string",
+          "maxLength": 64,
+          "pattern": "^[a-z][a-z0-9-]*$"
+        },
+        "version": {
+          "type": "string",
+          "pattern": "^\\d+\\.\\d+\\.\\d+(-[0-9A-Za-z.-]+)?$"
+        },
+        "extensions": {
+          "minItems": 1,
+          "maxItems": 32,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^\\.[A-Za-z0-9]+$"
+          }
+        },
+        "replace": {
+          "type": "boolean"
+        },
+        "grammar": {
+          "type": "object",
+          "properties": {
+            "wasm": {
+              "type": "string",
+              "pattern": "^(?![A-Za-z]:)(?!\\/)(?!(?:[^/]*\\/)*\\.\\.(?:\\/|$))[^\\\\\\u0000]+$"
+            },
+            "lock": {
+              "type": "string",
+              "pattern": "^(?![A-Za-z]:)(?!\\/)(?!(?:[^/]*\\/)*\\.\\.(?:\\/|$))[^\\\\\\u0000]+$"
+            }
+          },
+          "required": [
+            "wasm",
+            "lock"
+          ],
+          "additionalProperties": false
+        },
+        "queries": {
+          "type": "object",
+          "properties": {
+            "tags": {
+              "type": "string",
+              "pattern": "^(?![A-Za-z]:)(?!\\/)(?!(?:[^/]*\\/)*\\.\\.(?:\\/|$))[^\\\\\\u0000]+$"
+            },
+            "refs": {
+              "type": "string",
+              "pattern": "^(?![A-Za-z]:)(?!\\/)(?!(?:[^/]*\\/)*\\.\\.(?:\\/|$))[^\\\\\\u0000]+$"
+            },
+            "imports": {
+              "type": "string",
+              "pattern": "^(?![A-Za-z]:)(?!\\/)(?!(?:[^/]*\\/)*\\.\\.(?:\\/|$))[^\\\\\\u0000]+$"
+            }
+          },
+          "required": [
+            "tags"
+          ],
+          "additionalProperties": false
+        },
+        "tiers": {
+          "default": [
+            "grammar"
+          ],
+          "minItems": 1,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "grammar",
+              "precise",
+              "platform"
+            ]
+          }
+        },
+        "parseBudget": {
+          "default": 0.005,
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "testGlobs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "features": {
+          "type": "string",
+          "pattern": "^(?![A-Za-z]:)(?!\\/)(?!(?:[^/]*\\/)*\\.\\.(?:\\/|$))[^\\\\\\u0000]+$"
+        },
+        "precise": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "command": {
+                  "minItems": 1,
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                }
+              },
+              "required": [
+                "command"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "adapter": {
+                  "type": "string",
+                  "maxLength": 64,
+                  "pattern": "^[a-z][a-z0-9-]*$"
+                }
+              },
+              "required": [
+                "adapter"
+              ],
+              "additionalProperties": false
+            }
+          ]
+        },
+        "project": {
+          "type": "object",
+          "properties": {
+            "markers": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "model": {
+              "type": "string",
+              "maxLength": 64,
+              "pattern": "^[a-z][a-z0-9-]*$"
+            },
+            "adrDirs": {
+              "maxItems": 8,
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^(?![A-Za-z]:)(?!\\/)(?!(?:[^/]*\\/)*\\.\\.(?:\\/|$))[^\\\\\\u0000]+$"
+              }
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "name",
+        "extensions",
+        "grammar",
+        "queries"
+      ],
+      "additionalProperties": false
     }
-  },
-  "required": [
-    "schemaVersion",
-    "name",
-    "extensions",
-    "grammar",
-    "queries"
-  ],
-  "additionalProperties": false
+  ]
 }

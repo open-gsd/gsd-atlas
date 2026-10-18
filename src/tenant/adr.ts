@@ -10,11 +10,26 @@
  * `unchanged` for the price of one stat, so a question about a repository whose ADR directory did not change costs no read.
  */
 import path from 'node:path';
+import type { Diagnostic } from '../facts/index.ts';
 import type { AdrLookup } from '../query/index.ts';
 import type { DirectoryStatus, SourceTree } from '../source-tree/index.ts';
+import type { RepoConfig } from './repo-config.ts';
 
-/** The directories searched when neither a module manifest nor the repository names any: the convention list. */
+/** The directories searched when neither a module manifest nor the repository names any: the convention list (D-20). */
 export const DEFAULT_ADR_DIRS: readonly string[] = ['docs/adr', 'docs/adrs', 'doc/adr', 'adr'];
+
+/**
+ * The directories to list: the repository config's `adrDirs` when it names any (it replaces the manifests' list, an empty list
+ * included), else the union of the active modules' lists in first-seen order without repeats, else the convention list.
+ */
+export function chooseAdrDirs(config: RepoConfig, moduleDirs: readonly (readonly string[])[]): readonly string[] {
+  if (config.adrDirs !== undefined) return config.adrDirs;
+  const union: string[] = [];
+  for (const dirs of moduleDirs) {
+    for (const dir of dirs) if (!union.includes(dir)) union.push(dir);
+  }
+  return union.length === 0 ? DEFAULT_ADR_DIRS : union;
+}
 
 /** The longest digit run a file name's number may have after leading zeros: 15 digits are always a safe integer. */
 const MAX_NUMBER_DIGITS = 15;
@@ -50,12 +65,20 @@ export interface AdrIndex {
   readonly dirs: readonly AdrDirectoryState[];
   /** True when any directory's listing was cut. */
   readonly truncated: boolean;
+  /** Notes about how the directories were chosen (the repository config's `repo_config_ignored`); fixed text. */
+  readonly diagnostics: readonly Diagnostic[];
+}
+
+/** The directories to list, with the notes that came with choosing them. */
+export interface AdrDirs {
+  readonly dirs: readonly string[];
+  readonly diagnostics?: readonly Diagnostic[];
 }
 
 export interface AdrDirectoryDeps {
   readonly tree: Pick<SourceTree, 'listDirectory'>;
-  /** The directories to list for `worktree`, repo-relative, in order of precedence for nothing but the order of `dirs`. */
-  readonly dirsFor: (worktree: string) => readonly string[] | Promise<readonly string[]>;
+  /** The directories to list for `worktree`, repo-relative, in the order they are searched; a bare list or the list and its notes. */
+  readonly dirsFor: (worktree: string) => readonly string[] | AdrDirs | Promise<readonly string[] | AdrDirs>;
   /** The most names one listing returns; absent: the Source Tree's default (`adr.listMaxEntries`). */
   readonly maxEntries?: number;
 }
@@ -101,7 +124,9 @@ export function createAdrDirectory(deps: AdrDirectoryDeps): AdrDirectory {
 
   async function known(worktree: string): Promise<AdrIndex> {
     const wanted: string[] = [];
-    for (const raw of await deps.dirsFor(worktree)) {
+    const chosen = await deps.dirsFor(worktree);
+    const diagnostics: readonly Diagnostic[] = Array.isArray(chosen) ? [] : ((chosen as AdrDirs).diagnostics ?? []);
+    for (const raw of Array.isArray(chosen) ? (chosen as readonly string[]) : (chosen as AdrDirs).dirs) {
       // Names stay as given when they cannot be normalised: the Source Tree decides what escapes, not this function.
       const dir = normaliseDir(raw);
       if (!wanted.includes(dir)) wanted.push(dir);
@@ -136,6 +161,7 @@ export function createAdrDirectory(deps: AdrDirectoryDeps): AdrDirectory {
     }
 
     // The index is rebuilt only when a directory's state moved (the listing itself is what costs; the join is cheap but not free).
+    stamps.push(...diagnostics.map((note) => `${note.code}:${note.message}`));
     const signature = stamps.join('\u0001');
     const previous = built.get(worktree);
     if (previous !== undefined && previous.signature === signature) return previous.index;
@@ -151,7 +177,7 @@ export function createAdrDirectory(deps: AdrDirectoryDeps): AdrDirectory {
       }
     }
     for (const list of byNumber.values()) list.sort(compareCodeUnits);
-    const index: AdrIndex = { byNumber, dirs: states, truncated: states.some((state) => state.truncated) };
+    const index: AdrIndex = { byNumber, dirs: states, truncated: states.some((state) => state.truncated), diagnostics };
     built.set(worktree, { signature, index });
     return index;
   }
@@ -161,11 +187,12 @@ export function createAdrDirectory(deps: AdrDirectoryDeps): AdrDirectory {
     async lookup(worktree, number) {
       const index = await known(worktree);
       const files = index.byNumber.get(number) ?? [];
+      const notes = index.diagnostics.length === 0 ? {} : { diagnostics: index.diagnostics };
       if (files.length === 0) {
         // A cut listing may have left the file out: say so rather than let "no file" read as "no such ADR".
-        return index.truncated ? { status: 'unresolved', files: [], listTruncated: true } : { status: 'unresolved', files: [] };
+        return { status: 'unresolved', files: [], ...(index.truncated ? { listTruncated: true as const } : {}), ...notes };
       }
-      return { status: files.length === 1 ? 'resolved' : 'ambiguous', files };
+      return { status: files.length === 1 ? 'resolved' : 'ambiguous', files, ...notes };
     },
   };
 }

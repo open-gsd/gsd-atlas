@@ -165,7 +165,7 @@ Description: `List the language modules this installation can load, with the tie
 | --- | --- | --- | --- | --- |
 | `repo` | string, an absolute path | no | the working directory | The repository whose own modules (`<repo>/.gsd-atlas/languages/<name>/`) are listed with the others. A relative path is refused with `invalid_args`. |
 
-Result `data`: `modules[]` with `name`, `source` (`repo`, `user`, `npm` or `builtin`), `dir`, `version`, `extensions`, `inactiveExtensions`, `tiers[]` (`tier`, `active`, and `reason` when given), `shadowed[]` (`source`, `dir`). The built-in modules of this release are `javascript` (`.js`, `.cjs`, `.mjs`, `.jsx`) and `typescript` (`.ts`, `.cts`, `.mts`), each with the `grammar` tier active.
+Result `data`: `modules[]` with `name`, `source` (`repo`, `user`, `npm` or `builtin`), `dir`, `version`, `schemaVersion` (the manifest version, 1 or 2), `adrDirs` (the ADR directories the manifest names; empty for a version 1 manifest), `extensions`, `inactiveExtensions`, `tiers[]` (`tier`, `active`, and `reason` when given), `shadowed[]` (`source`, `dir`). The built-in modules of this release are `javascript` (`.js`, `.cjs`, `.mjs`, `.jsx`) and `typescript` (`.ts`, `.cts`, `.mts`), each with the `grammar` tier active.
 
 `lang_list` reads no repository store and needs no index.
 
