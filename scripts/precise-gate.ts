@@ -67,9 +67,10 @@
  *     reason and never passes by default.
  *
  * The corpus is the pinned one, fetched by `scripts/corpus-fetch.ts` into a temporary folder; nothing is installed, so the
- * compiler is the bundled one and its version and source are printed. `--prepared` runs `npm ci --ignore-scripts` in the
- * checkout first (the project's own compiler, what the eval uses), and so does a `--dir` checkout that has its own
- * `node_modules` only with `--prepared`. `--corpus fixture` generates a small repository instead.
+ * compiler is the bundled one and its version and source are printed. `--prepared` runs `npm ci --ignore-scripts` in a fetched
+ * checkout first (the project's own compiler, what the eval uses); with `--dir`, which measures a copy of a checkout you
+ * already have, it links that checkout's `node_modules` into the copy instead. `--corpus fixture` generates a small
+ * repository. Without `--dir`, `--nobreak` fetches the pinned corpus the same way.
  */
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
