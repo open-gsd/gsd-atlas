@@ -186,6 +186,14 @@ export interface Reader {
    * path, then position; no match is empty data.
    */
   importers(path: string, options?: ImportersOptions): Promise<Answer<readonly ImporterRecord[]>>;
+
+  /**
+   * Where the project's compiler writes the output of the source at `path` (TSM-03): repository-relative POSIX paths,
+   * code first, then declaration files. Empty for a path the overlay does not hold, a file no config includes, a
+   * store with no project context provider and a provider that failed. The output files themselves need not be in
+   * the overlay (they are usually ignored or dropped as emit outputs).
+   */
+  emittedAs(path: string): Promise<Answer<readonly string[]>>;
 }
 
 export interface CommitFileInput {

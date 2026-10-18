@@ -1,4 +1,4 @@
-import type { Diagnostic, ResolutionContext } from '../facts/index.ts';
+import type { Diagnostic, EmitLookup, ResolutionContext } from '../facts/index.ts';
 import type { ReadTextResult } from '../source-tree/index.ts';
 
 /** Diagnostic codes the ProjectModel reports. Messages never carry repository text, only fixed words and the subject path. */
@@ -25,6 +25,12 @@ export const PROJECT_MODEL_CODES = {
   compilerOutsideRepo: 'compiler_outside_repo',
   /** The project's `node_modules/typescript/package.json` is not usable. */
   typescriptPackageInvalid: 'typescript_package_invalid',
+  /** Two sources emit to one output path; that path maps to no source and the plain specifier rule applies (T-03-222). */
+  emitAmbiguous: 'emit_ambiguous',
+  /** An emit output is also a source of some config; it stays a source and is never dropped from the index (T-03-221). */
+  emitOverlapsSource: 'emit_overlaps_source',
+  /** A source's emit output would leave the repository; the output is dropped (T-03-223). */
+  emitOutsideRepo: 'emit_outside_repo',
 } as const;
 
 /**
@@ -61,8 +67,39 @@ export interface ConfigInfo {
   readonly declarationDir?: string;
   readonly allowJs: boolean;
   readonly jsx?: string;
+  /** `noEmit`: the config writes nothing, so none of its sources has an output. */
+  readonly noEmit: boolean;
+  /** `declaration` or `composite` (which implies it): declaration files are emitted too. */
+  readonly declaration: boolean;
+  /** `emitDeclarationOnly`: only declaration files are emitted. */
+  readonly emitDeclarationOnly: boolean;
+  /** `outFile` (or the old `out`): one bundle is written instead of one file per source; no per-source output is mapped. */
+  readonly outFile: boolean;
   /** Repo-relative paths of the referenced project configs (this config's own `references`; TypeScript does not inherit them). */
   readonly references: readonly string[];
+}
+
+/** What kind of file a compiler writes for a source. */
+export type EmitKind = 'js' | 'declaration';
+
+/** One file a source is compiled to. */
+export interface EmitOutput {
+  /** Repo-relative POSIX path. */
+  readonly path: string;
+  readonly kind: EmitKind;
+}
+
+/**
+ * Where the configs of a project write the output of their included sources (TSM-03), by TypeScript's own rules:
+ * `rootDir` (the config's directory when unset, as in TypeScript 6), `outDir`, `declarationDir`, the extension map
+ * (`.ts` to `.js`, `.tsx` to `.js` or `.jsx` under `jsx: preserve`, `.cts` to `.cjs`, `.mts` to `.mjs`), declaration
+ * files that never emit, and JavaScript inputs under `allowJs`. Source maps are not outputs here.
+ */
+export interface EmitMap extends EmitLookup {
+  /** The outputs of an included source with their kinds, code first. Empty for any other path. */
+  outputsOf(source: string): readonly EmitOutput[];
+  /** Why an output was left out of the lookup. Fixed words and paths only. */
+  readonly diagnostics: readonly Diagnostic[];
 }
 
 /** Where a project's `typescript` package stands (TSM-02), decided from its package.json alone. */
@@ -113,6 +150,18 @@ export interface ProjectDescription {
   ownerOf(path: string): string | undefined;
   readonly compiler: CompilerChoice;
   readonly diagnostics: readonly Diagnostic[];
+  /**
+   * Where the configs write the output of the overlay's sources (TSM-03). Computed on first use, so a caller that
+   * never asks (the file-set differential) pays nothing for it.
+   */
+  readonly emit: EmitMap;
+  /** Every config file read (each config and every file it extends) with the normalised hash of its text. */
+  readonly configFiles: ReadonlyMap<string, string>;
+  /**
+   * The config paths discovery looked for next to or above the overlay's files (`tsconfig.json`, `jsconfig.json`), so
+   * a caller can notice that one appeared or went away without describing the project again.
+   */
+  readonly configCandidates: readonly string[];
 }
 
 export interface DescribeInput {

@@ -37,6 +37,7 @@ export type {
 } from './request.ts';
 export { DEFAULT_PROJECT_CONTEXT, symbolKey } from './resolution.ts';
 export type {
+  EmitLookup,
   LocatedSymbol,
   OverlaySnapshot,
   ProjectContext,

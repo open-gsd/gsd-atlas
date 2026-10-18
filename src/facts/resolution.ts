@@ -60,11 +60,33 @@ export interface SymbolLookup {
 }
 
 /**
+ * Where a compiler writes the output of each included source (TSM-03), asked by repository-relative POSIX path. It
+ * is a function of the project's configuration and its source files, so it never depends on a content hash and the
+ * same lookup serves the specifier rule, the Indexer's output filter and `emittedAs`.
+ */
+export interface EmitLookup {
+  /**
+   * The one included source whose emit output is `path`, or undefined: not an output, or an output that more than
+   * one source emits to (nothing is guessed) or a path that is itself a source.
+   */
+  outputToSource(path: string): string | undefined;
+  /** The output paths of an included source (code first, then declarations), in a fixed order; empty for any other path. */
+  sourceToOutputs(path: string): readonly string[];
+  /**
+   * True when `path` is the emit output of an included source, even an ambiguous one. A path that is a source of any
+   * config is never an output, so it is never dropped from the index.
+   */
+  isOutput(path: string): boolean;
+}
+
+/**
  * What a resolver learns about the configuration it resolves under, besides the `ResolutionContext` that keys
- * the cache. Plan 03-22 adds an optional `emit` lookup here; nothing else belongs in it without a plan.
+ * the cache. Nothing else belongs in it without a plan.
  */
 export interface ProjectContext {
   readonly context: ResolutionContext;
+  /** Where the project's compiler writes its output; absent for a store with no project model or no config. */
+  readonly emit?: EmitLookup;
 }
 
 /** The context of a store with no project model: the grammar tier, no configuration hashes. */

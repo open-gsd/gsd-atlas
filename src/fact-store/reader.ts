@@ -183,5 +183,8 @@ export function createReader(parts: StoreParts, worktree: WorktreeId): Reader {
         return fileId === null ? null : rebuildFacts(snap, path, fileId);
       });
     },
+    async emittedAs() {
+      return answer(parts, worktree, (): readonly string[] => []);
+    },
   };
 }

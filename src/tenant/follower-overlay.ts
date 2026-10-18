@@ -374,6 +374,11 @@ export function createOverlayReader(base: Reader, patch: Patch, context: Overlay
       return result(patch.get(filePath) ?? null);
     },
 
+    async emittedAs(filePath) {
+      // The store's project context knows the configs; a path the patch holds is a source the store may not have yet.
+      return result(observe(await base.emittedAs(filePath)));
+    },
+
     async refs(id, options) {
       return result(await refsOf(id, options));
     },

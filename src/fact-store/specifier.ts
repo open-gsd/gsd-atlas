@@ -1,4 +1,5 @@
 import { posix } from 'node:path';
+import type { EmitLookup } from '../facts/index.ts';
 
 /**
  * The language-neutral import specifier rule (D-06). One pure function over a set of overlay paths: it never
@@ -83,6 +84,7 @@ export function resolveSpecifier(
   importerPath: string,
   specifier: string,
   overlayPaths: ReadonlySet<string>,
+  _emit?: EmitLookup,
 ): readonly string[] {
   if (!isRelativeSpecifier(specifier)) return [];
   const joined = posix.join(posix.dirname(importerPath), specifier);
