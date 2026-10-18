@@ -5,8 +5,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { describe, test } from 'node:test';
 
-import { ORACLE_VERSION, OracleError, computeAnswerKey, type OracleContext } from './oracle.ts';
-import { AnswerKeySchema, QuestionFileSchema, loadQuestions, type KeySpec } from './questions.ts';
+import { ORACLE_VERSION, OracleError, computeAnswerKey, verifyCitation, type OracleContext } from './oracle.ts';
+import { AnswerFileSchema, AnswerKeySchema, QuestionFileSchema, loadQuestions, type KeySpec } from './questions.ts';
 
 const FIXTURE = path.join(import.meta.dirname, '__fixtures__', 'oracle-repo');
 
@@ -199,6 +199,274 @@ describe('callers key', () => {
       assert.ok(!key.items.some((item) => item.file === 'src/other.cts'));
     } finally {
       repo.cleanup();
+    }
+  });
+});
+
+const REF = { granularity: 'file+line', equality: 'exact-set' } as const;
+const FILE = { granularity: 'file', equality: 'exact-set' } as const;
+
+function key(spec: KeySpec, ctx: OracleContext = fixtureCtx()) {
+  return computeAnswerKey(spec, ctx);
+}
+
+describe('key kinds', () => {
+  test('references: calls and non-call sites, CommonJS bindings included, definition excluded', async () => {
+    const answer = await key({ kind: 'references', symbol: 'compute', definedIn: 'src/lib.cts', ...REF });
+    assert.deepEqual(answer.items, [
+      { file: 'consumer.cjs', line: 3, symbol: '<module>' },
+      { file: 'consumer.cjs', line: 6, symbol: 'run' },
+      { file: 'src/user.cts', line: 1, symbol: '<module>' },
+      { file: 'src/user.cts', line: 5, symbol: 'useTyped' },
+      { file: 'src/user.cts', line: 11, symbol: 'useRequire' },
+      { file: 'src/user.cts', line: 12, symbol: 'useRequire' },
+    ]);
+    assert.deepEqual(answer.unexplained, []);
+  });
+
+  test('definition: the declaration, and every declaration of an overloaded name', async () => {
+    const answer = await key({ kind: 'definition', symbol: 'compute', definedIn: 'src/lib.cts', ...REF });
+    assert.deepEqual(answer.items, [{ file: 'src/lib.cts', line: 2, symbol: 'compute' }]);
+
+    const repo = tempRepo(undefined, {
+      'src/over.cts':
+        'export function over(a: string): string;\nexport function over(a: number): number;\nexport function over(a: unknown): unknown {\n  return a;\n}\n',
+    });
+    try {
+      const overloaded = await key({ kind: 'definition', symbol: 'over', ...REF }, repo.ctx);
+      assert.deepEqual(
+        overloaded.items.map((item) => item.line),
+        [1, 2, 3],
+      );
+    } finally {
+      repo.cleanup();
+    }
+  });
+
+  test('heritage subtypes: a class, a library class and an interface', async () => {
+    const base = await key({
+      kind: 'heritage',
+      symbol: 'Base',
+      definedIn: 'src/lib.cts',
+      direction: 'subtypes',
+      granularity: 'file+symbol',
+      equality: 'exact-set',
+    });
+    assert.deepEqual(base.items, [{ file: 'src/shapes.cts', line: 4, symbol: 'Sub' }]);
+    assert.ok(base.needles.includes('Sub'));
+
+    const lib = await key({
+      kind: 'heritage',
+      symbol: 'Error',
+      lib: true,
+      direction: 'subtypes',
+      granularity: 'file+symbol',
+      equality: 'exact-set',
+    });
+    assert.deepEqual(lib.items, [{ file: 'src/shapes.cts', line: 5, symbol: 'Boom' }]);
+
+    const shape = await key({
+      kind: 'heritage',
+      symbol: 'Shape',
+      definedIn: 'src/lib.cts',
+      direction: 'subtypes',
+      granularity: 'file+symbol',
+      equality: 'exact-set',
+    });
+    assert.deepEqual(shape.items, [{ file: 'src/shapes.cts', line: 6, symbol: 'Square' }]);
+  });
+
+  test('heritage supertypes: the base class, and a library base counted in the notes', async () => {
+    const sub = await key({
+      kind: 'heritage',
+      symbol: 'Sub',
+      definedIn: 'src/shapes.cts',
+      direction: 'supertypes',
+      granularity: 'file+symbol',
+      equality: 'exact-set',
+    });
+    assert.deepEqual(sub.items, [{ file: 'src/lib.cts', line: 6, symbol: 'Base' }]);
+
+    const boom = await key({
+      kind: 'heritage',
+      symbol: 'Boom',
+      definedIn: 'src/shapes.cts',
+      direction: 'supertypes',
+      granularity: 'file+symbol',
+      equality: 'exact-set',
+    });
+    assert.deepEqual(boom.items, []);
+    assert.equal(boom.notes.externalSupertypes, 'Error');
+  });
+
+  test('emit: the output path, the declaration output when enabled, and a throw outside the roots', async () => {
+    const plain = await key({ kind: 'emit', source: 'src/lib.cts', ...FILE });
+    assert.deepEqual(plain.items, [{ file: 'out/lib.cjs' }]);
+    assert.deepEqual(plain.needles, ['lib.cjs']);
+
+    const declared = await key(
+      { kind: 'emit', source: 'src/lib.cts', ...FILE },
+      { repoDir: FIXTURE, tsconfig: 'tsconfig.decl.json' },
+    );
+    assert.deepEqual(declared.items, [{ file: 'out/lib.cjs' }, { file: 'out/lib.d.cts' }]);
+
+    await assert.rejects(
+      key({ kind: 'emit', source: 'consumer.cjs', ...FILE }),
+      (error: unknown) => error instanceof OracleError && error.code === 'EMIT_SOURCE_NOT_IN_PROGRAM',
+    );
+  });
+
+  test('emit consumers: the require lines of the emitted output and of the sibling specifier', async () => {
+    const answer = await key({ kind: 'emit-consumers', source: 'src/lib.cts', ...REF });
+    assert.deepEqual(answer.items, [
+      { file: 'consumer.cjs', line: 3 },
+      { file: 'src/user.cts', line: 11 },
+    ]);
+  });
+
+  test('adr citers: comments only, numbers by value, a string literal counted but excluded', async () => {
+    const one = await key({ kind: 'adr-citers', number: 1, ...REF });
+    assert.deepEqual(one.items, [{ file: 'src/lib.cts', line: 14 }]);
+    assert.equal(one.notes.excludedNonComment, 0);
+
+    const two = await key({ kind: 'adr-citers', number: 2, ...REF });
+    assert.deepEqual(two.items, [{ file: 'src/user.cts', line: 3, detail: '§3' }]);
+
+    const three = await key({ kind: 'adr-citers', number: 3, ...REF });
+    assert.deepEqual(three.items, [{ file: 'src/user.cts', line: 8 }]);
+
+    const nine = await key({ kind: 'adr-citers', number: 9, ...REF });
+    assert.deepEqual(nine.items, []);
+    assert.equal(nine.notes.excludedNonComment, 1);
+    assert.deepEqual(nine.needles, ['ADR']);
+  });
+
+  test('adr of: resolved files, an unresolved citation, and two files with one number', async () => {
+    const helper = await key({ kind: 'adr-of', symbol: 'helper', definedIn: 'src/lib.cts', ...FILE });
+    assert.deepEqual(helper.items, [{ file: 'docs/adr/0001-first.md', adr: 1, resolved: true }]);
+
+    const typed = await key({ kind: 'adr-of', symbol: 'useTyped', definedIn: 'src/user.cts', ...FILE });
+    assert.deepEqual(typed.items, [{ file: 'docs/adr/2-second.md', adr: 2, resolved: true, detail: '§3' }]);
+
+    const unresolved = await key({ kind: 'adr-of', symbol: 'useRequire', definedIn: 'src/user.cts', ...FILE });
+    assert.deepEqual(unresolved.items, [{ adr: 3, resolved: false }]);
+
+    const repo = tempRepo(undefined, { 'docs/adr/0001-duplicate.md': '# Duplicate\n' });
+    try {
+      const both = await key({ kind: 'adr-of', symbol: 'helper', definedIn: 'src/lib.cts', ...FILE }, repo.ctx);
+      assert.deepEqual(
+        both.items.map((item) => item.file),
+        ['docs/adr/0001-duplicate.md', 'docs/adr/0001-first.md'],
+      );
+    } finally {
+      repo.cleanup();
+    }
+  });
+
+  test('impact: callers by file at depth 1, then the callers of their exported functions at depth 2', async () => {
+    const one = await key({ kind: 'impact', symbol: 'compute', definedIn: 'src/lib.cts', depth: 1, ...FILE });
+    assert.deepEqual(one.items, [{ file: 'consumer.cjs' }, { file: 'src/user.cts' }]);
+
+    const two = await key({ kind: 'impact', symbol: 'compute', definedIn: 'src/lib.cts', depth: 2, ...FILE });
+    assert.deepEqual(two.items, [{ file: 'consumer.cjs' }, { file: 'src/shapes.cts' }, { file: 'src/user.cts' }]);
+  });
+
+  test('abstain symbol: nothing matches, a match throws with the list, a comment-only word is tolerated', async () => {
+    const none = await key({ kind: 'abstain', probe: { symbol: 'doesNotExistAnywhere' }, ...FILE });
+    assert.equal(none.abstain, true);
+    assert.deepEqual(none.items, []);
+
+    await assert.rejects(
+      key({ kind: 'abstain', probe: { symbol: 'compute' }, ...FILE }),
+      (error: unknown) =>
+        error instanceof OracleError && error.code === 'ABSTAIN_PROBE_MATCHES' && /src\/lib\.cts:2/.test(error.message),
+    );
+
+    const repo = tempRepo(undefined, { 'src/notes.cts': "// zzzOnlyInComment\nexport const text = 'zzzOnlyInString';\n" });
+    try {
+      assert.equal((await key({ kind: 'abstain', probe: { symbol: 'zzzOnlyInComment' }, ...FILE }, repo.ctx)).abstain, true);
+      assert.equal((await key({ kind: 'abstain', probe: { symbol: 'zzzOnlyInString' }, ...FILE }, repo.ctx)).abstain, true);
+    } finally {
+      repo.cleanup();
+    }
+  });
+
+  test('abstain adr: a number with a citation but no ADR file abstains; a number with a file throws', async () => {
+    const none = await key({ kind: 'abstain', probe: { adrNoFile: 3 }, ...FILE });
+    assert.equal(none.abstain, true);
+    assert.deepEqual(none.items, []);
+    await assert.rejects(
+      key({ kind: 'abstain', probe: { adrNoFile: 1 }, ...FILE }),
+      (error: unknown) => error instanceof OracleError && error.code === 'ABSTAIN_PROBE_MATCHES',
+    );
+  });
+});
+
+describe('verifyCitation', () => {
+  test('ok when the file, the line and a needle exist; reasons otherwise', async () => {
+    const ctx = fixtureCtx();
+    assert.deepEqual(await verifyCitation(ctx, { file: 'src/lib.cts', line: 2 }), { ok: true });
+    assert.deepEqual(await verifyCitation(ctx, { file: 'src/lib.cts', line: 2 }, ['COMPUTE', 'other']), { ok: true });
+    assert.deepEqual(await verifyCitation(ctx, { file: 'src/gone.cts', line: 1 }), { ok: false, reason: 'file missing' });
+    assert.deepEqual(await verifyCitation(ctx, { file: '../escape.txt', line: 1 }), { ok: false, reason: 'file missing' });
+    assert.deepEqual(await verifyCitation(ctx, { file: 'src/lib.cts', line: 999 }), { ok: false, reason: 'line out of range' });
+    assert.deepEqual(await verifyCitation(ctx, { file: 'src/lib.cts', line: 0 }), { ok: false, reason: 'line out of range' });
+    assert.deepEqual(await verifyCitation(ctx, { file: 'src/lib.cts', line: 2 }, ['nothere']), {
+      ok: false,
+      reason: 'needle absent',
+    });
+  });
+
+  test('the needles of a callers key accept the destructured-require alias line', async () => {
+    const answer = await computeAnswerKey(callersOfCompute(), fixtureCtx());
+    for (const item of answer.items) {
+      const verdict = await verifyCitation(fixtureCtx(), { file: item.file as string, line: item.line as number }, answer.needles);
+      assert.equal(verdict.ok, true, `${item.file}:${item.line}`);
+    }
+  });
+});
+
+describe('keys command', () => {
+  test('writes answers that parse with the schema, for a two-question file', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'oracle-cli-'));
+    try {
+      const questions = path.join(dir, 'questions.json');
+      fs.writeFileSync(
+        questions,
+        JSON.stringify({
+          corpusId: 'fixture',
+          corpusSha: 'fixture',
+          questions: [
+            { id: 'q-2', category: 'definition', text: 'Where is compute?', key: { kind: 'definition', symbol: 'compute', ...REF } },
+            { id: 'q-1', category: 'callers', text: 'Who calls compute?', key: callersOfCompute() },
+          ],
+        }),
+      );
+      const out = path.join(dir, 'answers.json');
+      const result = spawnSync(
+        process.execPath,
+        [
+          path.join(import.meta.dirname, 'oracle.ts'),
+          'keys',
+          '--repo',
+          FIXTURE,
+          '--tsconfig',
+          'tsconfig.json',
+          '--questions',
+          questions,
+          '--out',
+          out,
+        ],
+        { encoding: 'utf8', env: process.env },
+      );
+      assert.equal(result.status, 0, result.stderr);
+      const parsed = AnswerFileSchema.parse(JSON.parse(fs.readFileSync(out, 'utf8')));
+      assert.deepEqual(
+        parsed.answers.map((answer) => answer.questionId),
+        ['q-1', 'q-2'],
+      );
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
     }
   });
 });
