@@ -31,51 +31,51 @@ Scope is the full PRD 1.0 (M0-M6), with M4 split into SDK facts, agent integrati
 - [x] **STO-03**: Each worktree or branch is an overlay; two worktrees of one repo share local facts and a branch switch re-parses only changed files
 - [x] **STO-04**: Resolved edges are keyed by overlay snapshot plus resolution context, so one file resolving to different targets on two branches gives each branch its correct target
 - [x] **STO-05**: Retired file versions are collected when in git or past the grace period; after 20,000 edits the store is <= 1.25x a fresh build
-- [ ] **STO-06**: A store corrupted or interrupted by SIGKILL during writes is detected and rebuilt automatically
+- [x] **STO-06**: A store corrupted or interrupted by SIGKILL during writes is detected and rebuilt automatically
 - [x] **STO-07**: The store lives in the git common dir, falling back to the cache dir for non-git, read-only or synced paths, with `store.dir` override
 - [x] **STO-08**: Two sessions on one repo do not collide on the writer lease; followers read and report `degraded: ['follower']`
-- [ ] **STO-09**: `history --at <commit>` answers from git without writing to the store
-- [ ] **STO-10**: Maintenance tasks (reconcile, resolve, refresh, collect, compact, check) run in idle time and as `maintain` CLI commands
+- [x] **STO-09**: `history --at <commit>` answers from git without writing to the store
+- [x] **STO-10**: Maintenance tasks (reconcile, resolve, refresh, collect, compact, check) run in idle time and as `maintain` CLI commands
 
 ### Language Modules and Grammar Engine (LNG)
 
 - [x] **LNG-01**: A language module is a folder (manifest, grammar.wasm, queries, fixtures) resolved repo > user > npm > built-in, and `lang list` shows source and active tiers
-- [ ] **LNG-02**: The Grammar Engine extracts definitions, containment and imports with per-construct recall >= 90% against ground truth
+- [x] **LNG-02**: The Grammar Engine extracts definitions, containment and imports with per-construct recall >= 90% against ground truth
 - [x] **LNG-03**: Name-matched references are recorded as `INFERRED`; definitions and imports as `EXTRACTED`
 - [x] **LNG-04**: Every fact carries `source_path`, `span`, `extractor`, `content_hash`, `first_seen`, `last_seen` and `confidence`
-- [ ] **LNG-05**: Only `git ls-files` plus untracked non-ignored files are indexed; `linguist-generated` and `linguist-vendored` are honoured; binaries and LFS pointers are skipped
+- [x] **LNG-05**: Only `git ls-files` plus untracked non-ignored files are indexed; `linguist-generated` and `linguist-vendored` are honoured; binaries and LFS pointers are skipped
 - [x] **LNG-06**: Grammar parse quality is measured as bytes inside ERROR nodes per module, with a CI budget
 - [x] **LNG-07**: Parser objects are released deterministically and workers are recycled so WASM memory does not grow unbounded
 - [x] **LNG-08**: A second non-TypeScript fixture language runs through the Grammar Engine tests from M1
 
 ### Indexing and Freshness (IDX)
 
-- [ ] **IDX-01**: A file save updates grammar-tier facts in < 1 s
+- [x] **IDX-01**: A file save updates grammar-tier facts in < 1 s
 - [x] **IDX-02**: Repeated change events coalesce into one index job per (worktree, path)
 - [x] **IDX-03**: Reconcile repairs missed file events, and any watcher overflow triggers a Reconcile
-- [ ] **IDX-04**: A request with `fresh` paths indexes them first and answers with the updated facts
+- [x] **IDX-04**: A request with `fresh` paths indexes them first and answers with the updated facts
 
 ### Query, CLI and MCP (QRY)
 
 - [x] **QRY-01**: Every response carries `schema`, citations with debug handles, a watermark, a `degraded` flag and `untrusted_text`
 - [x] **QRY-02**: `code_find`, `code_refs`, `code_context` and `code_impact` return ranked, cited results with inline matched line text, `budget_tokens` (default 2,000), a `more` cursor and a server-side output ceiling
 - [x] **QRY-03**: `atlas_status` and `lang_list` report freshness, health, policy mode and active tiers
-- [ ] **QRY-04**: The CLI and MCP tools return identical JSON for the same request; the CLI uses JSON on stdout, reasons on stderr and exit codes 0/1/2/3
-- [ ] **QRY-05**: Repo- and package-derived text is fenced with a random nonce and every derived field is normalized; injection text in a doc comment returns fenced
+- [x] **QRY-04**: The CLI and MCP tools return identical JSON for the same request; the CLI uses JSON on stdout, reasons on stderr and exit codes 0/1/2/3
+- [x] **QRY-05**: Repo- and package-derived text is fenced with a random nonce and every derived field is normalized; injection text in a doc comment returns fenced
 - [x] **QRY-06**: The default MCP tool profile is about 6 tools; the rest are opt-in or deferred
 - [ ] **QRY-07**: `explain` reports why atlas said something (extractor, tier, grammar version, resolution context, overlay)
 
 ### Host and Transport (HST)
 
 - [x] **HST-01**: `gsd-atlas-mcp` serves MCP over stdio, stateless, and survives a host restart between two tool calls
-- [ ] **HST-02**: The Host composes a Tenant per repo from M1, with a two-tenant smoke test
+- [x] **HST-02**: The Host composes a Tenant per repo from M1, with a two-tenant smoke test
 - [x] **HST-03**: The Governor schedules by priority class (interactive > fresh > indexing > maintenance) and answers `busy` with `retry_after` under saturation
 - [x] **HST-04**: `gsd-atlas init` registers MCP and hooks at user scope for detected agent hosts, never in repo config
 
 ### Metrics (MET)
 
 - [x] **MET-01**: A separate Metrics module with its own database file and real migrations records answers, tokens, freshness and index health locally, with no source text, paths, symbols or prompts
-- [ ] **MET-02**: `gsd-atlas status` shows basic panels; a metrics write failure never blocks an answer
+- [x] **MET-02**: `gsd-atlas status` shows basic panels; a metrics write failure never blocks an answer
 
 ### TypeScript Module (TSM)
 
@@ -211,36 +211,36 @@ Which phases cover which requirements. Updated during roadmap creation.
 | STO-03 | Phase 2 | Complete |
 | STO-04 | Phase 2 | Complete |
 | STO-05 | Phase 2 | Complete |
-| STO-06 | Phase 2 | Pending |
+| STO-06 | Phase 2 | Complete |
 | STO-07 | Phase 2 | Complete |
 | STO-08 | Phase 2 | Complete |
-| STO-09 | Phase 2 | Pending |
-| STO-10 | Phase 2 | Pending |
+| STO-09 | Phase 2 | Complete |
+| STO-10 | Phase 2 | Complete |
 | LNG-01 | Phase 1 | Complete |
-| LNG-02 | Phase 2 | Pending |
+| LNG-02 | Phase 2 | Complete |
 | LNG-03 | Phase 2 | Complete |
 | LNG-04 | Phase 2 | Complete |
-| LNG-05 | Phase 2 | Pending |
+| LNG-05 | Phase 2 | Complete |
 | LNG-06 | Phase 1 | Complete |
 | LNG-07 | Phase 2 | Complete |
 | LNG-08 | Phase 2 | Complete |
-| IDX-01 | Phase 2 | Pending |
+| IDX-01 | Phase 2 | Complete |
 | IDX-02 | Phase 2 | Complete |
 | IDX-03 | Phase 2 | Complete |
-| IDX-04 | Phase 2 | Pending |
+| IDX-04 | Phase 2 | Complete |
 | QRY-01 | Phase 2 | Complete |
 | QRY-02 | Phase 2 | Complete |
 | QRY-03 | Phase 2 | Complete |
-| QRY-04 | Phase 2 | Pending |
-| QRY-05 | Phase 2 | Pending |
+| QRY-04 | Phase 2 | Complete |
+| QRY-05 | Phase 2 | Complete |
 | QRY-06 | Phase 2 | Complete |
 | QRY-07 | Phase 3 | Pending |
 | HST-01 | Phase 2 | Complete |
-| HST-02 | Phase 2 | Pending |
+| HST-02 | Phase 2 | Complete |
 | HST-03 | Phase 2 | Complete |
 | HST-04 | Phase 2 | Complete |
 | MET-01 | Phase 2 | Complete |
-| MET-02 | Phase 2 | Pending |
+| MET-02 | Phase 2 | Complete |
 | TSM-01 | Phase 3 | Pending |
 | TSM-02 | Phase 3 | Pending |
 | TSM-03 | Phase 3 | Pending |

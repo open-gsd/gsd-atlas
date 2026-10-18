@@ -1,7 +1,7 @@
 ---
 phase: 02-grammar-tier-store-and-stdio-host
 verified: 2026-10-18T00:40:00Z
-status: human_needed
+status: passed
 score: 7/7 must-haves verified
 covered_files:
   - ".github/workflows/ci.yml"

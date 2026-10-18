@@ -15,7 +15,7 @@ gsd-atlas goes from a docs-only repo to a 1.0 local code-and-SDK fact server in 
 Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Foundations and Walking Skeleton** - Seams frozen with test doubles, 3-OS CI, and `lang test` running a fixture module end to end (M0) (completed 2026-10-16)
-- [ ] **Phase 2: Grammar Tier, Store and stdio Host** - Cited, fresh, worktree-correct answers on gsd-core through the CLI and a stateless stdio MCP server (M1)
+- [x] **Phase 2: Grammar Tier, Store and stdio Host** - Cited, fresh, worktree-correct answers on gsd-core through the CLI and a stateless stdio MCP server (M1) (completed 2026-10-17)
 - [ ] **Phase 3: TypeScript Module and MVP Eval** - Compiler-precise gsd-core answers, `explain`, skill and diagnostics, and a token-cost win over grep (M2, the MVP)
 - [ ] **Phase 4: Host Hardening** - Multi-tenant, versioned, authenticated Host with supervisor, full Governor and diagnostics intake (M2.5)
 - [ ] **Phase 5: Swift Module** - Swift definitions, references, deployment targets and availability on Linux with no Xcode (M3)
@@ -90,7 +90,7 @@ Plans:
   5. Agents and developers get one answer surface: `code_find`, `code_refs`, `code_context` and `code_impact` return ranked, cited results (inline matched line text, `budget_tokens`, `more` cursor, server-side output ceiling) in the full envelope; the CLI and MCP return identical JSON for the same request; injection text in a doc comment returns fenced in `untrusted_text`; `atlas_status` and `lang_list` report freshness, health, policy mode and tiers; the default MCP profile is about 6 tools; the stateless stdio server survives a restart between two tool calls; a two-tenant smoke test passes; `busy` with `retry_after` appears under saturation; `gsd-atlas init` registers MCP at user scope only; and `gsd-atlas status` shows metrics panels with no source text, paths, symbols or prompts, a metrics write failure never blocking an answer.
   6. The four ADRs scheduled for this phase (worktree-lifecycle, query-and-policy, mcp-contract, value-dashboard) are ratified, and the two Phase 1 research-gap amendments D-16 assigned here are applied as dated sections: writer contention and leader/follower in worktree-lifecycle, and metrics migrations in value-dashboard (FND-12).
 
-**Plans:** 46/46 plans executed
+**Plans:** 46/46 plans complete
 
 Plans:
 - [x] 02-46-PLAN.md
@@ -293,7 +293,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Foundations and Walking Skeleton | 20/20 | Complete    | 2026-10-16 |
-| 2. Grammar Tier, Store and stdio Host | 46/46 | In Progress | - |
+| 2. Grammar Tier, Store and stdio Host | 46/46 | Complete    | 2026-10-17 |
 | 3. TypeScript Module and MVP Eval | 0/TBD | Not started | - |
 | 4. Host Hardening | 0/TBD | Not started | - |
 | 5. Swift Module | 0/TBD | Not started | - |
