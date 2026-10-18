@@ -267,6 +267,7 @@ export function scanAdrMentions(text: string, probe?: ScanProbe): AdrMention[] {
     let significant = digitsStart;
     while (significant < cursor - 1 && text.charCodeAt(significant) === CHAR_ZERO) {
       significant += 1;
+      steps += 1;
     }
     const digits = cursor - significant;
     const value = digits <= SAFE_DIGITS_MAX ? Number(text.slice(significant, cursor)) : Number.NaN;
