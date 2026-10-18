@@ -136,6 +136,21 @@ export function extractBlocks(text: string, label: string, source: string): stri
 }
 
 /**
+ * The text with the content of its single `prereg-json` block replaced by `prereg` (validated with `PreregSchema`
+ * first, so a block that `readPrereg` would refuse is never written). Everything outside the block, and the line
+ * ending style of the file, are kept byte for byte. Throws when the text has no block or more than one.
+ */
+export function replacePreregBlock(text: string, prereg: Prereg): string {
+  const checked = PreregSchema.parse(prereg);
+  const count = extractBlocks(text, PREREG_BLOCK_LABEL, 'document').length;
+  if (count !== 1) throw new Error(`document: expected exactly one ${PREREG_BLOCK_LABEL} block, found ${String(count)}`);
+  const pattern = new RegExp(`(^\`\`\`${PREREG_BLOCK_LABEL}[ \\t]*(\\r?\\n))([\\s\\S]*?)(^\`\`\`[ \\t]*$)`, 'm');
+  return text.replace(pattern, (_whole, opening: string, eol: string, _old: string, closing: string) => {
+    return `${opening}${JSON.stringify(checked, null, 2).replace(/\n/g, eol)}${eol}${closing}`;
+  });
+}
+
+/**
  * Reads the pre-registration at `file`: exactly one fenced block labelled `prereg-json`, parsed with
  * `PreregSchema`. Zero blocks, two blocks, invalid JSON and any schema violation throw an error that names the
  * file and, for a schema violation, each offending field (for example `params.citationJudgedOn`, which has no
