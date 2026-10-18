@@ -29,7 +29,21 @@ export interface UserConfig {
   };
   /** Which commands the CommandRunner may start beyond its built-in read-only git rule. */
   readonly permissions?: UserPermissions;
+  /**
+   * First-party providers (SEC-02): they run by default, and a user turns one off here by id (`typescript` today).
+   * An id nobody knows has no effect. The Host hands this list to the tenant factory; the provider table reads it.
+   */
+  readonly providers?: {
+    readonly disabled?: readonly string[];
+  };
 }
+
+/**
+ * Who started this Host (D-15, SEC-02). `cli` is a person at a terminal. `mcp` is an agent's server: it never records an
+ * approval (`allow` is refused) and, unless the server was started with `--allow-build`, never runs a command from the
+ * user's permission list.
+ */
+export type HostOrigin = 'cli' | 'mcp';
 
 export interface HostOptions {
   /** The default module search roots. The composition root alone knows the home and working directories. */
@@ -46,6 +60,10 @@ export interface HostOptions {
   /** The user-level configuration folder; the cache fallback lives under it when `cacheRoot` is not given. */
   readonly userDir?: string;
   readonly config?: UserConfig;
+  /** Who started this Host. Default `cli`. */
+  readonly origin?: HostOrigin;
+  /** `--allow-build` of the MCP server: the user's permission list applies to an `mcp` origin too. Default false. */
+  readonly allowBuild?: boolean;
   /** The version of this build, recorded in a new store. */
   readonly version?: string;
   /** False: record no metrics. Default true. */

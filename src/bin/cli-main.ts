@@ -20,6 +20,10 @@ export interface CliMainDeps {
   readonly stderr: { write(text: string): unknown };
   readonly cwd: string;
   readonly init: NonNullable<CliIo['init']>;
+  /** True when standard input and the stream the person reads are a terminal; `allow` refuses to run without one. */
+  readonly isTTY?: boolean;
+  /** Asks one question on the terminal and resolves to the line typed; only `allow` asks. */
+  readonly prompt?: (question: string) => Promise<string>;
   /** Told how to dispose whatever has been composed so far (signal handlers use it). Called once, before the command runs. */
   readonly installShutdown?: (dispose: () => Promise<void>) => void;
 }
@@ -47,6 +51,8 @@ export async function runCliMain(deps: CliMainDeps): Promise<number> {
       stderr: deps.stderr,
       cwd: deps.cwd,
       init: deps.init,
+      ...(deps.isTTY === undefined ? {} : { isTTY: deps.isTTY }),
+      ...(deps.prompt === undefined ? {} : { prompt: deps.prompt }),
     });
   } catch (error) {
     deps.stderr.write(`gsd-atlas: error internal_error: ${reasonOf(error)}\n`);

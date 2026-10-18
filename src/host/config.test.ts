@@ -70,3 +70,39 @@ describe('loadUserConfig: permissions.allow[].sha256 (D-15)', () => {
     assert.equal(loaded.diagnostics[0]?.code, 'user_config_ignored');
   });
 });
+
+describe('loadUserConfig: providers.disabled (SEC-02)', () => {
+  it('providers.disabled accepts a list of provider ids and hands it to the Host', () => {
+    const loaded = load({ providers: { disabled: ['typescript'] } });
+    assert.deepEqual(loaded.diagnostics, []);
+    assert.deepEqual(loaded.config.providers, { disabled: ['typescript'] });
+  });
+
+  it('providers.disabled accepts an id nobody knows, an empty list and an absent list', () => {
+    assert.deepEqual(load({ providers: { disabled: ['typescript', 'a-provider-from-a-newer-version'] } }).config.providers?.disabled, [
+      'typescript',
+      'a-provider-from-a-newer-version',
+    ]);
+    assert.deepEqual(load({ providers: { disabled: [] } }).config.providers, { disabled: [] });
+    assert.deepEqual(load({ providers: {} }).config.providers, {});
+    assert.equal(load({}).config.providers, undefined, 'providers are on by default: nothing is disabled unless the user says so');
+  });
+
+  it('providers.disabled that is not a list of strings, or has an unknown sibling, rejects the whole file', () => {
+    const bad: ReadonlyArray<readonly [string, unknown]> = [
+      ['a string', 'typescript'],
+      ['an object', { typescript: true }],
+      ['a number in the list', ['typescript', 3]],
+      ['null', null],
+    ];
+    for (const [what, disabled] of bad) {
+      const loaded = load({ gc: { graceMs: 5 }, providers: { disabled } });
+      assert.deepEqual(loaded.config, {}, what);
+      assert.equal(loaded.diagnostics.length, 1, what);
+      assert.equal(loaded.diagnostics[0]?.code, 'user_config_ignored', what);
+    }
+    const sibling = load({ providers: { disabled: ['typescript'], enabled: ['x'] } });
+    assert.deepEqual(sibling.config, {});
+    assert.equal(sibling.diagnostics[0]?.code, 'user_config_ignored');
+  });
+});

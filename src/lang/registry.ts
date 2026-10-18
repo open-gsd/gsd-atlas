@@ -232,7 +232,7 @@ function healthProblem(dir: string, location: Location, manifest: Manifest): Dia
  * started, resolved or imported: `precise.command` and `precise.adapter` are only ever read as text,
  * so a precise tier is inactive until user-level config approves it through the CommandRunner (T-01-36).
  */
-function tiersOf(manifest: Manifest): TierStatus[] {
+function tiersOf(manifest: Manifest, approved: boolean): TierStatus[] {
   const tiers: TierStatus[] = [];
   // Declaring a precise command or adapter asks for the precise tier even if `tiers` forgot to list it.
   for (const tier of ['grammar', 'precise', 'platform'] as const) {
@@ -246,7 +246,9 @@ function tiersOf(manifest: Manifest): TierStatus[] {
         manifest.precise === undefined
           ? 'precise_not_declared'
           : 'command' in manifest.precise
-            ? 'command_not_approved'
+            ? approved
+              ? 'command_approved'
+              : 'command_not_approved'
             : 'adapter_not_available';
       tiers.push({ tier, active: false, reason });
     } else {
@@ -257,31 +259,55 @@ function tiersOf(manifest: Manifest): TierStatus[] {
 }
 
 /** One info diagnostic when the manifest declares a precise command or adapter that is therefore not run. */
-function preciseNotes(entry: Pick<ModuleEntry, 'name' | 'dir'>, manifest: Manifest): Diagnostic[] {
+function preciseNotes(entry: Pick<ModuleEntry, 'name' | 'dir'>, manifest: Manifest, approved: boolean): Diagnostic[] {
   if (manifest.precise === undefined) {
     return [];
   }
-  const what = 'command' in manifest.precise ? 'precise.command' : 'precise.adapter';
+  const isCommand = 'command' in manifest.precise;
+  if (approved) {
+    // Approved by the person, for exactly this command. Listing a module still runs nothing.
+    return [diagnostic('precise_command_approved', 'info', `${entry.name}: precise.command is approved by user-level config for this repository`, entry.dir)];
+  }
+  // Fixed text. The manifest's own words (the argv) are never copied here: this note travels in `lang_list` answers an
+  // agent reads. Only the module name is used, and a name is limited to lower-case letters, digits and hyphens.
+  const how = isCommand ? ` (review and approve it in a terminal with: gsd-atlas allow --module ${entry.name})` : '';
   return [
     diagnostic(
       'precise_command_inactive',
       'info',
-      `${entry.name}: ${what} is declared but not run; the precise tier stays inactive until user-level config approves it`,
+      `${entry.name}: ${isCommand ? 'precise.command' : 'precise.adapter'} is declared but not run; the precise tier stays inactive until user-level config approves it${how}`,
       entry.dir,
     ),
   ];
 }
 
+/**
+ * How a caller that knows the user's approvals can tell the registry about them. The registry reads no user configuration
+ * and starts nothing, so it takes the answer as a function; without one every `precise.command` still needs approval.
+ */
+export interface ResolveOptions {
+  /** True when the person approved exactly this command (an executable and its arguments) for the repository being listed. */
+  readonly approved?: (command: readonly string[]) => boolean;
+}
+
 interface Built {
   readonly entry: ModuleEntry;
   readonly manifest: Manifest;
+  /** True when the manifest's `precise.command` is approved. Never true for an adapter or no precise declaration. */
+  readonly approved: boolean;
 }
 
-function builtOf(group: readonly Candidate[]): Built {
+function builtOf(options: ResolveOptions): (group: readonly Candidate[]) => Built {
+  return (candidates) => buildOne(candidates, options);
+}
+
+function buildOne(group: readonly Candidate[], options: ResolveOptions): Built {
   const [active, ...rest] = group as [Candidate, ...Candidate[]];
   const { manifest } = active;
+  const approved = manifest.precise !== undefined && 'command' in manifest.precise && options.approved?.(manifest.precise.command) === true;
   return {
     manifest,
+    approved,
     entry: {
       name: active.expectedName,
       source: active.source,
@@ -289,14 +315,14 @@ function builtOf(group: readonly Candidate[]): Built {
       ...(manifest.version === undefined ? {} : { version: manifest.version }),
       extensions: [...manifest.extensions],
       inactiveExtensions: [],
-      tiers: tiersOf(manifest),
+      tiers: tiersOf(manifest, approved),
       shadowed: rest.map((c) => ({ source: c.source, dir: c.dir })),
     },
   };
 }
 
 /** Group candidates by module name; `candidates` is already in precedence order, so each group's first is active. */
-function group(candidates: readonly Candidate[]): Built[] {
+function group(candidates: readonly Candidate[], options: ResolveOptions): Built[] {
   const byName = new Map<string, Candidate[]>();
   for (const candidate of candidates) {
     const list = byName.get(candidate.expectedName);
@@ -306,7 +332,7 @@ function group(candidates: readonly Candidate[]): Built[] {
       list.push(candidate);
     }
   }
-  return [...byName.values()].map(builtOf).sort((a, b) => codeUnitOrder(a.entry.name, b.entry.name));
+  return [...byName.values()].map(builtOf(options)).sort((a, b) => codeUnitOrder(a.entry.name, b.entry.name));
 }
 
 /**
@@ -344,11 +370,11 @@ function settleExtensions(built: readonly Built[]): { readonly modules: ModuleEn
 }
 
 /** Every module visible from `roots`, one entry per name, sorted by name. */
-export function resolveModules(roots: Roots): ResolveModulesResult {
+export function resolveModules(roots: Roots, options: ResolveOptions = {}): ResolveModulesResult {
   const scanned = scan(roots);
-  const built = group(scanned.candidates);
+  const built = group(scanned.candidates, options);
   const settled = settleExtensions(built);
-  const notes = built.flatMap((b) => preciseNotes(b.entry, b.manifest));
+  const notes = built.flatMap((b) => preciseNotes(b.entry, b.manifest, b.approved));
   return { modules: settled.modules, diagnostics: [...scanned.diagnostics, ...settled.diagnostics, ...notes] };
 }
 
@@ -356,12 +382,12 @@ export function resolveModules(roots: Roots): ResolveModulesResult {
  * The one module called `name`, or no entry. A name that is not a module id never matches. Other
  * modules are not scanned, so their extension claims are not weighed against this one.
  */
-export function resolveModule(roots: Roots, name: string): ResolveModuleResult {
+export function resolveModule(roots: Roots, name: string, options: ResolveOptions = {}): ResolveModuleResult {
   if (!MODULE_ID.test(name)) {
     return { entry: undefined, diagnostics: [] };
   }
   const scanned = scan(roots, name);
-  const [only] = group(scanned.candidates);
-  const notes = only === undefined ? [] : preciseNotes(only.entry, only.manifest);
+  const [only] = group(scanned.candidates, options);
+  const notes = only === undefined ? [] : preciseNotes(only.entry, only.manifest, only.approved);
   return { entry: only?.entry, diagnostics: [...scanned.diagnostics, ...notes] };
 }

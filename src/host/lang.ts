@@ -94,6 +94,11 @@ export interface LangContext {
   /** The default module search roots. */
   readonly roots: Roots;
   readonly engine: GrammarEngine;
+  /**
+   * Whether the person approved this exact `precise.command` for the repository the request is about, under the permission
+   * list this Host may use (D-15). Absent: nothing is approved, so every module command still needs approval.
+   */
+  readonly approved?: (command: readonly string[]) => boolean;
 }
 
 /** Answer a `lang_test` or `lang_list` request. */
@@ -118,6 +123,6 @@ export async function handleLang(request: Request, context: LangContext): Promis
     }
     effective = { ...roots.roots, repoRoot: repo };
   }
-  const { modules, diagnostics } = resolveModules(effective);
+  const { modules, diagnostics } = resolveModules(effective, context.approved === undefined ? {} : { approved: context.approved });
   return okEnvelope<LangListData>(LANG_LIST_SCHEMA, { modules }, diagnostics);
 }
