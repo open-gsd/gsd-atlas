@@ -17,6 +17,7 @@ import type {
   ProjectContextProvider,
   RefKind,
   RefSiteKey,
+  RelationKind,
   ResolutionContext,
   Span,
   SymbolIdentity,
@@ -108,6 +109,32 @@ export interface CallerRecord extends Provenance {
   readonly tier: Tier;
 }
 
+/**
+ * A relation between two symbols that the compiler reported (plan 03-25): `from` extends or implements `to`, or the member
+ * `from` overrides the member `to`. It is always precise and `EXTRACTED`. The provenance is the subtype's: `source_path` and
+ * `span` are the definition of `from`, which is where the relation is written, and `debug` is the relation's own handle.
+ */
+export interface RelationRecord extends Provenance {
+  readonly from: SymbolIdentity;
+  readonly to: SymbolIdentity;
+  readonly relation: RelationKind;
+  readonly tier: 'precise';
+}
+
+/** Which relations of a symbol a read returns. */
+export type RelationDirection = 'in' | 'out' | 'both';
+
+export interface RelationsOptions extends ResolveOptions {
+  /**
+   * `in`: the relations whose `to` is the symbol (its subtypes, its implementers, the members that override it). `out`: the
+   * relations whose `from` is the symbol and, for a class or an interface, the `overrides` of its members (its
+   * supertypes). `both` is the two together. Default `both`.
+   */
+  readonly direction?: RelationDirection;
+  /** Truncate after ordering by relation kind, then subtype path and position. */
+  readonly limit?: number;
+}
+
 export type FindMode = 'exact' | 'prefix' | 'fuzzy';
 
 export interface FindOptions {
@@ -170,6 +197,17 @@ export interface Reader {
    * are exactly as for `refs`.
    */
   callers(id: SymbolIdentity, options?: CallersOptions): Promise<Answer<readonly CallerRecord[]>>;
+
+  /**
+   * The `extends`, `implements` and `overrides` relations of a symbol that the compiler reported (plan 03-25, OQ1). They
+   * come from the resolver's optional `relations` method, are cached per overlay snapshot and resolution context, and are
+   * read lazily: the store asks only for the files that can contribute (the file of the symbol for its supertypes; the
+   * files that hold a heritage reference to it, or to its container for a member, for its subtypes), within
+   * `options.timeoutMs`. A resolver without the method gives empty data and no degraded code; a timeout, a failure and a
+   * cache that cannot be written degrade the answer exactly as for `refs`, and the computation carries on in the
+   * background. A relation whose endpoints the overlay does not hold is never returned.
+   */
+  relations(id: SymbolIdentity, options?: RelationsOptions): Promise<Answer<readonly RelationRecord[]>>;
 
   /** One symbol by identity; `data` is null when it does not exist in this overlay. */
   symbol(id: SymbolIdentity): Promise<Answer<SymbolRecord | null>>;

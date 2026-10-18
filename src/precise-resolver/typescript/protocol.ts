@@ -60,8 +60,18 @@ export const RequestSchema = z.discriminatedUnion('t', [
     config: z.string().min(1).max(MAX_PATH_CHARS),
     sites: z.array(Site).max(PRECISE_LIMITS.sitesPerRequest),
   }),
+  /** Plan 03-25: the relations (extends, implements, overrides) of the classes and interfaces declared in `files`. */
+  z.strictObject({
+    t: z.literal('relations'),
+    id: Id,
+    config: z.string().min(1).max(MAX_PATH_CHARS),
+    files: z.array(z.string().min(1).max(MAX_PATH_CHARS)).max(PRECISE_LIMITS.sitesPerRequest),
+  }),
   z.strictObject({ t: z.literal('ping'), id: Id }),
 ]);
+
+/** The relation kinds the worker may report (the kernel's `RelationKind`). */
+const RelationName = z.enum(['extends', 'implements', 'overrides']);
 
 export const ResponseSchema = z.discriminatedUnion('t', [
   z.strictObject({
@@ -75,6 +85,8 @@ export const ResponseSchema = z.discriminatedUnion('t', [
     pid: z.int().min(1).max(4_294_967_295).optional(),
   }),
   z.strictObject({ t: z.literal('edge'), id: Id, site: Site, targets: z.array(Target).max(64) }),
+  /** Plan 03-25: one relation between two declarations, both as the name token of the declaration plus its kind. */
+  z.strictObject({ t: z.literal('relation'), id: Id, from: Target, to: Target, relation: RelationName }),
   z.strictObject({ t: z.literal('done'), id: Id, asked: z.int().min(0), answered: z.int().min(0) }),
   z.strictObject({
     t: z.literal('error'),

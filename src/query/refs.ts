@@ -9,9 +9,9 @@
  */
 import path from 'node:path';
 import { UnknownWorktree } from '../fact-store/index.ts';
-import type { Reader, RefRecord, SymbolRecord } from '../fact-store/index.ts';
-import type { Answer, DegradedCode, Envelope, Watermark } from '../facts/index.ts';
-import { okEnvelope } from '../facts/index.ts';
+import type { Reader, RefRecord, RelationRecord, SymbolRecord } from '../fact-store/index.ts';
+import type { Answer, DegradedCode, Envelope, RefKind, SymbolIdentity, Watermark } from '../facts/index.ts';
+import { okEnvelope, symbolKey } from '../facts/index.ts';
 import { cleanField, createCitations, memoLineText } from './cite.ts';
 import { CODE_REFS_SCHEMA, errorEnvelope, withDegraded } from './envelope.ts';
 import { CURSOR_TOO_LONG_HINT, OUTPUT_TOO_LARGE_MESSAGE, TRUNCATED_HINT, notIndexed } from './find.ts';
@@ -22,6 +22,7 @@ import { compareRanked, cwdHintDir, directoryDistance, refKeyOf, sortKeyOf } fro
 import type { SortKey } from './ranking.ts';
 import { createLineReader } from './text.ts';
 import type { CodeRefsInput } from './tools.ts';
+import type { Edge } from './types.ts';
 
 /** Definitions followed per request (T-02-65): the best-ranked five, with a hint when more matched. */
 export const MAX_TARGETS = 5;
@@ -110,6 +111,83 @@ export interface RefItem {
   readonly target: SymbolRecord;
   readonly ref: RefRecord;
   readonly key: SortKey;
+  /** What the compiler says this item is; absent for a name-matched (grammar-tier) item. */
+  readonly edge?: Edge;
+}
+
+/** A reference with the edge it carries, before it is ranked. */
+export interface LabelledRef {
+  readonly ref: RefRecord;
+  readonly edge?: Edge;
+}
+
+const lastSegmentOf = (qualifiedName: string): string => {
+  const dot = qualifiedName.lastIndexOf('.');
+  return dot < 0 ? qualifiedName : qualifiedName.slice(dot + 1);
+};
+
+/** The reference a relation stands for when no reference site of the grammar tier shows it: cited at the subtype's definition. */
+function refOfRelation(relation: RelationRecord, named: string, kind: RefKind | undefined): RefRecord {
+  return {
+    source_path: relation.source_path,
+    span: relation.span,
+    extractor: relation.extractor,
+    content_hash: relation.content_hash,
+    first_seen: relation.first_seen,
+    last_seen: relation.last_seen,
+    confidence: 'EXTRACTED',
+    debug: relation.debug,
+    site: { path: relation.source_path, span: relation.span, name: named },
+    target: relation.to,
+    tier: 'precise',
+    enclosing: relation.from,
+    ...(kind === undefined ? {} : { kind }),
+  };
+}
+
+/**
+ * The references of `target` with the edge each one carries, from the references the Reader returned and the relations that
+ * end at `target` (`Reader.relations(target, { direction: 'in' })`).
+ *
+ * - A precise reference is a `calls` edge when it is a call and a `references` edge otherwise.
+ * - A heritage site (`class Sub extends Base`) that a compiler relation names, whatever tier the site came from, is the
+ *   `extends` or `implements` edge itself: it becomes a precise `EXTRACTED` item carrying that name. The label comes only
+ *   from the relation, never from the name match, so a heritage site no relation names keeps the grammar tier and no edge.
+ * - A relation no site shows (the heritage clause names an expression the grammar tier does not see) is added as an item
+ *   cited at the subtype; so is every `overrides` relation, which has no reference site at all.
+ */
+export function labelRefs(target: SymbolIdentity, refs: readonly RefRecord[], relations: readonly RelationRecord[]): LabelledRef[] {
+  const targetKey = symbolKey(target);
+  const heritage = new Map<string, RelationRecord>();
+  for (const relation of relations) {
+    if ((relation.relation === 'extends' || relation.relation === 'implements') && symbolKey(relation.to) === targetKey) {
+      heritage.set(symbolKey(relation.from), relation);
+    }
+  }
+  const named = new Set<string>();
+  const out: LabelledRef[] = [];
+  for (const ref of refs) {
+    const subtype = ref.kind === 'heritage' && ref.enclosing !== undefined && ref.enclosing !== null ? heritage.get(symbolKey(ref.enclosing)) : undefined;
+    if (subtype !== undefined) {
+      named.add(symbolKey(subtype.from));
+      const { candidates, ...rest } = ref;
+      void candidates; // a compiler relation is not ambiguous
+      out.push({ ref: { ...rest, extractor: subtype.extractor, confidence: 'EXTRACTED', tier: 'precise' }, edge: subtype.relation });
+    } else if (ref.tier === 'precise') {
+      out.push({ ref, edge: ref.kind === 'call' ? 'calls' : 'references' });
+    } else {
+      out.push({ ref });
+    }
+  }
+  for (const relation of relations) {
+    if (symbolKey(relation.to) !== targetKey) continue;
+    if (relation.relation === 'overrides') {
+      out.push({ ref: refOfRelation(relation, lastSegmentOf(relation.from.qualifiedName), undefined), edge: 'overrides' });
+    } else if (!named.has(symbolKey(relation.from))) {
+      out.push({ ref: refOfRelation(relation, lastSegmentOf(relation.to.qualifiedName), 'heritage'), edge: relation.relation });
+    }
+  }
+  return out;
 }
 
 export interface GatheredRefs {
@@ -140,11 +218,20 @@ export async function gatherRefs(
     const answer = await reader.refs(record.identity, { timeoutMs: ctx.config.resolveTimeoutMs });
     watermark = laterOf(watermark, answer.watermark);
     for (const code of answer.degraded ?? []) degraded.add(code);
-    for (const ref of answer.data) {
+    // The compiler's relations that end at the target: they label heritage sites and add the overriding members.
+    const related = await reader.relations(record.identity, {
+      direction: 'in',
+      timeoutMs: ctx.config.resolveTimeoutMs,
+      limit: ctx.config.maxLimit * CANDIDATE_FACTOR,
+    });
+    watermark = laterOf(watermark, related.watermark);
+    for (const code of related.degraded ?? []) degraded.add(code);
+    for (const { ref, edge } of labelRefs(record.identity, answer.data, related.data)) {
       const dir = path.posix.dirname(ref.source_path);
       items.push({
         target: record,
         ref,
+        ...(edge === undefined ? {} : { edge }),
         key: refKeyOf({
           tier: ref.tier,
           confidence: ref.confidence,
@@ -178,6 +265,8 @@ export interface RefResult {
   readonly ambiguous: boolean;
   /** How many definitions the site could point at: 1 unless ambiguous. */
   readonly candidates: number;
+  /** What the compiler says this item is; absent for a name-matched item (mcp-contract ADR amendment, point 9). */
+  readonly edge?: Edge;
   readonly citation: string;
 }
 
@@ -195,6 +284,7 @@ export function describeRef(item: RefItem, citation: string): RefResult {
     confidence: ref.confidence,
     ambiguous: candidates > 1,
     candidates,
+    ...(item.edge === undefined ? {} : { edge: item.edge }),
     citation,
   };
 }

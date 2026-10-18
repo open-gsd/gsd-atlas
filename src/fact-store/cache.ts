@@ -6,7 +6,7 @@
  * from index.ts.
  */
 import { createHash } from 'node:crypto';
-import type { RefSiteKey, ResolutionContext, ResolvedEdge, SymbolIdentity } from '../facts/index.ts';
+import type { RefSiteKey, RelationKind, ResolutionContext, ResolvedEdge, ResolvedRelation, SymbolIdentity } from '../facts/index.ts';
 import { DbError } from '../sqlite/index.ts';
 import type { Db } from '../sqlite/index.ts';
 
@@ -194,15 +194,128 @@ export function writeAsked(db: Db, snapshot: string, contextId: number, sites: r
 }
 
 /**
- * Delete the edges and the asked markers of every snapshot that no live overlay has any more, so the cache stays
- * bounded. Both tables go in one pass: a marker never outlives the snapshot it describes.
+ * Delete the edges, the relations and the asked markers of every snapshot that no live overlay has any more, so the
+ * cache stays bounded. All four tables go in one pass: a marker never outlives the snapshot it describes.
  */
 export function pruneEdges(db: Db, live: ReadonlySet<string>): void {
-  for (const table of ['resolved_edges', 'resolved_asked']) {
+  for (const table of ['resolved_edges', 'resolved_asked', 'resolved_relations', 'relations_asked']) {
     const remove = db.prepare(`DELETE FROM ${table} WHERE snapshot = ?`);
     for (const row of db.prepare(`SELECT DISTINCT snapshot FROM ${table}`).all()) {
       const snapshot = String(row.snapshot);
       if (!live.has(snapshot)) remove.run(snapshot);
     }
   }
+}
+
+// ---------------------------------------------------------------------------------------------------------
+// Relations (plan 03-25): extends, implements and overrides, cached like edges and settled per file.
+// ---------------------------------------------------------------------------------------------------------
+
+/** One relation as the cache holds it: the repo is the store's own, so it is not stored. */
+export interface CachedRelation {
+  readonly from: SymbolIdentity;
+  readonly to: SymbolIdentity;
+  readonly relation: RelationKind;
+  /** The id of the resolver that produced the relation, without the `precise:` prefix. */
+  readonly resolver: string;
+}
+
+const RELATION_COLUMNS = `from_path, from_qualified_name, from_kind, from_discriminator,
+  to_path, to_qualified_name, to_kind, to_discriminator, relation, resolver`;
+
+function endpointOf(repo: string, row: Record<string, unknown>, side: 'from' | 'to'): SymbolIdentity {
+  const discriminator = String(row[`${side}_discriminator`]);
+  return {
+    repo,
+    path: String(row[`${side}_path`]),
+    qualifiedName: String(row[`${side}_qualified_name`]),
+    kind: String(row[`${side}_kind`]),
+    ...(discriminator === '' ? {} : { discriminator }),
+  };
+}
+
+function relationOf(repo: string, row: Record<string, unknown>): CachedRelation {
+  return {
+    from: endpointOf(repo, row, 'from'),
+    to: endpointOf(repo, row, 'to'),
+    relation: String(row.relation) as RelationKind,
+    resolver: String(row.resolver),
+  };
+}
+
+/** The cached relations whose `to` is `target`, under one snapshot and context. A store that cannot read the table has none. */
+export function readRelationsTo(db: Db, snapshot: string, contextId: number, target: SymbolIdentity, repo: string): CachedRelation[] {
+  try {
+    return db
+      .prepare(
+        `SELECT ${RELATION_COLUMNS} FROM resolved_relations
+         WHERE snapshot = ? AND context_id = ? AND to_path = ? AND to_qualified_name = ? AND to_kind = ? AND to_discriminator = ?`,
+      )
+      .all(snapshot, contextId, target.path, target.qualifiedName, target.kind, target.discriminator ?? '')
+      .map((row) => relationOf(repo, row));
+  } catch (error) {
+    if (!(error instanceof DbError)) throw error;
+    return [];
+  }
+}
+
+/** The cached relations whose `from` is declared in `filePath`, under one snapshot and context. */
+export function readRelationsFrom(db: Db, snapshot: string, contextId: number, filePath: string, repo: string): CachedRelation[] {
+  try {
+    return db
+      .prepare(`SELECT ${RELATION_COLUMNS} FROM resolved_relations WHERE snapshot = ? AND context_id = ? AND from_path = ?`)
+      .all(snapshot, contextId, filePath)
+      .map((row) => relationOf(repo, row));
+  } catch (error) {
+    if (!(error instanceof DbError)) throw error;
+    return [];
+  }
+}
+
+/**
+ * The files, among `files`, whose relations were asked of the resolver under one snapshot and context. A table that can not
+ * be read counts as no markers: the worst outcome is asking again, never a failed read.
+ */
+export function readRelationsAsked(db: Db, snapshot: string, contextId: number, files: readonly string[]): Set<string> {
+  const found = new Set<string>();
+  try {
+    const select = db.prepare('SELECT 1 AS found FROM relations_asked WHERE snapshot = ? AND context_id = ? AND file_path = ?');
+    for (const file of files) if (select.get(snapshot, contextId, file) !== undefined) found.add(file);
+  } catch (error) {
+    if (!(error instanceof DbError)) throw error;
+    found.clear();
+  }
+  return found;
+}
+
+/** Store relations under one snapshot and context (`INSERT OR IGNORE`, so one stored twice leaves one row). Writer connection, inside the caller's transaction. */
+export function writeRelations(db: Db, snapshot: string, contextId: number, relations: readonly ResolvedRelation[]): void {
+  const insert = db.prepare(
+    `INSERT OR IGNORE INTO resolved_relations
+       (snapshot, context_id, from_path, from_qualified_name, from_kind, from_discriminator,
+        to_path, to_qualified_name, to_kind, to_discriminator, relation, resolver)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  );
+  for (const item of relations) {
+    insert.run(
+      snapshot,
+      contextId,
+      item.from.path,
+      item.from.qualifiedName,
+      item.from.kind,
+      item.from.discriminator ?? '',
+      item.to.path,
+      item.to.qualifiedName,
+      item.to.kind,
+      item.to.discriminator ?? '',
+      item.relation,
+      item.resolver,
+    );
+  }
+}
+
+/** Mark files as asked under one snapshot and context. Writer connection, inside the caller's transaction. */
+export function writeRelationsAsked(db: Db, snapshot: string, contextId: number, files: readonly string[]): void {
+  const insert = db.prepare('INSERT OR IGNORE INTO relations_asked (snapshot, context_id, file_path) VALUES (?, ?, ?)');
+  for (const file of files) insert.run(snapshot, contextId, file);
 }

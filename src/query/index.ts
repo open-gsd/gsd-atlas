@@ -10,6 +10,7 @@ export type { HealthReason, StatusSnapshot } from './status.ts';
 export { TOOLS, TOOL_NAMES, buildRequest } from './tools.ts';
 export type { ToolDefinition, ToolName } from './tools.ts';
 export type {
+  Edge,
   FreshPort,
   FreshReport,
   IndexerStatusLike,

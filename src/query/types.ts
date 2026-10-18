@@ -10,6 +10,13 @@ import type { Clock, Envelope, Request } from '../facts/index.ts';
 import type { GovernorStatus } from '../governor/index.ts';
 import type { SourceTree } from '../source-tree/index.ts';
 
+/**
+ * The relation a precise item names in its `edge` field (mcp-contract ADR amendment, point 9): `calls` and `references` come
+ * from site resolution, `extends`, `implements` and `overrides` from the compiler's relations. An item from the grammar tier
+ * has no `edge` at all: a name match is never presented as any of these.
+ */
+export type Edge = 'calls' | 'references' | 'extends' | 'implements' | 'overrides';
+
 /** Tunables of Query. Defaults: `DEFAULT_QUERY_CONFIG`. */
 export interface QueryConfig {
   /** `budget_tokens` when a request names none (QRY-02). */

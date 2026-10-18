@@ -165,8 +165,8 @@ export interface ResolverNotice {
   readonly degraded: DegradedCode;
 }
 
-/** True when a thing a resolver yielded is a {@link ResolverNotice} and not an edge. */
-export function isResolverNotice(value: ResolvedEdge | ResolverNotice): value is ResolverNotice {
+/** True when a thing a resolver yielded is a {@link ResolverNotice} and not an edge or a relation. */
+export function isResolverNotice(value: ResolvedEdge | ResolvedRelation | ResolverNotice): value is ResolverNotice {
   return (value as { readonly kind?: unknown }).kind === 'notice';
 }
 
@@ -206,12 +206,58 @@ export type ResolverPort = (
  * A {@link ResolverPort} that may also yield {@link ResolverNotice}s among its edges (plan 03-23). It is what the Fact
  * Store accepts: every `ResolverPort` is one, so a resolver that never yields a notice is unchanged.
  */
-export type NoticingResolverPort = (
+export type NoticingResolverPort = ((
   sites: readonly RefSiteKey[],
   context: ResolutionContext,
   symbols: SymbolLookup,
   scope?: ResolveScope,
-) => AsyncIterable<ResolvedEdge | ResolverNotice>;
+) => AsyncIterable<ResolvedEdge | ResolverNotice>) & {
+  /**
+   * The optional relations method (plan 03-25, OQ1): symbol-to-symbol relations a compiler knows and a reference site
+   * cannot carry. A port without it simply yields no relations; nothing else about the port changes.
+   */
+  readonly relations?: RelationsPort;
+};
+
+/**
+ * The symbol-to-symbol relations a compiler reports (plan 03-25, OQ1). `extends` and `implements` relate a class or an
+ * interface to the declaration it names in its heritage clause; `overrides` relates a class member to the base-class member
+ * it overrides, including an abstract one. A class member that only implements an interface member is not an `overrides`.
+ */
+export type RelationKind = 'extends' | 'implements' | 'overrides';
+
+/** The relation kinds in the order they are listed and ranked. */
+export const RELATION_KINDS: readonly RelationKind[] = Object.freeze(['extends', 'implements', 'overrides']);
+
+/** True when `value` is one of the three relation kinds. */
+export function isRelationKind(value: unknown): value is RelationKind {
+  return typeof value === 'string' && (RELATION_KINDS as readonly string[]).includes(value);
+}
+
+/**
+ * One relation between two symbols, always compiler-resolved (`EXTRACTED`). Both endpoints name the symbol identity the
+ * grammar tier stores; a relation whose endpoints the overlay does not hold is discarded by the store, like an edge.
+ */
+export interface ResolvedRelation {
+  /** The subtype (`extends`, `implements`) or the overriding member (`overrides`). */
+  readonly from: SymbolIdentity;
+  /** The base class or interface, or the base member. */
+  readonly to: SymbolIdentity;
+  readonly relation: RelationKind;
+  readonly resolver: string;
+}
+
+/**
+ * The injected relations port: the relations whose `from` symbol is declared in one of `files` (repository-relative POSIX
+ * paths of the overlay). Like {@link ResolverPort} it reads symbols only through the read-only lookup, may yield notices,
+ * and may fail with an error that carries a degraded code.
+ */
+export type RelationsPort = (
+  files: readonly string[],
+  context: ResolutionContext,
+  symbols: SymbolLookup,
+  scope?: ResolveScope,
+) => AsyncIterable<ResolvedRelation | ResolverNotice>;
 
 const SEPARATOR = '\u0000';
 

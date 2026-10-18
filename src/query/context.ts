@@ -301,6 +301,7 @@ export async function runContext(ctx: FindContext, input: CodeContextInput): Pro
             confidence: ref.confidence,
             ambiguous: candidates > 1,
             candidates,
+            ...(entry.item.edge === undefined ? {} : { edge: entry.item.edge }),
             citation: id,
           });
         }

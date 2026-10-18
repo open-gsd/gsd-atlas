@@ -17,8 +17,10 @@ import type ts from 'typescript';
 import { lineStarts, offsetOf, positionOf, stripBom } from './positions.ts';
 import { PRECISE_LIMITS, encodeResponse, parseRequest } from './protocol.ts';
 import type { Request, Response, Site, Target } from './protocol.ts';
+import { collectRelations } from './relations.ts';
 
-type Compiler = typeof ts;
+/** The compiler API. Exported as a type only, so `relations.ts` can derive its types from it without loading the compiler. */
+export type Compiler = typeof ts;
 
 /** Declarations one site may report; a symbol with more (a heavily merged interface) is cut here. */
 const MAX_TARGETS = 64;
@@ -166,23 +168,30 @@ function symbolOf(api: Compiler, entry: ProgramEntry, node: ts.Identifier | ts.P
   return symbol;
 }
 
+/** The name token of a declaration as a target, or undefined for a library, a dependency, a file outside the worktree or a name that is no identifier. */
+function targetOfDeclaration(api: Compiler, entry: ProgramEntry, declaration: ts.Declaration): Target | undefined {
+  const nameNode = api.getNameOfDeclaration(declaration);
+  if (nameNode === undefined || !(api.isIdentifier(nameNode) || api.isPrivateIdentifier(nameNode))) return undefined;
+  const file = declaration.getSourceFile();
+  const repoPath = repoPathOf(entry, file);
+  if (repoPath === undefined) return undefined;
+  const info = infoOf(entry, file);
+  const start = nameNode.getStart(file) - info.shift;
+  if (start < 0) return undefined;
+  const { row, col } = positionOf(info.starts, start);
+  return { path: repoPath, row, col, name: nameNode.text, kind: api.SyntaxKind[declaration.kind] ?? 'Unknown' };
+}
+
 function targetsOf(api: Compiler, entry: ProgramEntry, symbol: ts.Symbol): Target[] {
   const out: Target[] = [];
   const seen = new Set<string>();
   for (const declaration of symbol.declarations ?? []) {
-    const nameNode = api.getNameOfDeclaration(declaration);
-    if (nameNode === undefined || !(api.isIdentifier(nameNode) || api.isPrivateIdentifier(nameNode))) continue;
-    const file = declaration.getSourceFile();
-    const repoPath = repoPathOf(entry, file);
-    if (repoPath === undefined) continue;
-    const info = infoOf(entry, file);
-    const start = nameNode.getStart(file) - info.shift;
-    if (start < 0) continue;
-    const { row, col } = positionOf(info.starts, start);
-    const key = `${repoPath}\u0000${String(row)}\u0000${String(col)}`;
+    const target = targetOfDeclaration(api, entry, declaration);
+    if (target === undefined) continue;
+    const key = `${target.path}\u0000${String(target.row)}\u0000${String(target.col)}`;
     if (seen.has(key)) continue;
     seen.add(key);
-    out.push({ path: repoPath, row, col, name: nameNode.text, kind: api.SyntaxKind[declaration.kind] ?? 'Unknown' });
+    out.push(target);
     if (out.length >= MAX_TARGETS) break;
   }
   return out;
@@ -200,25 +209,53 @@ function resolveSite(api: Compiler, entry: ProgramEntry, site: Site): Target[] {
   return symbol === undefined ? [] : targetsOf(api, entry, symbol);
 }
 
-function resolve(message: Extract<Request, { t: 'resolve' }>): void {
+/** The compiler and the program of an owner config, or undefined after the failure has been reported for request `id`. */
+function programFor(id: number, config: string): { readonly api: Compiler; readonly entry: ProgramEntry } | undefined {
   const api = compiler;
   if (api === undefined) {
-    fail(message.id, 'not_initialized', 'the worker has not been initialized');
-    return;
+    fail(id, 'not_initialized', 'the worker has not been initialized');
+    return undefined;
   }
-  if (!known.has(message.config)) {
-    fail(message.id, 'unknown_config', 'the config is not one the worker was told about');
-    return;
+  if (!known.has(config)) {
+    fail(id, 'unknown_config', 'the config is not one the worker was told about');
+    return undefined;
   }
-  let entry = programs.get(message.config);
+  let entry = programs.get(config);
   if (entry === undefined) {
-    entry = createEntry(message.config);
+    entry = createEntry(config);
     if (entry === undefined) {
-      fail(message.id, 'config_unreadable', 'the config could not be read');
-      return;
+      fail(id, 'config_unreadable', 'the config could not be read');
+      return undefined;
     }
-    programs.set(message.config, entry);
+    programs.set(config, entry);
   }
+  return { api, entry };
+}
+
+/** The relations of the classes and interfaces declared in the requested files (plan 03-25). */
+function relations(message: Extract<Request, { t: 'relations' }>): void {
+  const ready = programFor(message.id, message.config);
+  if (ready === undefined) return;
+  const { api, entry } = ready;
+  let answered = 0;
+  for (const file of message.files) {
+    const source = entry.program.getSourceFile(`${rootPosix}/${file}`);
+    if (source === undefined) continue;
+    const found = collectRelations(entry.checker, source, {
+      api,
+      targetOf: (declaration) => targetOfDeclaration(api, entry, declaration),
+      maxDeclarations: MAX_TARGETS,
+    });
+    if (found.length > 0) answered += 1;
+    for (const item of found) send({ t: 'relation', id: message.id, from: item.from, to: item.to, relation: item.relation });
+  }
+  send({ t: 'done', id: message.id, asked: message.files.length, answered });
+}
+
+function resolve(message: Extract<Request, { t: 'resolve' }>): void {
+  const ready = programFor(message.id, message.config);
+  if (ready === undefined) return;
+  const { api, entry } = ready;
   let answered = 0;
   for (const site of message.sites) {
     const targets = resolveSite(api, entry, site);
@@ -243,6 +280,9 @@ function handle(line: string): void {
         return;
       case 'resolve':
         resolve(message);
+        return;
+      case 'relations':
+        relations(message);
         return;
       case 'ping':
         send({ t: 'done', id: message.id, asked: 0, answered: 0 });

@@ -69,6 +69,7 @@ const readerShape = {
   fileFacts: async () => ({ data: null, watermark: { seq: 0, stalePaths: [] } }),
   importers: async () => ({ data: [], watermark: { seq: 0, stalePaths: [] } }),
   emittedAs: async () => ({ data: [], watermark: { seq: 0, stalePaths: [] } }),
+  relations: async () => ({ data: [], watermark: { seq: 0, stalePaths: [] } }),
 } satisfies Reader;
 
 describe('fact-store interface', () => {
