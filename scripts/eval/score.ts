@@ -26,6 +26,9 @@ import type { AnswerItem, AnswerKey, Category, Granularity, Question } from './q
  */
 export const LINE_SLACK = 2;
 
+/** At most this many cited items of one answer are verified; the rest are failures (T-03-74). */
+export const MAX_CITATIONS = 200;
+
 /** The longest `summary` the answer schema accepts, in characters (code points). */
 export const MAX_SUMMARY_CHARS = 400;
 
@@ -187,7 +190,12 @@ function matchCost(key: ScoredItem, given: ScoredItem, granularity: Granularity)
     return key.symbol === given.symbol ? 0 : undefined;
   }
   if (key.line === undefined || given.line === undefined) return undefined;
-  return key.line === given.line ? 0 : undefined;
+  return matchLines(key.line, given.line);
+}
+
+/** The distance between a key line and an answered line when they match, else undefined. */
+export function matchLines(keyLine: number, givenLine: number): number | undefined {
+  return keyLine === givenLine ? 0 : undefined;
 }
 
 export interface SetMatch {
