@@ -1,6 +1,6 @@
 import { assertInputSizes, hashMismatchMessage, sha256Hex, utf8Length } from './check.ts';
 import { GrammarLoadError, GrammarRunError } from './errors.ts';
-import { GRAMMAR_LIMITS } from './limits.ts';
+import { GRAMMAR_LIMITS, captureTextLimit } from './limits.ts';
 import type { Capture, GrammarEngine, GrammarInput, GrammarRunResult, LoadedGrammar, QueryKind } from './types.ts';
 
 /** A scripted capture: `match` may be left out, and the fake then assigns one. */
@@ -28,14 +28,24 @@ function withMatches(scripted: ScriptedRunResult): GrammarRunResult {
     }
   }
   const captures = scripted.captures.map((capture): Capture => {
+    const bounded = boundedComment(capture);
     if (capture.match !== undefined) {
-      return { ...capture, match: capture.match };
+      return { ...bounded, match: capture.match };
     }
     const match = next.get(capture.query) ?? 0;
     next.set(capture.query, match + 1);
-    return { ...capture, match };
+    return { ...bounded, match };
   });
   return { ...scripted, captures };
+}
+
+/**
+ * The real engine keeps the text of a capture named `comment` only up to `GRAMMAR_LIMITS.commentTextChars` units
+ * and hands over an empty string beyond it; the fake does the same for a scripted comment so a test of the
+ * extractor sees what production sees. Any other capture is left as scripted.
+ */
+function boundedComment(capture: ScriptedCapture): ScriptedCapture {
+  return capture.name === 'comment' && capture.text.length > captureTextLimit(capture.name) ? { ...capture, text: '' } : capture;
 }
 
 /**

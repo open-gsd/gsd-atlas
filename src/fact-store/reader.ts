@@ -1,4 +1,14 @@
-import type { Answer, EmitLookup, ExportSite, FileFacts, ImportSite, LocalSymbol, RefKind, RefSite } from '../facts/index.ts';
+import type {
+  Answer,
+  CitationSite,
+  EmitLookup,
+  ExportSite,
+  FileFacts,
+  ImportSite,
+  LocalSymbol,
+  RefKind,
+  RefSite,
+} from '../facts/index.ts';
 import {
   clampDepth,
   collectCallEdges,
@@ -99,6 +109,20 @@ function rebuildFacts(snap: Snapshot, path: string, fileId: number): FileFacts {
       ...(row.from_path === null ? {} : { from: str(row.from_path) }),
     }));
 
+  // ADR citations (plan 03-24): only the number, the short detail and the span are stored, so only they come back.
+  const citations: CitationSite[] = snap.db
+    .prepare(
+      `SELECT number, detail, start_line, start_col, end_line, end_col, enclosing
+       FROM citations WHERE file_id = ? ORDER BY ord`,
+    )
+    .all(fileId)
+    .map((row) => ({
+      number: num(row.number),
+      span: spanOf(row),
+      ...(row.detail === null ? {} : { detail: str(row.detail) }),
+      ...(row.enclosing === null ? {} : { enclosing: num(row.enclosing) }),
+    }));
+
   return {
     path,
     contentHash: file.hash,
@@ -108,6 +132,7 @@ function rebuildFacts(snap: Snapshot, path: string, fileId: number): FileFacts {
     refSites,
     imports,
     exports,
+    ...(citations.length === 0 ? {} : { citations }),
     parse: { errorBytes: file.errorBytes, totalBytes: file.totalBytes },
   };
 }

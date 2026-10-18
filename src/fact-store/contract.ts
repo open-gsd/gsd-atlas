@@ -348,11 +348,11 @@ const namesFacts = parseFacts('src/names.ts', H(20), {
 
 export function defineFactStoreContract(label: string, driver: DriverName): void {
   describe(`fact store contract (${label})`, () => {
-    it('a fresh store reports schema version 1, no worktrees and no held writer lease', async () => {
+    it('a fresh store reports schema version 2, no worktrees and no held writer lease', async () => {
       await withStore(driver, async (fx) => {
         const status = await fx.store.status();
         assert.equal(status.schemaVersion, SCHEMA_VERSION);
-        assert.equal(status.schemaVersion, 1);
+        assert.equal(status.schemaVersion, 2);
         assert.deepStrictEqual(status.worktrees, []);
         assert.ok(status.sizeBytes > 0);
         assert.equal(status.writerLeaseHeld, false);
@@ -483,7 +483,7 @@ export function defineFactStoreContract(label: string, driver: DriverName): void
         const again = await fx.reopen();
         assert.deepStrictEqual(counts(peek), before);
         assert.deepStrictEqual(peek.prepare('SELECT name, value FROM meta ORDER BY name').all(), metaBefore);
-        assert.equal((await again.status()).schemaVersion, 1);
+        assert.equal((await again.status()).schemaVersion, SCHEMA_VERSION);
         const found = await again.at('main').find('parse');
         assert.equal(found.data.length, 1);
         assert.deepStrictEqual(found.watermark, { seq: 1, stalePaths: [] });

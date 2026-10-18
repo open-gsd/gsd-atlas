@@ -75,7 +75,7 @@ for (const driver of ['node:sqlite', 'better-sqlite3'] as const satisfies readon
         assert.equal('leaseHolder' in status, false);
         assert.deepStrictEqual(
           { schemaVersion: status.schemaVersion, worktrees: status.worktrees, writerLeaseHeld: status.writerLeaseHeld },
-          { schemaVersion: 1, worktrees: [], writerLeaseHeld: false },
+          { schemaVersion: 2, worktrees: [], writerLeaseHeld: false },
         );
       });
     });

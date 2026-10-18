@@ -164,6 +164,14 @@ function isOptionalString(value: unknown): boolean {
   return value === undefined || typeof value === 'string';
 }
 
+/** The longest `CitationSite.detail` the validator accepts (the extractor itself keeps at most 17: `§` and 16 more). */
+const CITATION_DETAIL_MAX = 32;
+
+/** A section detail: 1 to 32 ASCII letters, digits, dots or section signs, nothing else (no space, no control character). */
+function isCitationDetail(value: unknown): boolean {
+  return typeof value === 'string' && value.length >= 1 && value.length <= CITATION_DETAIL_MAX && /^[A-Za-z0-9.§]+$/.test(value);
+}
+
 function isOneOf(set: readonly string[], value: unknown): boolean {
   return typeof value === 'string' && set.includes(value);
 }
@@ -232,6 +240,7 @@ export function validateFileFacts(value: unknown): Diagnostic[] {
     ['refSites', 'ref site', true],
     ['imports', 'import', true],
     ['exports', 'export', false],
+    ['citations', 'citation', false],
   ];
   const symbolCount = Array.isArray(value.symbols) ? value.symbols.length : 0;
   const invalid = (message: string): void => {
@@ -244,6 +253,10 @@ export function validateFileFacts(value: unknown): Diagnostic[] {
     }
     if (!Array.isArray(items)) {
       invalid(`FileFacts.${field} must be an array`);
+      continue;
+    }
+    if (field === 'citations' && items.length > MAX_CITATIONS_PER_FILE) {
+      invalid(`FileFacts.citations has more than ${MAX_CITATIONS_PER_FILE} entries`);
       continue;
     }
     items.forEach((item: unknown, index) => {
@@ -308,6 +321,15 @@ export function validateFileFacts(value: unknown): Diagnostic[] {
           if (!isOptionalString(item.from)) {
             invalid(`${where} has a from that is not a string`);
           }
+          break;
+        case 'citations':
+          if (typeof item.number !== 'number' || !Number.isSafeInteger(item.number) || item.number < 1) {
+            invalid(`${where} has a number that is not a positive safe integer`);
+          }
+          if (item.detail !== undefined && !isCitationDetail(item.detail)) {
+            invalid(`${where} has a detail that is not 1 to ${CITATION_DETAIL_MAX} letters, digits, dots or section signs`);
+          }
+          checkIndex(item.enclosing, symbolCount, `${where} has an enclosing symbol outside the symbols array`, invalid);
           break;
       }
     });

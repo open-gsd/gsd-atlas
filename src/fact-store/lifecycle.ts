@@ -58,7 +58,7 @@ interface CollectCursor {
 const cursors = new WeakMap<StoreParts, CollectCursor>();
 
 /** Fact tables keyed by the file they came from. */
-const FACT_TABLES = ['symbols', 'refs', 'imports', 'import_bindings', 'exports'] as const;
+const FACT_TABLES = ['symbols', 'refs', 'imports', 'import_bindings', 'exports', 'citations'] as const;
 
 /**
  * Delete the fact rows and the `files` row of every picked file that is still retired and still unreferenced,

@@ -137,7 +137,7 @@ Result `data`:
 | --- | --- |
 | `repo` | The repository path the request named, or `null`. |
 | `worktrees[]` | One entry per worktree the index holds: `worktree`, `seq` (its watermark), `staleCount`. |
-| `store` | `schemaVersion`, `sizeBytes`, `writerLeaseHeld` (this process holds the writer lease), `rebuilt` (a corrupt store was found, moved aside and rebuilt). |
+| `store` | `schemaVersion` (2 since Phase 3 added the stored ADR citations; a store written by version 1 is derived data, deleted and recreated when this build opens it, and reports `not_indexed` until `gsd-atlas build` has run once), `sizeBytes`, `writerLeaseHeld` (this process holds the writer lease), `rebuilt` (a corrupt store was found, moved aside and rebuilt). |
 | `indexer` | `null` when this process runs no indexer; otherwise `watchMode` (`native`, `poll` or `reconcile-only`), `queued`, `running`, `failed` (a count; the paths are not listed), `reconciling`, `lastReconcileAt` and `lastIndexedAt` (milliseconds since the epoch, or `null`). |
 | `governor` | `queued`, `running`, `leases`. |
 | `tiers[]` | One entry per loaded language module: `module`, `grammar`, `precise`, `platform` (whether each tier is active). |
@@ -150,7 +150,7 @@ The answer carries `degraded` codes for the reasons `follower`, `rebuilding`, `r
 Example `data` (trimmed; the path is the directory the server was asked about):
 
 ```json
-{"repo":"/path/to/atlas-demo","worktrees":[{"worktree":"/path/to/atlas-demo","seq":4,"staleCount":0}],"store":{"schemaVersion":1,"sizeBytes":110592,"writerLeaseHeld":true,"rebuilt":false},"indexer":{"watchMode":"native","queued":0,"running":0,"failed":0,"reconciling":false,"lastReconcileAt":1792284788463,"lastIndexedAt":null},"governor":{"queued":0,"running":1,"leases":0},"tiers":[{"module":"javascript","grammar":true,"precise":false,"platform":false},{"module":"typescript","grammar":true,"precise":false,"platform":false}],"policy":"off","health":"ok","reasons":[]}
+{"repo":"/path/to/atlas-demo","worktrees":[{"worktree":"/path/to/atlas-demo","seq":4,"staleCount":0}],"store":{"schemaVersion":2,"sizeBytes":110592,"writerLeaseHeld":true,"rebuilt":false},"indexer":{"watchMode":"native","queued":0,"running":0,"failed":0,"reconciling":false,"lastReconcileAt":1792284788463,"lastIndexedAt":null},"governor":{"queued":0,"running":1,"leases":0},"tiers":[{"module":"javascript","grammar":true,"precise":false,"platform":false},{"module":"typescript","grammar":true,"precise":false,"platform":false}],"policy":"off","health":"ok","reasons":[]}
 ```
 
 ### lang_list

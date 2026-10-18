@@ -23,3 +23,8 @@ export const GRAMMAR_LIMITS = {
   /** The largest `matchLimit` web-tree-sitter 0.27.1 documents for a query (QueryOptions.matchLimit: > 0 and <= 65536). */
   matchLimitMax: 65536,
 } as const;
+
+/** The longest text, in UTF-16 code units, the engine keeps for a capture of this name: 4,096 for `comment`, else 256. */
+export function captureTextLimit(captureName: string): number {
+  return captureName === 'comment' ? GRAMMAR_LIMITS.commentTextChars : GRAMMAR_LIMITS.captureTextChars;
+}

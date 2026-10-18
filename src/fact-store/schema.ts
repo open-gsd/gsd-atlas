@@ -1,7 +1,15 @@
 import type { Db } from '../sqlite/index.ts';
 
-/** The version of the fact-store schema this build writes. Raised only by a rebuild-requiring change (D-15). */
-export const SCHEMA_VERSION = 1;
+/**
+ * The version of the fact-store schema this build writes. Raised only by a rebuild-requiring change (D-15).
+ *
+ * Version 2 (plan 03-24, the single bump of Phase 3) adds the `citations` table to the local facts of a file
+ * version. A store written by version 1 holds no citations and would answer "no ADR cites this" for every file, so
+ * it is derived data that this build deletes and recreates when it opens it (the open step, D-15); the Host then
+ * reports `not_indexed` until `gsd-atlas build` has run again. Development stores built in Phase 2 need that one
+ * rebuild.
+ */
+export const SCHEMA_VERSION = 2;
 
 /** The store database file inside the store directory. */
 export const STORE_FILE_NAME = 'facts.db';
@@ -121,6 +129,23 @@ CREATE TABLE IF NOT EXISTS exports (
   end_col INTEGER NOT NULL,
   PRIMARY KEY (file_id, ord)
 ) WITHOUT ROWID;
+
+-- ADR citations found in the comments of a file version (plan 03-24, D-19): the ADR number, an optional short
+-- section detail and the span of the mention. The enclosing column is the ord of the symbol the mention belongs to.
+-- No column holds comment text.
+CREATE TABLE IF NOT EXISTS citations (
+  file_id INTEGER NOT NULL,
+  ord INTEGER NOT NULL,
+  number INTEGER NOT NULL,
+  detail TEXT,
+  start_line INTEGER NOT NULL,
+  start_col INTEGER NOT NULL,
+  end_line INTEGER NOT NULL,
+  end_col INTEGER NOT NULL,
+  enclosing INTEGER,
+  PRIMARY KEY (file_id, ord)
+) WITHOUT ROWID;
+CREATE INDEX IF NOT EXISTS citations_by_number ON citations (number);
 
 CREATE TABLE IF NOT EXISTS overlays (
   worktree TEXT NOT NULL PRIMARY KEY,
