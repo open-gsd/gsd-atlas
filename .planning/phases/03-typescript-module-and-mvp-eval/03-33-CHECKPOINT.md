@@ -65,3 +65,33 @@ The reply is recorded verbatim under Approvals in `docs/eval/preregistration.md`
 Changed: the description now carries the whole routing (it is the only part a model can see where a `Skill` tool exists); one line says to prefer atlas over grep for named-symbol questions and why; one says to use `code_impact` once instead of several greps; ADR questions route to `kind: adr`; an empty atlas answer is reported as "found nothing" and checked with one grep; every degraded code that can explain a weak answer is covered, including `compiler_fallback`, `memory_budget` and `resolver_timeout`.
 
 Left alone: the "when not to use atlas" rule (non-symbol text, a known file), the citation rule, the untrusted-text rule, the read-only stance. No repository fact, file name or symbol from the question set appears in the skill; the examples are `parseConfig` (from the docs) and generic category names.
+
+## Resolution (continuation executor, 2026-10-18)
+
+Status: resolved by the human with `reopen-stage-a`. This section is the Approvals record for plan 03-33; it is not written into `docs/eval/preregistration.md`, which is a Stage A document (Stage A is frozen and plan 03-38 owns every edit to it).
+
+### The human's reply, verbatim
+
+> re-open stage a and run with the skill now that it's built
+
+### How the reply was read
+
+- Grammar option `reopen-stage-a` (option (b) above): the skill must be visible to the model in the scored run, so Stage A is reopened to add the `Skill` tool to the atlas arm. Plan 03-38 owns the Stage A revision, the smoke run and the Stage B freeze.
+- "now that it's built": the user accepts the `gsd-atlas` skill as written at commit ae7ac92 (file as of this record) as the skill to run with, and the `gsd-atlas-module-author` skill as built. This is recorded as that, and nothing more: the user did not reply `approve` and did not name changes, so it is not an approval of option (a), and it is not a registered approval. The skill's sha256 is recorded in Stage B (plan 03-38), not here.
+- Nothing is frozen by this plan. Stage A is unchanged (`node scripts/eval/verify-prereg.ts` prints ok on this tree). The smoke run and the Stage B freeze have not been run.
+
+### Key finding behind the decision (two live probes, 0.035 USD in total, nothing committed)
+
+Under the registered `--tools Bash,Read` the skill is invisible to the model. The init event lists `gsd-atlas-eval:gsd-atlas` under `skills` (so `checkInit` passes), but the model sees neither the description nor the body: asked to quote the description it answered that it could see no skill list and has no `Skill` tool. With `--tools Bash,Read,Skill` the model sees the full description and can load the body. The 03-14 pilot's remark that the atlas arm's extra tokens came from "carrying the skill description" is wrong for the registered tool set.
+
+### Review points left for plan 03-38 (no skill text was changed)
+
+The three wording choices raised above are tradeoffs, not clear improvements, and the user has accepted the text, so none was edited. Plan 03-38 should decide each when the skill becomes visible (the token effect changes once the description is in context):
+
+1. `code_context` row, "and what a TypeScript file compiles to": a real tool field (`file.emittedAs`) that overlaps the eval's emit question category. Drop the clause if it reads as a hint (T-03-332). Note `src/query/tools.ts` does not mention emit in a tool description, so the skill row is the only routing text for it.
+2. "confirm with one grep before you conclude" after an empty atlas answer: honest on the abstain questions, but it can add a tool call (and tokens) to atlas-arm sessions.
+3. "use `code_impact` once ... instead of several greps": a routing nudge toward a tool the pilot's atlas arm never called.
+
+### Gap for plan 03-38 (T-03-334)
+
+`scripts/eval/harness.ts` never compares the Stage B `atlasCommit` with the binary it runs; the scored gate checks only the skill hash. The mitigation in the threat model ("the harness checks the atlas binary's package version and the commit marker") is therefore not implemented. A check that nothing under `src/`, `modules/`, `package.json` or `package-lock.json` differs between `atlasCommit` and HEAD (in `verify-prereg.ts`, or in the harness scored gate) would close it. Both files are Stage A files, so this belongs in the Stage A revision of 03-38.
