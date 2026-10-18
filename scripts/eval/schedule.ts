@@ -19,3 +19,17 @@ export interface Cell {
 export function cellId(cell: { readonly questionId: string; readonly arm: string; readonly run: number }): string {
   return `${cell.questionId}|${cell.arm}|${String(cell.run)}`;
 }
+
+// RED stubs (plan 03-10 task 2): the interfaces exist, the behavior does not yet.
+export function makeSchedule(
+  _questionIds: readonly string[],
+  _arms: readonly ArmName[],
+  _runs: number,
+  _seed: number,
+): Cell[] {
+  return [];
+}
+
+export function partition<T>(_cells: readonly T[], _workers: number): T[][] {
+  return [];
+}

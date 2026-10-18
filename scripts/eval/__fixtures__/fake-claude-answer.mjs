@@ -6,7 +6,12 @@
 // from each `--plugin-dir`.
 //
 // Environment (all optional):
-//   FAKE_ANSWER_MODE       perfect | wrong | not_found | garbage | timeout (default perfect)
+//   FAKE_ANSWER_MODE       perfect | wrong | not_found | garbage | timeout | ratelimit |
+//                          ratelimit-after-tool (default perfect)
+//   FAKE_FAIL_FIRST        n: with FAKE_COUNTER_FILE, the first n invocations are rate limited
+//   FAKE_INIT_EXTRA_TOOLS  JSON array of tool names added to the init event (contamination)
+//   FAKE_INIT_EXTRA_SERVERS JSON array of MCP server names added to the init event
+//   FAKE_NO_INIT           "1": print no init event
 //   FAKE_ANSWERS_FILE      JSON object: question text -> the answer object a perfect session gives
 //   FAKE_TOOL_NAMES        JSON array of tool names to call before answering (default ["Bash"])
 //   FAKE_DELAY_MS          sleep before the result, to give concurrency tests something to overlap
@@ -80,6 +85,17 @@ if (env.FAKE_LOCK_SESSION === '1') {
   chmodSync(join(process.cwd(), 'src'), 0o555);
 }
 
+// ---- the mode of this invocation ---------------------------------------------------------------
+// FAKE_FAIL_FIRST=n with FAKE_COUNTER_FILE: the first n invocations are rate limited, later ones
+// follow FAKE_ANSWER_MODE.
+let effective = mode;
+if (env.FAKE_FAIL_FIRST !== undefined && env.FAKE_COUNTER_FILE !== undefined) {
+  appendFileSync(env.FAKE_COUNTER_FILE, '1\n');
+  const seen = readFileSync(env.FAKE_COUNTER_FILE, 'utf8').split('\n').filter((line) => line !== '').length;
+  if (seen <= Number(env.FAKE_FAIL_FIRST)) effective = 'ratelimit';
+}
+const RATE_LIMIT_TEXT = 'API Error: 429 {"type":"error","error":{"type":"rate_limit_error","message":"Rate limit reached"}}';
+
 // ---- tool calls --------------------------------------------------------------------------------
 const toolNames = JSON.parse(env.FAKE_TOOL_NAMES ?? '["Bash"]');
 const usage = { input_tokens: 10, output_tokens: 20, cache_creation_input_tokens: 30, cache_read_input_tokens: 40 };
@@ -97,20 +113,36 @@ const emitToolCalls = () => {
   });
 };
 
-if (mode === 'timeout') {
+if (effective === 'timeout') {
   emitToolCalls();
   setInterval(() => {}, 1000); // never answers; the harness kills it at the wall-clock bound
+} else if (effective === 'ratelimit' || effective === 'ratelimit-after-tool') {
+  // The API refused the request. `ratelimit` makes no tool call first; `ratelimit-after-tool` does.
+  if (effective === 'ratelimit-after-tool') emitToolCalls();
+  out({
+    type: 'result',
+    subtype: 'success',
+    is_error: true,
+    api_error_status: 429,
+    result: RATE_LIMIT_TEXT,
+    usage: { input_tokens: 0, output_tokens: 0, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+    total_cost_usd: 0,
+    num_turns: 1,
+    duration_ms: 1,
+    fake_argv: argv,
+  });
+  process.exitCode = 1;
 } else {
   emitToolCalls();
   const delay = Number(env.FAKE_DELAY_MS ?? 0);
   if (delay > 0) await new Promise((resolve) => setTimeout(resolve, delay));
 
   let text;
-  if (mode === 'garbage') {
+  if (effective === 'garbage') {
     text = 'I could not work out the answer, sorry.';
-  } else if (mode === 'not_found') {
+  } else if (effective === 'not_found') {
     text = JSON.stringify({ answer: 'not_found', items: [], summary: 'nothing found' });
-  } else if (mode === 'wrong') {
+  } else if (effective === 'wrong') {
     text = JSON.stringify({ answer: 'found', items: [{ file: 'src/nowhere.cts', line: 1 }], summary: 'wrong place' });
   } else {
     const answers = env.FAKE_ANSWERS_FILE === undefined ? {} : JSON.parse(readFileSync(env.FAKE_ANSWERS_FILE, 'utf8'));

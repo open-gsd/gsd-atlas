@@ -58,6 +58,12 @@ export interface CellDeps {
   prepTimeoutMs?: number;
   /** The tsconfig the scorer's context names; citations are checked on disk, so it is never read. */
   tsconfig?: string;
+  /** Wait before the retry of an infrastructure failure. */
+  retryDelayMs?: number;
+  /** Replaces the real wait; for tests. */
+  sleep?: (ms: number) => Promise<void>;
+  /** The registered sha256 of the skill file; `buildPluginDir` refuses a skill that differs. */
+  skillSha256?: string;
 }
 
 export type CellOutcome = 'done' | 'skipped' | 'contaminated' | 'prep_failed';
@@ -281,10 +287,35 @@ export interface RunSummary {
   total: number;
   done: number;
   skipped: number;
+  contaminated: Array<{ cellId: string; diffs: string[] }>;
+  prepFailed: Array<{ cellId: string; detail: string }>;
+  /** True when scheduling stopped early (a contaminated session or a failed index build). */
+  stopped: boolean;
+}
+
+// RED stubs (plan 03-10 task 2): the interfaces exist, the behavior does not yet.
+export function isInfrastructureFailure(_result: unknown, _toolCallTotal: number): boolean {
+  return false;
+}
+
+export interface Io {
+  out: (text: string) => void;
+  err: (text: string) => void;
+}
+
+export interface CliDeps {
+  repoRoot?: string;
+  env?: Record<string, string>;
+  claudeVersion?: () => Promise<string>;
+  readPrepared?: (dir: string) => { sha: string; npmCi: boolean };
+}
+
+export function runCli(_argv: readonly string[], _io: Io, _deps: CliDeps = {}): Promise<number> {
+  return Promise.resolve(0);
 }
 
 export async function runAll(options: RunAllOptions): Promise<RunSummary> {
-  const summary: RunSummary = { total: options.cells.length, done: 0, skipped: 0 };
+  const summary: RunSummary = { total: options.cells.length, done: 0, skipped: 0, contaminated: [], prepFailed: [], stopped: false };
   let next = 0;
   const worker = async (): Promise<void> => {
     for (;;) {
