@@ -85,6 +85,9 @@ Dated amendment sections appended to Accepted ADRs, one line per amendment. The 
 - Amendment 2026-10-18: fact-store-interface - Phase 3 interface additions
 - Amendment 2026-10-18: query-and-policy - explain as a Query request kind
 - Amendment 2026-10-18: value-dashboard - Ratings table
+- Amendment 2026-10-18: command-runner - Compiler worker built-in and exact-argv approvals
+- Amendment 2026-10-18: trust-boundaries - Per-command approvals, MCP origin and compiler trust
+- Amendment 2026-10-18: language-modules - TypeScript project model, adapter ids and manifest version 2
 
 ## Ratification schedule
 The two ADRs that remain Proposed, and the phase whose first plan ratifies each (from the ROADMAP schedule). The four Phase 2 ADRs were ratified on 2026-10-16 with their amendments (see the Ratification log). Ratifying means: open the issue, rename `draft-<slug>.md` to `<issue#>-<slug>.md`, move Proposed to Accepted, and apply the listed amendments as dated sections.
