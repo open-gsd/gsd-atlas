@@ -112,7 +112,8 @@ test('package.json identity, license, module type, engines floor, bins and files
 
 test('every dependency is an exact pin, no gsd-core or gsd-graph dependency, better-sqlite3 peer optional', () => {
   const pkg = readPackage();
-  const exact = /^\d+\.\d+\.\d+$/;
+  // An npm alias (`typescript-7` = `npm:typescript@7.0.2`) is exact when its target version is exact.
+  const exact = /^(npm:(@[a-z0-9._-]+\/)?[a-z0-9._-]+@)?\d+\.\d+\.\d+$/;
   const maps: Array<[string, DepMap | undefined]> = [
     ['dependencies', pkg.dependencies],
     ['devDependencies', pkg.devDependencies],
@@ -129,6 +130,14 @@ test('every dependency is an exact pin, no gsd-core or gsd-graph dependency, bet
     }
   }
   assert.equal(pkg.peerDependenciesMeta?.['better-sqlite3']?.optional, true);
+});
+
+test('Phase 3 packages: typescript and jsonc-parser are runtime, typescript-7 is a dev alias', () => {
+  const pkg = readPackage();
+  assert.equal(pkg.dependencies?.['typescript'], '6.0.3');
+  assert.equal(pkg.dependencies?.['jsonc-parser'], '3.3.1');
+  assert.equal(pkg.devDependencies?.['typescript-7'], 'npm:typescript@7.0.2');
+  assert.equal(pkg.devDependencies?.['typescript'], undefined, 'typescript must not also sit in devDependencies');
 });
 
 test('scripts include the eleven required names', () => {
