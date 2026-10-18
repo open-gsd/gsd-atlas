@@ -9,7 +9,7 @@
  * Source Tree derives from the repository's root commit and its real common git directory.
  */
 import path from 'node:path';
-import { createRealRunner } from '../command-runner/index.ts';
+import { createRealRunner, decide } from '../command-runner/index.ts';
 import type { CommandRunner } from '../command-runner/index.ts';
 import { SchemaTooNew, findExistingStore, probeStore } from '../fact-store/index.ts';
 import type { ResolveStoreLocationInput } from '../fact-store/index.ts';
@@ -24,7 +24,7 @@ import { createSourceTree } from '../source-tree/index.ts';
 import type { SourceTree } from '../source-tree/index.ts';
 import { createTenant, notIndexedNoStore } from '../tenant/index.ts';
 import type { Tenant } from '../tenant/index.ts';
-import { ALLOW_KIND, handleAllow } from './allow.ts';
+import { ALLOW_KIND, handleAllow, permissionsFor } from './allow.ts';
 import type { AllowDeps } from './allow.ts';
 import { HOST_DEFAULTS } from './defaults.ts';
 import { HISTORY_KIND, runHistory } from './history.ts';
@@ -44,6 +44,8 @@ const errorName = (error: unknown): string => {
 };
 
 const NOT_A_REPO = 'repo must be an existing directory inside a git repository.';
+
+const ALLOW_FORBIDDEN = 'Approvals are recorded only by a person at a terminal with "gsd-atlas allow"; this server cannot record one.';
 
 /** Envelope schema of an `index_state` reply (internal, plan 02-44). */
 export const INDEX_STATE_SCHEMA = 'gsd-atlas.index-state/1';
@@ -72,8 +74,11 @@ export function createHost(options: HostOptions): Host {
   // The real runner and Governor are created on first use, so a Host that only serves lang kinds builds neither.
   let runner: CommandRunner | undefined = options.runner;
   let governor: Governor | undefined = options.governor;
-  const getRunner = (): CommandRunner =>
-    (runner ??= createRealRunner(config.permissions === undefined ? {} : { user: config.permissions }));
+  // D-15, SEC-02: who started this Host decides which permission list it may use. An agent's server (`mcp`) has none
+  // unless the person started it with `--allow-build`; a Host given its own runner was composed with the same rule.
+  const origin = options.origin ?? 'cli';
+  const permissions = permissionsFor(origin, options.allowBuild === true, config.permissions);
+  const getRunner = (): CommandRunner => (runner ??= createRealRunner(permissions === undefined ? {} : { user: permissions }));
   const getGovernor = (): Governor => (governor ??= createGovernor({ clock }));
 
   const makeTree = (repoDir: string): SourceTree =>
@@ -127,6 +132,8 @@ export function createHost(options: HostOptions): Host {
       ...storeSettings(),
       ...(indexer === undefined ? {} : { indexer }),
       ...(config.gc?.graceMs === undefined ? {} : { graceMs: config.gc.graceMs }),
+      // SEC-02: the user's list of first-party providers to turn off (plan 03-23 reads it; nothing does yet).
+      ...(config.providers === undefined ? {} : { providers: config.providers }),
       ...(options.version === undefined ? {} : { version: options.version }),
       ...(options.metrics === undefined ? {} : { metrics: options.metrics }),
       ...(options.eventSource === undefined ? {} : { eventSource: options.eventSource }),
@@ -347,6 +354,30 @@ export function createHost(options: HostOptions): Host {
     return held(ALLOW_KIND, classFor('allow'), () => handleAllow(request, deps));
   }
 
+  /**
+   * What `lang_list` needs to show a module's `precise.command` as approved: a check, against the permission list THIS Host
+   * may use (so an MCP server without `--allow-build` shows it as still needing approval), whether the person approved
+   * that exact command for the repository around the request. It asks the very rule the runner will apply, `decide`, and
+   * counts only a user approval (the first-party git rule is not an approval). With no list there is nothing to resolve
+   * or check, so a Host that has no approvals pays nothing for it. Nothing is started and nothing is read from the repository.
+   */
+  async function approvalCheck(request: Request): Promise<((command: readonly string[]) => boolean) | undefined> {
+    if (request.kind !== 'lang_list' || permissions === undefined || permissions.allow.length === 0) return undefined;
+    const args = (typeof request.args === 'object' && request.args !== null ? request.args : {}) as { repo?: unknown; roots?: { repoRoot?: unknown } | null };
+    const named =
+      typeof args.repo === 'string' ? args.repo : typeof args.roots?.repoRoot === 'string' ? args.roots.repoRoot : options.roots.repoRoot;
+    if (!path.isAbsolute(named)) return undefined;
+    const resolved = await resolveRepository({ repo: named }, hostCwd, makeTree);
+    if (resolved === null) return undefined;
+    const { repoDir } = resolved;
+    return (command) => {
+      const [executable, ...rest] = command;
+      if (executable === undefined) return false;
+      const decision = decide({ executable, args: rest, cwd: repoDir }, { repo: repoDir }, permissions);
+      return decision.allowed && decision.via === 'user';
+    };
+  }
+
   async function dispatch(request: Request): Promise<Envelope> {
     if (request.protocol !== PROTOCOL_VERSION) {
       return errorEnvelope(
@@ -356,10 +387,12 @@ export function createHost(options: HostOptions): Host {
     }
     if (closed) return errorEnvelope('host_closed', 'This host was closed.');
     if ((LANG_KINDS as readonly string[]).includes(request.kind)) {
-      return handleLang(request, { roots: options.roots, engine: options.engine });
+      const approved = await approvalCheck(request);
+      return handleLang(request, { roots: options.roots, engine: options.engine, ...(approved === undefined ? {} : { approved }) });
     }
     if (request.kind === HISTORY_KIND) return historyRequest(request);
-    if (request.kind === ALLOW_KIND) return allowRequest(request);
+    // D-15: an agent's server never records an approval, whatever the request carries. Checked before the arguments are read.
+    if (request.kind === ALLOW_KIND) return origin === 'mcp' ? errorEnvelope('allow_forbidden', ALLOW_FORBIDDEN) : allowRequest(request);
     if (isRepoKind(request.kind)) return repoRequest(request, request.kind);
     return errorEnvelope('unknown_kind', `request kind ${short(JSON.stringify(request.kind))} is not known to this host`);
   }

@@ -18,9 +18,10 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
-import { commandHash } from '../command-runner/index.ts';
-import { isInside, okEnvelope } from '../facts/index.ts';
-import type { Envelope, Request } from '../facts/index.ts';
+import { COMMAND_CODES, commandHash } from '../command-runner/index.ts';
+import type { CommandResult, UserPermissions } from '../command-runner/index.ts';
+import { diagnostic, isInside, okEnvelope } from '../facts/index.ts';
+import type { DegradedCode, Diagnostic, Envelope, Request } from '../facts/index.ts';
 import { readManifest, resolveModule } from '../lang/index.ts';
 import type { Roots } from '../lang/index.ts';
 import { errorEnvelope } from '../query/index.ts';
@@ -28,6 +29,7 @@ import { CONFIG_FILE, CONFIG_MAX_BYTES, USER_CONFIG_SCHEMA, fixedProblemOf, read
 import type { BoundedRead } from './config.ts';
 import { firstProblem } from './route.ts';
 import type { Selection } from './route.ts';
+import type { HostOrigin } from './types.ts';
 
 /** Envelope schema of an `allow` reply. */
 export const ALLOW_SCHEMA = 'gsd-atlas.allow/1';
@@ -345,4 +347,32 @@ export async function handleAllow(request: Request, deps: AllowDeps): Promise<En
   const { confirm, ...input } = parsed.data;
   const result = confirm === undefined ? await previewAllow(input, deps) : await applyAllow(input, deps, confirm);
   return envelopeOf(result, confirm !== undefined);
+}
+
+/**
+ * The user permission list a Host of this origin may use (D-15, SEC-02). A person at a terminal (`cli`) gets the list. An
+ * agent's server (`mcp`) gets NONE unless the person started it with `--allow-build`: an approval recorded for the CLI
+ * must not become something an agent can trigger just because its server is running. `undefined` is no list at all, so
+ * only the first-party built-ins can run.
+ */
+export function permissionsFor(origin: HostOrigin, allowBuild: boolean, permissions: UserPermissions | undefined): UserPermissions | undefined {
+  return origin === 'mcp' && !allowBuild ? undefined : permissions;
+}
+
+/**
+ * The fixed diagnostic a command that is not approved gets. It names the two ways forward and nothing else: no argument,
+ * path, module name or manifest text, because it travels in answers an agent reads.
+ */
+const NEEDS_APPROVAL_TEXT =
+  'A command this repository declares was not run because it is not approved. A person approves one exact command with "gsd-atlas allow" in a terminal; the MCP server runs approved commands only when it was started with --allow-build.';
+
+/**
+ * Map a denied command to the degraded answer the caller reports: `needs_approval` plus the fixed diagnostic, for exactly
+ * the runner's `command_denied` and for nothing else (a timeout or a spawn failure is not a missing approval).
+ */
+export function needsApprovalFrom(
+  result: Pick<CommandResult, 'denied'>,
+): { readonly degraded: Extract<DegradedCode, 'needs_approval'>; readonly diagnostic: Diagnostic } | null {
+  if (result.denied?.code !== COMMAND_CODES.denied) return null;
+  return { degraded: 'needs_approval', diagnostic: diagnostic('needs_approval', 'warning', NEEDS_APPROVAL_TEXT) };
 }

@@ -55,6 +55,11 @@ export interface TenantDeps {
   readonly indexer?: Partial<IndexerConfig>;
   /** The user's `gc.graceMs`. */
   readonly graceMs?: number;
+  /**
+   * The user's `providers` setting (SEC-02): ids of first-party providers to turn off (`typescript` today). Absent: every
+   * first-party provider runs. An id nobody knows has no effect. The Host passes it; the provider table reads it.
+   */
+  readonly providers?: { readonly disabled?: readonly string[] };
   /** The version of this build, recorded in a new store. */
   readonly version?: string;
   /**

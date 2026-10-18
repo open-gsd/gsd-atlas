@@ -11,8 +11,11 @@ import type { TestContext } from 'node:test';
 import { commandHash, createRealRunner } from '../command-runner/index.ts';
 import type { CommandSpec } from '../command-runner/index.ts';
 import type { Envelope } from '../facts/index.ts';
+import { TOOL_NAMES } from '../host-client/index.ts';
 import { makeTempDir } from '../test-kit/index.ts';
-import { addAllowEntry } from './allow.ts';
+import { createTenant } from '../tenant/index.ts';
+import type { TenantDeps } from '../tenant/index.ts';
+import { addAllowEntry, needsApprovalFrom, permissionsFor } from './allow.ts';
 import type { AllowEntry, AllowFs } from './allow.ts';
 import { CONFIG_FILE, CONFIG_MAX_BYTES, loadUserConfig } from './config.ts';
 import { THREE_FILES, makeWorld } from './harness.test.ts';
@@ -529,5 +532,102 @@ describe('allow: --module', () => {
     assert.equal(codeOf(both), 'invalid_args');
     const inSub = previewOf(await w.ask('allow', { repo: w.repo.dir, module: 'evil', workdir: 'sub/dir' }));
     assert.equal(inSub.cwd, 'sub/dir');
+  });
+});
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Task 3: the MCP origin, needs_approval, and the providers list reaching the tenants
+// ---------------------------------------------------------------------------------------------------------------------
+
+describe('allow: the MCP origin', () => {
+  it('allow_forbidden from mcp origin: refused with and without --allow-build, even with a correct confirm, and nothing is written', async (t) => {
+    for (const allowBuild of [false, true]) {
+      const w = await makeWorld(t, { files: FILES, host: { origin: 'mcp', allowBuild } });
+      const argv = [process.execPath, SCRIPT];
+      const hash = commandHash({ executable: process.execPath, args: [SCRIPT], cwd: '.' }, w.repo.dir) as string;
+      for (const args of [{ repo: w.repo.dir, argv }, { repo: w.repo.dir, argv, confirm: hash }, { repo: w.repo.dir, module: 'evil' }, {}, 'not an object']) {
+        const reply = await w.ask('allow', args);
+        assert.equal(reply.ok, false, JSON.stringify(args));
+        assert.equal(codeOf(reply), 'allow_forbidden', `${JSON.stringify(args)} allowBuild=${String(allowBuild)}`);
+        assert.ok(!JSON.stringify(reply).includes(SCRIPT), 'the refusal quotes nothing the caller sent');
+      }
+      assert.equal(fs.existsSync(configFileOf(w)), false);
+      assert.equal(fs.existsSync(userDirOf(w)), false);
+    }
+  });
+
+  it('allow_forbidden from mcp origin: a host started by a person (cli, or no origin at all) still serves it', async (t) => {
+    for (const origin of [undefined, 'cli' as const]) {
+      const w = await makeWorld(t, { files: FILES, host: origin === undefined ? {} : { origin } });
+      const reply = await w.ask('allow', { repo: w.repo.dir, argv: [process.execPath, SCRIPT] });
+      assert.equal(reply.ok, true, JSON.stringify(reply.diagnostics));
+    }
+  });
+
+  it('there is no MCP tool for allow: the tool list holds the six code tools only', () => {
+    assert.ok(!(TOOL_NAMES as readonly string[]).includes('allow'));
+    assert.deepEqual([...TOOL_NAMES].sort(), ['atlas_status', 'code_context', 'code_find', 'code_impact', 'code_refs', 'lang_list']);
+  });
+});
+
+describe('permissionsFor: which permission list a host origin may use', () => {
+  const list = { allow: [{ repo: path.resolve('/r'), executable: 'node' }] };
+
+  it('cli applies the list; mcp applies it only with allow-build; none stays none', () => {
+    assert.equal(permissionsFor('cli', false, list), list);
+    assert.equal(permissionsFor('cli', true, list), list);
+    assert.equal(permissionsFor('mcp', false, list), undefined);
+    assert.equal(permissionsFor('mcp', true, list), list);
+    for (const origin of ['cli', 'mcp'] as const) assert.equal(permissionsFor(origin, true, undefined), undefined);
+  });
+});
+
+describe('needsApprovalFrom: a denied command becomes the needs_approval answer', () => {
+  it('maps exactly command_denied to needs_approval with fixed text that names both ways forward and quotes nothing', async () => {
+    const secretArg = 'SECRET-ARG-9137';
+    const runner = createRealRunner();
+    const denied = await runner.run({ executable: process.execPath, args: ['-e', secretArg], cwd: process.cwd() }, { repo: process.cwd() });
+    assert.equal(denied.denied?.code, 'command_denied');
+    const mapped = needsApprovalFrom(denied);
+    assert.ok(mapped !== null);
+    assert.equal(mapped.degraded, 'needs_approval');
+    assert.equal(mapped.diagnostic.code, 'needs_approval');
+    assert.equal(mapped.diagnostic.severity, 'warning');
+    assert.match(mapped.diagnostic.message, /gsd-atlas allow/);
+    assert.match(mapped.diagnostic.message, /--allow-build/);
+    const serialized = JSON.stringify(mapped);
+    for (const leaked of [secretArg, process.execPath, process.cwd(), '-e']) assert.ok(!serialized.includes(leaked), `no ${leaked}`);
+    // The sentence is the same whatever was denied.
+    const other = await runner.run({ executable: 'definitely-another-program', args: ['x'] }, { repo: process.cwd() });
+    assert.equal(needsApprovalFrom(other)?.diagnostic.message, mapped.diagnostic.message);
+  });
+
+  it('is null for every other outcome: a success, a timeout, a spawn failure, a different denial code and no result at all', async () => {
+    const ok = await createRealRunner({ decide: () => ({ allowed: true, via: 'user' }) }).run({ executable: process.execPath, args: ['-e', ''] });
+    assert.equal(ok.ok, true);
+    assert.equal(needsApprovalFrom(ok), null);
+    assert.equal(needsApprovalFrom({}), null);
+    const diag = (code: string): { denied: { code: string; severity: 'error'; message: string } } => ({ denied: { code, severity: 'error', message: 'x' } });
+    for (const code of ['shim_rejected', 'spawn_failed', 'output_cap_exceeded', 'timeout', 'command_denied_by_someone_else']) {
+      assert.equal(needsApprovalFrom(diag(code)), null, code);
+    }
+    assert.notEqual(needsApprovalFrom(diag('command_denied')), null);
+  });
+});
+
+describe('providers.disabled reaches the tenant factory', () => {
+  it('the Host hands config.providers to the factory that builds a tenant, and nothing when the user set nothing', async (t) => {
+    const seen: TenantDeps[] = [];
+    const factory = (deps: TenantDeps): ReturnType<typeof createTenant> => {
+      seen.push(deps);
+      return createTenant(deps);
+    };
+    const disabled = await makeWorld(t, { files: FILES, host: { tenantFactory: factory, config: { providers: { disabled: ['typescript', 'unknown-id'] } } } });
+    assert.equal((await disabled.ask('build', { repo: disabled.repo.dir })).ok, true);
+    const plain = await makeWorld(t, { files: FILES, host: { tenantFactory: factory } });
+    assert.equal((await plain.ask('build', { repo: plain.repo.dir })).ok, true);
+    assert.equal(seen.length, 2);
+    assert.deepEqual(seen[0]?.providers, { disabled: ['typescript', 'unknown-id'] });
+    assert.equal(seen[1]?.providers, undefined);
   });
 });

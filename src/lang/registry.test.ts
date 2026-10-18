@@ -421,6 +421,46 @@ describe('resolveModules: a precise command or adapter is data, never run (T-01-
     assert.equal(other?.message, note?.message);
   });
 
+  it('approved: a caller that knows the user approvals marks exactly the approved command, and nothing else, as approved', () => {
+    const w = makeWorld();
+    const command = ['tool', '--flag', 'SECRET-MARKER'];
+    w.place('repo', 'toy', (m) => {
+      m['tiers'] = ALL_TIERS;
+      m['precise'] = { command };
+    });
+    const asked: Array<readonly string[]> = [];
+    const approvedOnly = (wanted: readonly string[]) => (candidate: readonly string[]): boolean => {
+      asked.push(candidate);
+      return candidate.length === wanted.length && candidate.every((part, index) => part === wanted[index]);
+    };
+    for (const via of ['all', 'one'] as const) {
+      const options = { approved: approvedOnly(command) };
+      const seen = via === 'all' ? resolveModules(w.roots, options) : resolveModule(w.roots, 'toy', options);
+      const toy = 'modules' in seen ? seen.modules[0]! : seen.entry!;
+      assert.deepEqual(toy.tiers[1], { tier: 'precise', active: false, reason: 'command_approved' }, via);
+      assert.deepEqual(seen.diagnostics.map((d) => [d.code, d.severity]), [['precise_command_approved', 'info']], via);
+      assert.ok(!JSON.stringify(seen).includes('SECRET-MARKER'), `${via}: the approved answer holds no manifest text`);
+    }
+    assert.deepEqual(asked[0], command, 'the callback is given the manifest argv, exactly');
+    // Another command, an unapproving callback and no callback all leave the tier needing approval.
+    for (const options of [{ approved: approvedOnly(['tool']) }, { approved: () => false }, {}]) {
+      const toy = resolveModules(w.roots, options).modules[0]!;
+      assert.deepEqual(toy.tiers[1], { tier: 'precise', active: false, reason: 'command_not_approved' });
+    }
+  });
+
+  it('approved: an adapter is never reported as an approved command, and the callback is not asked about it', () => {
+    const w = makeWorld();
+    w.place('repo', 'toy', (m) => {
+      m['tiers'] = ALL_TIERS;
+      m['precise'] = { adapter: 'toy-adapter' };
+    });
+    const asked: Array<readonly string[]> = [];
+    const toy = resolveModules(w.roots, { approved: (c) => (asked.push(c), true) }).modules[0]!;
+    assert.deepEqual(toy.tiers[1], { tier: 'precise', active: false, reason: 'adapter_not_available' });
+    assert.deepEqual(asked, [], 'the callback is not even asked about an adapter');
+  });
+
   it('keeps a module with a precise command usable: it is still listed and its grammar tier is active', () => {
     const w = makeWorld();
     w.place('user', 'toy', (m) => {

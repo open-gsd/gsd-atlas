@@ -3,7 +3,7 @@
  * the tenant of its repository, schedules it through the Governor and returns an Envelope. Adapters reach it only
  * through the HostClient.
  */
-export { ALLOW_KIND, ALLOW_SCHEMA, addAllowEntry, applyAllow, previewAllow } from './allow.ts';
+export { ALLOW_KIND, ALLOW_SCHEMA, addAllowEntry, applyAllow, needsApprovalFrom, permissionsFor, previewAllow } from './allow.ts';
 export type { AddResult, AllowDeps, AllowEntry, AllowInput, AllowPreview, AllowResult, AllowWritten } from './allow.ts';
 export { loadUserConfig } from './config.ts';
 export type { LoadedUserConfig } from './config.ts';
@@ -13,4 +13,4 @@ export { HISTORY_KIND, HISTORY_MAX_FILES, HISTORY_SCHEMA, HISTORY_TOOLS } from '
 export type { HistoryArgs } from './history.ts';
 export { LANG_LIST_SCHEMA, LANG_TEST_SCHEMA } from './lang.ts';
 export type { LangListData } from './lang.ts';
-export type { Host, HostOptions, UserConfig } from './types.ts';
+export type { Host, HostOptions, HostOrigin, UserConfig } from './types.ts';

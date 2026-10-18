@@ -45,7 +45,7 @@ function askOnTerminal(question: string): Promise<string> {
 
 process.exitCode = await runCliMain({
   argv: process.argv.slice(2),
-  compose: () => composeHost({ cwd, env: process.env, stderr: process.stderr }),
+  compose: () => composeHost({ cwd, env: process.env, stderr: process.stderr, origin: 'cli' }),
   runCli,
   version: readVersion,
   stdout: process.stdout,

@@ -10,14 +10,15 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { createRealRunner } from '../command-runner/index.ts';
+import type { CommandRunner, UserPermissions } from '../command-runner/index.ts';
 import { defaultCacheRoot } from '../fact-store/index.ts';
 import { systemClock } from '../facts/index.ts';
 import { createGovernor } from '../governor/index.ts';
 import { createPooledGrammarEngine } from '../grammar-engine/index.ts';
 import { createInProcessHostClient } from '../host-client/index.ts';
 import type { HostClient, Roots } from '../host-client/index.ts';
-import { createHost, loadUserConfig } from '../host/index.ts';
-import type { Host } from '../host/index.ts';
+import { createHost, loadUserConfig, permissionsFor } from '../host/index.ts';
+import type { Host, HostOrigin } from '../host/index.ts';
 import { createParcelEventSource } from '../indexer/index.ts';
 
 /** The package root: two levels up from src/bin (dev) or dist/bin (published). */
@@ -47,11 +48,17 @@ export interface ComposeOptions {
   readonly stderr: { write(text: string): unknown };
   /** The home directory. Default: the operating system's. */
   readonly home?: string;
+  /** Who started this composition: `gsd-atlas` is `cli`, `gsd-atlas-mcp` is `mcp` (D-15). Default `cli`. */
+  readonly origin?: HostOrigin;
+  /** `gsd-atlas-mcp --allow-build`: the user's permission list applies to an `mcp` origin too. Default false. */
+  readonly allowBuild?: boolean;
 }
 
 export interface Composed {
   readonly host: Host;
   readonly client: HostClient;
+  /** The runner the Host uses, with the permissions this origin may use. Set by `composeHost`; a test reads it. */
+  readonly runner?: CommandRunner;
   /** Close the Host (every tenant) and the pooled engine. Safe to call twice. */
   dispose(): Promise<void>;
 }
@@ -78,19 +85,24 @@ export function composeHost(options: ComposeOptions): Composed {
   const loaded = loadUserConfig(roots.userDir, options.env);
   for (const warning of loaded.diagnostics) options.stderr.write(`gsd-atlas: warning ${warning.code}: ${warning.message}\n`);
   const { config } = loaded;
+  const origin = options.origin ?? 'cli';
+  const allowBuild = options.allowBuild === true;
 
   // The pooled engine with the approved defaults: its pool size, recycle interval and parse deadline are the
   // constants of 02-CONSTANTS.md, carried by the pool itself.
   const engine = createPooledGrammarEngine();
+  const runner = makeRunner({ env: options.env, permissions: config.permissions, origin, allowBuild });
   const host = createHost({
     roots,
     engine,
-    runner: createRealRunner({ env: options.env, ...(config.permissions === undefined ? {} : { user: config.permissions }) }),
+    runner,
     governor: createGovernor({ clock: systemClock }),
     clock: systemClock,
     cwd: options.cwd,
     userDir: roots.userDir,
     config,
+    origin,
+    allowBuild,
     version: readVersion(),
     cacheRoot: defaultCacheRoot(options.env, home),
     eventSource: () => createParcelEventSource(),
@@ -101,6 +113,7 @@ export function composeHost(options: ComposeOptions): Composed {
   return {
     host,
     client,
+    runner,
     dispose(): Promise<void> {
       disposing ??= (async () => {
         await host.close();
@@ -109,4 +122,51 @@ export function composeHost(options: ComposeOptions): Composed {
       return disposing;
     },
   };
+}
+
+/** What decides the runner a Host gets: the environment its children inherit, the user's list, and who started the Host. */
+export interface RunnerOptions {
+  readonly env: Readonly<Record<string, string | undefined>>;
+  /** The permission list the user's configuration holds. */
+  readonly permissions?: UserPermissions | undefined;
+  /** Who started the Host. Default `cli`. */
+  readonly origin?: HostOrigin | undefined;
+  /** `--allow-build`: an MCP server may use the user's list. Default false. */
+  readonly allowBuild?: boolean | undefined;
+}
+
+/**
+ * The real runner of a composition (D-15, SEC-02). A person at a terminal (`cli`) gets the user's permission list. An
+ * agent's server (`mcp`) is built WITHOUT it unless the person started it with `--allow-build`, so a command the user
+ * approved for the CLI is denied by the runner itself when the request came through MCP; the first-party git rule is
+ * unaffected. The list is read once per composition: a later approval is seen by the next composition, not this one.
+ */
+export function makeRunner(options: RunnerOptions): CommandRunner {
+  const user = permissionsFor(options.origin ?? 'cli', options.allowBuild === true, options.permissions);
+  return createRealRunner({ env: options.env, ...(user === undefined ? {} : { user }) });
+}
+
+/** The usage line of `gsd-atlas-mcp`. */
+export const MCP_USAGE = [
+  'Usage: gsd-atlas-mcp [--allow-build]',
+  '  A stateless MCP server on standard input and output.',
+  '  --allow-build   let this server run the commands you approved with "gsd-atlas allow". Without it, an approved command is',
+  '                  never run for an MCP request. Start it yourself; an agent must not choose this flag.',
+  '',
+].join('\n');
+
+/** What `gsd-atlas-mcp` makes of its arguments. */
+export type McpFlags =
+  | { readonly ok: true; readonly allowBuild: boolean; readonly help: boolean }
+  | { readonly ok: false; readonly message: string; readonly exitCode: number };
+
+/** The only flags are `--allow-build` and `--help`; anything else, a value or a stray word is refused with the usage line. */
+export function parseMcpFlags(argv: readonly string[]): McpFlags {
+  let allowBuild = false;
+  for (const argument of argv) {
+    if (argument === '--allow-build') allowBuild = true;
+    else if (argument === '--help' || argument === '-h') return { ok: true, allowBuild: false, help: true };
+    else return { ok: false, message: `gsd-atlas-mcp: unknown argument\n${MCP_USAGE}`, exitCode: 1 };
+  }
+  return { ok: true, allowBuild, help: false };
 }
