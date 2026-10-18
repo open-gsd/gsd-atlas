@@ -927,3 +927,164 @@ describe('relations from the real compiler worker (TSM-01)', () => {
     );
   });
 });
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Plan 03-25, Task 2: generics, mixins, an `any` base, override chains and interface methods.
+// ---------------------------------------------------------------------------------------------------------------------
+
+const GENERICS_SOURCE = [
+  'export class A<T> {',
+  '  m(): T | undefined {',
+  '    return undefined;',
+  '  }',
+  '}',
+  '',
+  'export class B<T> extends A<T> {}',
+  '',
+  'export class C extends B<string> {',
+  '  m(): string | undefined {',
+  '    return undefined;',
+  '  }',
+  '}',
+  '',
+  'export interface I<T> {',
+  '  v: T;',
+  '}',
+  'export interface J<T> extends I<T> {}',
+  'export class K implements I<string> {',
+  "  v = 'k';",
+  '}',
+  '',
+  'export interface Runner {',
+  '  run(): void;',
+  '}',
+  'export class R implements Runner {',
+  '  run(): void {}',
+  '}',
+  '',
+  'type Ctor<T = object> = new (...args: any[]) => T;',
+  'function Mixin<TBase extends Ctor>(Base: TBase) {',
+  '  return class Mixed extends Base {};',
+  '}',
+  'export class P {}',
+  'export class M extends Mixin(P) {}',
+  '',
+  'declare const anything: any;',
+  'export class Z extends anything {}',
+  '',
+].join('\n');
+
+/** The 1-based line of the first line of `GENERICS_SOURCE` that contains `needle`. */
+const genericsLine = (needle: string): number => GENERICS_SOURCE.split('\n').findIndex((line) => line.includes(needle)) + 1;
+
+describe('relations: generics, mixins, any, override chains and interface methods (TSM-01)', () => {
+  const GENERICS_FIXTURE = { 'tsconfig.json': TSCONFIG, 'src/generics.cts': GENERICS_SOURCE };
+
+  it('generic extends: class B<T> extends A<T>, interface J<T> extends I<T> and implements I<string> give the relation to the declared type', async (t) => {
+    const world = await makeWorld(t, GENERICS_FIXTURE, { hook: true });
+    assert.equal((await world.build()).ok, true);
+
+    const a = (await refsSettled(world, { name: 'A', kind: 'class' })).envelope;
+    assert.deepEqual(
+      edgeRows(a).filter((row) => row.edge !== undefined && row.kind === 'heritage').map((row) => [row.enclosing, row.edge, row.line]),
+      [['B', 'extends', genericsLine('class B<T>')]],
+      JSON.stringify(edgeRows(a)),
+    );
+    const i = (await refsSettled(world, { name: 'I', kind: 'interface' })).envelope;
+    assert.deepEqual(
+      edgeRows(i).filter((row) => row.kind === 'heritage').map((row) => [row.enclosing, row.edge]),
+      [
+        ['J', 'extends'],
+        ['K', 'implements'],
+      ],
+      JSON.stringify(edgeRows(i)),
+    );
+  });
+
+  it('mixin extends: a class that extends a call returning a class has the relation to the declared class', async (t) => {
+    const world = await makeWorld(t, GENERICS_FIXTURE, { hook: true });
+    assert.equal((await world.build()).ok, true);
+
+    const p = (await refsSettled(world, { name: 'P', kind: 'class' })).envelope;
+    const extending = edgeRows(p).filter((row) => row.edge === 'extends');
+    assert.deepEqual(
+      extending.map((row) => [row.enclosing, row.tier, row.confidence, row.line]),
+      [['M', 'precise', 'EXTRACTED', genericsLine('class M extends')]],
+      JSON.stringify(edgeRows(p)),
+    );
+  });
+
+  it('any base gives no relation: extending a value the checker cannot resolve to a declaration adds nothing and fails nothing', async (t) => {
+    const world = await makeWorld(t, GENERICS_FIXTURE, { hook: true });
+    assert.equal((await world.build()).ok, true);
+
+    const z = (await refsSettled(world, { name: 'Z', kind: 'class' })).envelope;
+    const anything = (await refsSettled(world, { name: 'anything' })).envelope;
+
+    for (const envelope of [z, anything]) {
+      assert.equal(envelope.ok, true, JSON.stringify(envelope.diagnostics));
+      assert.equal((envelope.degraded ?? []).includes('resolver_failed'), false, JSON.stringify(envelope.degraded));
+      assert.equal(edgeRows(envelope).some((row) => row.edge === 'extends' || row.edge === 'implements' || row.edge === 'overrides'), false);
+    }
+    assert.deepEqual(edgeRows(z), [], 'nothing refers to Z');
+  });
+
+  it('override chain: C extends B extends A with m declared in A and C gives C.m overrides A.m, and B has none', async (t) => {
+    const world = await makeWorld(t, GENERICS_FIXTURE, { hook: true });
+    assert.equal((await world.build()).ok, true);
+
+    const m = (await refsSettled(world, { name: 'm', path: 'src/generics.cts', kind: 'method' })).envelope;
+    const targets = targetsOf(m);
+    const aM = targets.find((target) => target.line === genericsLine('  m(): T | undefined'));
+    assert.ok(aM !== undefined, JSON.stringify(targets));
+    const overrides = edgeRows(m).filter((row) => row.edge === 'overrides');
+    assert.deepEqual(
+      overrides.map((row) => [row.enclosing, row.target, row.line]),
+      [['C.m', aM.handle, genericsLine('  m(): string | undefined')]],
+      JSON.stringify(edgeRows(m)),
+    );
+  });
+
+  it('interface method is not an override: a class method that implements an interface method has the class-level implements only', async (t) => {
+    const world = await makeWorld(t, GENERICS_FIXTURE, { hook: true });
+    assert.equal((await world.build()).ok, true);
+
+    const run = (await refsSettled(world, { name: 'run', path: 'src/generics.cts', kind: 'method' })).envelope;
+    const runner = (await refsSettled(world, { name: 'Runner', kind: 'interface' })).envelope;
+    const v = (await refsSettled(world, { name: 'v', path: 'src/generics.cts' })).envelope;
+
+    assert.deepEqual(edgeRows(run).filter((row) => row.edge === 'overrides'), []);
+    assert.deepEqual(edgeRows(v).filter((row) => row.edge === 'overrides'), []);
+    assert.deepEqual(
+      edgeRows(runner).filter((row) => row.kind === 'heritage').map((row) => [row.enclosing, row.edge]),
+      [['R', 'implements']],
+    );
+  });
+
+  it('an edit makes a new snapshot: the relations are asked of the worker again and are not served from the old cache (T-03-254)', async (t) => {
+    const world = await makeWorld(t, SHAPES_FIXTURE, { hook: true });
+    assert.equal((await world.build()).ok, true);
+    const before = (await refsSettled(world, { name: 'Base', kind: 'class' })).envelope;
+    assert.deepEqual(edgeRows(before).filter((row) => row.edge === 'extends').map((row) => row.enclosing), ['Sub', 'Box']);
+    const tier = world.tier();
+    assert.ok(tier !== undefined);
+    const askedBefore = tier.relationStats().files.asked;
+    assert.ok(askedBefore > 0, 'the first read asked the worker for relations');
+    await refsSettled(world, { name: 'Base', kind: 'class' });
+    assert.equal(tier.relationStats().files.asked, askedBefore, 'a second read over the same snapshot is served from the cache');
+
+    // The file changes; `fresh` makes the answer read the edit, as an agent that just saved the file would. The new overlay
+    // is a new snapshot, so the cache is not reused. (The worker's own program is refreshed by the incremental update of
+    // plan 03-29; this plan guarantees only that a relation is never served for a snapshot it was not computed for.)
+    world.repo.write('src/shapes.cts', SHAPES_SOURCE.replace('export abstract class Box<T> extends Base {', 'export abstract class Box<T> {'));
+    let after: Envelope | undefined;
+    for (let read = 0; read < 12; read += 1) {
+      after = await world.host.handle({ protocol: PROTOCOL_VERSION, kind: 'code_refs', args: { name: 'Base', kind: 'class' }, fresh: ['src/shapes.cts'] });
+      if (!(after.degraded ?? []).includes('resolver_timeout')) break;
+      await sleep(300);
+    }
+    assert.ok(after !== undefined);
+    assert.equal(after.ok, true, JSON.stringify(after.diagnostics));
+    assert.ok(tier.relationStats().files.asked > askedBefore, 'the new snapshot asked the worker again');
+  });
+});
