@@ -37,6 +37,7 @@ Scope is the full PRD 1.0 (milestones M0–M6, 21 acceptance criteria). Source o
 - [ ] Free-alternatives evaluation (LSP-wrapping MCP servers, agent repo-maps, paid tools) recorded before the M2 eval, so it supplies a baseline (PRD §1.1)
 - [ ] ADR ratification in Phase 1: one GitHub issue per ADR, rename `draft-*` to `<issue#>-<slug>.md`, Proposed to Accepted
 - [ ] CI on macOS, Linux and Windows from M0/M1, since no Windows hardware is available locally
+  - *Decision 2026-10-18: Windows postponed past the initial alpha; see Constraints, Platforms. The Windows CI legs still run but are non-blocking.*
 
 ### Out of Scope
 
@@ -65,6 +66,7 @@ Scope is the full PRD 1.0 (milestones M0–M6, 21 acceptance criteria). Source o
 - **Tech stack**: TypeScript, Node >= 24.16, SQLite via `node:sqlite` with `better-sqlite3` kept working as fallback — A13, A3
 - **Repo layout**: Single npm package `@opengsd/gsd-atlas` with bins `gsd-atlas` and `gsd-atlas-mcp`; language modules under `modules/` and publishable later — chosen for MVP simplicity
 - **Platforms**: macOS, Linux and Windows are 1.0 platforms, in every budget's CI run from M1 — GSD users run all three, and gsd-core's Windows CI is a known pain point
+  - **Decision 2026-10-18: Windows postponed past the initial alpha.** Windows is not supported in the alpha; macOS and Linux are. Windows stays a 1.0 platform (the line above is not withdrawn), but its work comes after the alpha. The Windows legs of CI (test, grammar, gates, nightly strict) keep running so their results stay visible, but are non-blocking (`continue-on-error` for the Windows leg only), and the Windows test job is capped at 20 minutes so a hang cannot hold CI for 30. Ubuntu and macOS stay blocking. User's words: "Postpone Windows Support past initial Alpha. We have extensive testing problems on GSD-CORE and it's an established project, do not easily have a windows box to do local testing on." Work list: `.planning/todos/pending/windows-support-post-alpha.md`. Wherever this document, REQUIREMENTS.md, ROADMAP.md or the phase 1 to 3 plans say "all three OSes" as a requirement, read it as the 1.0 target; for the alpha the Windows part is advisory.
 - **Privacy**: No network by default, no telemetry; permissions only from user-level config (`~/.config/gsd-atlas/`); repo text fenced as untrusted — trust-boundaries ADR
 - **Host coupling**: No dependency on gsd-core, gsd-graph or `.planning/`; gsd-core is a validation corpus only — A14
 - **Licensing**: MIT; vet licenses of pinned upstream grammars and any OKF spec before use
@@ -93,6 +95,7 @@ Scope is the full PRD 1.0 (milestones M0–M6, 21 acceptance criteria). Source o
 | Swift reference app: pick an open-source app during M3 | PRD leaves it unnamed; defer the choice until needed | — Pending |
 | ADR open questions resolved in phase discuss | None blocks planning | — Pending |
 | Node floor 24.16.0 | `node:sqlite` on 24.15.0 truncates TEXT at an embedded NUL (verified) | Decided 2026-10-15 |
+| Windows postponed past the initial alpha (Decision 2, 2026-10-18) | Extensive Windows test problems on the sibling gsd-core and no local Windows box; hosted-runner Windows suite red for 14 files outside any plan | Decided 2026-10-18: Windows CI legs run but are non-blocking; Ubuntu and macOS blocking |
 
 ## Evolution
 
