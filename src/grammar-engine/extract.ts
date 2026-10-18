@@ -318,6 +318,22 @@ interface CommentDraft {
   readonly span: Span;
 }
 
+/** True when the end of `text`, laid out from the start of `span`, is not past the end of `span`. */
+function textFitsSpan(text: string, span: Span): boolean {
+  let line = span.startLine;
+  let lineStart = -span.startColumn;
+  let lf = text.indexOf('\n');
+  while (lf !== -1) {
+    line += 1;
+    if (line > span.endLine) {
+      return false;
+    }
+    lineStart = lf + 1;
+    lf = text.indexOf('\n', lineStart);
+  }
+  return line < span.endLine || (line === span.endLine && text.length - lineStart <= span.endColumn);
+}
+
 /**
  * The mentions of every `comment` capture of the tags query, each with the span of the mention itself. A comment
  * whose text was dropped by the engine (over the 32,768-unit bound) is counted and yields nothing. Only the number,
@@ -326,8 +342,9 @@ interface CommentDraft {
  * At most `MAX_CITATIONS_PER_FILE` drafts are built. The comments are visited in position order; when none overlaps
  * another (every comment node of a real grammar), the mentions then arrive in position order too, which is the order
  * `attachCitations` ranks them in, so the first `MAX_CITATIONS_PER_FILE` drafts are exactly the ones it keeps and
- * nothing after them is scanned. Overlapping or repeated captures (a scripted or hostile module) take the full path.
- * Either way the output is the one a scan of everything followed by the cut would give.
+ * nothing after them is scanned. Overlapping or repeated captures, or a capture whose text is longer than its span (a
+ * scripted or hostile module), take the full path, where each capture still yields at most its first
+ * `MAX_CITATIONS_PER_FILE` mentions. Either way the output is the one a scan of everything followed by the cut would give.
  */
 function collectCitationDrafts(
   captures: readonly Capture[],
@@ -353,7 +370,9 @@ function collectCitationDrafts(
     readable.push(capture);
   }
   readable.sort((a, b) => compareStart(a.span, b.span) || compareEndAscending(a.span, b.span));
-  let disjoint = true;
+  // The early exit rests on every mention lying inside its capture's span, so a capture whose text runs past its span
+  // (never one of the engine, whose text is the source slice of the span; a scripted capture can) takes the full path.
+  let disjoint = readable.every((capture) => textFitsSpan(capture.text, capture.span));
   for (let at = 1; at < readable.length && disjoint; at += 1) {
     const before = (readable[at - 1] as Capture).span;
     const span = (readable[at] as Capture).span;
@@ -369,7 +388,11 @@ function collectCitationDrafts(
     let line = capture.span.startLine;
     let lineStart = -capture.span.startColumn;
     let nextLf = capture.text.indexOf('\n');
-    for (const mention of scanAdrMentions(capture.text, probe, cap - drafts.length)) {
+    // A capture holds its mentions in strictly increasing positions, so none after its first
+    // `MAX_CITATIONS_PER_FILE` can be among the first `MAX_CITATIONS_PER_FILE` of all; on the full path that bound is
+    // what keeps a hostile module's repeated or overlapping captures from being scanned to the end each.
+    const room = disjoint ? cap - drafts.length : MAX_CITATIONS_PER_FILE;
+    for (const mention of scanAdrMentions(capture.text, probe, room)) {
       while (nextLf !== -1 && nextLf < mention.index) {
         line += 1;
         lineStart = nextLf + 1;
