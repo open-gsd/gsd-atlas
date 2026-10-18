@@ -9,6 +9,7 @@ import { describe, it } from 'node:test';
 
 import { billableTokens } from './claude-session.ts';
 import {
+  SCAN_REGISTRY,
   SCAN_MAX_BUDGET_USD_PER_SESSION,
   SCAN_SESSION_WALL_CLOCK_MS,
   applyGapNotes,
@@ -430,6 +431,69 @@ out({ type: 'result', subtype: 'success', is_error: false, result: 'Found it.\\n
     } finally {
       fs.rmSync(s.dir, { recursive: true, force: true });
     }
+  });
+});
+
+describe('registry entries for the third-party tools', () => {
+  const ctx = { corpusDir: '/c/checkout', scratchDir: '/s/scratch', installDir: '/i/install' };
+
+  it('lists every tool of the comparison, each configured with scratch-prefix paths only', () => {
+    assert.deepEqual(Object.keys(SCAN_REGISTRY).sort(), [
+      'aider-repo-map',
+      'claude-code-lsp',
+      'codegraph',
+      'mcp-language-server',
+      'serena',
+    ]);
+    const lsp = SCAN_REGISTRY['mcp-language-server'].mcpServers(ctx)['mcp-language-server'];
+    assert.ok(lsp.command.startsWith(ctx.installDir));
+    assert.deepEqual(lsp.args.slice(0, 2), ['--workspace', ctx.corpusDir]);
+    const serena = SCAN_REGISTRY['serena'].mcpServers(ctx)['serena'];
+    assert.ok(serena.command.startsWith(ctx.installDir));
+    assert.equal(serena.env?.['SERENA_HOME'], path.join(ctx.installDir, 'serena-home'));
+    assert.ok(serena.args.includes('--project'));
+  });
+
+  it('writes the local LSP plugin directory (never a marketplace install) and asks for the LSP tool', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'scan-lsp-'));
+    try {
+      const tool = SCAN_REGISTRY['claude-code-lsp'];
+      const local = { ...ctx, installDir: dir };
+      tool.prepare?.(local);
+      const pluginDirs = tool.pluginDirs?.(local) ?? [];
+      assert.deepEqual(pluginDirs, [path.join(dir, 'lsp-plugin')]);
+      const lspJson = JSON.parse(fs.readFileSync(path.join(pluginDirs[0], '.lsp.json'), 'utf8')) as Record<
+        string,
+        { command: string; extensionToLanguage: Record<string, string> }
+      >;
+      assert.ok(lspJson['typescript'].command.startsWith(dir));
+      assert.equal(lspJson['typescript'].extensionToLanguage['.cts'], 'typescript');
+      assert.ok(fs.existsSync(path.join(pluginDirs[0], '.claude-plugin', 'plugin.json')));
+      assert.deepEqual(tool.builtinTools, ['LSP']);
+      assert.deepEqual(tool.requiredInitTools, ['LSP']);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('puts the repo map into the prompt of the aider row and nothing else', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'scan-aider-'));
+    try {
+      fs.writeFileSync(path.join(dir, 'aider-map.txt'), 'a/b.ts:\n│function f() {}\n');
+      const tool = SCAN_REGISTRY['aider-repo-map'];
+      assert.deepEqual(tool.mcpServers({ ...ctx, installDir: dir }), {});
+      const extra = tool.extraPrompt?.({ ...ctx, installDir: dir }) ?? '';
+      assert.ok(extra.includes('<repo-map>') && extra.includes('function f()'));
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('refuses to run a third-party tool without an install prefix', async () => {
+    await assert.rejects(
+      runScan(SCAN_REGISTRY['serena'], { corpusDir: '/nowhere', scratchDir: path.join(os.tmpdir(), 'x') }),
+      /needs --install-dir/,
+    );
   });
 });
 

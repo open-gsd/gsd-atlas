@@ -1,0 +1,388 @@
+{
+  "schemaVersion": 1,
+  "tool": {
+    "id": "serena",
+    "label": "Serena",
+    "version": "serena-agent 2.0.0",
+    "installMethod": "uv tool install serena-agent==2.0.0 (uv 0.13.1, Python 3.13) in a scratch prefix, SERENA_HOME in scratch"
+  },
+  "claudeCodeVersion": "2.1.302",
+  "model": "claude-sonnet-5-5",
+  "date": "2026-10-18",
+  "corpus": {
+    "id": "gsd-core",
+    "sha": "10ac3a7a947903ba50f538a907af036744d759d5"
+  },
+  "limits": {
+    "maxBudgetUsdPerSession": 3,
+    "sessionWallClockMs": 900000
+  },
+  "isolation": {
+    "settingSources": "",
+    "strictMcpConfig": true,
+    "tools": [
+      "Bash",
+      "Read"
+    ],
+    "allowedTools": [
+      "Read",
+      "Bash(git grep:*)",
+      "Bash(git ls-files:*)",
+      "Bash(rg:*)",
+      "Bash(grep:*)",
+      "Bash(ls:*)",
+      "Bash(cat:*)",
+      "Bash(head:*)",
+      "Bash(tail:*)",
+      "Bash(wc:*)",
+      "mcp__serena"
+    ]
+  },
+  "couldNotRun": null,
+  "rows": [
+    {
+      "questionId": "s-001",
+      "category": "callers",
+      "status": "ok",
+      "correct": "yes",
+      "tokens": {
+        "input": 12,
+        "output": 1749,
+        "cacheCreation": 14834,
+        "cacheRead": 58313,
+        "billable": 74908
+      },
+      "toolCalls": 5,
+      "toolCallsByName": {
+        "Bash": 5
+      },
+      "initTools": [
+        "Bash",
+        "Read",
+        "mcp__serena__initial_instructions",
+        "mcp__serena__serena_repl"
+      ],
+      "mcpServers": [
+        {
+          "name": "serena",
+          "status": "connected"
+        }
+      ],
+      "wallMs": 16637,
+      "costUsd": 0.08268130000000001,
+      "numTurns": 6,
+      "answer": {
+        "parsed": true,
+        "abstain": false,
+        "itemCount": 4,
+        "matched": 4,
+        "expected": 4,
+        "extra": 0
+      },
+      "gapNote": "The session saw only initial_instructions and serena_repl (the default REPL agent interface of this version) and called neither; the answer came from shell search. A separate non-model probe with the one-tool-per-operation interface (not the one the session used) listed references to the .cts definition from two .cts files only; the .cjs and .js callers of the key were not in that listing."
+    },
+    {
+      "questionId": "s-002",
+      "category": "callers",
+      "status": "ok",
+      "correct": "yes",
+      "tokens": {
+        "input": 8,
+        "output": 821,
+        "cacheCreation": 5181,
+        "cacheRead": 35126,
+        "billable": 41136
+      },
+      "toolCalls": 3,
+      "toolCallsByName": {
+        "Bash": 3
+      },
+      "initTools": [
+        "Bash",
+        "Read",
+        "mcp__serena__initial_instructions",
+        "mcp__serena__serena_repl"
+      ],
+      "mcpServers": [
+        {
+          "name": "serena",
+          "status": "connected"
+        }
+      ],
+      "wallMs": 8637,
+      "costUsd": 0.0324626,
+      "numTurns": 4,
+      "answer": {
+        "parsed": true,
+        "abstain": false,
+        "itemCount": 6,
+        "matched": 6,
+        "expected": 6,
+        "extra": 0
+      },
+      "gapNote": "No call to the tool's own tools; answered by shell search alone."
+    },
+    {
+      "questionId": "s-003",
+      "category": "heritage",
+      "status": "ok",
+      "correct": "yes",
+      "tokens": {
+        "input": 6,
+        "output": 491,
+        "cacheCreation": 1836,
+        "cacheRead": 21082,
+        "billable": 23415
+      },
+      "toolCalls": 2,
+      "toolCallsByName": {
+        "Bash": 2
+      },
+      "initTools": [
+        "Bash",
+        "Read",
+        "mcp__serena__initial_instructions",
+        "mcp__serena__serena_repl"
+      ],
+      "mcpServers": [
+        {
+          "name": "serena",
+          "status": "connected"
+        }
+      ],
+      "wallMs": 6063,
+      "costUsd": 0.0143742,
+      "numTurns": 3,
+      "answer": {
+        "parsed": true,
+        "abstain": false,
+        "itemCount": 2,
+        "matched": 2,
+        "expected": 2,
+        "extra": 0
+      },
+      "gapNote": "No call to the tool's own tools; answered by shell search alone."
+    },
+    {
+      "questionId": "s-004",
+      "category": "emit",
+      "status": "ok",
+      "correct": "yes",
+      "tokens": {
+        "input": 12,
+        "output": 1169,
+        "cacheCreation": 4590,
+        "cacheRead": 48132,
+        "billable": 53903
+      },
+      "toolCalls": 5,
+      "toolCallsByName": {
+        "Bash": 5
+      },
+      "initTools": [
+        "Bash",
+        "Read",
+        "mcp__serena__initial_instructions",
+        "mcp__serena__serena_repl"
+      ],
+      "mcpServers": [
+        {
+          "name": "serena",
+          "status": "connected"
+        }
+      ],
+      "wallMs": 13371,
+      "costUsd": 0.0348872,
+      "numTurns": 6,
+      "answer": {
+        "parsed": true,
+        "abstain": false,
+        "itemCount": 3,
+        "matched": 3,
+        "expected": 3,
+        "extra": 0
+      },
+      "gapNote": "No call to the tool's own tools; answered by shell search alone."
+    },
+    {
+      "questionId": "s-005",
+      "category": "adr",
+      "status": "ok",
+      "correct": "yes",
+      "tokens": {
+        "input": 4,
+        "output": 915,
+        "cacheCreation": 5435,
+        "cacheRead": 13454,
+        "billable": 19808
+      },
+      "toolCalls": 1,
+      "toolCallsByName": {
+        "Bash": 1
+      },
+      "initTools": [
+        "Bash",
+        "Read",
+        "mcp__serena__initial_instructions",
+        "mcp__serena__serena_repl"
+      ],
+      "mcpServers": [
+        {
+          "name": "serena",
+          "status": "connected"
+        }
+      ],
+      "wallMs": 8256,
+      "costUsd": 0.0322434,
+      "numTurns": 2,
+      "answer": {
+        "parsed": true,
+        "abstain": false,
+        "itemCount": 15,
+        "matched": 14,
+        "expected": 14,
+        "extra": 0
+      },
+      "gapNote": "No call to the tool's own tools; answered by shell search alone."
+    },
+    {
+      "questionId": "s-006",
+      "category": "impact",
+      "status": "ok",
+      "correct": "partial",
+      "tokens": {
+        "input": 30,
+        "output": 5359,
+        "cacheCreation": 22731,
+        "cacheRead": 264243,
+        "billable": 292363
+      },
+      "toolCalls": 16,
+      "toolCallsByName": {
+        "Bash": 16
+      },
+      "initTools": [
+        "Bash",
+        "Read",
+        "mcp__serena__initial_instructions",
+        "mcp__serena__serena_repl"
+      ],
+      "mcpServers": [
+        {
+          "name": "serena",
+          "status": "connected"
+        }
+      ],
+      "wallMs": 45302,
+      "costUsd": 0.17099830000000002,
+      "numTurns": 17,
+      "answer": {
+        "parsed": true,
+        "abstain": false,
+        "itemCount": 24,
+        "matched": 16,
+        "expected": 21,
+        "extra": 8
+      },
+      "gapNote": "No call to the tool's own tools; shell search only. Partial: 16 of the 21 key files, 8 files outside the key."
+    },
+    {
+      "questionId": "s-007",
+      "category": "definition",
+      "status": "ok",
+      "correct": "yes",
+      "tokens": {
+        "input": 4,
+        "output": 519,
+        "cacheCreation": 1676,
+        "cacheRead": 13451,
+        "billable": 15650
+      },
+      "toolCalls": 1,
+      "toolCallsByName": {
+        "Bash": 1
+      },
+      "initTools": [
+        "Bash",
+        "Read",
+        "mcp__serena__initial_instructions",
+        "mcp__serena__serena_repl"
+      ],
+      "mcpServers": [
+        {
+          "name": "serena",
+          "status": "connected"
+        }
+      ],
+      "wallMs": 5446,
+      "costUsd": 0.0132471,
+      "numTurns": 2,
+      "answer": {
+        "parsed": true,
+        "abstain": false,
+        "itemCount": 4,
+        "matched": 4,
+        "expected": 4,
+        "extra": 0
+      },
+      "gapNote": "No call to the tool's own tools; answered by shell search alone."
+    },
+    {
+      "questionId": "s-008",
+      "category": "abstain",
+      "status": "ok",
+      "correct": "yes",
+      "tokens": {
+        "input": 4,
+        "output": 184,
+        "cacheCreation": 1500,
+        "cacheRead": 13464,
+        "billable": 15152
+      },
+      "toolCalls": 1,
+      "toolCallsByName": {
+        "Bash": 1
+      },
+      "initTools": [
+        "Bash",
+        "Read",
+        "mcp__serena__initial_instructions",
+        "mcp__serena__serena_repl"
+      ],
+      "mcpServers": [
+        {
+          "name": "serena",
+          "status": "connected"
+        }
+      ],
+      "wallMs": 4081,
+      "costUsd": 0.0091944,
+      "numTurns": 2,
+      "answer": {
+        "parsed": true,
+        "abstain": true,
+        "itemCount": 0,
+        "matched": 1,
+        "expected": 1,
+        "extra": 0
+      },
+      "gapNote": "No call to the tool's own tools; answered by shell search alone."
+    }
+  ],
+  "totals": {
+    "sessions": 8,
+    "yes": 7,
+    "partial": 1,
+    "no": 0,
+    "tokens": {
+      "input": 80,
+      "output": 11207,
+      "cacheCreation": 57783,
+      "cacheRead": 467265,
+      "billable": 536335
+    },
+    "toolCalls": 34,
+    "wallMs": 107793,
+    "costUsd": 0.390089
+  }
+}

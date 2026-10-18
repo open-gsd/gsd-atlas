@@ -358,8 +358,10 @@ export interface McpServerConfig {
 export interface ToolContext {
   /** The throwaway checkout the session runs in. */
   corpusDir: string;
-  /** A directory outside the repository for configs, raw streams and installs. */
+  /** A directory outside the repository for configs and raw streams. */
   scratchDir: string;
+  /** The scratch install prefix of the third-party tools (never inside the repository, never global). */
+  installDir: string;
 }
 
 export interface ScanTool {
@@ -373,7 +375,22 @@ export interface ScanTool {
   extraPrompt?(ctx: ToolContext): string;
   /** Command whose first output line is the tool's version, when the tool can report one. */
   versionProbe?: { command: string; args: string[] };
+  /** Built-in Claude Code tools added to the common set (the LSP tool, for the plugin row). */
+  builtinTools?: string[];
+  /** Plugin directories loaded with `--plugin-dir`; `prepare` writes them first. */
+  pluginDirs?(ctx: ToolContext): string[];
+  prepare?(ctx: ToolContext): void;
+  /** Tool names the init event must list, otherwise the tool could not run. */
+  requiredInitTools?: string[];
   notes: string;
+}
+
+const tsLanguageServer = (ctx: ToolContext): string =>
+  path.join(ctx.installDir, 'npm', 'node_modules', '.bin', 'typescript-language-server');
+
+/** Plugin directory for Claude Code's LSP tool: a local `.lsp.json`, loaded with `--plugin-dir` (never `/plugin install`). */
+function lspPluginDir(ctx: ToolContext): string {
+  return path.join(ctx.installDir, 'lsp-plugin');
 }
 
 export const SCAN_REGISTRY: Record<string, ScanTool> = {
@@ -384,6 +401,95 @@ export const SCAN_REGISTRY: Record<string, ScanTool> = {
     allowedMcpTools: ['mcp__codegraph'],
     versionProbe: { command: 'codegraph', args: ['--version'] },
     notes: 'Local tree-sitter SQLite graph served over MCP; the index is built in the throwaway checkout first.',
+  },
+  'mcp-language-server': {
+    id: 'mcp-language-server',
+    label: 'mcp-language-server',
+    mcpServers: (ctx) => ({
+      'mcp-language-server': {
+        type: 'stdio',
+        command: path.join(ctx.installDir, 'bin', 'mcp-language-server'),
+        args: ['--workspace', ctx.corpusDir, '--lsp', tsLanguageServer(ctx), '--', '--stdio'],
+      },
+    }),
+    allowedMcpTools: ['mcp__mcp-language-server'],
+    notes: 'Go MCP server wrapping one typescript-language-server for the workspace; installed in the scratch prefix.',
+  },
+  serena: {
+    id: 'serena',
+    label: 'Serena',
+    mcpServers: (ctx) => ({
+      serena: {
+        type: 'stdio',
+        command: path.join(ctx.installDir, 'bin', 'serena'),
+        args: [
+          'start-mcp-server',
+          '--project',
+          ctx.corpusDir,
+          '--context',
+          'claude-code',
+          '--enable-web-dashboard',
+          'false',
+          '--open-web-dashboard',
+          'false',
+        ],
+        env: { SERENA_HOME: path.join(ctx.installDir, 'serena-home') },
+      },
+    }),
+    allowedMcpTools: ['mcp__serena'],
+    notes: 'Python MCP server (serena-agent) with its own language-server backend; user data kept in a scratch SERENA_HOME.',
+  },
+  'aider-repo-map': {
+    id: 'aider-repo-map',
+    label: 'Aider repo-map',
+    mcpServers: () => ({}),
+    allowedMcpTools: [],
+    extraPrompt: (ctx) => {
+      const map = fs.readFileSync(path.join(ctx.installDir, 'aider-map.txt'), 'utf8').trimEnd();
+      return [
+        'The following repository map was produced by the Aider repo-map tool for this repository. It is the only help you are given besides the read-only tools.',
+        '',
+        '<repo-map>',
+        map,
+        '</repo-map>',
+      ].join('\n');
+    },
+    notes: 'Not a query tool: the map text Aider prints with --show-repo-map is placed in the prompt of every session.',
+  },
+  'claude-code-lsp': {
+    id: 'claude-code-lsp',
+    label: 'Claude Code LSP plugin',
+    mcpServers: () => ({}),
+    allowedMcpTools: [],
+    builtinTools: ['LSP'],
+    requiredInitTools: ['LSP'],
+    pluginDirs: (ctx) => [lspPluginDir(ctx)],
+    prepare: (ctx) => {
+      const dir = lspPluginDir(ctx);
+      fs.mkdirSync(path.join(dir, '.claude-plugin'), { recursive: true });
+      const manifest = {
+        name: 'scan-typescript-lsp',
+        version: '0.0.0',
+        description: 'Local plugin for the free-alternatives scan: typescript-language-server for TypeScript and JavaScript files.',
+      };
+      fs.writeFileSync(path.join(dir, '.claude-plugin', 'plugin.json'), `${JSON.stringify(manifest, null, 2)}\n`);
+      const lsp = {
+        typescript: {
+          command: tsLanguageServer(ctx),
+          args: ['--stdio'],
+          extensionToLanguage: {
+            '.ts': 'typescript',
+            '.cts': 'typescript',
+            '.mts': 'typescript',
+            '.js': 'javascript',
+            '.cjs': 'javascript',
+            '.mjs': 'javascript',
+          },
+        },
+      };
+      fs.writeFileSync(path.join(dir, '.lsp.json'), `${JSON.stringify(lsp, null, 2)}\n`);
+    },
+    notes: 'Claude Code built-in LSP tool backed by typescript-language-server through a local plugin directory.',
   },
 };
 
@@ -412,6 +518,8 @@ export function buildPrompt(text: string, extra?: string): string {
 export interface ScanOptions {
   corpusDir: string;
   scratchDir: string;
+  /** Scratch install prefix of the third-party tools; required by every tool but codegraph. */
+  installDir?: string;
   outPath?: string;
   questionsPath?: string;
   model?: string;
@@ -509,15 +617,21 @@ function totalsOf(rows: readonly ScanRow[]): ScanRunFile['totals'] {
 /** Why a session whose server never connected means the tool could not run, or null when it did. */
 function serverFailure(init: InitEvent | null, tool: ScanTool): string | null {
   if (init === null) return 'the session produced no init event';
-  for (const name of Object.keys(tool.mcpServers({ corpusDir: '', scratchDir: '' }))) {
+  for (const name of Object.keys(tool.mcpServers({ corpusDir: '', scratchDir: '', installDir: '' }))) {
     const server = init.mcpServers.find((s) => s.name === name);
     if (server === undefined) return `mcp server ${name} absent from the init event`;
     if (server.status !== 'connected') return `mcp server ${name} status ${server.status}`;
+  }
+  for (const required of tool.requiredInitTools ?? []) {
+    if (!init.tools.includes(required)) return `tool ${required} absent from the init event`;
   }
   return null;
 }
 
 export async function runScan(tool: ScanTool, options: ScanOptions): Promise<ScanRunFile> {
+  if (tool.id !== 'codegraph' && (options.installDir ?? '') === '' && tool.id in SCAN_REGISTRY) {
+    throw new Error(`tool ${tool.id} needs --install-dir (the scratch install prefix)`);
+  }
   const questionFile = loadScanQuestions(options.questionsPath ?? defaultQuestionsPath);
   const only = options.only === undefined ? null : new Set(options.only);
   const questions = questionFile.questions.filter((q) => only === null || only.has(q.id));
@@ -526,11 +640,13 @@ export async function runScan(tool: ScanTool, options: ScanOptions): Promise<Sca
     throw new Error(`the checkout is at ${corpusSha || 'an unknown commit'}, the scan questions pin ${questionFile.corpusSha}`);
   }
   fs.mkdirSync(options.scratchDir, { recursive: true });
-  const ctx: ToolContext = { corpusDir: options.corpusDir, scratchDir: options.scratchDir };
+  const ctx: ToolContext = { corpusDir: options.corpusDir, scratchDir: options.scratchDir, installDir: options.installDir ?? '' };
+  tool.prepare?.(ctx);
+  const sessionTools = [...SCAN_TOOLS, ...(tool.builtinTools ?? [])];
   const mcpConfigPath = path.join(options.scratchDir, `${tool.id}.mcp.json`);
   fs.writeFileSync(mcpConfigPath, `${JSON.stringify({ mcpServers: tool.mcpServers(ctx) }, null, 2)}\n`);
   const extra = tool.extraPrompt?.(ctx);
-  const allowedTools = [...SCAN_READ_ONLY_ALLOWED, ...tool.allowedMcpTools];
+  const allowedTools = [...SCAN_READ_ONLY_ALLOWED, ...(tool.builtinTools ?? []), ...tool.allowedMcpTools];
   const maxBudgetUsd = options.maxBudgetUsd ?? SCAN_MAX_BUDGET_USD_PER_SESSION;
   const wallClockMs = options.wallClockMs ?? SCAN_SESSION_WALL_CLOCK_MS;
   const model = options.model ?? SCAN_MODEL;
@@ -545,10 +661,10 @@ export async function runScan(tool: ScanTool, options: ScanOptions): Promise<Sca
     const spec: SessionSpec = {
       prompt: buildPrompt(question.text, extra),
       cwd: options.corpusDir,
-      tools: [...SCAN_TOOLS],
+      tools: sessionTools,
       allowedTools,
       mcpConfigPath,
-      pluginDirs: [],
+      pluginDirs: tool.pluginDirs?.(ctx) ?? [],
       model,
       maxBudgetUsd,
       wallClockMs,
@@ -583,7 +699,7 @@ export async function runScan(tool: ScanTool, options: ScanOptions): Promise<Sca
     date: (options.now?.() ?? new Date()).toISOString().slice(0, 10),
     corpus: { id: questionFile.corpusId, sha: corpusSha },
     limits: { maxBudgetUsdPerSession: maxBudgetUsd, sessionWallClockMs: wallClockMs },
-    isolation: { settingSources: '', strictMcpConfig: true, tools: [...SCAN_TOOLS], allowedTools },
+    isolation: { settingSources: '', strictMcpConfig: true, tools: sessionTools, allowedTools },
     couldNotRun: couldNotRun === null ? null : { reason: couldNotRun },
     rows: couldNotRun === null ? rows : [],
     totals: totalsOf(couldNotRun === null ? rows : []),
@@ -658,7 +774,7 @@ export function applyGapNotes(runPath: string, notes: Readonly<Record<string, st
 // Command line
 
 const USAGE = `usage:
-  node scripts/eval/scan.ts --tool <id> --corpus-dir <dir> --out <file> [--scratch-dir <dir>] [--model <alias>]
+  node scripts/eval/scan.ts --tool <id> --corpus-dir <dir> --out <file> [--scratch-dir <dir>] [--install-dir <dir>] [--model <alias>]
                             [--tool-version <text>] [--install-method <text>] [--only s-001,s-002]
   node scripts/eval/scan.ts embed-keys --repo <dir> [--tsconfig tsconfig.json] [--questions <file>]
   node scripts/eval/scan.ts gap-notes --run <file> --notes <json file>
@@ -679,6 +795,7 @@ export async function main(argv: readonly string[]): Promise<number> {
         'corpus-dir': { type: 'string' },
         out: { type: 'string' },
         'scratch-dir': { type: 'string' },
+        'install-dir': { type: 'string' },
         model: { type: 'string' },
         'tool-version': { type: 'string' },
         'install-method': { type: 'string' },
@@ -726,6 +843,7 @@ export async function main(argv: readonly string[]): Promise<number> {
       scratchDir: path.resolve(scratchDir),
       outPath: path.resolve(values['out']),
     };
+    if (values['install-dir'] !== undefined) options.installDir = path.resolve(values['install-dir']);
     if (values['model'] !== undefined) options.model = values['model'];
     if (values['tool-version'] !== undefined) options.toolVersion = values['tool-version'];
     if (values['install-method'] !== undefined) options.installMethod = values['install-method'];
