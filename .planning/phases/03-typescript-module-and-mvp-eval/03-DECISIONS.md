@@ -30,7 +30,7 @@ Both lines are derived from the reply under "Approvals" by the plan 03-01 reply 
 
 ## Diagnostics ADR ratification
 
-The user approved ratifying the user-controlled-diagnostics ADR as written (Part A of the Task 2 decision). Execution status: PENDING. The auto-mode permission classifier denied the `gh issue create` call (public action), so no GitHub issue exists yet, the draft file is not renamed and docs/adr is untouched. Finish with the steps in 03-01-SUMMARY.md, then replace this paragraph with the issue number.
+The user approved ratifying the user-controlled-diagnostics ADR as written (Part A of the Task 2 decision). Ratified on 2026-10-18: the orchestrator opened GitHub issue #15 (https://github.com/open-gsd/gsd-atlas/issues/15) at the user's request, `docs/adr/draft-user-controlled-diagnostics.md` was renamed to `docs/adr/15-user-controlled-diagnostics.md` with Status Accepted, Issue and Ratified header lines, and the README table, Ratification log and schedule were updated. The decision text is unchanged and no amendments were applied.
 
 ## Approvals
 

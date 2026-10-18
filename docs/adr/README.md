@@ -3,7 +3,7 @@
 Each ADR records one decision: what was decided, why, and what follows. ADRs are append‑only; later changes are dated amendment sections, never rewrites. Conventions follow open‑gsd/gsd‑core `docs/adr/README.md`.
 
 ## Naming
-New ADRs are named `<issue#>-<kebab-slug>.md`, with the number of the GitHub issue that proposes them. The repo has no issues yet, so the founding set below is named `draft-<slug>.md`. When the repo is created, open one issue per ADR and rename each file to `<issue#>-<slug>.md` in the same PR that lands it. The eight Phase 1 ADRs were ratified on 2026-10-15 (issue opened, file renamed, Status Accepted); the Ratification log below lists the issues. The four Phase 2 ADRs were ratified on 2026-10-16 (issues 11 to 14). The other two ADRs stay `draft-<slug>.md` and Proposed until the phase named in the Ratification schedule.
+New ADRs are named `<issue#>-<kebab-slug>.md`, with the number of the GitHub issue that proposes them. The repo has no issues yet, so the founding set below is named `draft-<slug>.md`. When the repo is created, open one issue per ADR and rename each file to `<issue#>-<slug>.md` in the same PR that lands it. The eight Phase 1 ADRs were ratified on 2026-10-15 (issue opened, file renamed, Status Accepted); the Ratification log below lists the issues. The four Phase 2 ADRs were ratified on 2026-10-16 (issues 11 to 14). The Phase 3 ADR (user-controlled-diagnostics) was ratified on 2026-10-18 (issue 15). The one remaining ADR stays `draft-<slug>.md` and Proposed until the phase named in the Ratification schedule.
 
 ## Status vocabulary
 `Proposed` (decided in principle, not ratified) · `Accepted` · `Superseded` (must link its successor) · `Retired`.
@@ -21,7 +21,7 @@ These decisions shape the MVP's code and data, and are expensive to reverse once
 | [5-language-modules](5-language-modules.md) | Languages are data; shared Grammar Engine; PreciseResolver seam; three tiers; grammars built from pinned upstream with a parse‑error budget; what counts as source | A6, A7, A9, A25, A47, A48 | Accepted |
 | [11-worktree-lifecycle](11-worktree-lifecycle.md) | Overlays; collect when in git or past grace; history from git; submodules; watch fallback | A5, A20, A21, A43 | Accepted |
 | [13-mcp-contract](13-mcp-contract.md) | MCP tool set, response envelope, ranking, token budgets, freshness and degraded flags, untrusted‑text fencing, CLI parity | A11, A12, A26, A32, A44, A51 | Accepted |
-| [draft-user-controlled-diagnostics](draft-user-controlled-diagnostics.md) | No telemetry; diagnostics off by default, approved per data type, submitted as GitHub issues; ↑ ↔ ↓ ratings; `gsd-atlas bug` defect forensics; automatic intake in the repo | A16, A52, A53 | Proposed |
+| [15-user-controlled-diagnostics](15-user-controlled-diagnostics.md) | No telemetry; diagnostics off by default, approved per data type, submitted as GitHub issues; ↑ ↔ ↓ ratings; `gsd-atlas bug` defect forensics; automatic intake in the repo | A16, A52, A53 | Accepted |
 | [12-query-and-policy](12-query-and-policy.md) | One Query module behind MCP, CLI and hooks; a separate pure Policy module with the session ledger | A11, A12, A26, A32–A37, A44, A51, A58 | Accepted |
 | [9-tenant-composition](9-tenant-composition.md) | Host composes per‑repo Tenants; Source Tree, Indexer and Governor modules; read‑your‑writes via the Indexer | A4, A19, A22, A24–A28, A40, A47, A49, A59–A62 | Accepted |
 | [4-command-runner](4-command-runner.md) | One CommandRunner for every child process; providers declare a CommandSpec, the runner alone decides; sandboxed TypeScript adapter | A9, A44, A54 | Accepted |
@@ -45,8 +45,11 @@ Phase 1 ratification (FND-09): one issue per ADR in open-gsd/gsd-atlas, each dra
 | query-and-policy | [#12](https://github.com/open-gsd/gsd-atlas/issues/12) | [12-query-and-policy.md](12-query-and-policy.md) | 2026-10-16 |
 | mcp-contract | [#13](https://github.com/open-gsd/gsd-atlas/issues/13) | [13-mcp-contract.md](13-mcp-contract.md) | 2026-10-16 |
 | value-dashboard | [#14](https://github.com/open-gsd/gsd-atlas/issues/14) | [14-value-dashboard.md](14-value-dashboard.md) | 2026-10-16 |
+| user-controlled-diagnostics | [#15](https://github.com/open-gsd/gsd-atlas/issues/15) | [15-user-controlled-diagnostics.md](15-user-controlled-diagnostics.md) | 2026-10-18 |
 
 Phase 2 ratification (FND-12): the four ADRs scheduled for Phase 2, same procedure.
+
+Phase 3 ratification (SKL-03): the user-controlled-diagnostics ADR, same procedure (issue 15, 2026-10-18, no amendments).
 
 **Editorial repairs made at ratification (not amendments).** A lost-text token (a backslash and the digit one) had replaced passages in four files. Each was repaired from the project's own sources, `PRD.md` section 4.6 and `DESIGN.md` A9, and is pending human review:
 - `3-trust-boundaries.md` decision 2: restored the heading `Commands.` and its three rules.
@@ -82,11 +85,10 @@ Dated amendment sections appended to Accepted ADRs, one line per amendment. The 
 - Amendment 2026-10-17: tenant-composition - Source Tree ignore verdicts and attribute prefetch (gap closure, plan 02-46)
 
 ## Ratification schedule
-The two ADRs that remain Proposed, and the phase whose first plan ratifies each (from the ROADMAP schedule). The four Phase 2 ADRs were ratified on 2026-10-16 with their amendments (see the Ratification log). Ratifying means: open the issue, rename `draft-<slug>.md` to `<issue#>-<slug>.md`, move Proposed to Accepted, and apply the listed amendments as dated sections.
+The one ADR that remains Proposed, and the phase whose first plan ratifies it (from the ROADMAP schedule). The four Phase 2 ADRs were ratified on 2026-10-16 with their amendments, and user-controlled-diagnostics on 2026-10-18 (see the Ratification log). Ratifying means: open the issue, rename `draft-<slug>.md` to `<issue#>-<slug>.md`, move Proposed to Accepted, and apply the listed amendments as dated sections.
 
 | ADR | Ratify before | Amendments applied at that ratification |
 |-----|---------------|------------------------------------------|
-| user-controlled-diagnostics | Phase 3 | None |
 | host-process-model | Phase 4 | None |
 
 ## Before M4 (not needed for the MVP)
