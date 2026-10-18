@@ -706,6 +706,51 @@ export const SCORED_MIX: Readonly<Record<Category, Readonly<Record<string, numbe
   abstain: { 'abstain-symbol': 4, 'abstain-adr': 2 },
 };
 
+type Mix = Record<string, Record<string, number>>;
+
+/** Largest-remainder apportionment of `total` over `weights`; ties go to the earlier entry. */
+function apportion(weights: readonly number[], total: number): number[] {
+  const sum = weights.reduce((a, b) => a + b, 0);
+  const exact = weights.map((weight) => (weight * total) / sum);
+  const counts = exact.map((value) => Math.floor(value + 1e-9));
+  let left = total - counts.reduce((a, b) => a + b, 0);
+  const byRemainder = exact
+    .map((value, index) => ({ index, remainder: value - counts[index] }))
+    .sort((a, b) => b.remainder - a.remainder || a.index - b.index);
+  for (const { index } of byRemainder) {
+    if (left <= 0) break;
+    counts[index] += 1;
+    left -= 1;
+  }
+  return counts;
+}
+
+/**
+ * The scored mix for `total` questions: abstain is 12 percent of the total, rounded half up, and the
+ * rest is the 50 mix scaled to what is left, group by group, by largest remainder (ties to the
+ * earlier group). `scaledMix(50)` is `SCORED_MIX`; a larger total never gives a group fewer questions
+ * than the 50 mix, so the first 50 questions stay a prefix.
+ */
+export function scaledMix(total: number): Mix {
+  if (!Number.isInteger(total) || total < 50) throw new Error(`a scored set has at least 50 questions, not ${total}`);
+  const abstainTotal = Math.floor((total * 12 + 50) / 100);
+  const entries = Object.entries(SCORED_MIX).flatMap(([category, groups]) =>
+    Object.entries(groups).map(([group, count]) => ({ category, group, count })),
+  );
+  const plain = entries.filter((entry) => entry.category !== 'abstain');
+  const abstain = entries.filter((entry) => entry.category === 'abstain');
+  const counts = [
+    ...apportion(plain.map((entry) => entry.count), total - abstainTotal),
+    ...apportion(abstain.map((entry) => entry.count), abstainTotal),
+  ];
+  const mix: Mix = {};
+  [...plain, ...abstain].forEach((entry, index) => {
+    mix[entry.category] ??= {};
+    mix[entry.category][entry.group] = counts[index];
+  });
+  return Object.fromEntries(CategorySchema.options.filter((category) => mix[category] !== undefined).map((category) => [category, mix[category]]));
+}
+
 /** Questions in the pilot set, one each from this many different categories (`eval.pilotQuestions`). */
 export const PILOT_COUNT = 5;
 
@@ -828,6 +873,15 @@ export interface DraftOptions {
   pilotCount?: number;
   /** The pilot categories themselves, instead of the seeded pick (for tests on a small fixture). */
   pilotCategories?: readonly Category[];
+  /**
+   * A committed candidates file to continue (a larger N, or the oracle was fixed). Its order is
+   * kept as it is (the census is not shuffled again), a rejection on record stays a rejection, an
+   * accepted candidate is decided again with the current oracle and keeps its question id when it is
+   * still acceptable, and an `unused` candidate is looked at only while its group has an open slot.
+   * An id freed by a dropped candidate goes to the next newly accepted one; further ids continue
+   * after the highest id on record. The pilot categories are the file's.
+   */
+  previous?: CandidatesFile;
 }
 
 /**
@@ -841,9 +895,11 @@ export interface DraftOptions {
 export async function draftCandidates(census: Census, ctx: OracleContext, options: DraftOptions): Promise<CandidatesFile> {
   const mix = options.mix ?? SCORED_MIX;
   const pilotCategories =
-    options.pilotCategories === undefined
-      ? pickPilotCategories(options.seed, options.pilotCount ?? PILOT_COUNT)
-      : CategorySchema.options.filter((category) => options.pilotCategories?.includes(category) === true);
+    options.previous !== undefined
+      ? options.previous.pilotCategories
+      : options.pilotCategories === undefined
+        ? pickPilotCategories(options.seed, options.pilotCount ?? PILOT_COUNT)
+        : CategorySchema.options.filter((category) => options.pilotCategories?.includes(category) === true);
   const used = new Map<string, 'scored' | 'pilot' | 'reserved'>();
   for (const identity of options.reserved ?? []) used.set(identity, 'reserved');
 
@@ -854,7 +910,23 @@ export async function draftCandidates(census: Census, ctx: OracleContext, option
     const pilotGroup = Object.keys(quota)[0];
     let pilotOpen = pilotCategories.includes(category);
     const records: CandidateRecord[] = [];
-    const ordered = orderCandidates(census, category, options.seed);
+    const prior = options.previous?.categories[category];
+    let ordered: Candidate[];
+    if (prior === undefined) {
+      ordered = orderCandidates(census, category, options.seed);
+    } else {
+      // The recorded order is kept; the current census only supplies the facts of candidates never looked at.
+      const fresh = new Map(orderCandidates(census, category, options.seed).map((entry) => [entry.identity, entry]));
+      ordered = prior.map((record) => ({
+        category,
+        group: record.group,
+        identity: record.identity,
+        name: record.identity,
+        file: '',
+        key: record.key,
+        facts: record.facts ?? fresh.get(record.identity)?.facts ?? {},
+      }));
+    }
     for (const [index, entry] of ordered.entries()) {
       const record: CandidateRecord = {
         rank: index + 1,
@@ -864,6 +936,16 @@ export async function draftCandidates(census: Census, ctx: OracleContext, option
         status: 'unused',
       };
       records.push(record);
+      const before = prior?.[index];
+      if (before?.status === 'rejected') {
+        // A decision on record is history: it stays, with the reason and the numbers it was made on.
+        record.status = 'rejected';
+        if (before.reason !== undefined) record.reason = before.reason;
+        if (before.detail !== undefined) record.detail = before.detail;
+        if (before.size !== undefined) record.size = before.size;
+        if (before.facts !== undefined) record.facts = before.facts;
+        continue;
+      }
       const pilotEligible = pilotOpen && (pilotGroup === undefined || entry.group === pilotGroup);
       if ((quota[entry.group] ?? 0) <= 0 && !pilotEligible) continue;
 
@@ -902,17 +984,43 @@ export async function draftCandidates(census: Census, ctx: OracleContext, option
     categories[category] = records;
   }
 
-  let scoredNumber = 0;
-  let pilotNumber = 0;
+  // Ids: a continued candidate keeps the id it had; ids freed by dropped candidates are reused first (lowest
+  // first), then numbering continues after the highest id on record. Without a previous file, ids follow
+  // category then rank order.
+  const number = (prefix: 'q' | 'p', value: number): string => `${prefix}-${String(value).padStart(3, '0')}`;
+  const recorded = new Map<string, string>();
+  const highest = { q: 0, p: 0 };
+  for (const records of Object.values(options.previous?.categories ?? {})) {
+    for (const record of records) {
+      if (record.status !== 'accepted' || record.questionId === undefined) continue;
+      recorded.set(record.identity, record.questionId);
+      const prefix = record.questionId.startsWith('p-') ? 'p' : 'q';
+      highest[prefix] = Math.max(highest[prefix], Number(record.questionId.slice(2)));
+    }
+  }
+  const kept = new Set<string>();
   for (const category of CategorySchema.options) {
     for (const record of categories[category]) {
-      if (record.status !== 'accepted') continue;
-      if (record.slot === 'pilot') {
-        pilotNumber += 1;
-        record.questionId = `p-${String(pilotNumber).padStart(3, '0')}`;
+      const id = recorded.get(record.identity);
+      if (record.status !== 'accepted' || id === undefined || id.startsWith('p-') !== (record.slot === 'pilot')) continue;
+      record.questionId = id;
+      kept.add(id);
+    }
+  }
+  const freed = (['q', 'p'] as const).map((prefix) =>
+    [...recorded.values()].filter((id) => id.startsWith(`${prefix}-`) && !kept.has(id)).sort(),
+  );
+  const nextFreed = { q: freed[0], p: freed[1] };
+  for (const category of CategorySchema.options) {
+    for (const record of categories[category]) {
+      if (record.status !== 'accepted' || record.questionId !== undefined) continue;
+      const prefix = record.slot === 'pilot' ? 'p' : 'q';
+      const reused = nextFreed[prefix].shift();
+      if (reused !== undefined) {
+        record.questionId = reused;
       } else {
-        scoredNumber += 1;
-        record.questionId = `q-${String(scoredNumber).padStart(3, '0')}`;
+        highest[prefix] += 1;
+        record.questionId = number(prefix, highest[prefix]);
       }
     }
   }
@@ -1126,6 +1234,8 @@ const USAGE = `usage:
       census of the checkout and every ordered candidate as unused
   node scripts/eval/draft-census.ts draft --repo <dir> --tsconfig <file> --seed <n> --out <candidates.json> [--corpus-id <id>] [--scan <scan-questions.json>]
       the single drafting pass: decide candidates by the closed rules and assign question ids
+      [--total <N>]: the scored mix for N questions (default 50)
+      [--previous <candidates.json>]: continue that file: same order, rejections on record kept, accepted ones decided again
   node scripts/eval/draft-census.ts list --candidates <candidates.json>
       the accepted candidates (question id, key, facts) for the person writing the texts
   node scripts/eval/draft-census.ts scaffold --candidates <candidates.json> --questions-out <file> --pilot-out <file>
@@ -1165,6 +1275,8 @@ const OPTIONS = {
   out: { type: 'string' },
   'corpus-id': { type: 'string' },
   scan: { type: 'string' },
+  total: { type: 'string' },
+  previous: { type: 'string' },
   candidates: { type: 'string' },
   'questions-out': { type: 'string' },
   'pilot-out': { type: 'string' },
@@ -1188,10 +1300,20 @@ async function runCensusCommand(command: 'skeleton' | 'draft', values: Values): 
   const ctx: OracleContext = { repoDir: values.repo, tsconfig: values.tsconfig };
   const census = await buildCensus(ctx);
   const base = { corpusId: values['corpus-id'] ?? 'gsd-core', corpusSha: repoHead(values.repo), seed };
+  const total = values.total === undefined ? undefined : Number(values.total);
+  if (total !== undefined && !Number.isInteger(total)) {
+    process.stderr.write(USAGE);
+    return 2;
+  }
   const file =
     command === 'skeleton'
       ? skeletonCandidates(census, base)
-      : await draftCandidates(census, ctx, { ...base, reserved: scanIdentities(values.scan ?? DEFAULT_SCAN) });
+      : await draftCandidates(census, ctx, {
+          ...base,
+          reserved: scanIdentities(values.scan ?? DEFAULT_SCAN),
+          ...(total === undefined ? {} : { mix: scaledMix(total) }),
+          ...(values.previous === undefined ? {} : { previous: CandidatesFileSchema.parse(readJsonFile(values.previous)) }),
+        });
   fs.writeFileSync(values.out, serializeCandidates(file));
   return 0;
 }
