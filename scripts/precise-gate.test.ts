@@ -358,7 +358,7 @@ describe('evaluate (the pure judgement)', () => {
     assert.ok(BUILD_STRICT_MS < BUILD_PR_CEILING_MS, 'the strict tier stays tighter than the pull request tier');
     const text = fs.readFileSync(CONSTANTS_FILE, 'utf8');
     const approvals = text.slice(text.indexOf('## Approvals'));
-    assert.match(approvals, /^> B and C$/m, 'the reply is quoted verbatim');
+    assert.match(approvals, /^> Decision 1: B and C$/m, 'the reply is quoted verbatim');
     assert.match(approvals, /`gate\.buildStrictMs`[^\n]*60000/, 'the entry names the key and the new value');
     // The other five ceilings are the values approved before (the decision moved the strict build figure only).
     assert.equal(BUILD_PR_CEILING_MS, 90_000);
@@ -410,9 +410,9 @@ describe('the gate command line', () => {
 
     // The same measurements within the ceilings exit 0, and the same build is judged by the tier it was run under.
     const fine = capture();
-    assert.equal(await main(['--pr', '--corpus', 'fixture'], { stdout: fine, stderr: capture() }, { run: () => Promise.resolve(fake({ buildMs: 30_001 })) }), 0);
+    assert.equal(await main(['--pr', '--corpus', 'fixture'], { stdout: fine, stderr: capture() }, { run: () => Promise.resolve(fake({ buildMs: BUILD_STRICT_MS + 1 })) }), 0);
     const strict = capture();
-    assert.equal(await main(['--strict', '--corpus', 'fixture'], { stdout: strict, stderr: capture() }, { run: () => Promise.resolve(fake({ buildMs: 30_001, updateMs: rep(10, 20), warmMs: rep(10, 50) })) }), 1);
+    assert.equal(await main(['--strict', '--corpus', 'fixture'], { stdout: strict, stderr: capture() }, { run: () => Promise.resolve(fake({ buildMs: BUILD_STRICT_MS + 1, updateMs: rep(10, 20), warmMs: rep(10, 50) })) }), 1);
     assert.equal(lastJson(strict)['tier'], 'strict');
   });
 

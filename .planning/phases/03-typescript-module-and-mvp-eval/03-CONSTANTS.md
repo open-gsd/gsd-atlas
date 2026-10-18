@@ -28,7 +28,7 @@ A consuming plan reads its value from the table below instead of inventing a num
 | `gate.buildPrCeilingMs` | 90000 | 03-30 | D-10: 3 times the roadmap figure; needs approval |
 | `gate.updatePrCeilingMs` | 15000 | 03-30 | D-10: 3 times the roadmap figure; needs approval |
 | `gate.warmQueryPrCeilingMs` | 6000 | 03-30 | D-10: 3 times the roadmap figure; needs approval |
-| `gate.buildStrictMs` | 30000 | 03-30 | ROADMAP criterion 2, locked |
+| `gate.buildStrictMs` | 60000 | 03-30 | ROADMAP criterion 2 says 30000; raised to 60000 by the user's decision "B and C" of 2026-10-18 (Approvals below): 40% above the slowest hosted two-vCPU Linux build seen after the build was optimised (43.0 s); sized on hosted Linux and local macOS, Windows being postponed past the alpha |
 | `gate.updateStrictMs` | 5000 | 03-30 | ROADMAP criterion 2, locked |
 | `gate.warmQueryStrictMs` | 2000 | 03-30 | ROADMAP criterion 2, locked |
 | `recorder.maxEvents` | 2000 | 03-17 | DIAGNOSTICS.md 9.1, locked |
@@ -200,3 +200,9 @@ Follow-up to plan 03-24 (`.planning/research/COMMENT-BOUND-FOLLOWUP.md`) was ans
 > approve both
 
 Meaning: the two before-03-35 changes of that review are approved. (1) The floor test with the factor 1.8 is replaced by "the bound exceeds the longest observed comment (17,881)" plus a real-engine case (a 17,881-unit comment keeps its citation, 32,769 and 35,762 units are dropped); the test no longer reads this file; the wording of the `adr.maxCommentUnits` row above is corrected to say the 1.83 margin is an observation, not a derived requirement. The value stays 32768. (2) The citation scan takes at most 200 mentions per capture on the full path (overlapping or repeated captures), a capture whose text is longer than its span takes the full path, and `scanProbe` is tagged `@internal`; the output is unchanged. The earlier entries of this section are kept as they were written. No constant changed.
+
+Plan 03-30 follow-up (`03-30-SUMMARY.md`, "Build ceiling follow-up (2026-10-18)"): the strict full-build ceiling was breached on hosted Linux (42.2 s) and Windows (54.9 s) against 30 s, and the user was asked whether to optimise the build (B), raise the ceiling (C), or both. Reply, verbatim (the question was "Decision 1"):
+
+> Decision 1: B and C
+
+Meaning: both. (B) The build was optimised without changing any answer (a resolver call reads each file's symbols once instead of once per edge target; `03-30-SUMMARY.md` has the figures). (C) `gate.buildStrictMs` is raised from 30000 to 60000 (milliseconds), sized on hosted two-vCPU Linux and local macOS after the optimisation (Windows is postponed past the alpha and was not used): the slowest hosted Linux full build seen was 43.0 s, and 60 s is 40% above it (the requirement was at least about 30%, which is 55.9 s). The new value is `gate.buildStrictMs` 60000 in the table above and `BUILD_STRICT_MS` in `scripts/precise-gate.ts`. The other five gate rows are unchanged (`gate.buildPrCeilingMs` 90000, `gate.updatePrCeilingMs` 15000, `gate.warmQueryPrCeilingMs` 6000, `gate.updateStrictMs` 5000, `gate.warmQueryStrictMs` 2000), and so are the sample counts and every timeout. ROADMAP criterion 2 still reads 30 s; it was not edited here.

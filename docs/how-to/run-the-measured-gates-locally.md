@@ -86,7 +86,7 @@ The precise tier gate measures what a developer feels with the compiler-backed a
    node scripts/precise-gate.ts --pr --corpus gsd-core
    ```
 
-2. The strict tier, the roadmap figures (30 seconds, 5 seconds, 2 seconds). `npm run gates:precise` runs the same command:
+2. The strict tier (60 seconds for the build, 5 seconds for an update, 2 seconds for a warm query; the roadmap says 30 seconds for the build, and the 60 was chosen on 2026-10-18 because the hosted two-vCPU Linux runners need 25 to 43 seconds, while a recent laptop needs about 8 to 11). `npm run gates:precise` runs the same command:
 
    ```sh
    node scripts/precise-gate.ts --strict --corpus gsd-core
@@ -102,7 +102,7 @@ Each of the first two prints one JSON line and exits 0 when all three budgets ho
 
 | Budget | Pull request tier | Strict tier |
 |--------|-------------------|-------------|
-| Full build | one run, `gate.buildPrCeilingMs` (90000 ms) | one run, `gate.buildStrictMs` (30000 ms) |
+| Full build | one run, `gate.buildPrCeilingMs` (90000 ms) | one run, `gate.buildStrictMs` (60000 ms) |
 | One-file update | median of 5, `gate.updatePrCeilingMs` (15000 ms) | p95 of 20, `gate.updateStrictMs` (5000 ms) |
 | Warm query | p95 of 10, `gate.warmQueryPrCeilingMs` (6000 ms) | p95 of 50, `gate.warmQueryStrictMs` (2000 ms) |
 
