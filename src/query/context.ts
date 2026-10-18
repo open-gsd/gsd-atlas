@@ -11,7 +11,7 @@
  * `data.file.emittedAs` (TSM-03) lists what the project's compiler writes for the file that defines the symbol, when
  * a project model says so; it is absent otherwise.
  */
-import { UnknownWorktree } from '../fact-store/index.ts';
+import { UnknownWorktree, formatHandle } from '../fact-store/index.ts';
 import type { Reader, RelationRecord, SymbolRecord } from '../fact-store/index.ts';
 import type { DegradedCode, Envelope, ExportSite, FileFacts, ImportSite, LocalSymbol, Span, SymbolIdentity } from '../facts/index.ts';
 import { okEnvelope, symbolKey } from '../facts/index.ts';
@@ -108,9 +108,12 @@ function identitiesOf(repo: string, filePath: string, symbols: readonly LocalSym
   });
 }
 
-/** The handle of an import or export, in the shape the store gives its own import records. */
-const siteHandle = (prefix: 'imp' | 'exp', filePath: string, hash: string, index: number): string =>
-  `${prefix}/${encodeURIComponent(filePath)}/${hash}/${String(index)}`;
+/**
+ * The handle of an import or export, in the shape the store gives its own import records. It is composed by the store's own
+ * `formatHandle` (plan 03-26), so the handle grammar that `code_explain` parses has one definition.
+ */
+const siteHandle = (kind: 'imp' | 'exp', filePath: string, hash: string, index: number): string =>
+  formatHandle({ kind, path: filePath, hash, ord: index });
 
 /** The ordered entries around the definition, from the file's facts. */
 function entriesAround(best: SymbolRecord, facts: FileFacts | null): Entry[] {

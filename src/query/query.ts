@@ -10,13 +10,14 @@ import type { CursorPayload, CursorProblem, QueryParts } from './cursor.ts';
 import { resolveQueryConfig } from './defaults.ts';
 import { errorEnvelope } from './envelope.ts';
 import { newNonce, normalizeText } from './fence.ts';
+import { runExplain } from './explain.ts';
 import { runFind } from './find.ts';
 import type { FindContext, FreshOutcome } from './find.ts';
 import { runContext } from './context.ts';
 import { runImpact } from './impact.ts';
 import { runRefs } from './refs.ts';
 import { runStatus } from './status.ts';
-import { codeContextSchema, codeFindSchema, codeImpactSchema, codeRefsSchema, repoOnlySchema } from './tools.ts';
+import { codeContextSchema, codeExplainSchema, codeFindSchema, codeImpactSchema, codeRefsSchema, repoOnlySchema } from './tools.ts';
 import type { ToolName } from './tools.ts';
 import type { Query, QueryConfig, QueryDeps } from './types.ts';
 
@@ -193,6 +194,15 @@ export function createQuery(deps: QueryDeps): Query {
             cwd: input.cwd,
           }));
           return 'error' in ready ? ready.error : runImpact(ready.ctx, ready.input);
+        }
+        case 'code_explain': {
+          // Explain reads what is stored: it has no cursor and takes no fresh paths, so its mode is part of no ranking.
+          const ready = await prepare(deps, config, request, 'code_explain', codeExplainSchema, (_input, worktree) => ({
+            worktree,
+            name: '',
+            mode: 'explain',
+          }));
+          return 'error' in ready ? ready.error : runExplain(ready.ctx, ready.input);
         }
         case 'atlas_status': {
           // Status reports state: it has no budget, cursor or fresh paths, so only its own arguments are checked.

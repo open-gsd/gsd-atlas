@@ -1,7 +1,7 @@
 import type { Envelope, Request } from '../facts/index.ts';
 
 export type { Request, Envelope, Diagnostic } from '../facts/index.ts';
-export { PROTOCOL_VERSION } from '../facts/index.ts';
+export { ANSWER_ID_PATTERN, PROTOCOL_VERSION } from '../facts/index.ts';
 
 /**
  * The adapter-facing seam: CLI and MCP shim talk to the host only through this interface, so

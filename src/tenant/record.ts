@@ -10,13 +10,13 @@ import type { AnswerEvent, ToolName } from '../metrics/index.ts';
 import type { FlightEventInput } from './flight.ts';
 
 /** The request kinds a Tenant answers; `build`, `maintain`, `status` and `lang_*` are not answers. */
-const ANSWERED: ReadonlySet<string> = new Set<ToolName>(['code_find', 'code_refs', 'code_context', 'code_impact', 'atlas_status']);
+const ANSWERED: ReadonlySet<string> = new Set<ToolName>(['code_find', 'code_refs', 'code_context', 'code_impact', 'atlas_status', 'code_explain']);
 
-/** True for the five request kinds a Tenant answers with a tool answer (and so stamps with an answer id). */
+/** True for the six request kinds a Tenant answers with a tool answer (and so stamps with an answer id and records). */
 export const isAnsweredKind = (kind: string): boolean => ANSWERED.has(kind);
 
 /**
- * The answer event for `envelope`, or null when `kind` is not one of the five tools a Tenant answers.
+ * The answer event for `envelope`, or null when `kind` is not one of the six tools a Tenant answers.
  * `results` is the number of citations; `estimatedTokens` is the serialized length divided by four, rounded up (an
  * estimate, never a measured count); `degraded` keeps each code of the closed vocabulary once, in order.
  */

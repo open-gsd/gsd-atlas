@@ -335,7 +335,8 @@ describe('code_explain: why atlas said something (QRY-07)', () => {
     assert.equal(data.explanation.fact.confidence, 'INFERRED');
     assert.equal(data.explanation.fact.path, 'src/b.ts');
     assert.equal(data.explanation.resolution?.contextId, 'grammar');
-    assert.equal(data.explanation.resolution?.cache, 'not_applicable');
+    // `refs` above resolved the site (the store's resolver found nothing), so the cache says so.
+    assert.equal(data.explanation.resolution?.cache, 'asked_no_edge');
     const imported = await h.query().ask(explainRequest(h, { handle: `imp/${encodeURIComponent('src/b.ts')}/${blobId(B_TS)}/0` }));
     assert.equal((imported.data as ExplainedData).explanation.kind, 'import');
   });

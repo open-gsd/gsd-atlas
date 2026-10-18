@@ -44,7 +44,8 @@ import {
 } from './snapshot.ts';
 import type { Snapshot } from './snapshot.ts';
 import type { StoreParts } from './parts.ts';
-import type { ImporterRecord, Reader, WorktreeId } from './types.ts';
+import { describeFact, parseHandle } from './provenance.ts';
+import type { FactExplanation, ImporterRecord, Reader, WorktreeId } from './types.ts';
 
 function rebuildFacts(snap: Snapshot, path: string, fileId: number): FileFacts {
   const file = fileRow(snap, fileId);
@@ -200,6 +201,24 @@ export function createReader(parts: StoreParts, worktree: WorktreeId): Reader {
         const found = findSymbol(snap, id);
         return found === null ? null : symbolRecord(snap, id.path, found.file, found.symbol);
       });
+    },
+    async provenance(text) {
+      const handle = parseHandle(text);
+      // Not a handle: still a read of this overlay, so an unknown worktree is reported like for every other read.
+      if (handle === null) return answer<FactExplanation | 'stale' | null>(parts, worktree, () => null);
+      // A definition, an import and an export are read from the facts alone. A reference or a relation also reads the cache,
+      // which is keyed by the project context of the snapshot. Nothing is ever asked of the resolver.
+      if (handle.kind !== 'ref' && handle.kind !== 'rel') {
+        return answer<FactExplanation | 'stale' | null>(parts, worktree, (snap) => describeFact(snap, handle, null));
+      }
+      const started = readResolving(
+        parts,
+        worktree,
+        (snap, project) => describeFact(snap, handle, project),
+        () => [],
+      );
+      const first = started instanceof Promise ? await started : started;
+      return toAnswer(first, first.value.grammar);
     },
     async importers(target, options) {
       const read = (emit: EmitLookup | undefined): Answer<readonly ImporterRecord[]> =>

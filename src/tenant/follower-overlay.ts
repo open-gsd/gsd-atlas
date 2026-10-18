@@ -379,6 +379,12 @@ export function createOverlayReader(base: Reader, patch: Patch, context: Overlay
       return result(observe(await base.emittedAs(filePath)));
     },
 
+    async provenance(handle) {
+      // `code_explain` takes no `fresh` paths, so a request that explains is never given an overlay; this keeps the whole Reader
+      // interface honest anyway. A handle is explained from the store's own facts, which is also what the patch hides.
+      return result(observe(await base.provenance(handle)));
+    },
+
     async refs(id, options) {
       return result(await refsOf(id, options));
     },

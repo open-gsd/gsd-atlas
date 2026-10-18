@@ -200,6 +200,10 @@ describe('fresh paths: one Reader per request', () => {
         calls.push('relations');
         return real.relations(id, options);
       },
+      provenance: (handle) => {
+        calls.push('provenance');
+        return real.provenance(handle);
+      },
     };
     const port: FreshPort = { ensureFresh: () => Promise.resolve({ ...COMPLETE, reader: counting }) };
     const query = h.query({ store, fresh: port });

@@ -56,7 +56,7 @@ describe('parseHandle and formatHandle', () => {
       `ref/src%2Fa.ts/${H(1)}/abc`,
       `ref/src%2Fa.ts/${H(1)}/99999999999999999999`,
       `ref/src%2Fa.ts/${H(1)}/`,
-      `ref/src%2Fa.ts/${H(1).toUpperCase()}/3`,
+      `ref/src%2Fa.ts/${H(0xabcdef).toUpperCase()}/3`,
       `ref/src%2Fa.ts/${H(1).slice(1)}/3`,
       `ref/src%2Fa.ts/${H(1)}0/3`,
       `ref/%2E%2E%2Fetc%2Fpasswd/${H(1)}/3`,
@@ -212,24 +212,30 @@ for (const driver of DRIVERS) {
       });
     });
 
-    it('a reference handle in a store with no precise tier: INFERRED, grammar, the cache is not applicable', async () => {
+    it('a reference handle in a store with no precise tier: INFERRED, grammar, the cache is not applicable until a read asked, then asked with no edge', async () => {
       await withStore(driver, async (store) => {
         const writer = store.writer();
         await seed(writer);
         const reader = store.at('main');
-        const refs = (await reader.refs(RUN)).data;
-        assert.equal(refs.length, 2);
-        const found = explanation((await reader.provenance(refs[0]?.debug ?? '')).data);
+        const handle = formatHandle({ kind: 'ref', path: 'src/use.ts', hash: H(2), ord: 0 });
+        const found = explanation((await reader.provenance(handle)).data);
         assert.equal(found.kind, 'reference');
         assert.equal(found.fact.tier, 'grammar');
         assert.equal(found.fact.confidence, 'INFERRED');
         assert.equal(found.fact.path, 'src/use.ts');
         assert.deepStrictEqual(found.fact.span, SITE_A.span);
         assert.ok(found.resolution !== null);
-        assert.equal(found.resolution.cache, 'not_applicable');
+        assert.equal(found.resolution.cache, 'not_applicable', 'a store with no project context has no precise tier');
         assert.equal(found.resolution.contextId, 'grammar');
         assert.equal(found.resolution.configHashCount, 0);
         assert.match(found.resolution.snapshot, /^[0-9a-f]{64}$/);
+        // The handle `refs` issued is this one; after that read the resolver was asked about the site, and found nothing.
+        const refs = (await reader.refs(RUN)).data;
+        assert.equal(refs.length, 2);
+        assert.equal(refs[0]?.debug, handle);
+        const asked = explanation((await reader.provenance(handle)).data);
+        assert.equal(asked.resolution?.cache, 'asked_no_edge');
+        assert.equal(asked.fact.tier, 'grammar');
         writer.release();
       });
     });

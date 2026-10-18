@@ -151,7 +151,9 @@ describe('explain over the real bins (QRY-07): a reference fact at the grammar t
       const data = explainedOf(cli.envelope);
       assert.equal(data.explanation.handle, handle);
       assert.equal(data.explanation.kind, 'reference');
-      assert.match(data.explanation.fact.extractor, /^grammar:typescript@\d+\.\d+\.\d+$/);
+      // A `.cjs` file belongs to the JavaScript module; its grammar version is the one the extractor names.
+      assert.match(data.explanation.fact.extractor, /^grammar:javascript@\d+\.\d+\.\d+$/);
+      assert.equal(data.explanation.fact.module, 'javascript');
       assert.equal(data.explanation.fact.tier, 'grammar');
       assert.equal(data.explanation.fact.confidence, 'INFERRED');
       assert.equal(data.explanation.fact.grammarVersion, data.explanation.fact.extractor.split('@')[1]);

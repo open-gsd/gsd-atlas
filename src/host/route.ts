@@ -14,7 +14,9 @@ import type { MaintainTask, RateInput } from '../tenant/index.ts';
 
 /**
  * The request kinds that name a repository. `index_state` is internal (plan 02-44): the CLI's `no index yet` hint asks
- * it, it is not an MCP tool and not a CLI command, so the six-tool profile (QRY-06) is unchanged. `allow` (D-15) is the
+ * it, it is not an MCP tool and not a CLI command, so the seven-tool profile (QRY-06, QRY-07) is unchanged. `code_explain`
+ * (plan 03-26) is the seventh tool: a read in the `interactive` class from the repository's Tenant, like the other code tools.
+ * `allow` (D-15) is the
  * CLI's two-step approval of one command: not an MCP tool either, refused by a Host started for MCP, served in the
  * `interactive` class, and it needs no tenant and no store (it reads the repository's identity and writes the user's config).
  * `rate` (plan 03-17, D-16) is a person's rating of an answer, a feature or the session: not an MCP tool, refused by a
@@ -26,6 +28,7 @@ export const REPO_KINDS = [
   'code_context',
   'code_impact',
   'atlas_status',
+  'code_explain',
   'build',
   'maintain',
   'status',
