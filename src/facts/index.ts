@@ -25,6 +25,7 @@ export type {
 export { DEGRADED_CODES, isDegradedCode } from './degraded.ts';
 export type { DegradedCode } from './degraded.ts';
 export type { Answer, Watermark } from './answer.ts';
+export { ANSWER_ID_PATTERN, createAnswerId, isAnswerId } from './answer-id.ts';
 export { PROTOCOL_VERSION, failEnvelope, okEnvelope } from './request.ts';
 export type {
   Citation,

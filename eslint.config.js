@@ -30,6 +30,10 @@ export const MODULES = [
   'query',
   'tenant',
   'host',
+  // Phase 3: the user-controlled diagnostics module (SKL-03, SKL-04). It reads the user's config and writes bundles, so it
+  // may not start a process or open a database, is reached only through index.ts, and is no adapter's business
+  // (adapters import only host-client). Not a SQLite owner, not an adapter, not a closed module.
+  'diagnostics',
 ];
 
 /** The only modules that may touch src/sqlite (and so a SQLite driver). */

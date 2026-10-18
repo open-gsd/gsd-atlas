@@ -167,6 +167,26 @@ const CASES: Case[] = [
   { group: 'purity', what: 'node:test in a non-test indexer file fails', at: 'src/indexer/x.ts', code: imp('node:test'), expect: 'fail', rule: 'no-restricted-imports', says: 'test code' },
   { group: 'purity', what: 'node:test in a host test file passes (control)', at: 'src/host/x.test.ts', code: imp('node:test'), expect: 'pass' },
 
+  // Phase 3 module: diagnostics (SKL-03, SKL-04) has its walls before it has code. No process, no SQLite, no deep
+  // imports, and no adapter reaches it (adapters import only host-client).
+  { group: 'diagnostics', what: 'importing node:child_process fails (no process)', at: 'src/diagnostics/x.ts', code: imp('node:child_process'), expect: 'fail', rule: 'no-restricted-imports' },
+  { group: 'diagnostics', what: 'importing node:sqlite fails (no database)', at: 'src/diagnostics/x.ts', code: imp('node:sqlite'), expect: 'fail', rule: 'no-restricted-imports' },
+  { group: 'diagnostics', what: 'importing better-sqlite3 fails (no database)', at: 'src/diagnostics/x.ts', code: imp('better-sqlite3'), expect: 'fail', rule: 'no-restricted-imports' },
+  { group: 'diagnostics', what: 'importing src/sqlite fails (not a SQLite owner)', at: 'src/diagnostics/x.ts', code: imp('../sqlite/index.ts'), expect: 'fail', rule: 'no-restricted-imports' },
+  { group: 'diagnostics', what: 'dynamic import of node:child_process fails', at: 'src/diagnostics/x.ts', code: `await import('node:child_process');`, expect: 'fail', rule: 'no-restricted-syntax' },
+  { group: 'diagnostics', what: 'deep import of fact-store fails and names index.ts', at: 'src/diagnostics/x.ts', code: imp('../fact-store/types.ts'), expect: 'fail', rule: 'no-restricted-imports', says: 'index.ts' },
+  { group: 'diagnostics', what: 'importing facts through index.ts passes (control)', at: 'src/diagnostics/x.ts', code: imp('../facts/index.ts'), expect: 'pass' },
+  { group: 'diagnostics', what: 'importing an npm package (zod) passes (control)', at: 'src/diagnostics/x.ts', code: imp('zod'), expect: 'pass' },
+  { group: 'diagnostics', what: 'production file may not import node:test or the test kit', at: 'src/diagnostics/x.ts', code: imp('node:test') + '\n' + imp('../test-kit/index.ts', 'y'), expect: 'fail', rule: 'no-restricted-imports', says: 'test code' },
+  { group: 'diagnostics', what: 'test file may import node:test and the test kit (control)', at: 'src/diagnostics/x.test.ts', code: imp('node:test') + '\n' + imp('../test-kit/index.ts', 'y'), expect: 'pass' },
+  { group: 'diagnostics', what: 'test file may not import child_process', at: 'src/diagnostics/x.test.ts', code: imp('node:child_process'), expect: 'fail', rule: 'no-restricted-imports' },
+  { group: 'diagnostics', what: 'cli importing diagnostics fails (adapters import only host-client)', at: 'src/cli/x.ts', code: imp('../diagnostics/index.ts'), expect: 'fail', rule: 'no-restricted-imports' },
+  { group: 'diagnostics', what: 'mcp-shim importing diagnostics fails (adapters import only host-client)', at: 'src/mcp-shim/x.ts', code: imp('../diagnostics/index.ts'), expect: 'fail', rule: 'no-restricted-imports' },
+  { group: 'diagnostics', what: 'cli test file importing diagnostics still fails', at: 'src/cli/x.test.ts', code: imp('../diagnostics/index.ts'), expect: 'fail', rule: 'no-restricted-imports' },
+  { group: 'diagnostics', what: 'host importing diagnostics through index.ts passes (control)', at: 'src/host/x.ts', code: imp('../diagnostics/index.ts'), expect: 'pass' },
+  { group: 'diagnostics', what: 'host deep-importing diagnostics fails and names index.ts', at: 'src/host/x.ts', code: imp('../diagnostics/bundle.ts'), expect: 'fail', rule: 'no-restricted-imports', says: 'index.ts' },
+  { group: 'diagnostics', what: 'facts importing diagnostics fails (facts stays a leaf)', at: 'src/facts/x.ts', code: imp('../diagnostics/index.ts'), expect: 'fail', rule: 'no-restricted-imports' },
+
   // No stray console output: stdout carries protocol frames (HST-01, research Pitfall 8). process.stdout.write is the
   // sanctioned path and is not a console call.
   { group: 'console', what: 'console.log in query fails', at: 'src/query/x.ts', code: `console.log('x');`, expect: 'fail', rule: 'no-console' },
@@ -196,13 +216,14 @@ for (const c of CASES) {
 test('config exports the documented tables', async () => {
   const config = (await import(pathToFileURL(path.join(root, 'eslint.config.js')).href)) as ConfigExports;
   assert.equal(new Set(config.MODULES).size, config.MODULES.length, 'MODULES has duplicates');
-  assert.equal(config.MODULES.length, 21);
-  for (const m of ['indexer', 'query', 'tenant', 'host']) {
+  assert.equal(config.MODULES.length, 22);
+  for (const m of ['indexer', 'query', 'tenant', 'host', 'diagnostics']) {
     assert.ok(config.MODULES.includes(m), `MODULES lacks ${m}`);
     assert.deepEqual(config.TEST_CONTEXT_FILES[m], [`src/${m}/**/*.test.ts`, `src/${m}/**/contract.ts`]);
   }
-  assert.ok(!config.SQLITE_OWNERS.some((m) => ['indexer', 'query', 'tenant', 'host'].includes(m)), 'a new module became a SQLite owner');
-  assert.ok(!config.ADAPTERS.some((m) => ['indexer', 'query', 'tenant', 'host'].includes(m)), 'a new module became an adapter');
+  assert.ok(!config.SQLITE_OWNERS.some((m) => ['indexer', 'query', 'tenant', 'host', 'diagnostics'].includes(m)), 'a new module became a SQLite owner');
+  assert.ok(!config.ADAPTERS.some((m) => ['indexer', 'query', 'tenant', 'host', 'diagnostics'].includes(m)), 'a new module became an adapter');
+  assert.ok(!('diagnostics' in config.CLOSED_IMPORTS), 'diagnostics became a closed module');
   assert.deepEqual(config.CLOSED_IMPORTS.facts, { allow: [], builtins: true });
   assert.deepEqual(config.CLOSED_IMPORTS['test-kit'], { allow: ['facts'], builtins: true });
   assert.deepEqual(config.CLOSED_IMPORTS.policy, { allow: ['facts'], builtins: false });

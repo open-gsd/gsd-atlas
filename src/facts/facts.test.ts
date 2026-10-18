@@ -2,13 +2,16 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import {
+  ANSWER_ID_PATTERN,
   DEGRADED_CODES,
   FACT_PREDICATES,
   IMPORT_STYLES,
   PROTOCOL_VERSION,
   REF_KINDS,
+  createAnswerId,
   diagnostic,
   failEnvelope,
+  isAnswerId,
   isDegradedCode,
   isValidSpan,
   okEnvelope,
@@ -385,7 +388,8 @@ describe('validateFileFacts with the Phase 2 optional fields', () => {
 });
 
 describe('DEGRADED_CODES', () => {
-  it('is exactly the eleven codes of the contract, the original eight first', () => {
+  it('is exactly the fourteen codes of the contract, the earlier eleven first and in order', () => {
+    assert.equal(DEGRADED_CODES.length, 14);
     assert.deepEqual(
       [...DEGRADED_CODES],
       [
@@ -400,6 +404,9 @@ describe('DEGRADED_CODES', () => {
         'reconciling',
         'rebuilding',
         'watermark_moved',
+        'memory_budget',
+        'compiler_fallback',
+        'needs_approval',
       ],
     );
   });
@@ -410,8 +417,85 @@ describe('DEGRADED_CODES', () => {
     assert.equal(isDegradedCode('reconciling'), true);
     assert.equal(isDegradedCode('rebuilding'), true);
     assert.equal(isDegradedCode('watermark_moved'), true);
+    assert.equal(isDegradedCode('memory_budget'), true);
+    assert.equal(isDegradedCode('compiler_fallback'), true);
+    assert.equal(isDegradedCode('needs_approval'), true);
     assert.equal(isDegradedCode('nope'), false);
     assert.equal(isDegradedCode(''), false);
+  });
+
+  it('[edge SEC-02/forward-compat] an unknown code is not a code and never throws', () => {
+    assert.doesNotThrow(() => isDegradedCode('future_code'));
+    assert.equal(isDegradedCode('future_code'), false);
+    // A hand-made envelope from a newer host: a consumer reads its codes through isDegradedCode and
+    // keeps the ones it knows; the rest read as "degraded, reason unknown".
+    const fromNewerHost = JSON.parse(
+      JSON.stringify({
+        schema: 'x.v1',
+        ok: true,
+        data: null,
+        diagnostics: [],
+        degraded: ['stale', 'future_code'],
+      }),
+    ) as { degraded: string[] };
+    assert.deepEqual(fromNewerHost.degraded.filter(isDegradedCode), ['stale']);
+    assert.equal(fromNewerHost.degraded.some((code) => !isDegradedCode(code)), true);
+  });
+});
+
+describe('answer id', () => {
+  it('answer id shape: a_ followed by sixteen lower-case hex characters', () => {
+    assert.equal(ANSWER_ID_PATTERN.source, '^a_[0-9a-f]{16}$');
+    for (let i = 0; i < 20; i += 1) {
+      const id = createAnswerId();
+      assert.match(id, ANSWER_ID_PATTERN);
+      assert.equal(isAnswerId(id), true);
+    }
+    assert.equal(isAnswerId('a_00112233445566ff'), true);
+  });
+
+  it('isAnswerId rejects an uppercase form, a missing prefix, 15 or 17 digits and non-strings', () => {
+    assert.equal(isAnswerId('a_00112233445566FF'), false);
+    assert.equal(isAnswerId('00112233445566ff'), false);
+    assert.equal(isAnswerId('A_00112233445566ff'), false);
+    assert.equal(isAnswerId('a_00112233445566f'), false);
+    assert.equal(isAnswerId('a_00112233445566ff0'), false);
+    assert.equal(isAnswerId('a_00112233445566fg'), false);
+    assert.equal(isAnswerId('a_00112233445566ff\n'), false);
+    assert.equal(isAnswerId(' a_00112233445566ff'), false);
+    assert.equal(isAnswerId(''), false);
+    for (const bad of [undefined, null, 42, {}, [], ['a_00112233445566ff'], Symbol('a')]) {
+      assert.equal(isAnswerId(bad), false);
+    }
+  });
+
+  it('answer id random: two ids differ and each comes from the random source', () => {
+    const seen = new Set<string>();
+    for (let i = 0; i < 200; i += 1) seen.add(createAnswerId());
+    assert.equal(seen.size, 200);
+  });
+
+  it('answer id random: an injected source returning eight zero bytes gives a_0000000000000000', () => {
+    const asked: number[] = [];
+    const id = createAnswerId((size) => {
+      asked.push(size);
+      return new Uint8Array(size);
+    });
+    assert.equal(id, 'a_0000000000000000');
+    assert.deepEqual(asked, [8]);
+  });
+
+  it('answer id random: an injected source maps bytes to two lower-case hex digits each', () => {
+    const id = createAnswerId(() => Uint8Array.from([0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0xff]));
+    assert.equal(id, 'a_00112233445566ff');
+  });
+
+  it('answer id random: a source that returns the wrong number of bytes is refused', () => {
+    assert.throws(() => createAnswerId(() => new Uint8Array(4)));
+  });
+
+  it('answer id takes no request, tool name or path: the helper has no required parameter', () => {
+    assert.equal(createAnswerId.length, 0);
   });
 });
 
@@ -518,6 +602,34 @@ describe('Envelope extras (QRY-01)', () => {
       diagnostics: [d],
       retry_after: 250,
     });
+  });
+
+  it('okEnvelope keeps answer_id and the envelope round-trips through JSON', () => {
+    const envelope = okEnvelope('x', {}, [], { answer_id: 'a_00112233445566ff' });
+    assert.equal(envelope.answer_id, 'a_00112233445566ff');
+    assert.deepEqual(JSON.parse(JSON.stringify(envelope)), envelope);
+  });
+
+  it('an envelope built without answer_id has no answer_id key', () => {
+    const plain = okEnvelope('x', {});
+    assert.equal('answer_id' in plain, false);
+    const undef = okEnvelope('x', {}, [], { answer_id: undefined });
+    assert.equal('answer_id' in undef, false);
+    assert.equal(JSON.stringify(undef).includes('answer_id'), false);
+    assert.equal('answer_id' in failEnvelope('x', []), false);
+  });
+
+  it('a Phase 2 shaped envelope with no answer_id still has the same key set', () => {
+    const phase2 = okEnvelope('x.v1', 1, [], { citations: [citation], watermark, hints: ['h'] });
+    assert.deepEqual(Object.keys(phase2).sort(), [
+      'citations',
+      'data',
+      'diagnostics',
+      'hints',
+      'ok',
+      'schema',
+      'watermark',
+    ]);
   });
 
   it('a Citation holds structure and a text_ref handle, never source text', () => {
