@@ -13,13 +13,13 @@ import type {
   Diagnostic,
   FileFacts,
   ImportStyle,
+  ProjectContextProvider,
   RefKind,
   RefSiteKey,
   ResolutionContext,
-  ResolvedEdge,
+  ResolverPort,
   Span,
   SymbolIdentity,
-  SymbolLookup,
 } from '../facts/index.ts';
 
 /** Names one worktree overlay of a repo (a checkout, or a branch overlay without a checkout). */
@@ -370,13 +370,12 @@ export interface FactStore {
 
 /**
  * The injected resolver port: binds reference sites to target definitions. It reads symbols back through the
- * read-only `SymbolLookup` the store passes in, never through the store itself. Yields `EXTRACTED` edges.
+ * read-only `SymbolLookup` the store passes in, never through the store itself, and is told where it resolves
+ * through the optional fourth `scope` argument (worktree, overlay snapshot, project context). Yields
+ * `EXTRACTED` edges. It is the kernel's `ResolverPort`; a resolver written for the earlier three-argument shape
+ * is assignable to it and keeps working.
  */
-export type Resolver = (
-  sites: readonly RefSiteKey[],
-  context: ResolutionContext,
-  symbols: SymbolLookup,
-) => AsyncIterable<ResolvedEdge>;
+export type Resolver = ResolverPort;
 
 /** Injected dependencies. Each has a production adapter and a test adapter. */
 export interface StoreDeps {
@@ -403,7 +402,16 @@ export interface StoreOptions {
    * writer lease. Default: always true.
    */
   readonly canCache?: () => boolean;
-  /** The resolution context of the current configuration (plan 02-11 reads it). Default: id `grammar`, no config hashes. */
+  /**
+   * Computes the project context (the resolution context plus what a resolver needs to know about the project)
+   * of one overlay snapshot, asynchronously. Called at most once per (worktree, snapshot id); cached edges are
+   * keyed by the context it returns. Default: id `grammar`, no config hashes.
+   */
+  readonly projectContext?: ProjectContextProvider;
+  /**
+   * @deprecated Use `projectContext`. The synchronous resolution context of the current configuration, read on
+   * every resolving read (it is not memoised, so it may change between calls). Ignored when `projectContext` is given.
+   */
   readonly resolutionContext?: () => ResolutionContext;
   /**
    * TEST ONLY. Set `false` to force the bounded LIKE scan for fuzzy find even where the FTS5 trigram

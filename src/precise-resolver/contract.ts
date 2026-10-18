@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import type { OverlaySnapshot, RefSiteKey, ResolutionContext, ResolvedEdge } from '../facts/index.ts';
+import type { OverlaySnapshot, RefSiteKey, ResolutionContext, ResolvedEdge, SymbolLookup } from '../facts/index.ts';
 import type { PreciseResolver } from './index.ts';
 
 /**
@@ -91,6 +91,18 @@ export function definePreciseResolverContract(label: string, make: () => Precise
       const first = await collect(subject, subject.resolvable);
       const second = await collect(subject, subject.resolvable);
       assert.deepEqual(second, first);
+    });
+
+    it('resolves the same edges with and without the optional symbols argument', async () => {
+      const subject = make();
+      const lookup: SymbolLookup = { find: async () => [], findIn: async () => [] };
+      const without = await collect(subject, subject.resolvable);
+      const withLookup: ResolvedEdge[] = [];
+      for await (const edge of subject.resolver.resolve(subject.overlay, subject.context, subject.resolvable, lookup)) {
+        withLookup.push(edge);
+      }
+      assert.ok(without.length > 0);
+      assert.deepEqual(withLookup, without);
     });
 
     it('yields nothing for an empty request', async () => {

@@ -5,14 +5,17 @@
  * once the resolver integration lands). Internal; not exported from index.ts.
  */
 import { posix } from 'node:path';
-import { symbolKey } from '../facts/index.ts';
+import { DEFAULT_PROJECT_CONTEXT, symbolKey } from '../facts/index.ts';
 import type {
   Clock,
   DegradedCode,
+  OverlaySnapshot,
+  ProjectContext,
   RefKind,
   RefSiteKey,
   ResolutionContext,
   ResolvedEdge,
+  ResolveScope,
   Span,
   SymbolIdentity,
   SymbolLookup,
@@ -25,8 +28,10 @@ import {
   liveSnapshotIds,
   overlaySnapshotId,
   pruneEdges,
+  readAsked,
   readEdges,
   siteId,
+  writeAsked,
   writeEdges,
 } from './cache.ts';
 import type { CachedEdge } from './cache.ts';
@@ -49,8 +54,9 @@ import {
   resolveImport,
   spanOf,
   str,
+  symbolsIn,
 } from './snapshot.ts';
-import type { FileSymbol, ImportRow, Snapshot } from './snapshot.ts';
+import type { FileSymbol, ImportRow, Snapshot, SnapshotRead } from './snapshot.ts';
 import type { CallerRecord, ImporterRecord, Provenance, RefRecord, ResolveOptions, WorktreeId } from './types.ts';
 
 /** One reference site of the overlay, with the identity of the symbol that contains it. */
@@ -425,13 +431,24 @@ export function callerRecord(
 export interface ResolveInput {
   /** Hash of the overlay's sorted (path, content hash) pairs: the cache key of its contents. */
   readonly snapshotId: string;
+  /** The project context computed for this snapshot; its `context` keys the cache. */
+  readonly project: ProjectContext;
   readonly context: ResolutionContext;
   /** The stored form of `context`. */
   readonly contextKey: string;
+  /** The overlay snapshot the sites were read from: its id and its path to content hash map. */
+  readonly overlay: OverlaySnapshot;
   /** The distinct sites to resolve, in request order. */
   readonly sites: readonly RefSiteKey[];
   /** Valid cached edges by `siteId`; a site is answered when it has at least one. */
   readonly cached: ReadonlyMap<string, readonly CachedEdge[]>;
+  /** The `siteId`s that were asked of the resolver before under this snapshot and context (the negative marker). */
+  readonly asked: ReadonlySet<string>;
+  /**
+   * True when no project context could be had for this snapshot (the provider failed or lost the race against a
+   * commit twice). The resolver is not asked and nothing is cached: the answer is the grammar one.
+   */
+  readonly unavailable?: true;
 }
 
 export function siteKeyOf(hit: SiteHit): RefSiteKey {
@@ -448,24 +465,96 @@ function snapshotIdOf(snap: Snapshot): string {
 }
 
 /**
- * Phase 1: the snapshot id, the resolution context and the cached answers for `sites`. A cached edge whose
- * target the overlay does not hold is dropped (T-02-35), so a damaged row can never remove a real site.
+ * Phase 1: the snapshot id, the project context and the cached answers for `sites`. A cached edge whose target
+ * the overlay does not hold is dropped (T-02-35), so a damaged row can never remove a real site. With no
+ * `project` (null: none could be had for this snapshot) nothing is read from the cache and the input is marked
+ * `unavailable`, so the cache is never consulted under a context that does not belong to the snapshot.
  */
-export function prepareResolution(snap: Snapshot, sites: readonly RefSiteKey[]): ResolveInput {
+export function prepareResolution(snap: Snapshot, sites: readonly RefSiteKey[], project: ProjectContext | null): ResolveInput {
   const distinct = new Map<string, RefSiteKey>();
   for (const site of sites) distinct.set(siteId(site), site);
-  const context = snap.parts.resolutionContext();
-  const key = contextKey(context);
   const snapshotId = snapshotIdOf(snap);
+  const overlay: OverlaySnapshot = { id: snapshotId, pathToHash: overlayView(snap).hashes };
   const cached = new Map<string, readonly CachedEdge[]>();
+  if (project === null) {
+    const context = DEFAULT_PROJECT_CONTEXT.context;
+    return {
+      snapshotId,
+      project: DEFAULT_PROJECT_CONTEXT,
+      context,
+      contextKey: contextKey(context),
+      overlay,
+      sites: [...distinct.values()],
+      cached,
+      asked: new Set(),
+      unavailable: true,
+    };
+  }
+  const { context } = project;
+  const key = contextKey(context);
   const contextId = distinct.size === 0 ? undefined : findContextId(snap.db, key);
+  let asked: ReadonlySet<string> = new Set();
   if (contextId !== undefined) {
     for (const [id, edges] of readEdges(snap.db, snapshotId, contextId, [...distinct.values()], snap.parts.repo)) {
       const valid = edges.filter((edge) => findSymbol(snap, edge.target) !== null);
       if (valid.length > 0) cached.set(id, valid);
     }
+    const unanswered = [...distinct].filter(([id]) => !cached.has(id)).map(([, site]) => site);
+    asked = readAsked(snap.db, snapshotId, contextId, unanswered);
   }
-  return { snapshotId, context, contextKey: key, sites: [...distinct.values()], cached };
+  return { snapshotId, project, context, contextKey: key, overlay, sites: [...distinct.values()], cached, asked };
+}
+
+/**
+ * Phase 1 for a read that may resolve: the grammar result (`grammar`, run inside the read transaction) and the
+ * `ResolveInput` for the sites it names (`sitesOf`), with the project context of the snapshot the read used.
+ *
+ * The context is asynchronous, so it is computed before the read transaction, for the overlay snapshot a quick
+ * read sees. The read then checks that the snapshot did not move; if it did, the context is recomputed once for
+ * the snapshot the second read sees. A second loss, and a provider that fails, give an `unavailable` input: the
+ * answer is the grammar one with `resolver_failed`, and no edge is ever cached under a context computed for
+ * another snapshot (T-03-202). A provider never makes a read throw.
+ */
+export function readResolving<T>(
+  parts: StoreParts,
+  worktree: WorktreeId,
+  grammar: (snap: Snapshot) => T,
+  sitesOf: (value: T) => readonly RefSiteKey[],
+): ResolvingRead<T> | Promise<ResolvingRead<T>> {
+  const attempt = (n: number): ResolvingRead<T> | Promise<ResolvingRead<T>> => {
+    const seen = readSnapshot(parts, worktree, (snap) => ({
+      id: snapshotIdOf(snap),
+      pathToHash: overlayView(snap).hashes,
+    })).value;
+    const finish = (project: ProjectContext | null): ResolvingRead<T> | Promise<ResolvingRead<T>> => {
+      const read = readSnapshot(parts, worktree, (snap) => {
+        const value = grammar(snap);
+        const moved = project !== null && snapshotIdOf(snap) !== seen.id;
+        return { grammar: value, input: prepareResolution(snap, sitesOf(value), moved ? null : project), moved };
+      });
+      return read.value.moved && n < 2 ? attempt(n + 1) : read;
+    };
+    const project = askProject(parts, worktree, seen);
+    return project instanceof Promise ? project.then(finish) : finish(project);
+  };
+  return attempt(1);
+}
+
+/** What `readResolving` returns: the grammar result and the resolve input, read in one transaction. */
+export type ResolvingRead<T> = SnapshotRead<{ readonly grammar: T; readonly input: ResolveInput }>;
+
+/** The project context of a snapshot, or null when the source throws or rejects. Synchronous when the source is. */
+function askProject(
+  parts: StoreParts,
+  worktree: WorktreeId,
+  overlay: OverlaySnapshot,
+): ProjectContext | null | Promise<ProjectContext | null> {
+  try {
+    const got = parts.projectContext({ worktree, overlay });
+    return got instanceof Promise ? got.catch(() => null) : got;
+  } catch {
+    return null; // the source failed: answer from grammar facts
+  }
 }
 
 /** The outcome of phase 2. */
@@ -480,20 +569,24 @@ type Settled =
   | { readonly kind: 'timeout' }
   | { readonly kind: 'failed' };
 
-/** Drain the resolver for `sites`. Rejects when it throws, on the call or while iterating. */
+/**
+ * Drain the resolver for `sites`, telling it where it resolves (`scope`) and giving it a read-only lookup of the
+ * grammar tier's symbols. Rejects when it throws, on the call or while iterating.
+ */
 async function collectEdges(
   parts: StoreParts,
-  worktree: WorktreeId,
   sites: readonly RefSiteKey[],
-  context: ResolutionContext,
+  scope: ResolveScope,
 ): Promise<ResolvedEdge[]> {
+  const { worktree } = scope;
   const lookup: SymbolLookup = {
     // Read back through the read-only connection, one short transaction per call (never held across an await).
     find: async (name) =>
       readSnapshot(parts, worktree, (snap) => findRecords(snap, name, { mode: 'exact' }).map((record) => record.identity)).value,
+    findIn: async (path, name) => readSnapshot(parts, worktree, (snap) => symbolsIn(snap, path, name)).value,
   };
   const out: ResolvedEdge[] = [];
-  for await (const edge of parts.deps.resolver(sites, context, lookup)) out.push(edge);
+  for await (const edge of parts.deps.resolver(sites, scope.project.context, lookup, scope)) out.push(edge);
   return out;
 }
 
@@ -563,19 +656,30 @@ function validate(
 }
 
 /**
- * Write validated edges to the cache when this process may (`canCache`, the writer-lease holder, D-16) and the
- * overlay still has the contents they were computed for. True when nothing needed writing or the edges were
- * stored or are stale on purpose; false when this process could not write them.
+ * Write validated edges, and the asked marker of every site the completed resolver call was asked about, to the
+ * cache in one transaction, when this process may (`canCache`, the writer-lease holder, D-16) and the overlay
+ * still has the contents they were computed for. The markers are what stop a site that legitimately has no edge
+ * from being asked again (Pitfall 6). True when nothing needed writing or the rows were stored or are stale on
+ * purpose; false when this process could not write edges it holds. A process that may not write the cache and
+ * has no edge to keep says nothing, exactly as before the markers existed.
  */
-function store(parts: StoreParts, input: ResolveInput, edges: readonly ResolvedEdge[], currentSnapshotId: string): boolean {
-  if (edges.length === 0) return true;
-  if (!parts.canCache()) return false;
-  if (currentSnapshotId !== input.snapshotId) return true; // the overlay moved on: these edges describe a state that is gone
+function store(
+  parts: StoreParts,
+  input: ResolveInput,
+  edges: readonly ResolvedEdge[],
+  askedSites: readonly RefSiteKey[],
+  currentSnapshotId: string,
+): boolean {
+  if (edges.length === 0 && askedSites.length === 0) return true;
+  if (!parts.canCache()) return edges.length === 0;
+  if (currentSnapshotId !== input.snapshotId) return true; // the overlay moved on: these rows describe a state that is gone
   try {
     parts.writeDb.transaction(() => {
       const live = liveSnapshotIds(parts.writeDb);
       if (!live.has(input.snapshotId)) return;
-      writeEdges(parts.writeDb, input.snapshotId, ensureContextId(parts.writeDb, input.contextKey), edges);
+      const contextId = ensureContextId(parts.writeDb, input.contextKey);
+      writeEdges(parts.writeDb, input.snapshotId, contextId, edges);
+      writeAsked(parts.writeDb, input.snapshotId, contextId, askedSites);
       pruneEdges(parts.writeDb, live);
     });
     return true;
@@ -611,11 +715,14 @@ export async function resolveSites(
 ): Promise<ResolvedSites> {
   const edges = new Map<string, CachedEdge[]>();
   for (const [id, list] of input.cached) edges.set(id, [...list]);
-  const pending = input.sites.filter((site) => !input.cached.has(siteId(site)));
+  // A site is settled when the cache holds an edge for it or the resolver was already asked about it (the marker).
+  const pending = input.sites.filter((site) => !input.cached.has(siteId(site)) && !input.asked.has(siteId(site)));
   if (pending.length === 0) return { edges, degraded: [] };
+  // No project context for this snapshot: the resolver is not asked, and nothing is cached.
+  if (input.unavailable === true) return { edges, degraded: ['resolver_failed'] };
   const asked = new Set(pending.map(siteId));
 
-  const run = collectEdges(parts, worktree, pending, input.context);
+  const run = collectEdges(parts, pending, { worktree, overlay: input.overlay, project: input.project });
   const outcome = await settle(run, parts.deps.clock, options?.timeoutMs);
 
   if (outcome.kind === 'failed') return { edges, degraded: ['resolver_failed'] };
@@ -624,7 +731,7 @@ export async function resolveSites(
       (fresh) => {
         try {
           const accepted = validate(parts, worktree, asked, fresh);
-          if (accepted !== null) store(parts, input, accepted.edges, accepted.snapshotId);
+          if (accepted !== null) store(parts, input, accepted.edges, pending, accepted.snapshotId);
         } catch {
           // Background work has no caller to tell; the next call computes again.
         }
@@ -637,7 +744,7 @@ export async function resolveSites(
   const accepted = validate(parts, worktree, asked, outcome.edges);
   if (accepted === null) return { edges, degraded: [] };
   groupBySite(accepted.edges, edges);
-  const stored = store(parts, input, accepted.edges, accepted.snapshotId);
+  const stored = store(parts, input, accepted.edges, pending, accepted.snapshotId);
   return { edges, degraded: stored ? [] : ['cache_unavailable'] };
 }
 

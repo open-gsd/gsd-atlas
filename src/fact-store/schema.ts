@@ -26,7 +26,8 @@ export type FileState = (typeof FILE_STATES)[number];
  * bytes of a file.
  *
  * Plan 02-11 adds `names_fts` (the fuzzy-name index), `resolution_contexts` and `resolved_edges` to this same
- * unreleased version. Safe to run on an existing store: every statement is `IF NOT EXISTS`.
+ * unreleased version; plan 03-20 adds `resolved_asked`, derived cache data, the same way. Safe to run on an
+ * existing store: every statement is `IF NOT EXISTS`.
  */
 export function createSchema(db: Db, fuzzy: FuzzyIndex): void {
   db.exec(`
@@ -163,6 +164,23 @@ CREATE TABLE IF NOT EXISTS resolved_edges (
   resolver TEXT NOT NULL,
   PRIMARY KEY (snapshot, context_id, site_path, start_line, start_column, end_line, end_column, name,
                target_path, target_qualified_name, target_kind, target_discriminator)
+) WITHOUT ROWID;
+
+-- The negative marker (Pitfall 6): one row per reference site the resolver was asked about, under the same
+-- key as the edges minus the target. A site with an asked row is settled, with or without an edge, so the
+-- resolver is not asked again until the snapshot or the context changes. Derived data like the edges: dropping
+-- it changes only how often the resolver is called, never an answer. Created with IF NOT EXISTS, so a store
+-- made before this table existed gains it on the next open and the schema version does not move.
+CREATE TABLE IF NOT EXISTS resolved_asked (
+  snapshot TEXT NOT NULL,
+  context_id INTEGER NOT NULL,
+  site_path TEXT NOT NULL,
+  start_line INTEGER NOT NULL,
+  start_column INTEGER NOT NULL,
+  end_line INTEGER NOT NULL,
+  end_column INTEGER NOT NULL,
+  name TEXT NOT NULL,
+  PRIMARY KEY (snapshot, context_id, site_path, start_line, start_column, end_line, end_column, name)
 ) WITHOUT ROWID;
 `);
   createFuzzyIndex(db, fuzzy);
