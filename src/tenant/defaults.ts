@@ -10,6 +10,11 @@ import type { TenantTuning } from './types.ts';
  * - `idleAfterMs`: `maintenance.idleAfterMs`, the quiet time before an idle maintenance round (30000 ms).
  * - `takeoverRetryMinMs` and `takeoverRetryMaxMs`: `lease.retryMinMs` and `lease.retryMaxMs`, the jittered range in
  *   which a follower retries the writer lease (10000 and 30000 ms).
+ *
+ * Source of the last two: .planning/phases/03-typescript-module-and-mvp-eval/03-CONSTANTS.md (Status: Approved
+ * 2026-10-18), DIAGNOSTICS.md section 9.1, locked.
+ * - `flightMaxEvents`: `recorder.maxEvents`, the events the flight recorder keeps (2000).
+ * - `flightMaxBytes`: `recorder.maxBytes`, the bytes the flight recorder keeps (5242880).
  */
 export const DEFAULT_TENANT_TUNING: TenantTuning = {
   maintenanceSliceMs: 200,
@@ -17,4 +22,6 @@ export const DEFAULT_TENANT_TUNING: TenantTuning = {
   idleAfterMs: 30000,
   takeoverRetryMinMs: 10000,
   takeoverRetryMaxMs: 30000,
+  flightMaxEvents: 2000,
+  flightMaxBytes: 5242880,
 };

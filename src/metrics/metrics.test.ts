@@ -19,6 +19,9 @@ import {
   LAG_BUCKETS_MS,
   LATENCY_BUCKETS_MS,
   META_KEYS,
+  RATING_FEATURES,
+  RATING_SCOPES,
+  RATING_VALUES,
   TOOL_NAMES,
   bucketLabels,
 } from './types.ts';
@@ -104,11 +107,14 @@ function flaky(real: DriverModule, control: { fail: boolean }): DriverModule {
 }
 
 describe('validateEvent', () => {
-  it('accepts the three event shapes and returns a copy', () => {
+  it('accepts the event shapes and returns a copy', () => {
     const events: MetricsEvent[] = [
       answer({ degraded: ['stale', 'follower'] }),
       { kind: 'freshness', lagMs: 12 },
       { kind: 'index_health', files: 10, errorFiles: 1, staleFiles: 2, sizeBytes: 4096 },
+      { kind: 'rating', scope: 'answer', value: 'up', answerId: 'a_0123456789abcdef' },
+      { kind: 'rating', scope: 'feature', value: 'meh', feature: 'skill' },
+      { kind: 'rating', scope: 'session', value: 'down', sessionId: 's_0123456789abcdef' },
     ];
     for (const event of events) {
       const result = validateEvent(event);
@@ -151,6 +157,24 @@ describe('validateEvent', () => {
       }
     });
   }
+});
+
+describe('rating closed vocabulary: constants', () => {
+  it('the scopes and values are the closed lists, and the features are the tool names plus skill, build and init', () => {
+    assert.deepStrictEqual([...RATING_SCOPES], ['answer', 'feature', 'session']);
+    assert.deepStrictEqual([...RATING_VALUES], ['up', 'meh', 'down']);
+    assert.deepStrictEqual([...RATING_FEATURES], [...TOOL_NAMES, 'skill', 'build', 'init']);
+  });
+
+  it('there is no rating tool: no tool name begins with rate or rating', () => {
+    for (const name of TOOL_NAMES) assert.doesNotMatch(name, /^rat(e|ing)/, name);
+  });
+
+  it('a rejection reason never echoes a rating field', () => {
+    const result = validateEvent({ kind: 'rating', scope: 'answer', value: 'up', answerId: 'a_0123456789abcdef', note: 'secret note' });
+    assert.equal(result.ok, false);
+    if (!result.ok) assert.doesNotMatch(result.reason, /secret|note|a_0123/);
+  });
 });
 
 describe('noop metrics', () => {
@@ -205,24 +229,186 @@ for (const driver of DRIVERS) {
     const total = (file: string, metric: string): Promise<number> =>
       peek(file, (db) => Number(db.prepare('select coalesce(sum(value), 0) as v from counters where metric = ?').get(metric)?.v));
 
-    it('creates metrics.db, applies migration 1 and sets user_version 1; reopening applies nothing', async () => {
+    it('creates metrics.db, applies every migration and sets user_version 2; reopening applies nothing', async () => {
       const { file, open } = fixture();
       const first = await open();
       assert.equal(first.status().recording, true);
       await first.close();
-      assert.equal(await peek(file, (db) => db.pragma('user_version')), 1);
+      assert.equal(await peek(file, (db) => db.pragma('user_version')), 2);
       const tables = await peek(file, (db) =>
         db
           .prepare(`select name from sqlite_master where type = 'table' order by name`)
           .all()
           .map((row) => row.name),
       );
-      assert.deepStrictEqual(tables, ['counters', 'gauges', 'meta']);
+      assert.deepStrictEqual(tables, ['counters', 'gauges', 'meta', 'ratings']);
 
       const second = await open();
       assert.equal(second.status().recording, true);
       await second.close();
+      assert.equal(await peek(file, (db) => db.pragma('user_version')), 2);
+    });
+
+    it('migration 2: applies on a version 1 database, keeps its counters, creates the ratings table and an index on at', async () => {
+      const { file, open } = fixture();
+      const v1 = await open({ migrations: MIGRATIONS.slice(0, 1) });
+      v1.record(answer({ results: 9 }));
+      await v1.close();
       assert.equal(await peek(file, (db) => db.pragma('user_version')), 1);
+      assert.equal(
+        await peek(file, (db) => db.prepare(`select count(*) as n from sqlite_master where name = 'ratings'`).get()?.n),
+        0,
+        'a version 1 database has no ratings table',
+      );
+
+      const v2 = await open();
+      assert.equal(v2.status().recording, true);
+      assert.equal((await v2.report(ALL)).answers.total, 1, 'the version 1 counters are kept');
+      await v2.close();
+      assert.equal(await peek(file, (db) => db.pragma('user_version')), 2);
+      assert.equal(await total(file, 'answers_results'), 9);
+      assert.deepStrictEqual(
+        await peek(file, (db) =>
+          db
+            .prepare(`select name from pragma_table_info('ratings') order by cid`)
+            .all()
+            .map((row) => row.name),
+        ),
+        ['at', 'scope', 'value', 'answer_id', 'feature', 'session_id'],
+        'the ratings table holds exactly six columns and no free text',
+      );
+      assert.deepStrictEqual(
+        await peek(file, (db) =>
+          db
+            .prepare(`select name from sqlite_master where type = 'index' and tbl_name = 'ratings' order by name`)
+            .all()
+            .map((row) => row.name),
+        ),
+        ['ratings_at'],
+      );
+    });
+
+    it('migration 2: a database already at version 2 is untouched, and a version 3 database is reported newer_schema as before', async () => {
+      const { file, open } = fixture();
+      const first = await open();
+      first.record({ kind: 'rating', scope: 'feature', value: 'up', feature: 'code_find' });
+      await first.close();
+      const again = await open();
+      assert.equal(again.status().recording, true);
+      await again.close();
+      assert.equal(await peek(file, (db) => db.pragma('user_version')), 2);
+      assert.equal(await peek(file, (db) => db.prepare('select count(*) as n from ratings').get()?.n), 1, 'reopening keeps the rating');
+
+      const future = await openDatabase(file, { driver, timeoutMs: 1000 });
+      future.pragma('user_version', 3);
+      future.close();
+      const newer = await open();
+      assert.equal(newer.status().recording, false);
+      assert.equal(newer.status().reason, 'newer_schema');
+      assert.doesNotThrow(() => newer.record({ kind: 'rating', scope: 'feature', value: 'up', feature: 'code_find' }));
+      await newer.close();
+      assert.equal(await peek(file, (db) => db.pragma('user_version')), 3);
+      assert.equal(await peek(file, (db) => db.prepare('select count(*) as n from ratings').get()?.n), 1, 'a newer database is left alone');
+    });
+
+    it('rating: an accepted event becomes one row with the time of the injected clock, and no counter', async () => {
+      const { file, clock, open } = fixture();
+      const metrics = await open();
+      await clock.advance(1234);
+      metrics.record({ kind: 'rating', scope: 'answer', value: 'up', answerId: 'a_0123456789abcdef' });
+      await metrics.flush();
+      const rows = await peek(file, (db) =>
+        db
+          .prepare('select at, scope, value, answer_id, feature, session_id from ratings')
+          .all()
+          .map((row) => ({ ...row })),
+      );
+      assert.deepStrictEqual(rows, [
+        { at: START + 1234, scope: 'answer', value: 'up', answer_id: 'a_0123456789abcdef', feature: null, session_id: null },
+      ]);
+      assert.deepStrictEqual(await counterRows(file), [], 'a rating is not counted in the counters table');
+    });
+
+    it('rating: feature and session ratings fill their own column; identical ratings are separate rows', async () => {
+      const { file, open } = fixture();
+      const metrics = await open();
+      metrics.record({ kind: 'rating', scope: 'feature', value: 'meh', feature: 'code_refs' });
+      metrics.record({ kind: 'rating', scope: 'session', value: 'down', sessionId: 's_0123456789abcdef' });
+      metrics.record({ kind: 'rating', scope: 'feature', value: 'meh', feature: 'code_refs' });
+      await metrics.flush();
+      const rows = await peek(file, (db) =>
+        db
+          .prepare('select scope, value, answer_id, feature, session_id from ratings order by rowid')
+          .all()
+          .map((row) => ({ ...row })),
+      );
+      assert.deepStrictEqual(rows, [
+        { scope: 'feature', value: 'meh', answer_id: null, feature: 'code_refs', session_id: null },
+        { scope: 'session', value: 'down', answer_id: null, feature: null, session_id: 's_0123456789abcdef' },
+        { scope: 'feature', value: 'meh', answer_id: null, feature: 'code_refs', session_id: null },
+      ]);
+    });
+
+    it('rating closed vocabulary: a bad id, feature, value or scope, an extra key or free text stores no row and is counted as rejected', async () => {
+      const { file, open } = fixture();
+      const metrics = await open();
+      const bad: unknown[] = [
+        { kind: 'rating', scope: 'answer', value: 'up', answerId: 'a_short' },
+        { kind: 'rating', scope: 'answer', value: 'up', answerId: 'A_0123456789ABCDEF' },
+        { kind: 'rating', scope: 'answer', value: 'up', answerId: 's_0123456789abcdef' },
+        { kind: 'rating', scope: 'feature', value: 'up', feature: 'nonsense' },
+        { kind: 'rating', scope: 'feature', value: 'up', feature: 'rate' },
+        { kind: 'rating', scope: 'answer', value: 'great', answerId: 'a_0123456789abcdef' },
+        { kind: 'rating', scope: 'everything', value: 'up', answerId: 'a_0123456789abcdef' },
+        { kind: 'rating', scope: 'answer', value: 'up', answerId: 'a_0123456789abcdef', note: 'free text' },
+        { kind: 'rating', scope: 'answer', value: 'up', answerId: 'a_0123456789abcdef', at: 5 },
+        { kind: 'rating', scope: 'answer', value: 'up', answerId: 'a_0123456789abcdef', feature: 'code_find' },
+        { kind: 'rating', scope: 'feature', value: 'up', feature: 'code_find', sessionId: 's_0123456789abcdef' },
+        { kind: 'rating', scope: 'session', value: 'up', sessionId: 'a_0123456789abcdef' },
+        { kind: 'rating', scope: 'answer', value: 'up' },
+        { kind: 'rating', value: 'up', answerId: 'a_0123456789abcdef' },
+      ];
+      for (const event of bad) assert.equal(metrics.record(event as MetricsEvent), undefined);
+      assert.equal(metrics.status().rejected, bad.length);
+      assert.equal(metrics.status().queued, 0);
+      await metrics.flush();
+      assert.equal(await peek(file, (db) => db.prepare('select count(*) as n from ratings').get()?.n), 0);
+      assert.equal(await total(file, 'rejected_events'), bad.length);
+    });
+
+    it('rating closed vocabulary: the table itself refuses a row the validation would have refused', async () => {
+      const { file, open } = fixture();
+      await (await open()).close();
+      const db = await openDatabase(file, { driver, timeoutMs: 1000 });
+      try {
+        const insert = db.prepare('insert into ratings (at, scope, value, answer_id, feature, session_id) values (?, ?, ?, ?, ?, ?)');
+        assert.throws(() => insert.run(1, 'everything', 'up', 'a_0123456789abcdef', null, null));
+        assert.throws(() => insert.run(1, 'answer', 'great', 'a_0123456789abcdef', null, null));
+        assert.throws(() => insert.run(1, 'answer', 'up', null, null, null), 'an answer rating needs its id');
+        assert.throws(() => insert.run(1, 'answer', 'up', 'a_0123456789abcdef', 'code_find', null), 'one id column per scope');
+        assert.throws(() => insert.run(1, 'feature', 'up', null, null, null), 'a feature rating needs its feature');
+        assert.doesNotThrow(() => insert.run(1, 'session', 'meh', null, null, 's_0123456789abcdef'));
+      } finally {
+        db.close();
+      }
+    });
+
+    it('read-only database: a rating that cannot be written is kept in the bounded queue, never throws, and is written when the database recovers', async () => {
+      const { file, open } = fixture();
+      const control = { fail: false };
+      const metrics = await open({ driver: flaky(await loadDriver(driver), control) });
+      control.fail = true;
+      assert.equal(metrics.record({ kind: 'rating', scope: 'feature', value: 'up', feature: 'code_find' }), undefined);
+      await assert.doesNotReject(metrics.flush());
+      assert.ok(metrics.status().writeFailures >= 1);
+      assert.equal(metrics.status().queued, 1, 'the rating waits in the queue');
+      assert.equal(metrics.status().recording, true);
+      assert.equal(await peek(file, (db) => db.prepare('select count(*) as n from ratings').get()?.n), 0);
+
+      control.fail = false;
+      await metrics.flush();
+      assert.equal(metrics.status().queued, 0);
+      assert.equal(await peek(file, (db) => db.prepare('select count(*) as n from ratings').get()?.n), 1);
     });
 
     it('reports a recorded answer after a flush: total, tool, estimate-labelled tokens and the 10 ms latency bucket', async () => {
@@ -241,38 +427,40 @@ for (const driver of DRIVERS) {
       assert.equal(report.answers.latency.count, 1);
     });
 
-    it('upgrades a version 1 database to an injected version 2 and keeps the version 1 data', async () => {
+    it('upgrades a version 2 database to an injected version 3 and keeps the earlier data', async () => {
       const { file, open } = fixture();
-      const v1 = await open();
-      v1.record(answer({ results: 9 }));
-      await v1.close();
+      const v2 = await open();
+      v2.record(answer({ results: 9 }));
+      v2.record({ kind: 'rating', scope: 'feature', value: 'up', feature: 'code_find' });
+      await v2.close();
 
       let ran = 0;
       const migrations: readonly Migration[] = [
         ...MIGRATIONS,
         {
-          version: 2,
+          version: 3,
           up(db) {
             ran += 1;
             db.exec('create table extra (n integer not null)');
           },
         },
       ];
-      const v2 = await open({ migrations });
-      assert.equal(v2.status().recording, true);
+      const v3 = await open({ migrations });
+      assert.equal(v3.status().recording, true);
       assert.equal(ran, 1);
-      const report = await v2.report(ALL);
+      const report = await v3.report(ALL);
       assert.equal(report.answers.total, 1);
-      await v2.close();
-      assert.equal(await peek(file, (db) => db.pragma('user_version')), 2);
+      await v3.close();
+      assert.equal(await peek(file, (db) => db.pragma('user_version')), 3);
       assert.equal(
         await peek(file, (db) => db.prepare(`select count(*) as n from sqlite_master where name = 'extra'`).get()?.n),
         1,
       );
+      assert.equal(await peek(file, (db) => db.prepare('select count(*) as n from ratings').get()?.n), 1, 'the ratings are kept');
 
       const again = await open({ migrations });
       await again.close();
-      assert.equal(ran, 1, 'a database already at version 2 applies nothing');
+      assert.equal(ran, 1, 'a database already at version 3 applies nothing');
     });
 
     it('opens a database newer than the code as disabled with reason newer_schema and no exception', async () => {
@@ -284,7 +472,7 @@ for (const driver of DRIVERS) {
 
       const migrations: readonly Migration[] = [
         ...MIGRATIONS,
-        { version: 2, up: (d) => d.exec('create table extra (n integer not null)') },
+        { version: 3, up: (d) => d.exec('create table extra (n integer not null)') },
       ];
       const metrics = await open({ migrations });
       assert.equal(metrics.status().recording, false);
@@ -623,7 +811,7 @@ for (const driver of DRIVERS) {
       assert.equal(metrics.status().queued, 0, 'the queue is dropped too');
       assert.deepStrictEqual(await counterRows(file), []);
       assert.equal(await peek(file, (db) => db.prepare('select count(*) as n from gauges').get()?.n), 0);
-      assert.equal(await peek(file, (db) => db.pragma('user_version')), 1);
+      assert.equal(await peek(file, (db) => db.pragma('user_version')), 2);
       assert.equal(metrics.status().recording, true);
       metrics.record(answer());
       assert.equal((await metrics.report(ALL)).answers.total, 1, 'recording continues after a reset');

@@ -13,16 +13,16 @@ import { createRealRunner, decide } from '../command-runner/index.ts';
 import type { CommandRunner } from '../command-runner/index.ts';
 import { SchemaTooNew, findExistingStore, probeStore } from '../fact-store/index.ts';
 import type { ResolveStoreLocationInput } from '../fact-store/index.ts';
-import { PROTOCOL_VERSION, diagnostic, failEnvelope, okEnvelope, systemClock } from '../facts/index.ts';
+import { PROTOCOL_VERSION, createAnswerId, diagnostic, failEnvelope, okEnvelope, systemClock } from '../facts/index.ts';
 import type { Envelope, Request } from '../facts/index.ts';
 import { createGovernor } from '../governor/index.ts';
 import type { Governor, JobClass } from '../governor/index.ts';
 import { createModuleHost } from '../indexer/index.ts';
 import type { IndexerConfig, ModuleHost } from '../indexer/index.ts';
-import { ERROR_SCHEMA, errorEnvelope } from '../query/index.ts';
+import { ERROR_SCHEMA, TOOL_NAMES, errorEnvelope } from '../query/index.ts';
 import { createSourceTree } from '../source-tree/index.ts';
 import type { SourceTree } from '../source-tree/index.ts';
-import { createTenant, notIndexedNoStore } from '../tenant/index.ts';
+import { createTenant, noRecentEnvelope, notIndexedNoStore } from '../tenant/index.ts';
 import type { Tenant } from '../tenant/index.ts';
 import { ALLOW_KIND, handleAllow, permissionsFor } from './allow.ts';
 import type { AllowDeps } from './allow.ts';
@@ -46,6 +46,8 @@ const errorName = (error: unknown): string => {
 const NOT_A_REPO = 'repo must be an existing directory inside a git repository.';
 
 const ALLOW_FORBIDDEN = 'Approvals are recorded only by a person at a terminal with "gsd-atlas allow"; this server cannot record one.';
+
+const RATE_FORBIDDEN = 'Ratings are given only by a person at a terminal with "gsd-atlas rate"; this server cannot record one.';
 
 /** Envelope schema of an `index_state` reply (internal, plan 02-44). */
 export const INDEX_STATE_SCHEMA = 'gsd-atlas.index-state/1';
@@ -246,7 +248,13 @@ export function createHost(options: HostOptions): Host {
     // as the leader would take the lease and make the advertised `gsd-atlas build` fail with exit 3.
     if (kind !== 'build') {
       try {
-        if (!(await hasIndex(resolved))) return notIndexedNoStore();
+        if (!(await hasIndex(resolved))) {
+          // A rating of "the newest answer" or "the session" with no index has nothing to find; say so in its own words.
+          if (kind === 'rate' && parsed.rate !== undefined && parsed.rate.scope !== 'feature' && parsed.rate.answerId === undefined) {
+            return noRecentEnvelope(parsed.rate.scope);
+          }
+          return notIndexedNoStore();
+        }
       } catch (error) {
         return tenantFailure(error);
       }
@@ -268,6 +276,9 @@ export function createHost(options: HostOptions): Host {
           return tenant.maintain(parsed.task, { worktree: resolved.worktree, full: parsed.full });
         case 'status':
           return tenant.statusEnvelope(parsed.sinceMs);
+        case 'rate':
+          // The arguments were checked with the rest; a missing `rate` here would be a bug in `parseRepoArgs`.
+          return parsed.rate === undefined ? Promise.resolve(errorEnvelope('invalid_args', 'rate: scope and value are required.')) : tenant.rate(parsed.rate);
         default:
           return tenant.handle(forwarded(request, kind), resolved.worktree);
       }
@@ -386,6 +397,22 @@ export function createHost(options: HostOptions): Host {
       );
     }
     if (closed) return errorEnvelope('host_closed', 'This host was closed.');
+    return stampAnswer(request.kind, await route(request));
+  }
+
+  /**
+   * D-16: a tool answer carries an `answer_id`, added once the answer exists, so the CLI's and the MCP server's JSON both
+   * name it and a later `rate --last` or `bug` can point at it without keeping its content. A Tenant stamps (and
+   * records) the answers it gives itself, with the same id it hands the flight recorder; the Host stamps the rest of
+   * the tool answers: `lang_list`, which needs no Tenant, and a tool request refused before a Tenant saw it. The kinds
+   * that are not tool answers (`build`, `maintain`, `status`, `index_state`, `history`, `allow`, `lang_test`) get none.
+   */
+  function stampAnswer(kind: string, envelope: Envelope): Envelope {
+    if (envelope.answer_id !== undefined || !(TOOL_NAMES as readonly string[]).includes(kind)) return envelope;
+    return { ...envelope, answer_id: createAnswerId() };
+  }
+
+  async function route(request: Request): Promise<Envelope> {
     if ((LANG_KINDS as readonly string[]).includes(request.kind)) {
       const approved = await approvalCheck(request);
       return handleLang(request, { roots: options.roots, engine: options.engine, ...(approved === undefined ? {} : { approved }) });
@@ -393,6 +420,8 @@ export function createHost(options: HostOptions): Host {
     if (request.kind === HISTORY_KIND) return historyRequest(request);
     // D-15: an agent's server never records an approval, whatever the request carries. Checked before the arguments are read.
     if (request.kind === ALLOW_KIND) return origin === 'mcp' ? errorEnvelope('allow_forbidden', ALLOW_FORBIDDEN) : allowRequest(request);
+    // D-16: users rate, agents do not. There is no MCP tool for it; a Host started for MCP also refuses the request kind itself.
+    if (request.kind === 'rate' && origin === 'mcp') return errorEnvelope('rate_forbidden', RATE_FORBIDDEN);
     if (isRepoKind(request.kind)) return repoRequest(request, request.kind);
     return errorEnvelope('unknown_kind', `request kind ${short(JSON.stringify(request.kind))} is not known to this host`);
   }

@@ -11,6 +11,8 @@ import type { EventSource, Indexer, IndexerConfig, IndexerDeps, IndexerStatus } 
 import type { Roots } from '../lang/index.ts';
 import type { Metrics, MetricsStatus } from '../metrics/index.ts';
 import type { SourceTree, SourceTreeIdentity } from '../source-tree/index.ts';
+import type { FlightEvent } from './flight.ts';
+import type { RateInput } from './rate.ts';
 
 /** Schema of a `build` reply. */
 export const BUILD_SCHEMA = 'gsd-atlas.build/1';
@@ -34,6 +36,10 @@ export interface TenantTuning {
   /** A follower retries the writer lease after a jittered delay between these two bounds. */
   readonly takeoverRetryMinMs: number;
   readonly takeoverRetryMaxMs: number;
+  /** Events the flight recorder keeps (`recorder.maxEvents`, 03-CONSTANTS.md). */
+  readonly flightMaxEvents: number;
+  /** Bytes the flight recorder keeps (`recorder.maxBytes`, 03-CONSTANTS.md). */
+  readonly flightMaxBytes: number;
 }
 
 export interface TenantDeps {
@@ -135,6 +141,21 @@ export interface Tenant {
   status(): Promise<TenantStatus>;
   /** The `status` reply: the Metrics report for the last `sinceMs` milliseconds plus the snapshot. */
   statusEnvelope(sinceMs: number): Promise<Envelope>;
+  /**
+   * The newest `n` tool answers this repository's flight recorder holds, oldest first (the recorder is shared by every
+   * process that answers for the repository). Empty when recording is off or the recorder cannot be read.
+   */
+  recentAnswers(n: number): readonly FlightEvent[];
+  /** The id of the newest recorded tool answer, or null. */
+  lastAnswerId(): string | null;
+  /** The id of the newest session marker the recorder holds, or null. */
+  sessionId(): string | null;
+  /**
+   * Record one rating a person gave (plan 03-17, D-16): the newest recorded answer, a feature, or the newest session.
+   * `no_recent_answer` or `no_recent_session` when there is nothing to rate, `rating_not_saved` when the metrics
+   * database could not take it. Never throws for either.
+   */
+  rate(input: RateInput): Promise<Envelope>;
   /** Stop the Indexer, close Metrics, close the store and give up the writer lease. Safe to call twice. */
   close(): Promise<void>;
 }

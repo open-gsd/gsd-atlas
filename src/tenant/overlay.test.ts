@@ -35,13 +35,18 @@ async function leaderAndFollower(t: TestContext): Promise<{ world: TenantWorld; 
   return { world, leader, follower, capture };
 }
 
-/** Sizes and modification times of the store's files that a follower must never touch (not the Metrics database, not the wal-index). */
+/**
+ * Sizes and modification times of the store's files that a follower must never touch (not the Metrics database, not
+ * the wal-index, not the flight recorder: every process that answers appends to that one, a follower included).
+ */
 function storeSnapshot(dir: string): Record<string, string> {
   const out: Record<string, string> = {};
   const walk = (current: string): void => {
     for (const entry of fs.readdirSync(current, { withFileTypes: true })) {
       const full = path.join(current, entry.name);
-      if (entry.isDirectory()) walk(full);
+      if (entry.isDirectory()) {
+        if (entry.name !== 'flight') walk(full);
+      }
       else if (!entry.name.startsWith('metrics.db') && !entry.name.endsWith('-shm')) {
         const stat = fs.statSync(full);
         out[path.relative(dir, full)] = `${String(stat.size)}:${String(stat.mtimeMs)}`;

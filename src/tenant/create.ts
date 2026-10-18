@@ -11,7 +11,7 @@
 import path from 'node:path';
 import { IDLE_MAINTENANCE, StoreClosed, UnknownWorktree, WriterBusy, openFactStore, resolveStoreLocation } from '../fact-store/index.ts';
 import type { FactStore, MaintenanceResult, Resolver } from '../fact-store/index.ts';
-import { okEnvelope } from '../facts/index.ts';
+import { createAnswerId, createSessionId, okEnvelope } from '../facts/index.ts';
 import type { Envelope, Request } from '../facts/index.ts';
 import { DEFAULT_INDEXER_CONFIG, IndexerError, createIndexer, createModuleHost } from '../indexer/index.ts';
 import type { BuildResult, Indexer, IndexerNotice, ModuleHost } from '../indexer/index.ts';
@@ -21,8 +21,12 @@ import { createQuery, errorEnvelope } from '../query/index.ts';
 import type { FreshPort } from '../query/index.ts';
 import { DEFAULT_TENANT_TUNING } from './defaults.ts';
 import { createFollowerFresh } from './follower-overlay.ts';
+import { createFlightRecorder } from './flight.ts';
+import type { FlightRecorder } from './flight.ts';
 import { createIdleMaintainer } from './idle.ts';
-import { answerEvent } from './record.ts';
+import { recordRating } from './rate.ts';
+import type { RateInput } from './rate.ts';
+import { answerEvent, flightAnswer, isAnsweredKind } from './record.ts';
 import { leaseHeldEnvelope, notIndexedEnvelope, storeUnavailableEnvelope } from './messages.ts';
 import type { LeaseHolderName } from './messages.ts';
 import { createStatusPort } from './status-port.ts';
@@ -149,6 +153,25 @@ export async function createTenant(deps: TenantDeps): Promise<Tenant> {
       // a metrics failure is not the caller's problem
     }
   };
+
+  /**
+   * The flight recorder (plan 03-17, D-16): a capped local file beside the store that every process answering for this
+   * repository appends to, so `rate` and `bug` in another process can name the last answer. It needs no writer lease,
+   * so a follower records too. A user who turned metrics off gets no recorder either: nothing is kept about their use.
+   * The session marker is written lazily, just before this Tenant's first recorded answer, so a process that only rates
+   * or builds does not become "the newest session".
+   */
+  const flight: FlightRecorder | null =
+    deps.metrics === false
+      ? null
+      : createFlightRecorder({
+          dir: path.join(location.dir, 'flight'),
+          maxEvents: tuning.flightMaxEvents,
+          maxBytes: tuning.flightMaxBytes,
+          clock,
+        });
+  const ownSessionId = createSessionId();
+  let sessionMarked = false;
 
   /** The Indexer's notices feed the freshness panel: how long a changed path waited before it was indexed. */
   const onIndexerNotice = (notice: IndexerNotice): void => {
@@ -566,12 +589,26 @@ export async function createTenant(deps: TenantDeps): Promise<Tenant> {
         answered.ok && starting !== undefined && !(answered.degraded ?? []).includes('reconciling')
           ? { ...answered, degraded: [...(answered.degraded ?? []), 'reconciling' as const] }
           : answered;
+      const elapsed = clock.now() - started;
+      // The answer id is added once the answer exists (D-16); it holds no content. The same id goes to the recorder.
+      const id = isAnsweredKind(request.kind) ? createAnswerId() : undefined;
+      const stamped = id === undefined ? envelope : { ...envelope, answer_id: id };
       recording(() => {
-        const event = answerEvent(request.kind, envelope, clock.now() - started);
+        const event = answerEvent(request.kind, envelope, elapsed);
         if (event !== null) metrics.record(event);
       });
+      recording(() => {
+        if (flight === null || id === undefined) return;
+        const event = flightAnswer(request, envelope, elapsed, id);
+        if (event === null) return;
+        if (!sessionMarked) {
+          sessionMarked = true;
+          flight.append({ kind: 'session', id: ownSessionId });
+        }
+        flight.append(event);
+      });
       idle.touch();
-      return envelope;
+      return stamped;
     },
 
     async build(worktree: string): Promise<Envelope> {
@@ -625,6 +662,27 @@ export async function createTenant(deps: TenantDeps): Promise<Tenant> {
       } catch (error) {
         if (error instanceof StoreClosed) return storeUnavailableEnvelope();
         throw error;
+      }
+    },
+
+    recentAnswers(n: number) {
+      return flight?.recent(n, 'answer') ?? [];
+    },
+
+    lastAnswerId(): string | null {
+      return flight?.lastAnswer()?.id ?? null;
+    },
+
+    sessionId(): string | null {
+      return flight?.sessionId() ?? null;
+    },
+
+    async rate(input: RateInput): Promise<Envelope> {
+      idle.touch();
+      try {
+        return await recordRating({ metrics, flight }, input);
+      } finally {
+        idle.touch();
       }
     },
 

@@ -3,10 +3,12 @@ import type { DriverModule, DriverName } from '../sqlite/index.ts';
 import type { Migration } from './migrations.ts';
 
 /**
- * The closed vocabulary of the Metrics module (MET-01, D-17). Metrics stores counters and histograms only:
- * every string that can reach metrics.db is a member of one of the lists below or a bucket label or a
- * UTC hour or day string derived from them. There is no free-text field in any event type, so a path, a
- * symbol name, a prompt or source text cannot be recorded by accident (privacy prohibition).
+ * The closed vocabulary of the Metrics module (MET-01, D-17). Metrics stores counters and histograms, and since
+ * plan 03-17 the ratings a person gave (a closed value and a random id or a feature name from a closed list):
+ * every string that can reach metrics.db is a member of one of the lists below, a bucket label, a UTC hour or
+ * day string derived from them, or a random answer or session id that matches its pattern. There is no free-text
+ * field in any event type, so a path, a symbol name, a prompt or source text cannot be recorded by accident
+ * (privacy prohibition).
  */
 
 /** The MCP tools an answer can come from. */
@@ -19,6 +21,21 @@ export const TOOL_NAMES = [
   'lang_list',
 ] as const;
 export type ToolName = (typeof TOOL_NAMES)[number];
+
+/**
+ * What a person can rate (plan 03-17, D-16): any tool, the skill, the build and `init`. A closed list, so a rating
+ * never names anything but a member of it.
+ */
+export const RATING_FEATURES = [...TOOL_NAMES, 'skill', 'build', 'init'] as const;
+export type RatingFeature = (typeof RATING_FEATURES)[number];
+
+/** What a rating is about: one answer, one feature, or one session. */
+export const RATING_SCOPES = ['answer', 'feature', 'session'] as const;
+export type RatingScope = (typeof RATING_SCOPES)[number];
+
+/** The three values of a rating. There is no free-text note in this phase. */
+export const RATING_VALUES = ['up', 'meh', 'down'] as const;
+export type RatingValue = (typeof RATING_VALUES)[number];
 
 /** Latency histogram upper edges in ms (a value equal to an edge counts in that bucket); one overflow bucket follows. */
 export const LATENCY_BUCKETS_MS = [1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000] as const;
@@ -130,10 +147,20 @@ export interface IndexHealthEvent {
 }
 
 /**
+ * One rating a person gave at a terminal (plan 03-17, D-16). It holds the closed value and exactly one reference, by
+ * scope: the answer id, the feature name from {@link RATING_FEATURES}, or the session id. Ids are random and hold no
+ * content; there is no text field of any kind.
+ */
+export type RatingEvent =
+  | { readonly kind: 'rating'; readonly scope: 'answer'; readonly value: RatingValue; readonly answerId: string }
+  | { readonly kind: 'rating'; readonly scope: 'feature'; readonly value: RatingValue; readonly feature: RatingFeature }
+  | { readonly kind: 'rating'; readonly scope: 'session'; readonly value: RatingValue; readonly sessionId: string };
+
+/**
  * The allow-listed event union. A caller never supplies a time: the recorder stamps each accepted event
  * from the injected Clock, so an `at` key is an unknown key and the event is rejected.
  */
-export type MetricsEvent = AnswerEvent | FreshnessEvent | IndexHealthEvent;
+export type MetricsEvent = AnswerEvent | FreshnessEvent | IndexHealthEvent | RatingEvent;
 export type MetricsEventKind = MetricsEvent['kind'];
 
 export interface MetricsStatus {

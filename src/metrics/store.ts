@@ -17,6 +17,7 @@ import type {
   MetricsEvent,
   MetricsOptions,
   MetricsReport,
+  RatingEvent,
 } from './types.ts';
 import { validateEvent } from './validate.ts';
 
@@ -96,11 +97,15 @@ function writeBatch(db: Db, batch: readonly Queued[], pending: Pending, now: num
     else entry.delta += delta;
   };
   const gauges = new Map<GaugeMetric, { value: number; at: number }>();
+  // Ratings are rows, not counters: each one is inserted as it came, never coalesced with another (plan 03-17).
+  const ratings: Array<{ readonly event: RatingEvent; readonly at: number }> = [];
   for (const { event, at } of batch) {
     if (event.kind === 'answer') {
       for (const delta of answerDeltas(event)) add(hourBucket(at), delta);
     } else if (event.kind === 'freshness') {
       add(hourBucket(at), ['freshness_lag_ms_bucket', bucketLabelFor(LAG_BUCKETS_MS, event.lagMs), 1]);
+    } else if (event.kind === 'rating') {
+      ratings.push({ event, at });
     } else {
       // Batch order is arrival order, so the last event of a batch is the newest.
       for (const [metric, value] of healthGauges(event)) gauges.set(metric, { value, at });
@@ -120,6 +125,21 @@ function writeBatch(db: Db, batch: readonly Queued[], pending: Pending, now: num
        on conflict (metric) do update set value = excluded.value, at = excluded.at where excluded.at >= gauges.at`,
     );
     for (const [metric, { value, at }] of gauges) setGauge.run(metric, value, at);
+    if (ratings.length > 0) {
+      const insertRating = db.prepare(
+        'insert into ratings (at, scope, value, answer_id, feature, session_id) values (?, ?, ?, ?, ?, ?)',
+      );
+      for (const { event, at } of ratings) {
+        insertRating.run(
+          at,
+          event.scope,
+          event.value,
+          event.scope === 'answer' ? event.answerId : null,
+          event.scope === 'feature' ? event.feature : null,
+          event.scope === 'session' ? event.sessionId : null,
+        );
+      }
+    }
   });
 }
 

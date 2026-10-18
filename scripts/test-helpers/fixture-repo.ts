@@ -110,7 +110,13 @@ export interface FixtureRepo {
 
 const decoder = new TextDecoder();
 
-/** Replaces every occurrence of the response's own nonce (`untrusted_text.nonce`) by {@link NONCE_TOKEN}. */
+/** The fixed token an answer id becomes (plan 03-17: every tool answer carries a random `answer_id`). */
+export const ANSWER_ID_TOKEN = 'ANSWER_ID';
+
+/**
+ * Replaces every occurrence of the response's own nonce (`untrusted_text.nonce`) by {@link NONCE_TOKEN}, and its
+ * random `answer_id` by {@link ANSWER_ID_TOKEN}, so two answers to one question compare equal.
+ */
 export function maskNonce(text: string): string {
   let nonce: unknown;
   try {
@@ -118,7 +124,8 @@ export function maskNonce(text: string): string {
   } catch {
     return text;
   }
-  return typeof nonce === 'string' && nonce !== '' ? text.replaceAll(nonce, NONCE_TOKEN) : text;
+  const withoutId = text.replace(/"answer_id":"a_[0-9a-f]{16}"/g, `"answer_id":"${ANSWER_ID_TOKEN}"`);
+  return typeof nonce === 'string' && nonce !== '' ? withoutId.replaceAll(nonce, NONCE_TOKEN) : withoutId;
 }
 
 /**
