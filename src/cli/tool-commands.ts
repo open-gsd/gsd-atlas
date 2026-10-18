@@ -34,6 +34,8 @@ export const FLAGS = {
   since: { type: 'string' },
   agent: { type: 'string', multiple: true },
   'dry-run': { type: 'boolean' },
+  workdir: { type: 'string' },
+  module: { type: 'string' },
   'repo-root': { type: 'string' },
   'user-dir': { type: 'string' },
   'builtin-dir': { type: 'string' },
@@ -76,8 +78,8 @@ export const HISTORY_TOOLS = ['find', 'refs', 'context', 'impact'] as const;
 export interface Command {
   /** What the user types; `lang list` and `lang test` have two words. */
   readonly name: string;
-  /** `tool`: an MCP tool's twin. `index`: a Host request with no MCP tool. `history`: a code tool as of a commit. `lang` and `init` have their own handlers. */
-  readonly kind: 'tool' | 'index' | 'history' | 'lang' | 'init';
+  /** `tool`: an MCP tool's twin. `index`: a Host request with no MCP tool. `history`: a code tool as of a commit. `lang`, `init` and `allow` have their own handlers. */
+  readonly kind: 'tool' | 'index' | 'history' | 'lang' | 'init' | 'allow';
   /** The MCP tool whose schema and request builder this command shares. */
   readonly tool?: ToolName;
   /** The Host request kind an `index` command sends. */
@@ -168,6 +170,15 @@ export const COMMANDS: readonly Command[] = [
     positional: 'none',
     flags: ['agent', 'dry-run'],
     usage: 'gsd-atlas init [--agent claude|cursor|codex] [--dry-run]',
+  },
+  {
+    name: 'allow',
+    kind: 'allow',
+    request: 'allow',
+    positional: 'none',
+    flags: [...SELECTION, 'workdir', 'module'],
+    usage:
+      'gsd-atlas allow [--repo <dir>] [--cwd <dir>] [--workdir <dir>] [--module <name>] -- <executable> <args...>   (approve ONE exact command for this repository, run from <dir> relative to it; --module proposes the command its manifest declares instead of the words after --; needs a terminal, shows the command and asks before it writes)',
   },
   {
     name: 'lang list',

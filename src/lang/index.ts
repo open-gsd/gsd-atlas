@@ -14,6 +14,7 @@ export type {
   ModuleSource,
   ResolveModuleResult,
   ResolveModulesResult,
+  ResolveOptions,
   Roots,
   ShadowedCopy,
   TierStatus,

@@ -6,44 +6,58 @@
  * store, watcher or grammar exists; it is closed, with its workers, when input ends or on the first SIGTERM or SIGINT
  * (exit 143 or 130; a second signal exits at once), so a client that terminates the server by signal leaves no dirty
  * sentinel, no held lease and no uncheckpointed WAL behind (IN-07).
+ *
+ * The one flag is `--allow-build` (D-15, SEC-02). This is the MCP origin: its Host never records an approval and, unless
+ * the person who started the server passed the flag, never runs a command from the user's permission list.
  */
 import { protocolStdout, runMcpShim } from '../mcp-shim/index.ts';
 
 import process from 'node:process';
 
 import type { HostClient } from '../host-client/index.ts';
-import { composeHost, readVersion } from './compose.ts';
+import { MCP_USAGE, composeHost, parseMcpFlags, readVersion } from './compose.ts';
 import type { Composed } from './compose.ts';
 import { installShutdownHandlers } from './shutdown.ts';
 
-const cwd = process.cwd();
-let composed: Composed | undefined;
+const flags = parseMcpFlags(process.argv.slice(2));
 
-/** Composes the Host on the first call; a failure to compose is retried on the next call and reported to this one. */
-const client: HostClient = {
-  async handle(request) {
-    composed ??= composeHost({ cwd, env: process.env, stderr: process.stderr });
-    return composed.client.handle(request);
-  },
-};
+if (!flags.ok) {
+  // Refused before anything is composed or served. Standard output stays empty: it carries only protocol frames.
+  process.stderr.write(flags.message);
+  process.exitCode = flags.exitCode;
+} else if (flags.help) {
+  process.stderr.write(MCP_USAGE);
+} else {
+  const cwd = process.cwd();
+  const { allowBuild } = flags;
+  let composed: Composed | undefined;
 
-installShutdownHandlers({
-  process,
-  dispose: () => composed?.dispose() ?? Promise.resolve(),
-  exit: (code) => process.exit(code),
-});
+  /** Composes the Host on the first call; a failure to compose is retried on the next call and reported to this one. */
+  const client: HostClient = {
+    async handle(request) {
+      composed ??= composeHost({ cwd, env: process.env, stderr: process.stderr, origin: 'mcp', allowBuild });
+      return composed.client.handle(request);
+    },
+  };
 
-try {
-  process.exitCode = await runMcpShim({
-    client,
-    version: readVersion(),
-    stdin: process.stdin,
-    stdout: protocolStdout,
-    stderr: process.stderr,
+  installShutdownHandlers({
+    process,
+    dispose: () => composed?.dispose() ?? Promise.resolve(),
+    exit: (code) => process.exit(code),
   });
-} catch (error) {
-  process.stderr.write(`gsd-atlas-mcp: error internal_error: ${error instanceof Error ? error.message : String(error)}\n`);
-  process.exitCode = 2;
-} finally {
-  await composed?.dispose();
+
+  try {
+    process.exitCode = await runMcpShim({
+      client,
+      version: readVersion(),
+      stdin: process.stdin,
+      stdout: protocolStdout,
+      stderr: process.stderr,
+    });
+  } catch (error) {
+    process.stderr.write(`gsd-atlas-mcp: error internal_error: ${error instanceof Error ? error.message : String(error)}\n`);
+    process.exitCode = 2;
+  } finally {
+    await composed?.dispose();
+  }
 }
