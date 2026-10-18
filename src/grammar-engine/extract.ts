@@ -78,7 +78,12 @@ export interface ExtractInput {
   readonly module: string;
   readonly grammarVersion: string;
   readonly run: GrammarRunResult;
-  /** A step counter for the ADR scan, passed in by tests that prove the scan stops at the citation cap. */
+  /**
+   * TEST HOOK: a step counter for the ADR scan, passed in by tests that prove the scan stops at the citation cap.
+   * Production omits it.
+   *
+   * @internal
+   */
   readonly scanProbe?: ScanProbe;
 }
 
@@ -182,7 +187,11 @@ export interface AdrMention {
   readonly detail?: string;
 }
 
-/** A step counter a test passes in to prove the scan is linear: it counts every character the scan looks at. */
+/**
+ * A step counter a test passes in to prove the scan is linear: it counts every character the scan looks at.
+ *
+ * @internal
+ */
 export interface ScanProbe {
   steps: number;
 }
