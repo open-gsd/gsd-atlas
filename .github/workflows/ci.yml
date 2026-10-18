@@ -35,6 +35,8 @@ jobs:
       - run: npm run lint
       - run: npm run typecheck
       - run: npm run schema:check
+      - name: Pre-registration (frozen hashes)
+        run: node scripts/eval/verify-prereg.ts
 
   # Node 24.16.0 is the floor (24.15.0 truncates TEXT at NUL in node:sqlite); 26 is the next LTS.
   test:
