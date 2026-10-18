@@ -6,6 +6,8 @@
 - **DESIGN.md:** A9, A16, A27, A44
 - **Review findings addressed:** S‑1, S‑2, S‑3, S‑4, SDK‑1
 
+> Pre-release note: this record is not yet ratified; ratification is planned for the end of Phase 3, and every ADR will have a number by the MVP release; its Accepted status and issue number do not mean it is ratified (see docs/adr/README.md).
+
 ## Context
 gsd‑atlas indexes code the user didn't write: cloned repos, dependencies, SDKs. It runs a local server reachable by other processes, and it feeds text into agents that act on it. The design review found three holes in earlier drafts:
 - repo‑committed config or modules could enable command execution;
