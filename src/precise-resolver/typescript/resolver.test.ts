@@ -789,6 +789,87 @@ describe('an untrusted worker (T-03-232, T-03-233)', () => {
   });
 });
 
+describe('an untrusted worker: relations (T-03-251)', () => {
+  const FAKE_RELATIONS = [
+    "import readline from 'node:readline';",
+    'const mode = __MODE__;',
+    'const rl = readline.createInterface({ input: process.stdin });',
+    'const send = (o) => process.stdout.write(JSON.stringify(o) + "\\n");',
+    'const base = { path: "src/lib.cts", row: 4, col: 13, name: "Base", kind: "ClassDeclaration" };',
+    'const sub = { path: "src/user.cts", row: 5, col: 13, name: "Sub", kind: "ClassDeclaration" };',
+    'rl.on("line", (line) => {',
+    '  const m = JSON.parse(line);',
+    '  if (m.t === "init") return send({ t: "ready", compiler: { version: "6.0.3", source: "bundled" }, rssMb: 1, pid: process.pid });',
+    '  if (m.t !== "relations") return;',
+    '  const done = (answered) => send({ t: "done", id: m.id, asked: m.files.length, answered });',
+    '  if (mode === "ok") { send({ t: "relation", id: m.id, from: sub, to: base, relation: "extends" }); return done(1); }',
+    '  if (mode === "wrong-kind") { send({ t: "edge", id: m.id, site: { path: "src/user.cts", row: 0, col: 0, name: "x" }, targets: [] }); return done(0); }',
+    '  if (mode === "flood") { for (let i = 0; i < 50; i += 1) send({ t: "relation", id: m.id, from: sub, to: base, relation: "extends" }); return done(50); }',
+    '  if (mode === "escape") { send({ t: "relation", id: m.id, from: sub, to: { ...base, path: "../../etc/passwd" }, relation: "extends" }); return done(1); }',
+    '});',
+    'rl.on("close", () => process.exit(0));',
+    '',
+  ].join('\n');
+
+  function resolverWith(t: TestContext, mode: string, limits: Record<string, number> = {}): TypeScriptResolver {
+    const tmp = makeTempDir();
+    t.after(() => tmp.cleanup());
+    const fake = path.join(tmp.path, `fake-relations-${mode}.mjs`);
+    fs.writeFileSync(fake, FAKE_RELATIONS.replace('__MODE__', JSON.stringify(mode)));
+    const project = writeProject(FIXTURE);
+    t.after(() => project.cleanup());
+    const runner = createRealRunner({ builtinShapes: [compilerWorkerShape({ execPath: process.execPath, workerPath: fake })] });
+    const resolver = createTypeScriptResolver({ runner, worktree: project.dir, project: () => factsFor(), execPath: process.execPath, workerPath: fake, limits });
+    t.after(() => resolver.close());
+    return resolver;
+  }
+
+  const anyLookup: SymbolLookup = {
+    find: async () => [],
+    findIn: async (p, name) => [{ repo: 'r', path: p, qualifiedName: name, kind: 'class', span: span(0, 0, 1000, 0) }],
+  };
+
+  async function drain(resolver: TypeScriptResolver, lookup: SymbolLookup = anyLookup): Promise<unknown[]> {
+    const out: unknown[] = [];
+    for await (const item of resolver.relationsScoped(factsFor(), NO_OVERLAY, CONTEXT, ['src/user.cts'], lookup)) out.push(item);
+    return out;
+  }
+
+  it('a well-formed relation is mapped on both ends and yielded with the resolver id', async (t) => {
+    const resolver = resolverWith(t, 'ok');
+    const out = (await drain(resolver)).filter((item) => (item as { kind?: string }).kind !== 'notice') as Array<{ from: { qualifiedName: string }; to: { qualifiedName: string }; relation: string; resolver: string }>;
+    assert.deepEqual(out.map((item) => [item.relation, item.from.qualifiedName, item.to.qualifiedName, item.resolver]), [['extends', 'Sub', 'Base', 'typescript']]);
+    assert.deepEqual(resolver.relationStats(), { files: { asked: 1, answered: 1 }, kept: 1, dropped: 0 });
+  });
+
+  it('an item of the wrong kind stops the worker and fails the call with resolver_failed', async (t) => {
+    const resolver = resolverWith(t, 'wrong-kind');
+    await assert.rejects(drain(resolver), (error: unknown) => (error as { degradedCode?: string }).degradedCode === 'resolver_failed');
+  });
+
+  it('a flood of relations beyond the response budget stops the worker and fails the call', async (t) => {
+    const resolver = resolverWith(t, 'flood', { maxLineBytes: 2000 });
+    await assert.rejects(drain(resolver), (error: unknown) => (error as { degradedCode?: string }).degradedCode === 'resolver_failed');
+  });
+
+  it('a relation with a path that leaves the repository is dropped and counted, and the store is never asked about the path', async (t) => {
+    const resolver = resolverWith(t, 'escape');
+    const asked: string[] = [];
+    const watching: SymbolLookup = {
+      find: async () => [],
+      findIn: async (p, name) => {
+        asked.push(p);
+        return anyLookup.findIn(p, name);
+      },
+    };
+    const out = (await drain(resolver, watching)).filter((item) => (item as { kind?: string }).kind !== 'notice');
+    assert.deepEqual(out, []);
+    assert.ok(!asked.includes('../../etc/passwd'), JSON.stringify(asked));
+    assert.equal(resolver.relationStats().dropped, 1);
+    assert.equal(resolver.relationStats().kept, 0);
+  });
+});
+
 describe('the manifest and the worker source', () => {
   it('the TypeScript module names tiers grammar and precise and the typescript adapter', () => {
     const manifest = JSON.parse(fs.readFileSync(path.join(MODULES, 'typescript', 'atlas-lang.json'), 'utf8')) as { tiers: string[]; precise: { adapter: string } };
