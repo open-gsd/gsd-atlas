@@ -169,7 +169,7 @@ Plans:
   4. The `gsd-atlas` skill routes agents to atlas tools and `gsd-atlas-module-author` guides module writing; a user can rate a session, feature or last answer up, meh or down; diagnostics are off by default, approved per data type and previewed before manual submission; and `gsd-atlas bug` captures a flight recorder, versions, config, store health and the failing answer with hashed names and paths by default.
   5. The free-alternatives evaluation (LSP-wrapping MCP servers, agent repo-maps, colbymchenry/codegraph, Claude Code LSP, Memtrace) is recorded before the eval, the eval design is pre-registered (at least 50 questions per corpus including abstain cases, at least 3 runs per configuration, independent oracle, paired pooled analysis, accuracy non-inferiority margin, tool-call rate logged), and on gsd-core agents using atlas consume fewer tokens than the grep-only baseline at non-inferior accuracy with verifiable file:line citations at least 80% of the time.
 
-**Plans:** 25/36 plans executed
+**Plans:** 25/37 plans executed
 
 Plans:
 **Wave 1**
@@ -237,6 +237,9 @@ Plans:
 
 **Wave 15** *(blocked on Wave 14 completion)*
 - [ ] 03-36-PLAN.md — Alpha-readiness documentation pass with the Diataxis skill: README front door, alpha limitations with the evaluation status from the registered analysis, feedback and privacy pages, final audit (SKL-02, SKL-03, SKL-04, EVL-03, TSM-02)
+
+**Wave 16** *(blocked on Wave 15 completion)*
+- [ ] 03-37-PLAN.md — Number and ratify every remaining draft ADR at the MVP gate: one issue per draft, rename through one pull request, merge, close the issues, then the documents and tests state the final truth (SKL-03)
 
 ### Phase 4: Host Hardening
 
@@ -346,6 +349,8 @@ Plans:
 | 4 | host-process-model | none |
 | 5-9 | none new | none |
 
+**Amended 2026-10-18 on the user's instruction ("any ADR at the end of phase 3 must be assigned a number"; "for the end of phase 3 we want to ratify the adrs").** Nothing is ratified or renamed before the end of Phase 3. Plan 03-37, the last plan of Phase 3, numbers and ratifies every ADR that is still a draft at that point in one logged pass (today the diagnostics and host-process-model records, so the Phase 3 and Phase 4 rows above are read accordingly): one GitHub issue per draft, the rename to `<issue#>-<slug>.md` through one pull request, the issues closed after the merge. The twelve already-numbered records keep their numbers; from then on records change only by dated amendment or supersession. Draft files are never renamed at any other time.
+
 **Research flags.** Phase 1: reproducible tree-sitter to WASM on three OSes, upstream grammar licences. Phase 2: `fs.watch` per OS, `node:sqlite` across worker threads, Windows WAL first-open. Phase 3: TypeScript compiler process model, tsconfig and project-model edge cases on gsd-core and gsd-pi. Phase 4: cross-platform lock election, named pipes, stdio shim reconnect. Phase 5: tree-sitter-swift `refs.scm` quality (85% target) and the grammar patch, `project.pbxproj` parsing. Phase 9: SCIP import shape, IndexStoreDB helper build and distribution. Phases 6, 7 and 8 use standard patterns.
 
 **Mac-only gates.** SDK-08 and PRD criteria 6 and 15 need Xcode 27. Use the `xcode-27` runner if it proves available; otherwise they are local, self-attested gates, with SDK packs covering Linux CI.
@@ -361,7 +366,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 |-------|----------------|--------|-----------|
 | 1. Foundations and Walking Skeleton | 20/20 | Complete    | 2026-10-16 |
 | 2. Grammar Tier, Store and stdio Host | 46/46 | Complete    | 2026-10-17 |
-| 3. TypeScript Module and MVP Eval | 25/36 | In Progress | - |
+| 3. TypeScript Module and MVP Eval | 25/37 | In Progress | - |
 | 4. Host Hardening | 0/TBD | Not started | - |
 | 5. Swift Module | 0/TBD | Not started | - |
 | 6. Platform SDK Facts | 0/TBD | Not started | - |
