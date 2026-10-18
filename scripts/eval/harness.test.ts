@@ -79,7 +79,7 @@ function makeEnv(fakeEnv: Record<string, string> = {}, overrides: Partial<CellDe
   const out = path.join(root, 'out');
   const scratch = path.join(root, 'scratch');
   fs.mkdirSync(scratch, { recursive: true });
-  const answersFile = path.join(root, 'answers.json');
+  const answersFile = path.join(root, 'fake-answers.json');
   fs.writeFileSync(answersFile, JSON.stringify(PERFECT));
   const atlasRecord = path.join(root, 'atlas-record.jsonl');
   const eventsFile = path.join(root, 'events.jsonl');

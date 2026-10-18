@@ -15,10 +15,29 @@ import path from 'node:path';
 
 import { assertToolSet } from './claude-session.ts';
 import type { ExpectedToolSet, InitEvent } from './claude-session.ts';
+import { hashFile } from './prereg.ts';
 
 export type ArmId = 'atlas' | 'grep';
 
 export const ARM_IDS: readonly ArmId[] = ['atlas', 'grep'];
+
+/** Repeats of a question in an arm (03-CONSTANTS.md `eval.runsPerCell`, D-03). A scored run takes it from the registration. */
+export const DEFAULT_RUNS = 3;
+
+/** Sessions in flight at once (03-CONSTANTS.md `eval.concurrency`). A scored run takes it from the registration. */
+export const DEFAULT_CONCURRENCY = 2;
+
+/** The seed of the run order for a pilot (03-CONSTANTS.md `eval.bootstrapSeed`); a scored run uses the registered seed. */
+export const DEFAULT_SEED = 20261017;
+
+/** Retries of a session that failed before reaching the model (registered retry rule, plan 03-10 D-03). */
+export const MAX_INFRASTRUCTURE_RETRIES = 2;
+
+/**
+ * The wait before such a retry, in milliseconds. Planner-added in plan 03-10 and not in
+ * 03-CONSTANTS.md: it needs the approval of the freeze review (plan 03-16), which hashes this file.
+ */
+export const DEFAULT_RETRY_DELAY_MS = 60_000;
 
 /** The key of the atlas server in the MCP configuration; tool names are `mcp__<server>__<tool>`. */
 export const ATLAS_SERVER_NAME = 'gsd-atlas';
@@ -29,10 +48,16 @@ export const PLUGIN_NAME = 'gsd-atlas-eval';
 /** The skill's directory name under `skills/` and its name in the plugin. */
 export const SKILL_NAME = 'gsd-atlas';
 
-const ATLAS_TOOLS = ['code_find', 'code_refs', 'code_context', 'code_impact', 'code_explain', 'atlas_status', 'lang_list'] as const;
-
 /** The seven atlas tools. The pilot runs before the seventh exists, so a session may list a subset. */
-export const ATLAS_TOOL_NAMES: readonly string[] = ATLAS_TOOLS.map((tool) => `mcp__${ATLAS_SERVER_NAME}__${tool}`);
+export const ATLAS_TOOL_NAMES: readonly string[] = [
+  'mcp__gsd-atlas__code_find',
+  'mcp__gsd-atlas__code_refs',
+  'mcp__gsd-atlas__code_context',
+  'mcp__gsd-atlas__code_impact',
+  'mcp__gsd-atlas__code_explain',
+  'mcp__gsd-atlas__atlas_status',
+  'mcp__gsd-atlas__lang_list',
+];
 
 /** The built-in tools of both arms: a shell restricted to the patterns below, and the file reader. */
 export const BUILTIN_TOOLS: readonly string[] = ['Bash', 'Read'];
@@ -115,7 +140,11 @@ export function buildMcpConfig(arm: ArmId, options: McpConfigOptions): McpConfig
  * `gsd-atlas-eval` and `skills/gsd-atlas/SKILL.md`, a byte copy of `skillPath`. Returns the directory
  * to pass to `--plugin-dir`.
  */
-export function buildPluginDir(scratch: string, skillPath: string): string {
+export function buildPluginDir(scratch: string, skillPath: string, expectedSha256?: string): string {
+  // A scored run copies only the skill that was registered at Stage B; nothing is written otherwise.
+  if (expectedSha256 !== undefined && hashFile(skillPath) !== expectedSha256) {
+    throw new Error(`the skill file ${skillPath} does not match the registered Stage B hash`);
+  }
   const dir = path.join(scratch, 'plugin');
   fs.mkdirSync(path.join(dir, '.claude-plugin'), { recursive: true });
   fs.mkdirSync(path.join(dir, 'skills', SKILL_NAME), { recursive: true });
