@@ -169,7 +169,7 @@ Plans:
   4. The `gsd-atlas` skill routes agents to atlas tools and `gsd-atlas-module-author` guides module writing; a user can rate a session, feature or last answer up, meh or down; diagnostics are off by default, approved per data type and previewed before manual submission; and `gsd-atlas bug` captures a flight recorder, versions, config, store health and the failing answer with hashed names and paths by default.
   5. The free-alternatives evaluation (LSP-wrapping MCP servers, agent repo-maps, colbymchenry/codegraph, Claude Code LSP, Memtrace) is recorded before the eval, the eval design is pre-registered (at least 50 questions per corpus including abstain cases, at least 3 runs per configuration, independent oracle, paired pooled analysis, accuracy non-inferiority margin, tool-call rate logged), and on gsd-core agents using atlas consume fewer tokens than the grep-only baseline at non-inferior accuracy with verifiable file:line citations at least 80% of the time.
 
-**Plans:** 4/35 plans executed
+**Plans:** 9/35 plans executed
 
 Plans:
 **Wave 1**
@@ -179,11 +179,11 @@ Plans:
 - [x] 03-04-PLAN.md — Independent compiler-derived oracle and question schema (EVL-02)
 
 **Wave 2** *(blocked on Wave 1 completion)*
-- [ ] 03-05-PLAN.md — Paired cluster bootstrap, analysis and the pre-registration verifier; starts only once the EVL-03 citation criterion is confirmed (EVL-02, EVL-03)
-- [ ] 03-06-PLAN.md — Free-alternatives evaluation with live runs (EVL-01)
-- [ ] 03-07-PLAN.md — Answer schema, scorer with citation verification, corpus preparation (EVL-02, EVL-03)
-- [ ] 03-08-PLAN.md — Dated ADR amendments for the Phase 3 seams (TSM-01, TSM-03, TSM-04, TSM-05, TSM-07, QRY-07, SKL-02, SEC-02)
-- [ ] 03-11-PLAN.md — v0 routing skill and packaging (SKL-01)
+- [x] 03-05-PLAN.md — Paired cluster bootstrap, analysis and the pre-registration verifier; starts only once the EVL-03 citation criterion is confirmed (EVL-02, EVL-03)
+- [x] 03-06-PLAN.md — Free-alternatives evaluation with live runs (EVL-01)
+- [x] 03-07-PLAN.md — Answer schema, scorer with citation verification, corpus preparation (EVL-02, EVL-03)
+- [x] 03-08-PLAN.md — Dated ADR amendments for the Phase 3 seams (TSM-01, TSM-03, TSM-04, TSM-05, TSM-07, QRY-07, SKL-02, SEC-02)
+- [x] 03-11-PLAN.md — v0 routing skill and packaging (SKL-01)
 
 **Wave 3** *(blocked on Wave 2 completion)*
 - [ ] 03-09-PLAN.md — Seeded question census, 50 scored and 5 pilot questions with oracle keys (EVL-02)
@@ -358,7 +358,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 |-------|----------------|--------|-----------|
 | 1. Foundations and Walking Skeleton | 20/20 | Complete    | 2026-10-16 |
 | 2. Grammar Tier, Store and stdio Host | 46/46 | Complete    | 2026-10-17 |
-| 3. TypeScript Module and MVP Eval | 4/35 | In Progress | - |
+| 3. TypeScript Module and MVP Eval | 9/35 | In Progress | - |
 | 4. Host Hardening | 0/TBD | Not started | - |
 | 5. Swift Module | 0/TBD | Not started | - |
 | 6. Platform SDK Facts | 0/TBD | Not started | - |
