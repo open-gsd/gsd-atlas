@@ -7,7 +7,7 @@ import { after, describe, it } from 'node:test';
 
 import { ALLOWED_SHELL, ARMS, ATLAS_TOOL_NAMES, allowedToolsFor, buildPluginDir, checkInit, expectedToolSet } from './arms.ts';
 import type { InitEvent } from './claude-session.ts';
-import { buildPrompt, isInfrastructureFailure, runAll, runCell, runCli } from './harness.ts';
+import { buildPrompt, isInfrastructureFailure, runAll, runCell, runCli, runningCostUsd } from './harness.ts';
 import type { CellDeps, Io } from './harness.ts';
 import { STAGE_A_FILES, hashFile } from './prereg.ts';
 import { ResultsStore } from './results.ts';
@@ -643,6 +643,56 @@ describe('runAll', () => {
     assert.match(summary.prepFailed[0]?.detail ?? '', /gsd-atlas build exited 3/);
     assert.equal(env.store.all().length, 0);
     assert.equal(readLines(env.eventsFile).length, 0, 'no session starts after a failed build');
+  });
+
+  it('cost stop: no session starts once the running cost has reached the line, and the stop is reported', async () => {
+    const env = makeEnv();
+    const cells = makeSchedule(['q-1', 'q-2'], ['atlas', 'grep'], 1, 5);
+    // The fake reports 0.01 USD per session: the line at 0.015 is passed by the second session.
+    const summary = await runAll({ cells, concurrency: 1, deps: env.deps, stopAtCostUsd: 0.015 });
+    assert.equal(summary.done, 2);
+    assert.equal(summary.stopped, true);
+    assert.equal(summary.costStopped, true);
+    assert.ok(Math.abs(summary.costUsd - 0.02) < 1e-9);
+    assert.equal(env.store.all().length, 2);
+    assert.equal((readLines(env.eventsFile) as Array<{ kind: string }>).filter((e) => e.kind === 'start').length, 2);
+  });
+
+  it('cost stop counts the rows already on disk, so a restart cannot spend the allowance twice', async () => {
+    const env = makeEnv();
+    const cells = makeSchedule(['q-1', 'q-2'], ['atlas', 'grep'], 1, 5);
+    assert.equal((await runAll({ cells, concurrency: 1, deps: env.deps, stopAtCostUsd: 0.015 })).done, 2);
+    const again = await runAll({ cells, concurrency: 1, deps: env.deps, stopAtCostUsd: 0.015 });
+    assert.equal(again.done, 0);
+    assert.equal(again.costStopped, true);
+    assert.equal(env.store.all().length, 2);
+  });
+
+  it('cost stop is not reported when every cell finished under the line, and is off when no line is given', async () => {
+    const env = makeEnv();
+    const cells = makeSchedule(['q-1', 'q-2'], ['atlas', 'grep'], 1, 5);
+    const summary = await runAll({ cells, concurrency: 1, deps: env.deps, stopAtCostUsd: 1 });
+    assert.equal(summary.done, 4);
+    assert.equal(summary.costStopped, false);
+    assert.equal(summary.stopped, false);
+    const free = makeEnv();
+    assert.equal((await runAll({ cells, concurrency: 1, deps: free.deps })).done, 4);
+  });
+
+  it('cost stop counts a session without a reported cost at its budget cap', async () => {
+    const rows = [aRow({ costUsd: 0.5 }), aRow({ run: 2, costUsd: null })];
+    assert.equal(runningCostUsd(rows, 3), 3.5);
+  });
+
+  it('the command line takes --stop-at-cost-usd and prints it in the plan', async () => {
+    const env = makeEnv();
+    const files = writeQuestionFiles(env.root);
+    const c = capture();
+    const code = await runCli(['plan', '--questions', files.questions, '--runs', '1', '--stop-at-cost-usd', '32'], c.io, { env: env.deps.env ?? {} });
+    assert.equal(code, 0, c.err());
+    assert.match(c.out(), /stop-at-cost-usd: 32/);
+    const bad = capture();
+    assert.equal(await runCli(['plan', '--questions', files.questions, '--stop-at-cost-usd', '0'], bad.io, {}), 2);
   });
 });
 

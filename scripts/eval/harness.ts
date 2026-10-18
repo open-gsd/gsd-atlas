@@ -421,6 +421,13 @@ export interface RunAllOptions {
   deps: CellDeps;
   /** Called after each cell, in completion order. */
   onCell?: (cell: Cell, result: CellResult) => void;
+  /**
+   * Harness-side cost stop (plan 03-14, T-03-142): no further cell starts once the running cost of the
+   * results directory has reached this many USD. Cells in flight finish, so with concurrency above one
+   * the total can pass the line by what those cells cost. The running cost counts the rows already on
+   * disk, so a restart cannot spend the allowance twice.
+   */
+  stopAtCostUsd?: number;
 }
 
 export interface RunSummary {
@@ -431,8 +438,20 @@ export interface RunSummary {
   prepFailed: Array<{ cellId: string; detail: string }>;
   /** A cell that threw (a defect in the harness or the scorer, never a session outcome). */
   errors: Array<{ cellId: string; message: string }>;
-  /** True when scheduling stopped early: a contaminated session, a failed index build or an error. */
+  /** True when scheduling stopped early: a contaminated session, a failed index build, an error or the cost stop. */
   stopped: boolean;
+  /** True when the cost stop (`stopAtCostUsd`) ended scheduling. */
+  costStopped: boolean;
+  /** The running cost of the results directory when `runAll` returned, in USD (see `runningCostUsd`). */
+  costUsd: number;
+}
+
+/**
+ * The cost of every row in the store, in USD. A session that printed no result has no reported cost; it
+ * is counted at `maxBudgetUsd`, the most it could have spent, so the stop errs on the side of stopping.
+ */
+export function runningCostUsd(rows: readonly ResultRow[], maxBudgetUsd: number): number {
+  return rows.reduce((total, row) => total + (row.costUsd === null ? maxBudgetUsd : row.costUsd), 0);
 }
 
 /**
@@ -448,10 +467,19 @@ export async function runAll(options: RunAllOptions): Promise<RunSummary> {
     prepFailed: [],
     errors: [],
     stopped: false,
+    costStopped: false,
+    costUsd: 0,
   };
   let next = 0;
+  const currentCost = (): number => runningCostUsd(options.deps.store.all(), options.deps.maxBudgetUsd);
+  const costLineReached = (): boolean => options.stopAtCostUsd !== undefined && currentCost() >= options.stopAtCostUsd;
   const worker = async (): Promise<void> => {
     while (!summary.stopped) {
+      if (options.cells[next] !== undefined && costLineReached()) {
+        summary.costStopped = true;
+        summary.stopped = true;
+        return;
+      }
       const cell = options.cells[next];
       next += 1;
       if (cell === undefined) return;
@@ -477,6 +505,7 @@ export async function runAll(options: RunAllOptions): Promise<RunSummary> {
   };
   const workers = Math.max(1, Math.min(options.concurrency, options.cells.length));
   await Promise.all(Array.from({ length: workers }, () => worker()));
+  summary.costUsd = currentCost();
   return summary;
 }
 
@@ -509,6 +538,7 @@ const USAGE = [
   'options: --questions --answers --corpus-dir --out-dir --arms --runs --concurrency --seed --model',
   '         --max-budget-usd --wall-clock-ms --atlas-bin --skill --prereg --scored --pilot --dry-run',
   '         --scratch-dir --keep-sessions --retry-delay-ms --prep-timeout-ms',
+  '         --stop-at-cost-usd <n>   stop scheduling when the results directory has cost this much (harness-side)',
   '         --claude-executable --claude-prefix-arg (never with --scored)',
   '',
 ].join('\n');
@@ -535,6 +565,7 @@ const OPTIONS = {
   'keep-sessions': { type: 'boolean' },
   'retry-delay-ms': { type: 'string' },
   'prep-timeout-ms': { type: 'string' },
+  'stop-at-cost-usd': { type: 'string' },
   'claude-executable': { type: 'string' },
   'claude-prefix-arg': { type: 'string', multiple: true },
 } as const;
@@ -713,6 +744,7 @@ async function resolveContext(command: 'plan' | 'run' | 'pilot', values: Values,
     registered.push(`defaults from 03-CONSTANTS.md: runs ${String(DEFAULT_RUNS)} (eval.runsPerCell), concurrency ${String(DEFAULT_CONCURRENCY)} (eval.concurrency), seed ${String(DEFAULT_SEED)} (eval.bootstrapSeed)`);
   }
 
+  if (values['stop-at-cost-usd'] !== undefined) positive('stop-at-cost-usd', values['stop-at-cost-usd']);
   const arms = (values.arms ?? ARM_IDS.join(',')).split(',').map((a) => a.trim());
   for (const arm of arms) if (!(ARM_IDS as readonly string[]).includes(arm)) throw new UsageError(`unknown arm "${arm}" (known: ${ARM_IDS.join(', ')})`);
   const params = prereg?.params;
@@ -761,6 +793,7 @@ function printPlan(context: RunContext, values: Values, io: Io, header: string):
     `  model: ${settings.model ?? '(claude default)'}`,
     `  max-budget-usd: ${settings.maxBudgetUsd === undefined ? '(unset)' : String(settings.maxBudgetUsd)}`,
     `  wall-clock-ms: ${settings.wallClockMs === undefined ? '(unset)' : String(settings.wallClockMs)}`,
+    `  stop-at-cost-usd: ${values['stop-at-cost-usd'] ?? '(unset)'}`,
     `  retry: ${String(MAX_INFRASTRUCTURE_RETRIES)} retries after ${values['retry-delay-ms'] ?? String(DEFAULT_RETRY_DELAY_MS)} ms, infrastructure failures only`,
     `  tools: ${ARMS.grep.builtinTools.join(',')} in both arms; the atlas arm adds the gsd-atlas MCP server and skill`,
     `  results: ${context.outDir ?? '(--out-dir unset)'}`,
@@ -827,6 +860,7 @@ async function runCommand(command: 'plan' | 'run' | 'pilot', values: Values, io:
     ? fs.mkdtempSync(path.join(fs.realpathSync.native(os.tmpdir()), 'gsd-atlas-eval-'))
     : path.resolve(values['scratch-dir']);
   fs.mkdirSync(scratchRoot, { recursive: true });
+  const stopAtCostUsd = values['stop-at-cost-usd'] === undefined ? undefined : positive('stop-at-cost-usd', values['stop-at-cost-usd']);
   const retryDelayMs = values['retry-delay-ms'] === undefined ? DEFAULT_RETRY_DELAY_MS : whole('retry-delay-ms', values['retry-delay-ms'], 0);
   const cellDeps: CellDeps = {
     questions: new Map(context.questions.questions.map((q) => [q.id, q])),
@@ -867,6 +901,7 @@ async function runCommand(command: 'plan' | 'run' | 'pilot', values: Values, io:
     maxBudgetUsd: settings.maxBudgetUsd,
     wallClockMs: settings.wallClockMs,
     retryDelayMs,
+    stopAtCostUsd: stopAtCostUsd ?? null,
     claudeVersion: settings.claudeVersion ?? null,
     corpusSha: sha ?? null,
   });
@@ -878,13 +913,18 @@ async function runCommand(command: 'plan' | 'run' | 'pilot', values: Values, io:
       cells: context.cells,
       concurrency: settings.concurrency,
       deps: cellDeps,
+      ...(stopAtCostUsd === undefined ? {} : { stopAtCostUsd }),
       onCell: (cell, result) => {
         finished += 1;
         const tail = result.row === undefined ? '' : ` correct=${String(result.row.correct)} status=${result.row.status} tokens=${String(result.row.billableTokens)}`;
         io.out(`[${String(finished)}/${String(context.cells.length)}] ${cellId(cell)} ${result.outcome}${tail}\n`);
       },
     });
-    io.out(`done: ${String(summary.done)}\nskipped: ${String(summary.skipped)}\n`);
+    io.out(`done: ${String(summary.done)}\nskipped: ${String(summary.skipped)}\ncost so far: ${summary.costUsd.toFixed(4)} USD\n`);
+    if (summary.costStopped) {
+      io.err(`harness: the cost stop at ${String(stopAtCostUsd)} USD was reached; no further session was started\n`);
+      store.appendMeta({ kind: 'cost_stop', stopAtCostUsd: stopAtCostUsd ?? null, costUsd: summary.costUsd, at: new Date().toISOString() });
+    }
     for (const c of summary.contaminated) io.err(`contaminated: ${c.cellId}: ${c.diffs.join('; ')}\n`);
     for (const p of summary.prepFailed) io.err(`prep failed: ${p.cellId}: ${p.detail}\n`);
     for (const e of summary.errors) io.err(`error: ${e.cellId}: ${e.message}\n`);
