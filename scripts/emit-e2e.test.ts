@@ -235,10 +235,10 @@ describe('a tracked build output gets no facts; hand-written files under the out
       const vendor = await fixture.cli(['find', 'vendorThing', '--repo', fixture.dir]);
       assert.deepEqual(rows(vendor.envelope).map((row) => row.path), ['lib/vendor.cjs']);
 
-      const health = await fixture.cli(['health', '--repo', fixture.dir]);
-      assert.equal(health.code, 0, health.stderr);
-      const store = (health.envelope.data as { store: { worktrees: Array<{ files: number }> } }).store;
-      assert.equal(store.worktrees[0]?.files, 2, 'the index-health count leaves out the output and keeps the hand-written file');
+      const status = await fixture.cli(['status', '--repo', fixture.dir, '--since', '24h']);
+      assert.equal(status.code, 0, status.stderr);
+      const store = (status.envelope.data as { tenant: { store: { worktrees: Array<{ files: number }> } } }).tenant.store;
+      assert.equal(store.worktrees[0]?.files, 2, 'the file count leaves out the output and keeps the hand-written file');
     });
 
     await withEmitFixture(TRACKED_OUTPUT_FILES, { withoutProjectBlock: true }, async (fixture) => {

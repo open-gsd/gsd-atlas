@@ -7,6 +7,9 @@
  * and a cut removes the lowest-priority items first.
  *
  * Callees, ADR citations and tests (`callees`, `cites_adr`, `tested_by`) are Phase 3 and are not present.
+ *
+ * `data.file.emittedAs` (TSM-03) lists what the project's compiler writes for the file that defines the symbol, when
+ * a project model says so; it is absent otherwise.
  */
 import { UnknownWorktree } from '../fact-store/index.ts';
 import type { Reader, SymbolRecord } from '../fact-store/index.ts';
@@ -188,11 +191,18 @@ export async function runContext(ctx: FindContext, input: CodeContextInput): Pro
     const degraded = new Set<DegradedCode>([...ctx.fresh.degraded, ...search.degraded]);
     let entries: Entry[] = [];
     let refsCapped = false;
+    /** What the project's compiler writes for the defining file (TSM-03); empty when it says nothing. */
+    let emittedAs: readonly string[] = [];
     if (best !== undefined) {
       const factsAnswer = await reader.fileFacts(best.source_path);
       watermark = laterOf(watermark, factsAnswer.watermark);
       for (const code of factsAnswer.degraded ?? []) degraded.add(code);
       entries = entriesAround(best, factsAnswer.data);
+
+      const emitted = await reader.emittedAs(best.source_path);
+      watermark = laterOf(watermark, emitted.watermark);
+      for (const code of emitted.degraded ?? []) degraded.add(code);
+      emittedAs = emitted.data;
 
       const gathered = await gatherRefs(reader, ctx, search.targets.slice(0, 1), input.cwd, watermark);
       watermark = laterOf(watermark, gathered.watermark);
@@ -304,7 +314,15 @@ export async function runContext(ctx: FindContext, input: CodeContextInput): Pro
       if (refsCapped) hints.push(REFS_CAPPED_HINT);
       if (search.capped) hints.push(TARGETS_CAPPED_HINT);
 
-      const envelope = okEnvelope(CODE_CONTEXT_SCHEMA, { results, alternatives }, ctx.fresh.diagnostics, {
+      // `file` is there only when the compiler's emit mapping names an output: a file in no project, or a repository with
+      // no project model, has no `file` and no empty `emittedAs`. The paths come from a repository's configuration, so
+      // they are cleaned like every other repository string.
+      const data = {
+        results,
+        alternatives,
+        ...(emittedAs.length === 0 ? {} : { file: { path: cleanField(filePath), emittedAs: emittedAs.map(cleanField) } }),
+      };
+      const envelope = okEnvelope(CODE_CONTEXT_SCHEMA, data, ctx.fresh.diagnostics, {
         ...(cites.citations.length === 0 ? {} : { citations: cites.citations }),
         watermark,
         ...(cites.entries.length === 0 ? {} : { untrusted_text: { nonce: ctx.nonce, entries: cites.entries } }),

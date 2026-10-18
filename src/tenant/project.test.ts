@@ -194,6 +194,17 @@ describe('createOutputFilter (OQ3: no fact under an emit output of an included s
     assert.equal(project.emit?.outputToSource('lib/a.cjs'), 'src/a.cts');
   });
 
+  // OQ3 (03-DECISIONS.md, Confirmed): the default reading holds, so a hand-written file under outDir keeps its facts. If
+  // the user overturns it to the literal reading ("no fact points under outDir"), the Indexer drops every path under
+  // outDir instead, lib/vendor.cjs included, and this case replaces the one above; the summary of plan 03-22 would then
+  // record the consequence for the 17 hand-written files of gsd-core/bin/lib.
+  it('literal reading of OQ3: every path under outDir is dropped, hand-written files included', { skip: 'OQ3 was confirmed with the default reading (03-DECISIONS.md): hand-written files under outDir keep their facts' }, async () => {
+    const world = makeWorld({ ...FILES });
+    const filter = createOutputFilter(world.provider);
+    const dropped = await filter.exclude(WORKTREE, CANDIDATES);
+    assert.deepStrictEqual([...dropped].sort(), ['lib/a.cjs', 'lib/vendor.cjs']);
+  });
+
   it('never drops a path that is a source of some config (T-03-221)', async () => {
     const world = makeWorld({
       'tsconfig.json': cfg({ rootDir: 'src', outDir: 'src' }, { include: ['src/**/*.cts', 'src/**/*.cjs'], allowJs: true }),

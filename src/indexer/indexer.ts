@@ -147,6 +147,7 @@ export function createIndexer(deps: IndexerDeps): Indexer {
     governor: deps.governor,
     host,
     filter: createPathFilter(deps.tree),
+    ...(deps.outputFilter === undefined ? {} : { outputFilter: deps.outputFilter }),
     locks: createPathLocks(),
     counters,
     config,

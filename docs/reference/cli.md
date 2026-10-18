@@ -130,6 +130,7 @@ gsd-atlas context <name> [--path <file>] [selection and paging flags]
 - Result schema: `gsd-atlas.code-context/1`.
 - `data.results[]`: one ordered list for the best-ranked definition. Each item has a `section`: `definition`, `parent`, `child`, `import`, `export` or `reference` (at most 10 references). The other fields depend on the section and always include `name`, `kind`, `path`, `line`, `col`, `confidence`, `citation`.
 - `data.alternatives[]`: the other definitions of the name (at most 5).
+- `data.file`: present only when the project's compiler configuration says what the defining file compiles to: `{ path, emittedAs[] }`, with `emittedAs` the repository-relative output paths (for example `src/lib.cts` to `out/lib.cjs`). Absent for a file in no TypeScript project, and for a repository with no tsconfig.
 
 ### gsd-atlas impact
 
