@@ -1314,14 +1314,28 @@ function savePassCursor(parts: StoreParts, input: ResolveInput, cursor: PassCurs
   }
 }
 
-const NEXT_PASS_SITES_SQL = `SELECT o.path AS path, r.ord AS ord, n.name AS name, r.start_line AS start_line, r.start_col AS start_col,
+const FILE_PASS_SITES_SQL = `SELECT r.ord AS ord, n.name AS name, r.start_line AS start_line, r.start_col AS start_col,
        r.end_line AS end_line, r.end_col AS end_col
-       FROM overlay_files o
-       JOIN refs r ON r.file_id = o.file_id
+       FROM refs r
        JOIN names n ON n.id = r.name_id
-       WHERE o.worktree = ? AND (o.path > ? OR (o.path = ? AND r.ord > ?))
-       ORDER BY o.path, r.ord
+       WHERE r.file_id = ? AND r.ord > ?
+       ORDER BY r.ord
        LIMIT ?`;
+
+/**
+ * True when the eager pass asks about the sites of `path`: a config of the project owns the file. A project without precise
+ * facts has a resolver that decides for itself, so every site is asked. A site no config owns (a script outside every tsconfig,
+ * a test file the include does not take) is never answered by the compiler, and on a real repository such files hold most of
+ * the reference sites (550,594 of them in gsd-core against 35,727 in a config), so asking would cost a marker each and most of
+ * the build. The codes that tell why (`precise_unavailable`) are derived from the facts on every read, and a read that meets
+ * such a site still asks, as before: the adapter answers at once, without a worker.
+ */
+function askable(project: ProjectContext, path: string): boolean {
+  const precise = project.precise;
+  if (precise === undefined) return true;
+  const owner = precise.ownerOf(path);
+  return owner !== undefined && precise.configs.includes(owner);
+}
 
 /** What phase 1 of one batch of the pass found. */
 type PassStep =
@@ -1348,10 +1362,25 @@ function readPassStep(snap: Snapshot, project: ProjectContext | null, batchSize:
     if (saved?.done === true) return { kind: 'settled' };
     if (saved !== undefined) from = saved;
   }
-  const rows = snap.db.prepare(NEXT_PASS_SITES_SQL).all(snap.worktree, from.path, from.path, from.ord, batchSize);
-  const sites = rows.map((row): RefSiteKey => ({ path: str(row.path), span: spanOf(row), name: str(row.name) }));
-  const end = rows[rows.length - 1];
-  return { kind: 'batch', sites, last: end === undefined ? undefined : { path: str(end.path), ord: num(end.ord) } };
+  // The files the tier can be asked about, in the overlay's path order; the cursor names the last site asked in one of them.
+  const files: Array<{ readonly path: string; readonly fileId: number }> = [];
+  for (const [filePath, fileId] of overlayView(snap).fileIds) if (fileId !== null && askable(project, filePath)) files.push({ path: filePath, fileId });
+  let first = files.findIndex((file) => file.path === from.path);
+  // A cursor path that is not among them cannot belong to this overlay; starting over only repeats work that is settled.
+  let after = first < 0 ? -1 : from.ord;
+  if (first < 0) first = 0;
+  const select = snap.db.prepare(FILE_PASS_SITES_SQL);
+  const sites: RefSiteKey[] = [];
+  let last: { readonly path: string; readonly ord: number } | undefined;
+  for (let at = first; at < files.length && sites.length < batchSize; at += 1) {
+    const file = files[at] as { readonly path: string; readonly fileId: number };
+    for (const row of select.all(file.fileId, after, batchSize - sites.length)) {
+      sites.push({ path: file.path, span: spanOf(row), name: str(row.name) });
+      last = { path: file.path, ord: num(row.ord) };
+    }
+    after = -1;
+  }
+  return { kind: 'batch', sites, last };
 }
 
 /** The codes that stop the pass: the resolver or the cache failed, so what the call asked is not settled. */

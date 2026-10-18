@@ -20,6 +20,7 @@ import type { TenantTuning } from './types.ts';
  * Plan 03-29 (same file, `precise.*` rows), taken from the precise-resolver's own copy of the approved values so there is one:
  * - `resolveBoundMs`: `precise.requestTimeoutMs`, the bound of the eager pass after a build and of a module command (25000 ms).
  * - `resolveBatchSites`: `precise.sitesPerRequest`, the sites one resolver call of the eager pass carries (2000).
+ * - `warmStart`: whether the compiler worker is started in the background over an indexed worktree (true; not a constant).
  */
 export const DEFAULT_TENANT_TUNING: TenantTuning = {
   maintenanceSliceMs: 200,
@@ -31,4 +32,5 @@ export const DEFAULT_TENANT_TUNING: TenantTuning = {
   flightMaxBytes: 5242880,
   resolveBoundMs: PRECISE_DEFAULTS.requestTimeoutMs,
   resolveBatchSites: PRECISE_DEFAULTS.sitesPerRequest,
+  warmStart: true,
 };

@@ -1,7 +1,8 @@
 /**
  * The worker protocol (plan 03-23): newline-delimited JSON, one message per line, validated with zod on both ends.
  *
- * Parent to worker: `init`, `resolve`, `ping`. Worker to parent: `ready`, `edge`, `done`, `error`. A site is the
+ * Parent to worker: `init`, `resolve`, `relations`, `update`, `ping`. Worker to parent: `ready`, `edge`, `relation`, `done`,
+ * `error`. A site is the
  * grammar tier's position (0-based row counted on LF only, UTF-16 column, BOM stripped); a target is a declaration's
  * name token as a repository-relative POSIX path plus its position and the compiler's name for the declaration's kind.
  *
@@ -70,6 +71,18 @@ export const RequestSchema = z.discriminatedUnion('t', [
     config: z.string().min(1).max(MAX_PATH_CHARS),
     files: z.array(z.string().min(1).max(MAX_PATH_CHARS)).max(PRECISE_LIMITS.sitesPerRequest),
   }),
+  /**
+   * Plan 03-29 (TSM-06): the repository-relative paths whose content differs from what the worker last heard (`changed`; a path
+   * that is new is in it too) and the paths that left the overlay (`removed`). The worker marks the programs those paths belong
+   * to, and rebuilds each of them at its next use with the old program as the starting point, reading only the changed files. A
+   * path that belongs to no program is ignored. At most `sitesPerRequest` paths in each list; a bigger change is several messages.
+   */
+  z.strictObject({
+    t: z.literal('update'),
+    id: Id,
+    changed: z.array(z.string().min(1).max(MAX_PATH_CHARS)).max(PRECISE_LIMITS.sitesPerRequest),
+    removed: z.array(z.string().min(1).max(MAX_PATH_CHARS)).max(PRECISE_LIMITS.sitesPerRequest),
+  }),
   z.strictObject({ t: z.literal('ping'), id: Id }),
 ]);
 
@@ -100,6 +113,8 @@ export const ResponseSchema = z.discriminatedUnion('t', [
     /** Plan 03-27 (observation only): programs this worker holds after the request, and its resident memory in megabytes. */
     programs: z.int().min(0).max(100_000).optional(),
     rssMb: z.number().min(0).max(1_048_576).optional(),
+    /** Plan 03-29 (observation only): source files the worker read from disk since its last report (a rebuild reads the changed ones). */
+    reads: z.int().min(0).max(Number.MAX_SAFE_INTEGER).optional(),
   }),
   z.strictObject({
     t: z.literal('error'),

@@ -1864,6 +1864,37 @@ for (const driver of DRIVERS) {
       );
     });
 
+    it('a file no compiler config owns is not asked: its sites cost no marker, the others are asked once, and the pass is complete', async () => {
+      const { resolver, calls } = manyBinding();
+      const precise: PreciseFacts = {
+        ownerOf: (p) => (p === 'src/use1.ts' || p === 'src/use3.ts' ? undefined : 'tsconfig.json'),
+        requiresOwner: (p) => p.endsWith('.ts'),
+        compiler: { source: 'bundled', version: '6.0.3', case: 'none' },
+        configs: ['tsconfig.json'],
+      };
+      const projectContext: ProjectContextProvider = async () => ({ context: { id: 'ts:owned', configHashes: ['aa'] }, precise });
+      await withRig(
+        driver,
+        async (rig) => {
+          const writer = rig.store.writer();
+          const sites = await seedMany(writer);
+          const peek = await rig.peek();
+          const result = await rig.store.resolve('main', { budgetMs: 10_000, batchSize: 10 });
+          const owned = sites.filter((site) => site.path !== 'src/use1.ts' && site.path !== 'src/use3.ts');
+          assert.equal(result.complete, true);
+          assert.equal(result.processed, owned.length);
+          assert.deepStrictEqual(calls.flat().map(siteId), owned.map(siteId), 'only the sites of owned files, in order');
+          assert.ok(calls.every((call) => call.length <= 10));
+          assert.equal(count(peek, 'resolved_asked'), owned.length);
+          const again = await rig.store.resolve('main', { budgetMs: 10_000, batchSize: 10 });
+          assert.equal(again.processed, 0);
+          writer.release();
+        },
+        { projectContext },
+        resolver,
+      );
+    });
+
     it('the cursor is keyed by snapshot and context and a superseded snapshot loses its cursor', async () => {
       const { resolver } = manyBinding();
       await withRig(

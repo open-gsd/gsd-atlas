@@ -50,6 +50,11 @@ export interface TenantTuning {
   readonly resolveBoundMs: number;
   /** The most reference sites one resolver call of the eager pass carries: `precise.sitesPerRequest`, 03-CONSTANTS.md (2000). */
   readonly resolveBatchSites: number;
+  /**
+   * Start the precise tier's worker in the background when the Tenant starts over a worktree that is already indexed (plan
+   * 03-29, Pitfall 5). False leaves the first question to start it, as before; a measurement hook, not a setting.
+   */
+  readonly warmStart: boolean;
 }
 
 export interface TenantDeps {

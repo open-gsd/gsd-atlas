@@ -110,7 +110,12 @@ export interface TypeScriptResolverDeps {
   readonly limits?: Partial<PreciseLimits>;
   /** TEST HOOK. Called once each time a resolve iteration ends, whether it finished, was abandoned or threw. */
   readonly onCleanup?: () => void;
+  /** TEST HOOK. Called with every message sent to the worker and every message read from it (plan 03-29: the tests watch the updates). */
+  readonly onWire?: (event: WireEvent) => void;
 }
+
+/** One message on the worker's pipes, as a test or a trace sees it. */
+export type WireEvent = { readonly dir: 'out'; readonly message: Request } | { readonly dir: 'in'; readonly message: Response };
 
 /** What the worker said about itself in `ready`. */
 export interface WorkerInfo {
@@ -166,6 +171,12 @@ export interface TypeScriptResolver extends PreciseResolver {
   /** The running worker's own report, or undefined when none runs. */
   info(): WorkerInfo | undefined;
   /**
+   * Start the worker now if none runs (plan 03-29, Pitfall 5), so the first question after a start does not pay for it. It
+   * builds no program and says nothing: a project that cannot start a worker (a memory stop, a refused start, a worker that
+   * fails) simply leaves the first question to behave as it did before. Never rejects.
+   */
+  warm(project: PreciseFacts, context: ResolutionContext): Promise<void>;
+  /**
    * Forget a memory stop: the next read starts a worker again even when the project context did not change (an explicit
    * `maintain resolve`; the Host restart does the same by building a new resolver).
    */
@@ -197,6 +208,14 @@ export interface CompilerWorker extends PoolWorker {
   programs: number;
   lastRssMb: number;
   peakRssMb: number;
+  /**
+   * The content hash of every compiler source path the worker has been told about (plan 03-29): the overlay of the first read it
+   * served, then the overlay of the last one that told it of a change. Undefined until the first read. A worker starts with no
+   * programs, so the first read needs no update: a program is built from the files as they are when it is first needed.
+   */
+  seen: Map<string, string> | undefined;
+  /** The config hashes of the resolution context `seen` belongs to. */
+  configKey: string | undefined;
 }
 
 /** What the worker said about itself in `ready`. */
@@ -330,6 +349,7 @@ export function createTypeScriptResolver(deps: TypeScriptResolverDeps): TypeScri
       return;
     }
     const message = parsed.value;
+    deps.onWire?.({ dir: 'in', message });
     if (message.t === 'ready') {
       candidate.info = { pid: message.pid, compiler: message.compiler, rssMb: message.rssMb, sampler: message.sampler === true };
       candidate.lastRssMb = message.rssMb;
@@ -418,6 +438,8 @@ export function createTypeScriptResolver(deps: TypeScriptResolverDeps): TypeScri
       programs: 0,
       lastRssMb: 0,
       peakRssMb: 0,
+      seen: undefined,
+      configKey: undefined,
     };
     void pump(started);
     const init: Request = {
@@ -430,6 +452,7 @@ export function createTypeScriptResolver(deps: TypeScriptResolverDeps): TypeScri
       heapMb,
       ...(rssLimitMb === undefined ? {} : { rssLimitMb, sampleMs }),
     };
+    deps.onWire?.({ dir: 'out', message: init });
     input.push(encodeRequest(init));
     return started;
   }
@@ -559,8 +582,51 @@ export function createTypeScriptResolver(deps: TypeScriptResolverDeps): TypeScri
           reject(new ResolverFailure('resolver_failed', 'the compiler worker refused a request'));
         }
       });
-      candidate.input.push(encodeRequest(build(id)));
+      const request = build(id);
+      deps.onWire?.({ dir: 'out', message: request });
+      candidate.input.push(encodeRequest(request));
     });
+  }
+
+  /** The hashes of the paths a compiler reads: TypeScript and JavaScript sources, whatever else the overlay holds. */
+  const compilerHashes = (hashes: ReadonlyMap<string, string>): Map<string, string> =>
+    new Map([...hashes].filter(([filePath]) => COMPILER_FILE.test(filePath)));
+
+  /**
+   * Tell the worker what changed since it last heard (plan 03-29, TSM-06): the compiler paths whose content hash differs from
+   * `seen` (a new path included), the ones that left the overlay, and, when the configs the context was made from changed, the
+   * config files. The first read of a worker tells nothing, because a worker starts with no program. Nothing is sent when nothing
+   * changed. A change of more than `precise.sitesPerRequest` paths goes in several messages. The worker rebuilds only the programs
+   * those paths belong to, when it next needs them, so this costs a message, not a build.
+   */
+  async function sync(candidate: CompilerWorker, project: PreciseFacts, overlay: OverlaySnapshot, context: ResolutionContext): Promise<void> {
+    const next = compilerHashes(overlay.pathToHash);
+    const configKey = [...context.configHashes].sort().join(',');
+    const seen = candidate.seen;
+    if (seen === undefined) {
+      candidate.seen = next;
+      candidate.configKey = configKey;
+      return;
+    }
+    const changed: string[] = [];
+    const removed: string[] = [];
+    for (const [filePath, hash] of next) if (seen.get(filePath) !== hash) changed.push(filePath);
+    for (const filePath of seen.keys()) if (!next.has(filePath)) removed.push(filePath);
+    if (candidate.configKey !== configKey) for (const config of project.configs) if (!changed.includes(config)) changed.push(config);
+    if (changed.length === 0 && removed.length === 0) return;
+    changed.sort();
+    removed.sort();
+    const size = limits.sitesPerRequest;
+    for (let at = 0; at < Math.max(changed.length, removed.length); at += size) {
+      await ask(candidate, (id) => ({ t: 'update', id, changed: changed.slice(at, at + size), removed: removed.slice(at, at + size) }), {
+        kind: 'edge',
+        onItem: () => {},
+        maxItems: 0,
+        maxBytes: 0,
+      });
+    }
+    candidate.seen = next;
+    candidate.configKey = configKey;
   }
 
   async function stop(candidate: CompilerWorker): Promise<void> {
@@ -605,7 +671,8 @@ export function createTypeScriptResolver(deps: TypeScriptResolverDeps): TypeScri
 
   async function* run(
     project: PreciseFacts | undefined,
-    contextId: string,
+    context: ResolutionContext,
+    overlay: OverlaySnapshot,
     sites: readonly RefSiteKey[],
     symbols: SymbolLookup | undefined,
   ): AsyncGenerator<ResolvedEdge | ResolverNotice, void, undefined> {
@@ -616,7 +683,8 @@ export function createTypeScriptResolver(deps: TypeScriptResolverDeps): TypeScri
       if (project === undefined || groups.size === 0 || symbols === undefined) return;
 
       const answers = new Map<string, Target[]>();
-      const fallback = await serial(() => withWorker(project, contextId, async (candidate) => {
+      const fallback = await serial(() => withWorker(project, contextKeyOf(context), async (candidate) => {
+        await sync(candidate, project, overlay, context);
         for (const [config, members] of groups) {
           for (let at = 0; at < members.length; at += limits.sitesPerRequest) {
             const chunk = members.slice(at, at + limits.sitesPerRequest);
@@ -698,7 +766,8 @@ export function createTypeScriptResolver(deps: TypeScriptResolverDeps): TypeScri
 
   async function* runRelations(
     project: PreciseFacts | undefined,
-    contextId: string,
+    context: ResolutionContext,
+    overlay: OverlaySnapshot,
     files: readonly string[],
     symbols: SymbolLookup | undefined,
   ): AsyncGenerator<ResolvedRelation | ResolverNotice, void, undefined> {
@@ -709,7 +778,8 @@ export function createTypeScriptResolver(deps: TypeScriptResolverDeps): TypeScri
       if (project === undefined || groups.size === 0 || symbols === undefined) return;
 
       const received: Array<Extract<Response, { t: 'relation' }>> = [];
-      const fallback = await serial(() => withWorker(project, contextId, async (candidate) => {
+      const fallback = await serial(() => withWorker(project, contextKeyOf(context), async (candidate) => {
+        await sync(candidate, project, overlay, context);
         for (const [config, members] of groups) {
           for (let at = 0; at < members.length; at += limits.sitesPerRequest) {
             const chunk = members.slice(at, at + limits.sitesPerRequest);
@@ -772,23 +842,31 @@ export function createTypeScriptResolver(deps: TypeScriptResolverDeps): TypeScri
 
   return {
     id: TYPESCRIPT_RESOLVER_ID,
-    resolve(_overlay, context, sites, symbols) {
-      const scoped = run(deps.project?.(), contextKeyOf(context), sites, symbols);
+    resolve(overlay, context, sites, symbols) {
+      const scoped = run(deps.project?.(), context, overlay, sites, symbols);
       return (async function* () {
         for await (const item of scoped) if (!isResolverNotice(item)) yield item;
       })();
     },
-    resolveScoped(project, _overlay, context, sites, symbols) {
-      return run(project, contextKeyOf(context), sites, symbols);
+    resolveScoped(project, overlay, context, sites, symbols) {
+      return run(project, context, overlay, sites, symbols);
     },
-    relations(_overlay, context, files, symbols) {
-      const scoped = runRelations(deps.project?.(), contextKeyOf(context), files, symbols);
+    relations(overlay, context, files, symbols) {
+      const scoped = runRelations(deps.project?.(), context, overlay, files, symbols);
       return (async function* () {
         for await (const item of scoped) if (!isResolverNotice(item)) yield item;
       })();
     },
-    relationsScoped(project, _overlay, context, files, symbols) {
-      return runRelations(project, contextKeyOf(context), files, symbols);
+    relationsScoped(project, overlay, context, files, symbols) {
+      return runRelations(project, context, overlay, files, symbols);
+    },
+    async warm(project, context) {
+      if (closed) return;
+      try {
+        await serial(() => withWorker(project, contextKeyOf(context), async () => undefined));
+      } catch {
+        // A warm start that fails says nothing: the first question meets the same failure, or none, by itself.
+      }
     },
     relationStats: () => structuredClone(relationStats),
     stats: () => structuredClone(stats),

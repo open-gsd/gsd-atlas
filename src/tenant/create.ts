@@ -464,6 +464,21 @@ export async function createTenant(deps: TenantDeps): Promise<Tenant> {
   let cancelGate: (() => void) | undefined;
 
   /**
+   * Plan 03-29 (Pitfall 5): over a worktree that is already indexed, start the precise tier's worker in the background once
+   * the start-up Reconcile has described the project, so the first question that needs the compiler does not pay for its start.
+   * A failure is silent: nothing is logged or answered, and the first question meets the same failure, or none, by itself.
+   */
+  function warmStart(worktrees: readonly string[]): void {
+    if (!tuning.warmStart || closed || tier === undefined || !tier.active || tier.warm === undefined) return;
+    for (const worktree of worktrees) {
+      const facts = projectProvider?.precise(worktree);
+      const context = projectProvider?.resolution(worktree);
+      if (facts === undefined || context === undefined || facts.configs.length === 0) continue;
+      tier.warm(worktree, facts, context).catch(ignore);
+    }
+  }
+
+  /**
    * Start the Indexer for `indexed`, the worktrees the store already indexes (the ones git still lists). Only a
    * writer-lease holder calls this (STO-08), and never twice at once.
    */
@@ -476,6 +491,8 @@ export async function createTenant(deps: TenantDeps): Promise<Tenant> {
       if (targets.length === 0 || closed) return;
       startAttempted = true;
       await getIndexer().start({ worktrees: targets });
+      // The start-up Reconcile is done and the project has been described: start the compiler worker in the background.
+      warmStart(targets);
     })();
     const mine: Promise<void> = work
       .catch((error: unknown) => {

@@ -15,7 +15,7 @@
  */
 import { createHash } from 'node:crypto';
 import { DEFAULT_PROJECT_CONTEXT } from '../facts/index.ts';
-import type { Diagnostic, EmitLookup, PreciseFacts, ProjectContext, ProjectContextProvider } from '../facts/index.ts';
+import type { Diagnostic, EmitLookup, PreciseFacts, ProjectContext, ProjectContextProvider, ResolutionContext } from '../facts/index.ts';
 import type { OutputFilter } from '../indexer/index.ts';
 import { readManifest, resolveModules } from '../lang/index.ts';
 import type { Roots } from '../lang/index.ts';
@@ -33,6 +33,8 @@ export interface ProjectProvider extends ProjectContextProvider {
   diagnostics(worktree: string): readonly Diagnostic[];
   /** The precise-tier facts of the last description of the worktree, or undefined before there is one (plan 03-23). */
   precise(worktree: string): PreciseFacts | undefined;
+  /** The resolution context of the last description of the worktree, or undefined before there is one (plan 03-29: the warm start). */
+  resolution(worktree: string): ResolutionContext | undefined;
 }
 
 export interface ProjectProviderDeps {
@@ -244,6 +246,9 @@ export function createProjectContextProvider(deps: ProjectProviderDeps): Project
     },
     precise(worktree: string): PreciseFacts | undefined {
       return memo.get(worktree)?.built.context.precise;
+    },
+    resolution(worktree: string): ResolutionContext | undefined {
+      return memo.get(worktree)?.built.context.context;
     },
   });
 }

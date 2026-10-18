@@ -27,6 +27,15 @@
  * the growth one sample interval allows (recorded in the output) and every answer is either resolved or carries a degraded
  * code; exit 1 otherwise. Resolved cross-package edges on gsd-pi are not a criterion (D-22).
  *
+ * node scripts/precise-gate.ts --update --corpus gsd-core --dir <prepared checkout> [--max-wait-ms 60000]
+ *
+ * The update measure (plan 03-29, TSM-06): copy the checkout (its `node_modules` is linked, not copied), build the copy, ask for
+ * the references of the traced function, then save one file of the copy, appending a comment and a new exported function that
+ * calls the traced one, and print as one JSON object the milliseconds until `code_refs` returns a precise reference inside the
+ * new function, with the number of update messages the worker was sent, its programs and its resident memory before and after.
+ * Exit 0 when that answer arrived within a minute, 1 when it did not. The checkout itself is never edited. The gate thresholds
+ * (5 seconds, and three times that) belong to plan 03-30.
+ *
  * The checkout is the one `scripts/eval/prepare-corpus.ts` prepares (OQ8: `npm ci --ignore-scripts`, so the project's own
  * TypeScript 6.x is used). Without `--dir` this script prepares one in a temporary directory, which uses the network. The
  * checkout is only read; the store, the user directory and the cache go to a temporary directory that is removed at the end.
@@ -62,6 +71,7 @@ const TRACES: Readonly<Record<string, { readonly symbol: string; readonly file: 
 const USAGE = [
   'usage: node scripts/precise-gate.ts --trace --corpus gsd-core [--dir <prepared checkout>] [--config tsconfig.json] [--max-wait-ms 120000] [--budget-mb <n>]',
   '       node scripts/precise-gate.ts --nobreak --corpus gsd-pi --dir <checkout> [--budget-mb <n>] [--seed <n>] [--symbols <n>] [--max-wait-ms 120000] [--lazy]',
+  '       node scripts/precise-gate.ts --update --corpus gsd-core --dir <prepared checkout> [--max-wait-ms 60000]',
   '',
 ].join('\n');
 
@@ -533,6 +543,172 @@ export async function runNoBreak(options: NoBreakOptions): Promise<NoBreakReport
   }
 }
 
+// ---------------------------------------------------------------------------------------------------------------------
+// --update (plan 03-29, TSM-06)
+
+/** The update measure's stop rule: an answer that reflects the edit must arrive within a minute. The gate thresholds are plan 03-30's. */
+export const UPDATE_LIMIT_MS = 60_000;
+
+/** The function the edit appends: it calls the traced function, so the answer reflects the edit by one more reference. */
+const PROBE_NAME = 'atlasUpdateProbe';
+const probeText = (symbol: string): string => `\n// atlas update probe\nexport function ${PROBE_NAME}(): number {\n  return ${symbol}('1.0.0', '1.0.1');\n}\n`;
+
+export interface UpdateOptions {
+  readonly corpus: string;
+  /** A prepared checkout. It is copied; the copy is edited. */
+  readonly dir: string;
+  readonly maxWaitMs: number;
+  /** Extra environment for the git and Host children (the test kit's isolated git configuration). */
+  readonly env?: Readonly<Record<string, string | undefined>>;
+}
+
+export interface UpdateReport {
+  readonly corpus: string;
+  readonly dir: string;
+  readonly symbol: string;
+  readonly file: string;
+  readonly buildMs: number;
+  /** From writing the edit to the first `code_refs` answer that has a precise reference inside the appended function. */
+  readonly editToPreciseMs: number | null;
+  readonly reads: number;
+  readonly before: { readonly total: number; readonly precise: number };
+  readonly after: { readonly total: number; readonly precise: number };
+  readonly probe: { readonly tier: string | null; readonly confidence: string | null };
+  /** `update` messages sent to the worker, and the paths they listed. */
+  readonly updates: number;
+  readonly updatedPaths: number;
+  readonly worker: {
+    readonly programs: number;
+    readonly rssMbBefore: number | null;
+    readonly rssMbAfter: number | null;
+    readonly peakRssMb: number | null;
+    readonly rssMbSampledAfter: number | null;
+  };
+  readonly limits: { readonly updateMs: number };
+  readonly ok: boolean;
+}
+
+/** The checkout copied without `node_modules`, which is linked instead: the project's own compiler is used, and copying it would take a minute. */
+function copyCheckout(source: string, dest: string): void {
+  fs.cpSync(source, dest, { recursive: true, filter: (from) => path.basename(from) !== 'node_modules' });
+  const modules = path.join(source, 'node_modules');
+  if (fs.existsSync(modules)) fs.symlinkSync(fs.realpathSync.native(modules), path.join(dest, 'node_modules'), 'junction');
+}
+
+interface ProbeRow extends RefRow {
+  readonly enclosing?: string | null;
+}
+
+export async function runUpdate(options: UpdateOptions): Promise<UpdateReport> {
+  const target = TRACES[options.corpus];
+  if (target === undefined) throw new Error(`no trace is defined for corpus ${options.corpus}`);
+  const scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'ga-update-'));
+  const copy = path.join(scratch, 'checkout');
+  const tiers: PreciseTier[] = [];
+  let updates = 0;
+  let updatedPaths = 0;
+  const env: Record<string, string | undefined> = {
+    ...process.env,
+    ...(options.env ?? {}),
+    GSD_ATLAS_USER_DIR: path.join(scratch, 'user'),
+    GSD_ATLAS_STORE_DIR: path.join(scratch, 'store'),
+  };
+  try {
+    copyCheckout(options.dir, copy);
+    const composed = composeHost({
+      cwd: copy,
+      env,
+      home: path.join(scratch, 'home'),
+      stderr: process.stderr,
+      precise: {
+        onWire: (event) => {
+          if (event.dir === 'out' && event.message.t === 'update') {
+            updates += 1;
+            updatedPaths += event.message.changed.length + event.message.removed.length;
+          }
+        },
+      },
+      tierHook: (built) => {
+        tiers.push(built);
+      },
+    });
+    try {
+      const startedBuild = Date.now();
+      const built = await composed.client.handle({ protocol: PROTOCOL_VERSION, kind: 'build', args: { repo: copy } });
+      if (!built.ok) throw new Error(`build failed: ${built.diagnostics.map((entry) => entry.code).join(', ')}`);
+      const buildMs = Date.now() - startedBuild;
+
+      const refs = async (): Promise<ProbeRow[]> => {
+        const answer = await composed.client.handle({
+          protocol: PROTOCOL_VERSION,
+          kind: 'code_refs',
+          args: { name: target.symbol, path: target.file, repo: copy, limit: 200 },
+        });
+        return answer.ok ? (answer.data as { results: ProbeRow[] }).results : [];
+      };
+      const count = (rows: readonly ProbeRow[]): { total: number; precise: number } => ({ total: rows.length, precise: rows.filter((row) => row.tier === 'precise').length });
+      const sampled = (): number | null => sampleRssMb(tiers.flatMap((each) => each.info())[0]?.pid);
+
+      // The state before the edit: the traced function's references, answered from what the build stored.
+      let baseline = await refs();
+      for (let waited = Date.now(); !baseline.some((row) => row.tier === 'precise') && Date.now() - waited < options.maxWaitMs; ) {
+        await sleep(250);
+        baseline = await refs();
+      }
+      const rssMbBefore = tiers.flatMap((each) => each.info())[0]?.lastRssMb ?? null;
+
+      // Save one file: append a comment and a new exported function that calls the traced one.
+      const file = path.join(copy, target.file);
+      const original = fs.readFileSync(file, 'utf8');
+      const editedAt = Date.now();
+      fs.writeFileSync(file, `${original}${probeText(target.symbol)}`);
+
+      let reads = 0;
+      let editToPreciseMs: number | null = null;
+      let last: ProbeRow[] = [];
+      let probe: ProbeRow | undefined;
+      while (Date.now() - editedAt < Math.min(options.maxWaitMs, UPDATE_LIMIT_MS)) {
+        reads += 1;
+        last = await refs();
+        probe = last.find((row) => row.enclosing === PROBE_NAME);
+        if (probe?.tier === 'precise') {
+          editToPreciseMs = Date.now() - editedAt;
+          break;
+        }
+        await sleep(50);
+      }
+      const [info] = tiers.flatMap((each) => each.info());
+      return {
+        corpus: options.corpus,
+        dir: options.dir,
+        symbol: target.symbol,
+        file: target.file,
+        buildMs,
+        editToPreciseMs,
+        reads,
+        before: count(baseline),
+        after: count(last),
+        probe: { tier: probe?.tier ?? null, confidence: probe?.confidence ?? null },
+        updates,
+        updatedPaths,
+        worker: {
+          programs: info?.programs ?? 0,
+          rssMbBefore: rssMbBefore === null ? null : Math.round(rssMbBefore * 10) / 10,
+          rssMbAfter: info === undefined ? null : Math.round(info.lastRssMb * 10) / 10,
+          peakRssMb: info === undefined ? null : Math.round(info.peakRssMb * 10) / 10,
+          rssMbSampledAfter: sampled(),
+        },
+        limits: { updateMs: UPDATE_LIMIT_MS },
+        ok: editToPreciseMs !== null && baseline.some((row) => row.tier === 'precise'),
+      };
+    } finally {
+      await composed.dispose();
+    }
+  } finally {
+    fs.rmSync(scratch, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  }
+}
+
 /** A positive whole number from a flag, or undefined when the flag is absent; null when it is present and wrong. */
 function positive(text: string | undefined): number | undefined | null {
   if (text === undefined) return undefined;
@@ -545,6 +721,7 @@ export async function main(argv: readonly string[], io: { stdout: { write(text: 
   let values: {
     trace?: boolean;
     nobreak?: boolean;
+    update?: boolean;
     lazy?: boolean;
     corpus?: string;
     dir?: string;
@@ -560,6 +737,7 @@ export async function main(argv: readonly string[], io: { stdout: { write(text: 
       options: {
         trace: { type: 'boolean' },
         nobreak: { type: 'boolean' },
+        update: { type: 'boolean' },
         lazy: { type: 'boolean' },
         corpus: { type: 'string' },
         dir: { type: 'string' },
@@ -580,8 +758,9 @@ export async function main(argv: readonly string[], io: { stdout: { write(text: 
     io.stderr.write(`precise-gate: ${message}\n${USAGE}`);
     return 2;
   };
-  if (values.trace === true && values.nobreak === true) return usage('--trace and --nobreak are separate modes');
-  if (values.trace !== true && values.nobreak !== true) return usage('--trace or --nobreak is required');
+  const modes = [values.trace, values.nobreak, values.update].filter((mode) => mode === true).length;
+  if (modes > 1) return usage('--trace, --nobreak and --update are separate modes');
+  if (modes === 0) return usage('--trace, --nobreak or --update is required');
   const maxWaitMs = positive(values['max-wait-ms']) ?? 120_000;
   const budgetMb = positive(values['budget-mb']);
   const seed = positive(values.seed);
@@ -606,6 +785,20 @@ export async function main(argv: readonly string[], io: { stdout: { write(text: 
         ...(symbols === undefined ? {} : { symbols }),
         ...(values.lazy === true ? { lazy: true } : {}),
       });
+      io.stdout.write(`${JSON.stringify(report)}\n`);
+      return report.ok ? 0 : 1;
+    } catch (error) {
+      io.stderr.write(`precise-gate: ${error instanceof Error ? error.message : String(error)}\n`);
+      return 1;
+    }
+  }
+
+  if (values.update === true) {
+    if (corpus === undefined || TRACES[corpus] === undefined) return usage(`--corpus must be one of ${Object.keys(TRACES).join(', ')}`);
+    if (values.dir === undefined) return usage('--dir <prepared checkout> is required');
+    if (!fs.existsSync(path.join(values.dir, '.git'))) return usage('--dir must be a git checkout');
+    try {
+      const report = await runUpdate({ corpus, dir: fs.realpathSync.native(values.dir), maxWaitMs });
       io.stdout.write(`${JSON.stringify(report)}\n`);
       return report.ok ? 0 : 1;
     } catch (error) {
