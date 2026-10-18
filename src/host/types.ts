@@ -29,6 +29,13 @@ export interface UserConfig {
   };
   /** Which commands the CommandRunner may start beyond its built-in read-only git rule. */
   readonly permissions?: UserPermissions;
+  /**
+   * First-party providers (SEC-02): they run by default, and a user turns one off here by id (`typescript` today).
+   * An id nobody knows has no effect. The Host hands this list to the tenant factory; the provider table reads it.
+   */
+  readonly providers?: {
+    readonly disabled?: readonly string[];
+  };
 }
 
 export interface HostOptions {

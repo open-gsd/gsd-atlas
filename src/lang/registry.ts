@@ -261,12 +261,15 @@ function preciseNotes(entry: Pick<ModuleEntry, 'name' | 'dir'>, manifest: Manife
   if (manifest.precise === undefined) {
     return [];
   }
-  const what = 'command' in manifest.precise ? 'precise.command' : 'precise.adapter';
+  const isCommand = 'command' in manifest.precise;
+  // Fixed text. The manifest's own words (the argv) are never copied here: this note travels in `lang_list` answers an
+  // agent reads. Only the module name is used, and a name is limited to lower-case letters, digits and hyphens.
+  const how = isCommand ? ` (review and approve it in a terminal with: gsd-atlas allow --module ${entry.name})` : '';
   return [
     diagnostic(
       'precise_command_inactive',
       'info',
-      `${entry.name}: ${what} is declared but not run; the precise tier stays inactive until user-level config approves it`,
+      `${entry.name}: ${isCommand ? 'precise.command' : 'precise.adapter'} is declared but not run; the precise tier stays inactive until user-level config approves it${how}`,
       entry.dir,
     ),
   ];

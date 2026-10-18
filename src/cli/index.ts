@@ -205,14 +205,23 @@ export async function runCli(argv: readonly string[], io: CliIo): Promise<number
       if (positionals.length - toApprove.length > 1) {
         return usageError(io, 'allow takes its command after a double dash: gsd-atlas allow -- <executable> <args...>');
       }
-      if (toApprove.length === 0) {
+      const moduleName = typeof values.module === 'string' ? values.module : undefined;
+      if (moduleName === '') {
+        return usageError(io, '--module needs the name of a language module');
+      }
+      if (moduleName !== undefined && toApprove.length > 0) {
+        return usageError(io, 'allow takes either --module <name> or a command after a double dash, not both');
+      }
+      if (moduleName === undefined && toApprove.length === 0) {
         return usageError(io, 'allow needs the command to approve after a double dash: gsd-atlas allow -- <executable> <args...>');
       }
       const base = io.cwd ?? path.resolve('.');
       return runAllow(io, {
         repo: typeof values.repo === 'string' ? path.resolve(base, values.repo) : undefined,
         cwd: typeof values.cwd === 'string' ? path.resolve(base, values.cwd) : undefined,
-        argv: toApprove,
+        workdir: typeof values.workdir === 'string' ? values.workdir : undefined,
+        module: moduleName,
+        argv: moduleName === undefined ? toApprove : undefined,
       });
     }
     case 'lang': {

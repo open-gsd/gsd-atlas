@@ -34,6 +34,8 @@ export const FLAGS = {
   since: { type: 'string' },
   agent: { type: 'string', multiple: true },
   'dry-run': { type: 'boolean' },
+  workdir: { type: 'string' },
+  module: { type: 'string' },
   'repo-root': { type: 'string' },
   'user-dir': { type: 'string' },
   'builtin-dir': { type: 'string' },
@@ -174,9 +176,9 @@ export const COMMANDS: readonly Command[] = [
     kind: 'allow',
     request: 'allow',
     positional: 'none',
-    flags: [...SELECTION],
+    flags: [...SELECTION, 'workdir', 'module'],
     usage:
-      'gsd-atlas allow [--repo <dir>] [--cwd <dir>] -- <executable> <args...>   (approve ONE exact command for this repository; needs a terminal, shows the command and asks before it writes)',
+      'gsd-atlas allow [--repo <dir>] [--cwd <dir>] [--workdir <dir>] [--module <name>] -- <executable> <args...>   (approve ONE exact command for this repository, run from <dir> relative to it; --module proposes the command its manifest declares instead of the words after --; needs a terminal, shows the command and asks before it writes)',
   },
   {
     name: 'lang list',

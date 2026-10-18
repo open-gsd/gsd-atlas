@@ -395,6 +395,32 @@ describe('resolveModules: a precise command or adapter is data, never run (T-01-
     assert.deepEqual(result.diagnostics, []);
   });
 
+  it('secret marker: the reason text for an unapproved precise command is fixed, names gsd-atlas allow and holds no manifest text', () => {
+    const w = makeWorld();
+    const marker = 'SECRET-MARKER';
+    w.place('repo', 'toy', (m) => {
+      m['tiers'] = ALL_TIERS;
+      m['precise'] = { command: ['not-a-real-program', `--token=${marker}`, `/etc/${marker}`] };
+    });
+    const result = resolveModules(w.roots);
+    const found = resolveModule(w.roots, 'toy');
+    for (const seen of [JSON.stringify(result), JSON.stringify(found)]) {
+      assert.ok(!seen.includes(marker), 'no part of the manifest command reaches a reason or a diagnostic');
+      assert.ok(!seen.includes('not-a-real-program'), 'not even the executable');
+    }
+    const note = result.diagnostics.find((d) => d.code === 'precise_command_inactive');
+    assert.match(note?.message ?? '', /gsd-atlas allow/, 'the diagnostic says how to approve');
+    assert.match(note?.message ?? '', /user-level config approves it/, 'and still says why the tier is inactive');
+    // The same sentence for two modules whose commands differ: it is fixed text, not built from the command.
+    const second = makeWorld();
+    second.place('repo', 'toy', (m) => {
+      m['tiers'] = ALL_TIERS;
+      m['precise'] = { command: ['another-program', 'a', 'b', 'c'] };
+    });
+    const other = resolveModules(second.roots).diagnostics.find((d) => d.code === 'precise_command_inactive');
+    assert.equal(other?.message, note?.message);
+  });
+
   it('keeps a module with a precise command usable: it is still listed and its grammar tier is active', () => {
     const w = makeWorld();
     w.place('user', 'toy', (m) => {

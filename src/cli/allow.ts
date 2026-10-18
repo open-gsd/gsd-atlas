@@ -40,6 +40,8 @@ interface Preview {
   readonly args: readonly string[];
   readonly cwd: string;
   readonly sha256: string;
+  /** True when a language module's manifest proposed the command; the module's name is never sent. */
+  readonly fromModule: boolean;
 }
 
 const NEEDS_TERMINAL = 'gsd-atlas: error allow_needs_terminal: allow needs a terminal\n';
@@ -59,16 +61,19 @@ function show(text: string): string {
 
 function readPreview(data: unknown): Preview | null {
   if (typeof data !== 'object' || data === null) return null;
-  const { repo, executable, args, cwd, sha256 } = data as Record<string, unknown>;
+  const { repo, executable, args, cwd, sha256, fromModule } = data as Record<string, unknown>;
   if (typeof repo !== 'string' || typeof executable !== 'string' || typeof cwd !== 'string') return null;
   if (!Array.isArray(args) || !args.every((each): each is string => typeof each === 'string')) return null;
   if (typeof sha256 !== 'string' || !/^[0-9a-f]{64}$/.test(sha256)) return null;
-  return { repo, executable, args, cwd, sha256 };
+  return { repo, executable, args, cwd, sha256, fromModule: fromModule === true };
 }
 
 function previewLines(preview: Preview): string {
   return [
     'gsd-atlas: review this approval. Nothing runs now: it only records that you allow this exact command.',
+    ...(preview.fromModule
+      ? ['  This command was proposed by a language module manifest in the repository: read it as carefully as if you had typed it.']
+      : []),
     `  repository:         ${show(preview.repo)}`,
     `  executable:         ${show(preview.executable)}`,
     `  arguments:          [${preview.args.map(show).join(', ')}]`,

@@ -338,6 +338,7 @@ export function createHost(options: HostOptions): Host {
   function allowRequest(request: Request): Promise<Envelope> {
     const deps: AllowDeps = {
       userDir: options.userDir ?? options.roots.userDir,
+      roots: options.roots,
       resolveRepo: async (selection) => {
         const resolved = await resolveRepository(selection, hostCwd, makeTree);
         return resolved === null ? null : { repoDir: resolved.repoDir };

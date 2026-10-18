@@ -66,6 +66,9 @@ export const USER_CONFIG_SCHEMA = z.strictObject({
       ),
     })
     .optional(),
+  // SEC-02: first-party providers run by default; this list turns them off by id (`typescript` today). An id nobody knows
+  // is accepted and has no effect, so a configuration written for a newer version still loads here.
+  providers: z.strictObject({ disabled: z.array(z.string()).optional() }).optional(),
 });
 
 export type BoundedRead = { readonly kind: 'ok'; readonly text: string } | { readonly kind: 'missing' } | { readonly kind: 'refused'; readonly why: string };

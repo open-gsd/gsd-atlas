@@ -214,6 +214,48 @@ describe('gsd-atlas allow: usage line', () => {
   });
 });
 
+describe('gsd-atlas allow: --workdir and --module', () => {
+  it('workdir: a relative working directory is passed through unchanged in both requests', async () => {
+    const h = terminal([previewReply, writtenReply], ['y']);
+    assert.equal(await h.run(['allow', '--workdir', 'sub/dir', '--', 'node', 'x.js']), EXIT_OK);
+    assert.deepEqual(h.requests[0]?.args, { workdir: 'sub/dir', argv: ['node', 'x.js'] });
+    assert.deepEqual(h.requests[1]?.args, { workdir: 'sub/dir', argv: ['node', 'x.js'], confirm: HASH });
+  });
+
+  it('module: --module sends the module name and no argv, shows what the Host proposes, and writes only after yes', async () => {
+    const proposed = { ...PREVIEW, executable: 'node', args: ['evil.js', 'SECRET-MARKER'], fromModule: true };
+    const h = terminal([{ ...previewReply, data: proposed }, writtenReply], ['y']);
+    assert.equal(await h.run(['allow', '--repo', 'r', '--module', 'typescript-evil']), EXIT_OK);
+    assert.deepEqual(h.requests[0]?.args, { repo: path.resolve(WORK, 'r'), module: 'typescript-evil' });
+    assert.deepEqual(h.requests[1]?.args, { repo: path.resolve(WORK, 'r'), module: 'typescript-evil', confirm: HASH });
+    // The manifest text is on the terminal for the person ...
+    assert.ok((h.asked[0]?.stderrBefore ?? '').includes('SECRET-MARKER'));
+    assert.match(h.asked[0]?.stderrBefore ?? '', /module manifest/);
+    // ... and nowhere in what the command prints as its result.
+    assert.ok(!h.stdout.join('').includes('SECRET-MARKER'));
+  });
+
+  it('module: declined means nothing is written', async () => {
+    const h = terminal([{ ...previewReply, data: { ...PREVIEW, fromModule: true } }, writtenReply], ['n']);
+    assert.equal(await h.run(['allow', '--module', 'typescript-evil']), EXIT_USAGE);
+    assert.equal(h.requests.length, 1);
+  });
+
+  it('module: --module together with a command after the double dash, or with an empty name, is a usage error', async () => {
+    for (const argv of [['allow', '--module', 'm', '--', 'node'], ['allow', '--module', '']]) {
+      const h = terminal([previewReply], ['y']);
+      assert.equal(await h.run(argv), EXIT_USAGE, argv.join(' '));
+      assert.deepEqual(h.requests, [], argv.join(' '));
+    }
+  });
+
+  it('usage line: the usage text lists --workdir and --module', async () => {
+    const h = terminal([], []);
+    await h.run(['--help']);
+    assert.match(h.stdout.join(''), /gsd-atlas allow .*--workdir <dir>.*--module <name>/);
+  });
+});
+
 describe('gsd-atlas allow: failures', () => {
   it('a failed preview prints its envelope, shows no prompt and exits with the usual code', async () => {
     const reply = failure('not_a_repo', 'repo must be an existing directory inside a git repository.');
@@ -230,6 +272,36 @@ describe('gsd-atlas allow: failures', () => {
     assert.equal(await h.run(['allow', '--', 'node', 'x']), EXIT_FAILURE);
     assert.equal(h.requests.length, 2);
     assert.deepEqual(JSON.parse(h.stdout[0] as string), reply);
+  });
+
+  it('invalid config: an unusable user configuration file is reported in its fixed sentence and exits 3', async () => {
+    const message = 'the user configuration file is invalid and was not changed: it is not valid JSON';
+    const reply = failure('config_invalid', message);
+    // The dry run refuses (nothing is asked) ...
+    const early = terminal([reply], ['y']);
+    assert.equal(await early.run(['allow', '--', 'node', 'x']), 3);
+    assert.deepEqual(early.asked, []);
+    assert.ok(early.stderr.join('').includes(message));
+    // ... and so does a write that finds the file broken after the question (the file changed in between).
+    const late = terminal([previewReply, reply], ['y']);
+    assert.equal(await late.run(['allow', '--', 'node', 'x']), 3);
+    assert.ok(late.stderr.join('').includes(message));
+    assert.deepEqual(JSON.parse(late.stdout[0] as string), reply);
+  });
+
+  it('a config too large or a write failure is an ordinary failure, exit 2', async () => {
+    for (const code of ['config_too_large', 'write_failed', 'config_changed']) {
+      const h = terminal([previewReply, failure(code, 'fixed text')], ['y']);
+      assert.equal(await h.run(['allow', '--', 'node', 'x']), EXIT_FAILURE, code);
+    }
+  });
+
+  it('already approved: says so instead of the restart note and exits 0', async () => {
+    const already: Envelope = { schema: SCHEMA, ok: true, data: { written: false, sha256: HASH, already_allowed: true }, diagnostics: [] };
+    const h = terminal([previewReply, already], ['y']);
+    assert.equal(await h.run(['allow', '--', 'node', 'x']), EXIT_OK);
+    assert.match(h.stderr.join(''), /already approved/);
+    assert.doesNotMatch(h.stderr.join(''), /restarted/);
   });
 
   it('refuses a preview reply it cannot read instead of asking about something unseen', async () => {
