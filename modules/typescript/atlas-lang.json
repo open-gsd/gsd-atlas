@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "name": "typescript",
   "version": "0.1.0",
   "extensions": [".ts", ".cts", ".mts"],
@@ -16,7 +16,8 @@
   "parseBudget": 0.005,
   "project": {
     "markers": ["tsconfig.json"],
-    "model": "typescript"
+    "model": "typescript",
+    "adrDirs": ["docs/adr", "docs/adrs", "doc/adr", "adr"]
   },
   "precise": {
     "adapter": "typescript"

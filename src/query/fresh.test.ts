@@ -204,6 +204,14 @@ describe('fresh paths: one Reader per request', () => {
         calls.push('provenance');
         return real.provenance(handle);
       },
+      citations: (query, options) => {
+        calls.push('citations');
+        return real.citations(query, options);
+      },
+      citationGaps: (options) => {
+        calls.push('citationGaps');
+        return real.citationGaps(options);
+      },
     };
     const port: FreshPort = { ensureFresh: () => Promise.resolve({ ...COMPLETE, reader: counting }) };
     const query = h.query({ store, fresh: port });

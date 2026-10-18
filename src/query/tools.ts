@@ -39,7 +39,9 @@ const limit = z.int().positive().optional().describe('Most results wanted; cappe
 
 export const codeFindSchema = z.strictObject({
   name,
-  kind: text.optional().describe('Only symbols of this kind, for example function or class.'),
+  kind: text
+    .optional()
+    .describe('Only symbols of this kind, for example function or class. The kind adr asks where an ADR is: name is then an ADR number such as ADR-3473 and the answer lists the ADR file or files with that number.'),
   mode: z.enum(['exact', 'prefix', 'fuzzy', 'auto']).optional().describe('How names match; auto ranks every tier.'),
   limit,
   ...common,
@@ -47,7 +49,9 @@ export const codeFindSchema = z.strictObject({
 
 export const codeRefsSchema = z.strictObject({
   name,
-  kind: text.optional().describe('Only definitions of this kind are followed, for example function or class.'),
+  kind: text
+    .optional()
+    .describe('Only definitions of this kind are followed, for example function or class. The kind adr lists the code comments that cite an ADR instead: name is then an ADR number such as ADR-3473.'),
   path,
   limit,
   ...common,

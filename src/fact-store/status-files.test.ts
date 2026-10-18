@@ -67,7 +67,7 @@ for (const driver of ['node:sqlite', 'better-sqlite3'] as const) {
         await commit(writer, 'main', 0);
         await writer.setOverlay('main', 'refs/heads/main', new Map([[generatedPath(0), generatedHash(0)], ['pending.ts', generatedHash(9)]]));
         const status = await store.status();
-        assert.deepStrictEqual(status.worktrees, [{ worktree: 'main', seq: 2, stalePaths: 1, files: 2 }]);
+        assert.deepStrictEqual(status.worktrees, [{ worktree: 'main', seq: 2, stalePaths: 1, files: 2, citationGapFiles: 0 }]);
         assert.equal(typeof status.sizeBytes, 'number');
         assert.equal(status.writerLeaseHeld, true);
         writer.release();

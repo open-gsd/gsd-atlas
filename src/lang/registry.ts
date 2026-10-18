@@ -16,8 +16,9 @@ import path from 'node:path';
 
 import { diagnostic } from '../facts/index.ts';
 import type { Diagnostic } from '../facts/index.ts';
-import { readManifest } from './module-files.ts';
+import { adrDirsOf } from './manifest.ts';
 import type { Manifest } from './manifest.ts';
+import { readManifest } from './module-files.ts';
 
 export type ModuleSource = 'repo' | 'user' | 'npm' | 'builtin';
 
@@ -54,6 +55,10 @@ export interface ModuleEntry {
   /** Real path of the active copy's folder. */
   readonly dir: string;
   readonly version?: string;
+  /** The manifest schema version the active copy is written at (1 or 2; plan 03-28). */
+  readonly schemaVersion: number;
+  /** The ADR directories the manifest names (`project.adrDirs`, version 2 only); empty when it names none (D-20). */
+  readonly adrDirs: readonly string[];
   /** Every extension the manifest declares. */
   readonly extensions: readonly string[];
   /** The subset of `extensions` another module owns; the module does not serve these. */
@@ -335,6 +340,8 @@ function buildOne(group: readonly Candidate[], options: ResolveOptions): Built {
       source: active.source,
       dir: active.dir,
       ...(manifest.version === undefined ? {} : { version: manifest.version }),
+      schemaVersion: manifest.schemaVersion,
+      adrDirs: [...adrDirsOf(manifest)],
       extensions: [...manifest.extensions],
       inactiveExtensions: [],
       tiers: tiersOf(manifest, approved, options),

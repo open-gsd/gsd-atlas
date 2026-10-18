@@ -686,3 +686,80 @@ describe('real Source Tree history reads (STO-09)', () => {
     assert.equal(fake.starts.length, 1);
   });
 });
+
+describe('real Source Tree listDirectory (plan 03-28): links, odd names and the raw scan bound', () => {
+  const FILES = { 'docs/adr/0001-first.md': '# one\n', 'docs/adr/2-second.md': '# two\n' };
+  const NO_LINKS = notOnWindows('creating a symlink needs privileges on Windows');
+
+  it('does not start git: a listing is a file-system read', async (t) => {
+    const { repo, recording, tree } = await realTree(t, { files: FILES });
+    const before = recording.starts.length;
+    const listing = await tree.listDirectory(repo.dir, 'docs/adr');
+    assert.deepEqual([...listing.names], ['0001-first.md', '2-second.md']);
+    assert.equal(recording.starts.length, before);
+  });
+
+  it('a directory link that points outside the worktree is escape, and nothing outside is listed', { skip: NO_LINKS }, async (t) => {
+    const { repo, tree } = await realTree(t, { files: FILES });
+    const outside = path.join(path.dirname(repo.dir), 'outside-adr');
+    fs.mkdirSync(outside);
+    fs.writeFileSync(path.join(outside, '0099-secret.md'), 'secret\n');
+    fs.symlinkSync(outside, path.join(repo.dir, 'linked'), 'dir');
+    fs.symlinkSync(outside, path.join(repo.dir, 'docs', 'viaparent'), 'dir');
+    for (const rel of ['linked', 'docs/viaparent']) {
+      const listing = await tree.listDirectory(repo.dir, rel);
+      assert.equal(listing.status, 'escape', rel);
+      assert.deepEqual([...listing.names], [], rel);
+    }
+  });
+
+  it('a directory link that stays inside is followed only because its confined real path is inside', { skip: NO_LINKS }, async (t) => {
+    const { repo, tree } = await realTree(t, { files: FILES });
+    fs.symlinkSync(path.join(repo.dir, 'docs', 'adr'), path.join(repo.dir, 'alias'), 'dir');
+    const listing = await tree.listDirectory(repo.dir, 'alias');
+    assert.equal(listing.status, 'ok');
+    assert.deepEqual([...listing.names], ['0001-first.md', '2-second.md']);
+  });
+
+  it('a link among the entries is not a regular file and is not listed, whatever it points at', { skip: NO_LINKS }, async (t) => {
+    const { repo, tree } = await realTree(t, { files: FILES });
+    fs.symlinkSync('0001-first.md', path.join(repo.dir, 'docs', 'adr', '0003-link.md'));
+    fs.symlinkSync(path.join(repo.dir, 'docs'), path.join(repo.dir, 'docs', 'adr', '0004-dirlink.md'), 'dir');
+    const listing = await tree.listDirectory(repo.dir, 'docs/adr');
+    assert.deepEqual([...listing.names], ['0001-first.md', '2-second.md']);
+  });
+
+  it(
+    'a name with a line break is skipped and the rest are listed',
+    { skip: notOnWindows('Windows cannot create file names with a line break') },
+    async (t) => {
+      const { repo, tree } = await realTree(t, { files: { ...FILES, 'docs/adr/0003-bad\nname.md': 'bad\n' } });
+      const listing = await tree.listDirectory(repo.dir, 'docs/adr');
+      assert.deepEqual([...listing.names], ['0001-first.md', '2-second.md']);
+    },
+  );
+
+  it('a directory with far more entries than maxEntries is cut by a bounded scan and reported truncated', async (t) => {
+    const many = Object.fromEntries(Array.from({ length: 40 }, (_, i) => [`docs/adr/${String(i + 1).padStart(4, '0')}-n.md`, 'x\n']));
+    const { repo, tree } = await realTree(t, { files: many });
+    const listing = await tree.listDirectory(repo.dir, 'docs/adr', { maxEntries: 3 });
+    assert.equal(listing.truncated, true);
+    assert.equal(listing.names.length, 3);
+    assert.ok(listing.names.every((name) => name.endsWith('-n.md')));
+    // A bound that holds them all is not truncated.
+    const all = await tree.listDirectory(repo.dir, 'docs/adr', { maxEntries: 40 });
+    assert.equal(all.truncated, false);
+    assert.equal(all.names.length, 40);
+  });
+
+  it('the mtime of the directory moves when a file is added, so a remembered answer can be told apart', async (t) => {
+    const { repo, tree } = await realTree(t, { files: FILES });
+    const first = await tree.listDirectory(repo.dir, 'docs/adr');
+    // A file system with a coarse clock can give the same stamp to a change made at once; wait for the stamp to differ.
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    repo.write('docs/adr/0003-third.md', '# three\n');
+    const second = await tree.listDirectory(repo.dir, 'docs/adr', { ifMtimeMs: first.mtimeMs });
+    assert.equal(second.unchanged, undefined, 'the directory changed, so the full listing comes back');
+    assert.deepEqual([...second.names], ['0001-first.md', '0003-third.md', '2-second.md']);
+  });
+});

@@ -16,6 +16,7 @@ import path from 'node:path';
 import { candidatePaths, resolveSpecifier } from '../fact-store/index.ts';
 import type {
   CallerRecord,
+  CitationRecord,
   FactStore,
   FindOptions,
   ImporterRecord,
@@ -387,6 +388,49 @@ export function createOverlayReader(base: Reader, patch: Patch, context: Overlay
 
     async refs(id, options) {
       return result(await refsOf(id, options));
+    },
+
+    async citations(query, options) {
+      // The store's citations minus the patched files', plus the patched files' own (read from their facts, as the store would).
+      const stored = observe(await base.citations(query, options)).filter((record) => !patch.has(record.source_path));
+      const added: CitationRecord[] = [];
+      for (const facts of patch.values()) {
+        if (facts === null || facts.citations === undefined) continue;
+        const defs = definitionsOf(facts, repo, now);
+        facts.citations.forEach((site, ord) => {
+          const enclosing = site.enclosing === undefined ? undefined : defs[site.enclosing];
+          const wanted =
+            query.number !== undefined
+              ? site.number === query.number
+              : query.symbol !== undefined && enclosing !== undefined && symbolKey(enclosing.identity) === symbolKey(query.symbol);
+          if (!wanted) return;
+          added.push({
+            source_path: facts.path,
+            span: site.span,
+            extractor: extractorOf(facts.module, facts.grammarVersion),
+            content_hash: facts.contentHash,
+            first_seen: now,
+            last_seen: now,
+            confidence: 'EXTRACTED',
+            debug: `cit/${encodeURIComponent(facts.path)}/${facts.contentHash}/${String(ord)}`,
+            number: site.number,
+            ...(site.detail === undefined ? {} : { detail: site.detail }),
+            enclosing: enclosing === undefined ? null : enclosing.identity,
+          });
+        });
+      }
+      return result([...stored, ...added].sort(bySite).slice(0, limitOf(options?.limit, Number.POSITIVE_INFINITY)));
+    },
+
+    async citationGaps(options) {
+      // The store's count, with each patched path's own gap taken from its facts instead of the store's row (a hidden path has none).
+      let files = observe(await base.citationGaps(options)).files;
+      const patched = options?.path === undefined ? [...patch.keys()] : patch.has(options.path) ? [options.path] : [];
+      for (const filePath of patched) {
+        const stored = observe(await base.citationGaps({ path: filePath })).files;
+        files += (patch.get(filePath)?.citationGaps === undefined ? 0 : 1) - stored;
+      }
+      return result({ files });
     },
 
     async relations(id, options) {

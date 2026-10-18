@@ -89,6 +89,7 @@ export function recordingTree(log: TreeLog): (tree: SourceTree) => SourceTree {
       log.readTexts.push(relPath);
       return tree.readText(worktree, relPath, options);
     },
+    listDirectory: (worktree, dir, options) => tree.listDirectory(worktree, dir, options),
     hasObject: (hash) => tree.hasObject(hash),
     read: (commit, relPath) => tree.read(commit, relPath),
     identity: () => tree.identity(),

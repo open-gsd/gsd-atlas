@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 2,
+  "schemaVersion": 3,
   "name": "fixture-lang",
   "extensions": [".fx"],
   "grammar": { "wasm": "grammar/fixture.wasm", "lock": "grammar/grammar.lock" },

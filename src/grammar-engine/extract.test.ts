@@ -1013,6 +1013,110 @@ describe('the comment text bound (adr.maxCommentUnits)', () => {
   });
 });
 
+// ---------------------------------------------------------------------------------------------
+// Citation gaps (plan 03-28, amendment of 2026-10-18): a comment skipped for its size, and a file past the citation cap
+
+describe('citation gaps: what the extractor could not keep is recorded, not silently dropped', () => {
+  /** One line comment per row, each holding one mention, `count` of them. */
+  const lineComments = (count: number): Capture[] =>
+    Array.from({ length: count }, (_, row) => comment(row, [row, 0, row, 12], `// ADR-${String(row + 1)}`));
+
+  it('skipped comment sets the gap: each comment the engine blanked is counted, the per-file diagnostic stays, and the other citations are kept', () => {
+    const one = extract(runOf([comment(0, [0, 0, 0, 12], '// ADR-1 here'), comment(1, [5, 0, 9, 0], '')]));
+    assert.deepEqual(one.facts.citationGaps, { skippedComments: 1, capped: false });
+    assert.deepEqual(one.facts.citations, [{ number: 1, span: sp(0, 3, 0, 8) }]);
+    assert.deepEqual(one.diagnostics.map((d) => d.code), ['citation_comment_too_long']);
+    assert.deepEqual(validateFileFacts(one.facts), []);
+
+    const three = extract(runOf([comment(0, [0, 0, 4, 0], ''), comment(1, [5, 0, 9, 0], ''), comment(2, [10, 0, 12, 0], '')]));
+    assert.deepEqual(three.facts.citationGaps, { skippedComments: 3, capped: false });
+    assert.equal(three.facts.citations, undefined);
+  });
+
+  it('skipped comment sets the gap: through the real engine, a header block over the bound', async () => {
+    const bound = GRAMMAR_LIMITS.commentTextChars;
+    const over = await extractWithModule('typescript', `${lineCommentOfLength(bound + 1, 'ADR-123')}\nconst after = 1;\n`);
+    assert.deepEqual(over.facts.citationGaps, { skippedComments: 1, capped: false });
+    assert.deepEqual(over.diagnostics.map((d) => d.code), ['citation_comment_too_long']);
+    const exact = await extractWithModule('typescript', `${lineCommentOfLength(bound, 'ADR-123')}\nconst after = 1;\n`);
+    assert.equal('citationGaps' in exact.facts, false, 'a comment exactly at the bound is read');
+  });
+
+  it('exactly 200 mentions is not capped: 200 citations and no gap', () => {
+    const captures = lineComments(MAX_CITATIONS_PER_FILE);
+    for (const order of [captures, [...captures].reverse(), shuffled(captures)]) {
+      const { facts } = extract(runOf(order));
+      assert.equal(facts.citations?.length, MAX_CITATIONS_PER_FILE);
+      assert.equal('citationGaps' in facts, false);
+    }
+    const oneComment = extract(runOf([comment(0, [0, 0, 0, 1200], 'ADR-1 '.repeat(MAX_CITATIONS_PER_FILE))]));
+    assert.equal(oneComment.facts.citations?.length, MAX_CITATIONS_PER_FILE);
+    assert.equal('citationGaps' in oneComment.facts, false);
+  });
+
+  it('201 mentions is capped and keeps 200: the same first 200 as before this amendment, in every arrival order and shape', () => {
+    const many = lineComments(MAX_CITATIONS_PER_FILE + 1);
+    const expected = referenceCitations(many);
+    assert.equal(expected.length, MAX_CITATIONS_PER_FILE);
+    for (const order of [many, [...many].reverse(), shuffled(many)]) {
+      const { facts } = extract(runOf(order));
+      assert.deepEqual(facts.citations, expected);
+      assert.deepEqual(facts.citationGaps, { skippedComments: 0, capped: true });
+      assert.deepEqual(validateFileFacts(facts), []);
+    }
+    // One comment holding them all, and thousands of comments (the early exit stops one mention past the cap).
+    const single = comment(0, [0, 0, 0, 1300], 'ADR-1 '.repeat(MAX_CITATIONS_PER_FILE + 1));
+    assert.deepEqual(extract(runOf([single])).facts.citationGaps, { skippedComments: 0, capped: true });
+    const thousands = Array.from({ length: 3000 }, (_, row) => comment(row, [row, 0, row, 14], `// ADR-${String(row + 1)} §${String(row % 7)}`));
+    const probed = extractProbed(thousands);
+    assert.deepEqual(probed.facts.citations, referenceCitations(thousands));
+    assert.deepEqual(probed.facts.citationGaps, { skippedComments: 0, capped: true });
+    assert.ok(probed.steps > 0 && probed.steps <= 40 * (MAX_CITATIONS_PER_FILE + 1), `${String(probed.steps)} steps: the scan still stops one mention past the cap`);
+  });
+
+  it('201 mentions is capped and keeps 200: the full path (overlapping and repeated captures, as a scripted module can make them) caps the same way', () => {
+    const text = (from: number, count: number): string => Array.from({ length: count }, (_, at) => `ADR-${String(from + at)}`).join(' ');
+    const overlapping = [comment(0, [0, 0, 0, 1200], text(1, 150)), comment(1, [0, 3, 0, 1203], text(1001, 150))];
+    const repeated = Array.from({ length: 10 }, (_, pattern) => comment(pattern, [0, 0, 0, 30_000], 'ADR-1 '.repeat(5000)));
+    for (const captures of [overlapping, repeated]) {
+      for (const order of [captures, [...captures].reverse()]) {
+        const { facts } = extract(runOf(order));
+        assert.deepEqual(facts.citations, referenceCitations(captures));
+        assert.deepEqual(facts.citationGaps, { skippedComments: 0, capped: true });
+      }
+    }
+    const probed = extractProbed(repeated);
+    assert.ok(probed.steps > 0 && probed.steps <= 12 * (MAX_CITATIONS_PER_FILE + 1) * repeated.length, `${String(probed.steps)} steps: each capture still scans a bounded number of mentions`);
+  });
+
+  it('a file with both has both fields', () => {
+    const { facts } = extract(runOf([...lineComments(MAX_CITATIONS_PER_FILE + 1), comment(1000, [500, 0, 600, 0], ''), comment(1001, [700, 0, 800, 0], '')]));
+    assert.deepEqual(facts.citationGaps, { skippedComments: 2, capped: true });
+    assert.equal(facts.citations?.length, MAX_CITATIONS_PER_FILE);
+  });
+
+  it('no gap leaves the facts unchanged: no key, and the JSON of the facts is what it was before this amendment', () => {
+    for (const captures of [[], lineComments(3), [comment(0, [0, 0, 0, 12], '// ADR-5 x'), comment(1, [3, 0, 3, 9], '// nothing')]]) {
+      const { facts } = extract(runOf(captures));
+      assert.equal('citationGaps' in facts, false);
+      assert.ok(!JSON.stringify(facts).includes('citationGaps'));
+    }
+    const plain = extract(runOf([comment(0, [0, 0, 0, 12], '// ADR-5 x')]));
+    assert.deepEqual(plain.facts, {
+      path: 'src/a.toy',
+      contentHash: 'c'.repeat(40),
+      module: 'toy',
+      grammarVersion: 'toy-0.1.0',
+      symbols: [],
+      refSites: [],
+      imports: [],
+      exports: [],
+      citations: [{ number: 5, span: sp(0, 3, 0, 8) }],
+      parse: { errorBytes: 0, totalBytes: 0 },
+    });
+  });
+});
+
 /** The mention shapes of D-19, each with the (number, detail) pairs the scan must find. `null` detail means none. */
 const SHAPES: ReadonlyArray<readonly [text: string, found: ReadonlyArray<readonly [number, string | null]>]> = [
   ['ADR-1', [[1, null]]],

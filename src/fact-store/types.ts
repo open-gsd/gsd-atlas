@@ -122,8 +122,38 @@ export interface RelationRecord extends Provenance {
   readonly tier: 'precise';
 }
 
+/**
+ * An ADR mention in a code comment (plan 03-28, D-19; the `cites_adr` fact). `number` is the ADR number the comment cites,
+ * compared by value; `detail` the optional section suffix (`§3`); `enclosing` the definition the mention belongs to (the
+ * innermost symbol that contains it, else the one a leading doc comment documents), null for a file-level mention. The
+ * provenance is the mention's own: `span` is the text `ADR-12 §3` and `debug` is a `cit/` handle. A citation is a fact the
+ * grammar tier read from the comment, so its own confidence is `EXTRACTED`; whether it links to an ADR file is decided at read
+ * time against the repository's ADR directory (the Tenant's), not here.
+ */
+export interface CitationRecord extends Provenance {
+  readonly number: number;
+  readonly detail?: string;
+  readonly enclosing: SymbolIdentity | null;
+}
+
+/** What {@link Reader.citations} is asked for: the citations of one ADR number, or the citations attached to one definition. */
+export interface CitationsQuery {
+  readonly number?: number;
+  readonly symbol?: SymbolIdentity;
+}
+
+export interface CitationsOptions {
+  /** Truncate after ordering by path, line, column and position in the file. Absent: every row. */
+  readonly limit?: number;
+}
+
+export interface CitationGapsOptions {
+  /** Ask about this one overlay path instead of the whole overlay. */
+  readonly path?: string;
+}
+
 /** What kind of fact a handle names (plan 03-26): a definition, a reference site, an import or export statement, or a compiler relation. */
-export type FactKind = 'symbol' | 'reference' | 'import' | 'export' | 'relation';
+export type FactKind = 'symbol' | 'reference' | 'import' | 'export' | 'relation' | 'citation';
 
 /**
  * What the resolved-edge cache says about a reference site (or a relation) under the current overlay snapshot and resolution
@@ -140,6 +170,8 @@ export interface FactExplanation {
   /** The handle in its canonical form. */
   readonly handle: string;
   readonly kind: FactKind;
+  /** A `citation` only: the ADR number the comment cites and the section detail, when it has one. */
+  readonly citation?: { readonly number: number; readonly detail?: string };
   readonly fact: {
     /** The extractor that produced it: `grammar:<module>@<version>`, or `precise:<resolver>`. */
     readonly extractor: string;
@@ -280,6 +312,24 @@ export interface Reader {
    * stored (the file row, the fact row, the resolved-edge and relation caches): it never runs a resolver and never writes.
    */
   provenance(handle: string): Promise<Answer<FactExplanation | 'stale' | null>>;
+
+  /**
+   * The ADR citations of this overlay (plan 03-28): those of one ADR number (`query.number`) or those attached to one
+   * definition (`query.symbol`); a query that names neither gives no rows. Ordered by path, line, column and position in the
+   * file, truncated to `options.limit`. Each record names the file path the overlay maps, so identical bytes at two paths are
+   * two records. Reads stored rows only. No ADR file is read or listed here: the link from a number to a document is made by
+   * the caller against the repository's ADR directory.
+   */
+  citations(query: CitationsQuery, options?: CitationsOptions): Promise<Answer<readonly CitationRecord[]>>;
+
+  /**
+   * How many files of this overlay hold a citation gap (plan 03-28, amendment of 2026-10-18): a comment the extractor skipped for
+   * its size, or more mentions than the per-file cap. `data.files` counts overlay paths (a file version linked from two paths
+   * counts for each); with `options.path` it is 1 or 0 for that one path (0 for a path the overlay does not hold). It reads the
+   * gap rows stored with the file versions, so it is the same after any number of builds, and it says nothing of which file or
+   * which number: only that citations from that many files are missing.
+   */
+  citationGaps(options?: CitationGapsOptions): Promise<Answer<{ readonly files: number }>>;
 
   /** The local facts of one file as the overlay sees it; `data` is null when the path is not in the overlay. */
   fileFacts(path: string): Promise<Answer<FileFacts | null>>;
@@ -461,6 +511,8 @@ export interface WorktreeStatus {
   readonly stalePaths: number;
   /** How many paths the worktree's overlay holds, pending ones included (`stalePaths` is a subset of them). */
   readonly files: number;
+  /** How many of those paths hold a citation gap (plan 03-28); 0 for a store built before the gap table existed. */
+  readonly citationGapFiles: number;
 }
 
 /** Store health, as its own method rather than a read variant. */

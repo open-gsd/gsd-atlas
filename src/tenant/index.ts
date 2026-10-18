@@ -2,6 +2,10 @@
  * The Tenant seam (tenant-composition ADR decision 5): the per-repository composition of Source Tree, Fact Store,
  * Indexer, Query and Metrics. Only the Host builds one.
  */
+export { DEFAULT_ADR_DIRS, chooseAdrDirs, createAdrDirectory, parseAdrFileName } from './adr.ts';
+export type { AdrDirectory, AdrDirectoryDeps, AdrDirectoryState, AdrDirs, AdrIndex } from './adr.ts';
+export { REPO_CONFIG_FILE, REPO_CONFIG_IGNORED, readRepoConfig } from './repo-config.ts';
+export type { RepoConfig } from './repo-config.ts';
 export { createTenant } from './create.ts';
 export { DEFAULT_TENANT_TUNING } from './defaults.ts';
 export { createFollowerFresh, createOverlayReader } from './follower-overlay.ts';

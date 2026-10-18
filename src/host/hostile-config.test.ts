@@ -51,6 +51,9 @@ const HOSTILE_FILES: Readonly<Record<string, string>> = {
     diagnostics: { enabled: true },
     autoSubmit: true,
     commands: [{ executable: 'node', args: ['mark.js'] }],
+    // Plan 03-28: the one key the repository config is read for. These name directories outside the repository (a `..` path,
+    // a sibling directory, and a link that points at it): none of them may list anything.
+    adrDirs: ['../../etc', '../outside-adr', 'linked-adr'],
   }),
   'mark.js': WRITE_MARKER_FROM_ROOT,
   'package.json': JSON.stringify({
@@ -94,6 +97,15 @@ async function runHostile(t: TestContext, user: UserPermissions | undefined): Pr
     host: { runner, ...(user === undefined ? {} : { config: { permissions: user } }) },
   });
   const repo = world.repo.dir;
+  // A document outside the repository, reachable by a `..` path, as a sibling and through a link inside the repository.
+  const outside = path.join(path.dirname(repo), 'outside-adr');
+  fs.mkdirSync(outside);
+  fs.writeFileSync(path.join(outside, '0001-outside.md'), 'outside\n');
+  try {
+    fs.symlinkSync(outside, path.join(repo, 'linked-adr'), 'dir');
+  } catch {
+    // creating a link needs privileges on Windows; the `..` and sibling forms are still checked
+  }
   const replies: Record<string, Envelope> = {};
   const ask = async (label: string, kind: string, args: Record<string, unknown>): Promise<void> => {
     replies[label] = await world.ask(kind, args);
@@ -106,6 +118,8 @@ async function runHostile(t: TestContext, user: UserPermissions | undefined): Pr
   await ask('code_impact', 'code_impact', { name: 'boot', repo });
   await ask('atlas_status', 'atlas_status', { repo });
   await ask('lang_list', 'lang_list', { repo });
+  await ask('adr_refs', 'code_refs', { name: 'ADR-1', kind: 'adr', repo });
+  await ask('adr_find', 'code_find', { name: 'ADR-1', kind: 'adr', repo });
   return { world, attempts, started: runner.starts, replies };
 }
 
@@ -168,6 +182,23 @@ describe('SEC-01: a hostile repository runs nothing', () => {
     const modules = (outcome.replies['lang_list']?.data as { modules: ReadonlyArray<{ name: string; tiers: ReadonlyArray<{ tier: string; active: boolean }> }> }).modules;
     const precise = modules.find((m) => m.name === 'evil')?.tiers.find((tier) => tier.tier === 'precise');
     assert.equal(precise?.active, false);
+  });
+
+  it('adrDirs of the repository config lists nothing outside the repository and the other keys enable nothing', async (t) => {
+    const outcome = await runHostile(t, undefined);
+    for (const label of ['adr_refs', 'adr_find']) {
+      const reply = outcome.replies[label];
+      assert.equal(reply?.ok, true, `${label}: ${JSON.stringify(reply?.diagnostics)}`);
+      const data = reply?.data as { adr?: { status: string; files: string[] }; status?: string };
+      assert.equal(data.adr?.status ?? data.status, 'unresolved', `${label}: the outside document was not found`);
+      assert.deepEqual(data.adr?.files ?? [], [], `${label}: nothing was listed`);
+      assert.ok(!JSON.stringify(reply).includes('0001-outside'), `${label}: the outside document is never named`);
+      const notes = reply?.diagnostics.filter((d) => d.code === 'repo_config_ignored') ?? [];
+      assert.equal(notes.length, 1, `${label}: one fixed diagnostic for the ignored keys and entries`);
+      assert.equal(notes[0]?.severity, 'info');
+    }
+    assertNothingButBuiltinGit(outcome);
+    assertNoMarker(outcome);
   });
 
   it('decide denies directly', async (t) => {

@@ -11,6 +11,7 @@ export { systemClock } from './clock.ts';
 export type { Clock } from './clock.ts';
 export { FACT_PREDICATES, IMPORT_STYLES, MAX_CITATIONS_PER_FILE, REF_KINDS, validateFileFacts } from './file-facts.ts';
 export type {
+  CitationGaps,
   CitationSite,
   Confidence,
   ExportSite,

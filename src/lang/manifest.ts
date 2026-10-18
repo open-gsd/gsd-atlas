@@ -1,5 +1,5 @@
 /**
- * The language-module manifest, schema version 1 (D-04, FND-03).
+ * The language-module manifest, schema versions 1 and 2 (D-04, FND-03; ADR 5, amendment of 2026-10-18).
  *
  * The manifest is untrusted data authored outside the project (trust-boundaries ADR).
  * Every object is strict: an unknown field is rejected, so any field added after Phase 1
@@ -9,13 +9,27 @@
  * Constraints are written with built-in Zod checks and `.regex()` only. Refinement
  * callbacks do not reach the generated JSON Schema, which would break the Ajv parity
  * test (D-05).
+ *
+ * Changelog:
+ * - Version 2 (plan 03-28, TSM-04, D-20) adds `project.adrDirs`: at most eight relative paths, under the same path rule
+ *   as every other manifest path, naming where the repository keeps its ADR documents. The field exists only from
+ *   version 2: a version 1 manifest that carries it is rejected like any unknown field, and version 1 manifests stay
+ *   valid and unchanged. The two versions are a union on `schemaVersion`, built from built-in checks only, so the one
+ *   generated JSON Schema document describes both and the Ajv parity test covers both.
  */
 import { z } from 'zod';
 
 import { diagnostic } from '../facts/index.ts';
 import type { Diagnostic } from '../facts/index.ts';
 
-export const MANIFEST_SCHEMA_VERSION = 1;
+/** The version a new manifest is written at. */
+export const MANIFEST_SCHEMA_VERSION = 2;
+
+/** Every version this build reads: version 1 manifests stay valid and unchanged. */
+export const SUPPORTED_MANIFEST_VERSIONS = [1, 2] as const;
+
+/** The most directories `project.adrDirs` may name. */
+export const MAX_ADR_DIRS = 8;
 
 /**
  * One shared rule for every manifest-referenced path (T-01-12). A path is accepted only
@@ -33,6 +47,14 @@ const relativeAssetPath = z
   .string()
   .regex(RELATIVE_ASSET_PATH, 'must be a relative path with no drive letter, backslash or ".." segment');
 
+/**
+ * True when `value` obeys the manifest path rule. The repository config's `adrDirs` (plan 03-28) uses the same rule, so a
+ * path means the same thing wherever a file names one.
+ */
+export function isRelativeAssetPath(value: unknown): value is string {
+  return typeof value === 'string' && RELATIVE_ASSET_PATH.test(value);
+}
+
 const kebabName = z
   .string()
   .regex(/^[a-z][a-z0-9-]*$/, 'must be lower-case kebab-case starting with a letter')
@@ -40,10 +62,10 @@ const kebabName = z
 
 const TIERS = ['grammar', 'precise', 'platform'] as const;
 
-export const ManifestSchema = z.strictObject({
+/** The fields every version has, in the order they are written; only `schemaVersion` and `project` differ between versions. */
+const commonFields = {
   /** Editor key; carries no meaning for the engine. */
   $schema: z.string().optional(),
-  schemaVersion: z.literal(MANIFEST_SCHEMA_VERSION),
   name: kebabName,
   version: z
     .string()
@@ -68,12 +90,6 @@ export const ManifestSchema = z.strictObject({
   parseBudget: z.number().min(0).max(1).default(0.005),
   testGlobs: z.array(z.string()).optional(),
   features: relativeAssetPath.optional(),
-  project: z
-    .strictObject({
-      markers: z.array(z.string()).optional(),
-      model: kebabName.optional(),
-    })
-    .optional(),
   /** Data only: never executed or resolved by the manifest parser (T-01-14). */
   precise: z
     .union([
@@ -81,9 +97,39 @@ export const ManifestSchema = z.strictObject({
       z.strictObject({ adapter: kebabName }),
     ])
     .optional(),
+};
+
+const projectFields = {
+  markers: z.array(z.string()).optional(),
+  model: kebabName.optional(),
+};
+
+const ManifestV1 = z.strictObject({
+  schemaVersion: z.literal(1),
+  ...commonFields,
+  project: z.strictObject(projectFields).optional(),
 });
 
+const ManifestV2 = z.strictObject({
+  schemaVersion: z.literal(2),
+  ...commonFields,
+  project: z
+    .strictObject({
+      ...projectFields,
+      /** Where the repository keeps its ADR documents (D-20); a repository's `.gsd-atlas/config.json` may replace the list. */
+      adrDirs: z.array(relativeAssetPath).max(MAX_ADR_DIRS).optional(),
+    })
+    .optional(),
+});
+
+export const ManifestSchema = z.discriminatedUnion('schemaVersion', [ManifestV1, ManifestV2]);
+
 export type Manifest = z.output<typeof ManifestSchema>;
+
+/** The ADR directories a manifest names (`project.adrDirs`, version 2 only); empty for a version 1 manifest or when it names none. */
+export function adrDirsOf(manifest: Manifest): readonly string[] {
+  return manifest.schemaVersion === 2 ? (manifest.project?.adrDirs ?? []) : [];
+}
 
 export type ParseManifestResult =
   | { readonly ok: true; readonly manifest: Manifest }

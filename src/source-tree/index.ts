@@ -8,7 +8,10 @@ export type { SourceTreeOptions } from './real.ts';
 export { createFakeSourceTree } from './fake.ts';
 export { SOURCE_TREE_CODES, SourceTreeError } from './types.ts';
 export type {
+  DirectoryListing,
+  DirectoryStatus,
   HashPathsResult,
+  ListDirectoryOptions,
   ListTreeResult,
   ReadManyResult,
   ReadTextResult,

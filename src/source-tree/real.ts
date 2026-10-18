@@ -17,6 +17,7 @@ import type { Diagnostic } from '../facts/index.ts';
 import { SOURCE_TREE_CODES, SourceTreeError } from './types.ts';
 import { assertReadArguments, assertRepoRelative, assertRevision, batchPathReason, isObjectId, unhashableReason } from './validate.ts';
 import { pickRootCommit } from './identity.ts';
+import { listConfinedDirectory } from './list-directory.ts';
 import { DEFAULT_READ_TEXT_BYTES, readConfinedText } from './read-text.ts';
 import { filterSourceSet, SOURCE_PEEK_BYTES } from './source-set.ts';
 import type { PathAttributes, PeekResult } from './source-set.ts';
@@ -549,7 +550,22 @@ export function createSourceTree(options: SourceTreeOptions): SourceTree {
     return readConfinedText(worktree, relPath, readOptions?.maxBytes ?? DEFAULT_READ_TEXT_BYTES);
   }
 
-  return { snapshot, hashPaths, unignoredPaths, pathAttributes, sourceSet, worktrees, readText, hasObject, read, identity, resolveCommit, listTree, readMany };
+  return {
+    snapshot,
+    hashPaths,
+    unignoredPaths,
+    pathAttributes,
+    sourceSet,
+    worktrees,
+    readText,
+    listDirectory: listConfinedDirectory,
+    hasObject,
+    read,
+    identity,
+    resolveCommit,
+    listTree,
+    readMany,
+  };
 }
 
 /** One answer of `cat-file --batch-check`: the object's id, type and size, or `missing`/`ambiguous`. */

@@ -1,5 +1,10 @@
 /**
- * node scripts/adr-citations-check.ts --dir <prepared checkout> [--sample 20] [--seed 7] [--numbers 1,2,3] [--tsconfig tsconfig.json]
+ * node scripts/adr-citations-check.ts --dir <prepared checkout> [--resolve] [--sample 20] [--seed 7] [--numbers 1,2,3] [--tsconfig tsconfig.json]
+ *
+ * With `--resolve` (plan 03-28) it checks the other half of TSM-04 instead: what each cited number names in the repository's ADR
+ * directory. It builds the checkout through the composed Host, asks `code_find` with `kind: adr` for every cited number (the
+ * product's store-and-directory resolution), prints how many are resolved, ambiguous and unresolved, and compares a sample with
+ * the oracle's reading of the same directories (`adrFilesOf`, the directory half of its `adr-of` key). Zero disagreements passes.
  *
  * Compares the ADR citations the Fact Store holds with the independent oracle's (plan 03-24, TSM-04, D-19).
  *
@@ -23,7 +28,8 @@ import { composeHost } from '../src/bin/compose.ts';
 import { STORE_FILE_NAME } from '../src/fact-store/schema.ts';
 import { PROTOCOL_VERSION } from '../src/facts/index.ts';
 import { openDatabase } from '../src/sqlite/index.ts';
-import { commentCitations, computeAnswerKey, stateOf, trackedCodeUnits } from './eval/oracle.ts';
+import { DEFAULT_ADR_DIRS } from '../src/tenant/index.ts';
+import { adrFilesOf, commentCitations, computeAnswerKey, stateOf, trackedCodeUnits } from './eval/oracle.ts';
 import type { OracleContext } from './eval/oracle.ts';
 
 /** The lines either side may be apart and still be the same mention (a comment that the two sides cut differently). */
@@ -81,6 +87,10 @@ export interface CheckOptions {
   readonly out?: (line: string) => void;
   /** Replaces the build and the read of the store. Tests inject one to force a difference. */
   readonly readStoreCitations?: (dir: string, workDir: string) => Promise<readonly StoreHit[]>;
+  /** `--resolve` only: replaces the build and the questions put to the Host. Tests inject one to force a disagreement. */
+  readonly resolveNumbers?: (dir: string, workDir: string, numbers: readonly number[]) => Promise<ReadonlyMap<number, Resolution>>;
+  /** Replaces the read of the store's citation gaps. Tests inject one; the default reads the store the run built, if there is one. */
+  readonly readFilesWithGaps?: (workDir: string) => Promise<number | null>;
 }
 
 export interface CheckReport {
@@ -95,6 +105,8 @@ export interface CheckReport {
   readonly oracleTotal: number;
   /** Mentions inside string literals the oracle excluded, over the compared numbers. */
   readonly excludedNonComment: number;
+  /** Files of the store this run built that hold a citation gap; null when the store side was injected. */
+  readonly filesWithGaps: number | null;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -187,10 +199,10 @@ function storeFileUnder(storeRoot: string): string {
 }
 
 /**
- * Build `dir` once into an isolated store through the composed Host and read every stored citation of the overlay
- * (path, number, 1-based line of the mention), through a read-only connection. Nothing here consults the oracle.
+ * Compose the Host over `dir` with an isolated store under `workDir`, build the checkout, run `body` with the composed Host while
+ * it is still alive, and dispose it. The store file stays under `workDir` for the caller to read.
  */
-export async function buildAndReadCitations(dir: string, workDir: string): Promise<StoreHit[]> {
+async function withBuiltHost<T>(dir: string, workDir: string, body: (composed: ReturnType<typeof composeHost>) => Promise<T>): Promise<T> {
   const storeRoot = path.join(workDir, 'stores');
   const userDir = path.join(workDir, 'user');
   const home = path.join(workDir, 'home');
@@ -202,9 +214,19 @@ export async function buildAndReadCitations(dir: string, workDir: string): Promi
     if (!envelope.ok || envelope.data === null) {
       throw new Error(`build failed: ${envelope.diagnostics.map((d) => `${d.code}: ${d.message}`).join('; ')}`);
     }
+    return await body(composed);
   } finally {
     await composed.dispose();
   }
+}
+
+/**
+ * Build `dir` once into an isolated store through the composed Host and read every stored citation of the overlay
+ * (path, number, 1-based line of the mention), through a read-only connection. Nothing here consults the oracle.
+ */
+export async function buildAndReadCitations(dir: string, workDir: string): Promise<StoreHit[]> {
+  const storeRoot = path.join(workDir, 'stores');
+  await withBuiltHost(dir, workDir, async () => undefined);
   const db = await openDatabase(storeFileUnder(storeRoot), { readOnly: true, timeoutMs: STORE_READ_BUSY_MS });
   try {
     return db
@@ -217,6 +239,134 @@ export async function buildAndReadCitations(dir: string, workDir: string): Promi
       .map((row) => ({ file: String(row['path']), number: Number(row['number']), line: Number(row['start_line']) + 1 }));
   } finally {
     db.close();
+  }
+}
+
+/**
+ * How many files of the store the run built hold a citation gap (plan 03-28, amendment of 2026-10-18), counted read-only over the
+ * overlay joined to `citation_gaps` the way the citations are read. Null when `workDir` holds no store (the store side was
+ * injected by a test) or the store cannot be read. On the pinned gsd-core this is 0, so no scored-run answer gains a diagnostic.
+ */
+export async function readFilesWithGaps(workDir: string): Promise<number | null> {
+  const storeRoot = path.join(workDir, 'stores');
+  if (!fs.existsSync(storeRoot)) return null;
+  let db;
+  try {
+    db = await openDatabase(storeFileUnder(storeRoot), { readOnly: true, timeoutMs: STORE_READ_BUSY_MS });
+  } catch {
+    return null;
+  }
+  try {
+    const row = db.prepare('SELECT count(*) AS n FROM overlay_files o JOIN citation_gaps g ON g.file_id = o.file_id').get();
+    return Number(row?.['n'] ?? 0);
+  } catch {
+    return null;
+  } finally {
+    db.close();
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Resolution: the store-and-directory side of `--resolve` (plan 03-28)
+
+/** What a number names in the repository's ADR directory, as the product answers it. */
+export interface Resolution {
+  readonly status: 'resolved' | 'ambiguous' | 'unresolved';
+  /** Repo-relative paths, sorted by code unit. */
+  readonly files: readonly string[];
+}
+
+/**
+ * Build `dir` into an isolated store through the composed Host and ask it, for each of `numbers`, the question an agent asks:
+ * `code_find` with `kind: adr`. The answer is the product's own store-and-directory resolution; nothing here consults the oracle.
+ */
+export async function buildAndResolve(dir: string, workDir: string, numbers: readonly number[]): Promise<ReadonlyMap<number, Resolution>> {
+  return withBuiltHost(dir, workDir, async (composed) => {
+    const resolutions = new Map<number, Resolution>();
+    for (const number of numbers) {
+      const envelope = await composed.client.handle({
+        protocol: PROTOCOL_VERSION,
+        kind: 'code_find',
+        args: { name: `ADR-${String(number)}`, kind: 'adr', repo: dir, limit: 100 },
+      });
+      if (!envelope.ok) throw new Error(`code_find ADR-${String(number)} failed: ${envelope.diagnostics.map((d) => `${d.code}: ${d.message}`).join('; ')}`);
+      const data = envelope.data as { status: Resolution['status']; results: ReadonlyArray<{ path: string }> };
+      resolutions.set(number, { status: data.status, files: data.results.map((row) => row.path).sort(compareCodeUnits) });
+    }
+    return resolutions;
+  });
+}
+
+const compareCodeUnits = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
+
+const statusOfFiles = (files: readonly unknown[]): Resolution['status'] => (files.length === 0 ? 'unresolved' : files.length === 1 ? 'resolved' : 'ambiguous');
+
+export interface ResolveReport {
+  readonly ok: boolean;
+  /** How many of all the cited numbers are resolved, ambiguous or unresolved, as the product answers. */
+  readonly resolved: number;
+  readonly ambiguous: number;
+  readonly unresolved: number;
+  /** Distinct numbers the oracle finds cited in comments across the checkout. */
+  readonly census: number;
+  /** The numbers whose answer was compared with the oracle's. */
+  readonly compared: number;
+  /** One line per number whose status or file set differs. */
+  readonly disagreements: readonly string[];
+  /** Files of the store this run built that hold a citation gap; null when the store side was injected. */
+  readonly filesWithGaps: number | null;
+}
+
+/**
+ * `--resolve`: ask the product what each cited number names, count the numbers by status across the whole census, and compare a
+ * sample with the oracle's own reading of the ADR directory (`adrFilesOf`, the directory half of its `adr-of` key). Zero
+ * disagreements is the pass; each one is listed with both sides.
+ */
+export async function runResolveCheck(options: CheckOptions): Promise<ResolveReport> {
+  const out = options.out ?? ((line: string) => process.stdout.write(`${line}\n`));
+  const dir = path.resolve(options.dir);
+  // The oracle reads the same directories the product searches by convention, so a difference is the logic, not the configuration.
+  const ctx: OracleContext = { repoDir: dir, tsconfig: options.tsconfig ?? 'tsconfig.json', adrDirs: DEFAULT_ADR_DIRS };
+  const census = oracleCensus(ctx);
+  const sample = options.numbers === undefined ? sampleNumbers(census, options.sample ?? 20, options.seed ?? 7) : [...new Set(options.numbers)].sort((a, b) => a - b);
+  out(
+    `adr-citations-check: --resolve: the oracle finds ${String(census.length)} distinct ADR numbers cited in comments; comparing ${String(sample.length)}` +
+      `${options.numbers === undefined ? ` (sample ${String(options.sample ?? 20)}, seed ${String(options.seed ?? 7)})` : ' (given)'}`,
+  );
+
+  const workDir = fs.mkdtempSync(path.join(fs.realpathSync.native(os.tmpdir()), 'gsd-atlas-adr-resolve-'));
+  try {
+    const asked = [...new Set([...census, ...sample])].sort((a, b) => a - b);
+    const resolutions = await (options.resolveNumbers ?? buildAndResolve)(dir, workDir, asked);
+    const counts = { resolved: 0, ambiguous: 0, unresolved: 0 };
+    for (const number of census) {
+      const answer = resolutions.get(number);
+      if (answer !== undefined) counts[answer.status] += 1;
+    }
+    const oracleFiles = adrFilesOf(stateOf(ctx));
+    const disagreements: string[] = [];
+    for (const number of sample) {
+      const theirs = [...(oracleFiles.get(number) ?? [])].sort(compareCodeUnits);
+      const ours = resolutions.get(number);
+      const oracleSide = `${statusOfFiles(theirs)} [${theirs.join(', ')}]`;
+      if (ours === undefined) {
+        disagreements.push(`ADR-${String(number)} store=none oracle=${oracleSide}`);
+        continue;
+      }
+      const same = ours.status === statusOfFiles(theirs) && ours.files.length === theirs.length && ours.files.every((file, i) => file === theirs[i]);
+      if (!same) disagreements.push(`ADR-${String(number)} store=${ours.status} [${ours.files.join(', ')}] oracle=${oracleSide}`);
+    }
+    out(`resolved ${String(counts.resolved)}`);
+    out(`ambiguous ${String(counts.ambiguous)}`);
+    out(`unresolved ${String(counts.unresolved)}`);
+    out(`compared ${String(sample.length)}`);
+    out(`disagreements ${String(disagreements.length)}`);
+    for (const line of disagreements.slice(0, LISTED_DIFFERENCES)) out(`disagreement: ${line}`);
+    const filesWithGaps = await (options.readFilesWithGaps ?? readFilesWithGaps)(workDir);
+    if (filesWithGaps !== null) out(`filesWithGaps ${String(filesWithGaps)}`);
+    return { ok: disagreements.length === 0, ...counts, census: census.length, compared: sample.length, disagreements, filesWithGaps };
+  } finally {
+    removeTree(workDir);
   }
 }
 
@@ -299,6 +449,9 @@ export async function runCheck(options: CheckOptions): Promise<CheckReport> {
     out(`oracle_only ${String(oracleOnly)}`);
     for (const entry of storeOnlyEntries.slice(0, LISTED_DIFFERENCES)) out(`store_only: ${entry}`);
     for (const entry of oracleOnlyEntries.slice(0, LISTED_DIFFERENCES)) out(`oracle_only: ${entry}`);
+    // The files whose ADR mentions the index could not store, read from the store this run built (0 on the pinned gsd-core).
+    const filesWithGaps = await (options.readFilesWithGaps ?? readFilesWithGaps)(workDir);
+    if (filesWithGaps !== null) out(`filesWithGaps ${String(filesWithGaps)}`);
     out(
       `adr-citations-check: the oracle's total over these numbers is ${String(oracleTotal)}; differences ${String(storeOnly + oracleOnly)} ` +
         `(${percent(oracleTotal === 0 ? 0 : (storeOnly + oracleOnly) / oracleTotal)}, limit ${percent(MAX_DIFFERENCE_RATIO)}); ` +
@@ -313,13 +466,15 @@ export async function runCheck(options: CheckOptions): Promise<CheckReport> {
       census: census.length,
       oracleTotal,
       excludedNonComment: excluded,
+      filesWithGaps,
     };
   } finally {
     removeTree(workDir);
   }
 }
 
-const USAGE = 'usage: node scripts/adr-citations-check.ts --dir <prepared checkout> [--sample 20] [--seed 7] [--numbers 1,2,3] [--tsconfig tsconfig.json]\n';
+const USAGE =
+  'usage: node scripts/adr-citations-check.ts --dir <prepared checkout> [--resolve] [--sample 20] [--seed 7] [--numbers 1,2,3] [--tsconfig tsconfig.json]\n';
 
 function wholeNumber(value: string | undefined, fallback: number, name: string): number {
   if (value === undefined) return fallback;
@@ -339,6 +494,7 @@ export async function runCli(argv: string[], write: (text: string) => void, over
         seed: { type: 'string' },
         numbers: { type: 'string' },
         tsconfig: { type: 'string' },
+        resolve: { type: 'boolean' },
       },
       strict: true,
     }));
@@ -361,7 +517,7 @@ export async function runCli(argv: string[], write: (text: string) => void, over
     write(`adr-citations-check: ${error instanceof Error ? error.message : String(error)}\n${USAGE}`);
     return 2;
   }
-  const report = await runCheck({
+  const options: CheckOptions = {
     dir: values.dir,
     sample,
     seed,
@@ -371,7 +527,8 @@ export async function runCli(argv: string[], write: (text: string) => void, over
       write(`${line}\n`);
     },
     ...overrides,
-  });
+  };
+  const report = values.resolve === true ? await runResolveCheck(options) : await runCheck(options);
   write(`adr-citations-check: ${report.ok ? 'OK' : 'FAILED'}\n`);
   return report.ok ? 0 : 1;
 }

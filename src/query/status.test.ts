@@ -28,6 +28,7 @@ interface Snapshot {
     lastIndexedAt: number | null;
   } | null;
   readonly governor: { queued: number; running: number; leases: number };
+  readonly citations: { filesWithGaps: number };
   readonly tiers: readonly { module: string; grammar: boolean; precise: boolean; platform: boolean }[];
   readonly policy: string;
   readonly health: string;
@@ -50,7 +51,7 @@ interface Overrides {
 function ports(h: Harness, overrides: Overrides = {}): StatusPort {
   const store: StoreStatus = {
     schemaVersion: 1,
-    worktrees: [{ worktree: h.dir, seq: 7, stalePaths: overrides.staleCount ?? 0, files: 3 }],
+    worktrees: [{ worktree: h.dir, seq: 7, stalePaths: overrides.staleCount ?? 0, files: 3, citationGapFiles: 0 }],
     sizeBytes: 4096,
     writerLeaseHeld: true,
     ...overrides.store,
@@ -101,12 +102,49 @@ describe('atlas_status: state from injected ports', () => {
       store: { schemaVersion: 1, sizeBytes: 4096, writerLeaseHeld: true, rebuilt: false },
       indexer: { watchMode: 'native', queued: 0, running: 0, failed: 0, reconciling: false, lastReconcileAt: 4000, lastIndexedAt: 5000 },
       governor: { queued: 1, running: 2, leases: 3 },
+      citations: { filesWithGaps: 0 },
       tiers: [{ module: 'typescript', grammar: true, precise: false, platform: false }],
       policy: 'off',
       health: 'ok',
       reasons: [],
     });
     assert.equal('degraded' in envelope, false);
+  });
+
+  it('citations filesWithGaps: the sum of the files with a citation gap over the listed worktrees, 0 and present when there is none', async (t) => {
+    const h = await world(t);
+    const two: StoreStatus = {
+      schemaVersion: 2,
+      worktrees: [
+        { worktree: h.dir, seq: 7, stalePaths: 0, files: 9, citationGapFiles: 2 },
+        { worktree: `${h.dir}-feature`, seq: 3, stalePaths: 0, files: 4, citationGapFiles: 3 },
+        { worktree: `${h.dir}-quiet`, seq: 1, stalePaths: 0, files: 1, citationGapFiles: 0 },
+      ],
+      sizeBytes: 1,
+      writerLeaseHeld: true,
+    };
+    const summed = await h.query({ status: ports(h, { store: two }) }).ask(statusRequest(h));
+    assert.deepEqual(snapshotOf(summed).citations, { filesWithGaps: 5 });
+
+    const none = await h.query({ status: ports(h, { store: { worktrees: [] } }) }).ask(statusRequest(h));
+    assert.deepEqual(snapshotOf(none).citations, { filesWithGaps: 0 });
+  });
+
+  it('gap does not degrade health: a gap is the only finding, and health stays ok with no reason and no degraded code', async (t) => {
+    const h = await world(t);
+    const store: StoreStatus = {
+      schemaVersion: 2,
+      worktrees: [{ worktree: h.dir, seq: 7, stalePaths: 0, files: 3, citationGapFiles: 3 }],
+      sizeBytes: 1,
+      writerLeaseHeld: true,
+    };
+    const envelope = await h.query({ status: ports(h, { store }) }).ask(statusRequest(h));
+    assert.equal(envelope.ok, true);
+    assert.equal(snapshotOf(envelope).health, 'ok');
+    assert.deepEqual(snapshotOf(envelope).reasons, []);
+    assert.deepEqual(snapshotOf(envelope).citations, { filesWithGaps: 3 });
+    assert.equal('degraded' in envelope, false);
+    assert.deepEqual(envelope.diagnostics, [], 'a count only: no note, no file name');
   });
 
   it('a daemon without an Indexer reports indexer null and is still ok', async (t) => {

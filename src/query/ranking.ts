@@ -208,9 +208,10 @@ export function impactKeyOf(input: ImpactRankInput): SortKey {
 /**
  * The sections of `code_context`, in the order they are listed and cut. `supertype` and `subtype` (plan 03-25) are the
  * compiler's relations of the symbol; they are paged like the others but are rendered under `data.supertypes` and
- * `data.subtypes`, not in `data.results`.
+ * `data.subtypes`, not in `data.results`. `citation` (plan 03-28) is the ADR mentions attached to the symbol, rendered under
+ * `data.citations`; there are few of them and each is a decision the code answers to, so they come before the file's imports.
  */
-export const CONTEXT_SECTIONS = ['definition', 'parent', 'child', 'supertype', 'subtype', 'import', 'export', 'reference'] as const;
+export const CONTEXT_SECTIONS = ['definition', 'parent', 'child', 'supertype', 'subtype', 'citation', 'import', 'export', 'reference'] as const;
 
 export type ContextSection = (typeof CONTEXT_SECTIONS)[number];
 

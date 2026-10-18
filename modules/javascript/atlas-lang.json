@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "name": "javascript",
   "version": "0.1.0",
   "extensions": [".js", ".cjs", ".mjs", ".jsx"],
@@ -13,5 +13,8 @@
     "imports": "queries/imports.scm"
   },
   "tiers": ["grammar"],
-  "parseBudget": 0.005
+  "parseBudget": 0.005,
+  "project": {
+    "adrDirs": ["docs/adr", "docs/adrs", "doc/adr", "adr"]
+  }
 }

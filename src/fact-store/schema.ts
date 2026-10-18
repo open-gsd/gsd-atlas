@@ -8,6 +8,11 @@ import type { Db } from '../sqlite/index.ts';
  * it is derived data that this build deletes and recreates when it opens it (the open step, D-15); the Host then
  * reports `not_indexed` until `gsd-atlas build` has run again. Development stores built in Phase 2 need that one
  * rebuild.
+ *
+ * Plan 03-28 adds `citation_gaps` (what the extractor could not keep of a file's ADR mentions) without moving the version:
+ * like `resolved_asked` and `resolved_relations` it is additive derived data created `IF NOT EXISTS`,
+ * plan 03-24 recorded version 2 as the single bump of Phase 3 and plan 03-31 pins it. A development store built before the
+ * table existed reports no gap until it is rebuilt.
  */
 export const SCHEMA_VERSION = 2;
 
@@ -146,6 +151,16 @@ CREATE TABLE IF NOT EXISTS citations (
   PRIMARY KEY (file_id, ord)
 ) WITHOUT ROWID;
 CREATE INDEX IF NOT EXISTS citations_by_number ON citations (number);
+
+-- What the extractor could not keep of a file version's ADR mentions (plan 03-28, amendment of 2026-10-18): comments it skipped
+-- for their size and whether the file held more mentions than the cap. One row per file version that has a gap, written in the
+-- file's own transaction and collected with it. A count and a flag; no path, number or text. Additive derived data, created with
+-- IF NOT EXISTS, so a store made before this table existed gains it on the next open and the schema version does not move.
+CREATE TABLE IF NOT EXISTS citation_gaps (
+  file_id INTEGER NOT NULL PRIMARY KEY,
+  skipped_comments INTEGER NOT NULL,
+  capped INTEGER NOT NULL
+) WITHOUT ROWID;
 
 CREATE TABLE IF NOT EXISTS overlays (
   worktree TEXT NOT NULL PRIMARY KEY,

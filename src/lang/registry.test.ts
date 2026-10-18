@@ -186,6 +186,58 @@ describe('resolveModules: four-location precedence (D-03)', () => {
   });
 });
 
+describe('resolveModules: manifest versions 1 and 2 side by side (plan 03-28)', () => {
+  it('lists a version 1 module and a version 2 module together, each with its schema version and ADR directories', () => {
+    const w = makeWorld();
+    w.place('user', 'toy');
+    w.place('repo', 'toy2', (m) => {
+      m['name'] = 'toy2';
+      m['extensions'] = ['.toy2'];
+      m['schemaVersion'] = 2;
+      m['project'] = { adrDirs: ['docs/adr', 'doc/adr'] };
+    });
+    const result = resolveModules(w.roots);
+    assert.deepEqual(result.diagnostics, []);
+    const byName = Object.fromEntries(result.modules.map((m) => [m.name, m]));
+    assert.equal(byName['toy']?.schemaVersion, 1);
+    assert.deepEqual(byName['toy']?.adrDirs, []);
+    assert.equal(byName['toy2']?.schemaVersion, 2);
+    assert.deepEqual(byName['toy2']?.adrDirs, ['docs/adr', 'doc/adr']);
+  });
+
+  it('a version 2 module that names no ADR directory lists none', () => {
+    const w = makeWorld();
+    w.place('user', 'toy', (m) => {
+      m['schemaVersion'] = 2;
+    });
+    const toy = resolveModules(w.roots).modules[0]!;
+    assert.equal(toy.schemaVersion, 2);
+    assert.deepEqual(toy.adrDirs, []);
+  });
+
+  it('skips a module with schemaVersion 3 with the existing invalid-manifest diagnostic and uses the next copy', () => {
+    const w = makeWorld();
+    const future = w.place('repo', 'toy', (m) => {
+      m['schemaVersion'] = 3;
+    });
+    w.place('user', 'toy');
+    const result = resolveModules(w.roots);
+    assert.ok(result.diagnostics.length > 0);
+    assert.ok(result.diagnostics.every((d) => d.code === 'manifest_invalid' && d.severity === 'warning' && d.message.includes(realPath(future))));
+    assert.equal(result.modules[0]?.source, 'user');
+  });
+
+  it('a version 1 module that carries project.adrDirs is skipped like any unknown field', () => {
+    const w = makeWorld();
+    w.place('repo', 'toy', (m) => {
+      m['project'] = { adrDirs: ['docs/adr'] };
+    });
+    const result = resolveModules(w.roots);
+    assert.deepEqual(result.modules, []);
+    assert.ok(result.diagnostics.some((d) => d.code === 'manifest_invalid' && d.message.includes('project.adrDirs')));
+  });
+});
+
 describe('resolveModules: an invalid module is skipped, never a crash', () => {
   it('skips a repo copy with an invalid manifest (manifest_invalid) and falls through to the valid user copy', () => {
     const w = makeWorld();

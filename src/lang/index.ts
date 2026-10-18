@@ -2,7 +2,7 @@
  * The language-module seam: manifest and lock parsing, the confined module reader, and the
  * `lang test` runner (FND-03, FND-11, D-02). Other modules import from here and nowhere else.
  */
-export { parseManifest } from './manifest.ts';
+export { MANIFEST_SCHEMA_VERSION, MAX_ADR_DIRS, SUPPORTED_MANIFEST_VERSIONS, adrDirsOf, isRelativeAssetPath, parseManifest } from './manifest.ts';
 export type { Manifest, ParseManifestResult } from './manifest.ts';
 export { PLATFORM_KEYS, expectedPlatformSha256, parseGrammarLock, platformKey } from './grammar-lock.ts';
 export type { GrammarLock, GrammarLockResult, PlatformExpectation, PlatformKey } from './grammar-lock.ts';

@@ -4,7 +4,7 @@ import path from 'node:path';
 import { describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
-import { MANIFEST_SCHEMA_VERSION, parseManifest } from './manifest.ts';
+import { MANIFEST_SCHEMA_VERSION, SUPPORTED_MANIFEST_VERSIONS, adrDirsOf, parseManifest } from './manifest.ts';
 
 const fixtureDir = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -31,6 +31,7 @@ const INVALID_CASES: Record<string, string> = {
   'invalid-backslash-path.json': 'grammar.wasm',
   'invalid-empty-extensions.json': 'extensions',
   'invalid-parse-budget.json': 'parseBudget',
+  'invalid-v1-adrdirs.json': 'project.adrDirs',
 };
 
 /** A known-good manifest used as the base for inline mutations. */
@@ -45,17 +46,34 @@ function good(): Record<string, unknown> {
 }
 
 describe('manifest fixtures', () => {
-  it('ships exactly twelve fixtures: two valid and ten invalid', () => {
+  it('ships exactly fourteen fixtures: three valid and eleven invalid', () => {
     const files = readdirSync(fixtureDir).filter((f) => f.endsWith('.json'));
-    assert.equal(files.filter((f) => f.startsWith('valid-')).length, 2);
+    assert.deepEqual(files.filter((f) => f.startsWith('valid-')).sort(), ['valid-full.json', 'valid-minimal.json', 'valid-v2-adrdirs.json']);
     assert.deepEqual(
       files.filter((f) => f.startsWith('invalid-')).sort(),
       Object.keys(INVALID_CASES).sort(),
     );
   });
 
-  it('exports schema version 1', () => {
-    assert.equal(MANIFEST_SCHEMA_VERSION, 1);
+  it('writes new manifests at schema version 2 and reads versions 1 and 2', () => {
+    assert.equal(MANIFEST_SCHEMA_VERSION, 2);
+    assert.deepEqual([...SUPPORTED_MANIFEST_VERSIONS], [1, 2]);
+  });
+
+  it('valid-v2-adrdirs.json parses with its ADR directories carried through, and a version 1 manifest names none', () => {
+    const result = parseManifest(loadFixture('valid-v2-adrdirs.json'), 'valid-v2-adrdirs.json');
+    assert.equal(result.ok, true);
+    if (!result.ok) return;
+    assert.equal(result.manifest.schemaVersion, 2);
+    assert.deepEqual(adrDirsOf(result.manifest), ['docs/adr', 'doc/adr']);
+    assert.deepEqual(result.manifest.project, { markers: ['fixture.toml'], model: 'fixture-project', adrDirs: ['docs/adr', 'doc/adr'] });
+
+    const v1 = parseManifest(loadFixture('valid-minimal.json'));
+    assert.equal(v1.ok, true);
+    if (v1.ok) assert.deepEqual(adrDirsOf(v1.manifest), []);
+    const bare = parseManifest({ ...good(), schemaVersion: 2 });
+    assert.equal(bare.ok, true);
+    if (bare.ok) assert.deepEqual(adrDirsOf(bare.manifest), [], 'a version 2 manifest that names no ADR directory names none');
   });
 
   it('valid-minimal.json parses and gets the defaults parseBudget 0.005 and tiers ["grammar"]', () => {
@@ -104,6 +122,21 @@ describe('manifest fixtures', () => {
         result.diagnostics.some((d) => d.message.includes(needle)),
         `no diagnostic names ${needle}: ${JSON.stringify(result.diagnostics)}`,
       );
+    });
+  }
+});
+
+describe('the built-in modules (plan 03-28)', () => {
+  const modulesDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'modules');
+
+  for (const name of ['typescript', 'javascript']) {
+    it(`${name} is a version 2 manifest with the ADR directory convention list`, () => {
+      const json = JSON.parse(readFileSync(path.join(modulesDir, name, 'atlas-lang.json'), 'utf8')) as unknown;
+      const result = parseManifest(json, name);
+      assert.equal(result.ok, true, JSON.stringify(result));
+      if (!result.ok) return;
+      assert.equal(result.manifest.schemaVersion, 2);
+      assert.deepEqual(adrDirsOf(result.manifest), ['docs/adr', 'docs/adrs', 'doc/adr', 'adr']);
     });
   }
 });
@@ -249,6 +282,25 @@ describe('manifest field rules', () => {
     assert.equal(parseManifest({ ...good(), project: { model: 'Bad Model' } }).ok, false);
     assert.equal(parseManifest({ ...good(), replace: 'yes' }).ok, false);
     assert.equal(parseManifest({ ...good(), testGlobs: [1] }).ok, false);
+  });
+
+  it('project.adrDirs: at most eight relative paths, only from version 2', () => {
+    const v2 = (adrDirs: unknown): Record<string, unknown> => ({ ...good(), schemaVersion: 2, project: { adrDirs } });
+    assert.equal(parseManifest(v2(['docs/adr'])).ok, true);
+    assert.equal(parseManifest(v2([])).ok, true);
+    assert.equal(parseManifest(v2(Array.from({ length: 8 }, (_, i) => `d${String(i)}/adr`))).ok, true);
+    assert.equal(parseManifest(v2(Array.from({ length: 9 }, (_, i) => `d${String(i)}/adr`))).ok, false, 'more than eight');
+    for (const bad of ['../adr', 'docs/../../etc', '..', '/abs/adr', 'C:/adr', 'c:adr', 'docs\\adr', 'a\u0000b', '']) {
+      assert.equal(parseManifest(v2([bad])).ok, false, `accepted ${JSON.stringify(bad)}`);
+      assert.equal(parseManifest(v2(['docs/adr', bad])).ok, false, `accepted ${JSON.stringify(bad)} beside a good entry`);
+    }
+    assert.equal(parseManifest(v2('docs/adr')).ok, false, 'a string is not a list');
+    assert.equal(parseManifest(v2([1])).ok, false);
+    assert.equal(parseManifest({ ...good(), schemaVersion: 1, project: { adrDirs: ['docs/adr'] } }).ok, false, 'version 1 has no adrDirs');
+    const refused = parseManifest({ ...good(), schemaVersion: 1, project: { adrDirs: ['docs/adr'] } });
+    assert.ok(!refused.ok && refused.diagnostics.some((d) => d.message.includes('project.adrDirs')));
+    assert.equal(parseManifest({ ...good(), schemaVersion: 3 }).ok, false, 'a future version is refused');
+    assert.equal(parseManifest({ ...good(), schemaVersion: '2' }).ok, false, 'the version is a number');
   });
 
   it('treats precise.command as data: parsing never spawns or resolves it', () => {

@@ -11,11 +11,15 @@ import { createHash } from 'node:crypto';
 import { diagnostic } from '../facts/index.ts';
 import type { Diagnostic } from '../facts/index.ts';
 import { SOURCE_TREE_CODES, SourceTreeError } from './types.ts';
+import { isListableName, resolveMaxEntries, trimDirectory } from './list-directory.ts';
 import { DEFAULT_READ_TEXT_BYTES } from './read-text.ts';
 import { filterSourceSet, SOURCE_PEEK_BYTES } from './source-set.ts';
 import type { PathAttributes, PeekResult } from './source-set.ts';
 import type {
+  DirectoryListing,
+  DirectoryStatus,
   HashPathsResult,
+  ListDirectoryOptions,
   ListTreeResult,
   ReadManyResult,
   ReadTextResult,
@@ -32,6 +36,9 @@ import { assertReadArguments, assertRepoRelative, assertRevision, batchPathReaso
 
 /** The one worktree the fake has when the world describes none, and the root of its fake git directory. */
 const FAKE_WORKTREE = '/fake';
+
+/** The modification time every directory of the fake has: its world never changes, so neither does a directory. */
+const FAKE_DIRECTORY_MTIME_MS = 1;
 
 const encoder = new TextEncoder();
 
@@ -113,6 +120,31 @@ export function createFakeSourceTree(world: Partial<SourceTreeWorld> = {}): Sour
       if (content === null) return Promise.resolve({ kind: isDirectory(relPath) ? 'not_file' : 'missing' });
       if (Buffer.byteLength(content) > (options?.maxBytes ?? DEFAULT_READ_TEXT_BYTES)) return Promise.resolve({ kind: 'too_large' });
       return Promise.resolve({ kind: 'ok', text: content });
+    },
+
+    // async so that an invalid cap rejects, exactly as the real tree's listing does.
+    async listDirectory(_worktree: string, dir: string, options?: ListDirectoryOptions): Promise<DirectoryListing> {
+      const cap = resolveMaxEntries(options);
+      const none = (status: DirectoryStatus): DirectoryListing => ({ status, names: [], mtimeMs: 0, truncated: false });
+      if (escapesWorktree(dir)) return none('escape');
+      const rel = trimDirectory(dir);
+      if (rel === null) return none('escape');
+      if (onDisk(rel) !== null) return none('not_directory');
+      const prefix = `${rel}/`;
+      let any = false;
+      const names: string[] = [];
+      for (const filePath of new Set([...committedPaths, ...Object.keys(working)])) {
+        if (!filePath.startsWith(prefix) || onDisk(filePath) === null) continue;
+        any = true;
+        const rest = filePath.slice(prefix.length);
+        if (!rest.includes('/') && isListableName(rest)) names.push(rest);
+      }
+      if (!any) return none('missing');
+      if (options?.ifMtimeMs === FAKE_DIRECTORY_MTIME_MS) {
+        return { status: 'ok', names: [], mtimeMs: FAKE_DIRECTORY_MTIME_MS, truncated: false, unchanged: true };
+      }
+      names.sort(compareCodeUnits);
+      return { status: 'ok', names: names.slice(0, cap), mtimeMs: FAKE_DIRECTORY_MTIME_MS, truncated: names.length > cap };
     },
 
     hashPaths(_worktree: string, paths: readonly string[]): Promise<HashPathsResult> {

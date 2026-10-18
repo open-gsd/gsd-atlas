@@ -106,8 +106,10 @@ export interface BuildResult {
   readonly removed: number;
   /**
    * Snapshot diagnostics plus one diagnostic per file the source set dropped (and one count of unclaimed extensions),
-   * one count of emit outputs left out, and one count (`citation_comment_too_long`) of files parsed in this run that
-   * hold an ADR-mentioning comment over the comment size bound, whose citations are therefore not indexed.
+   * one count of emit outputs left out, and one count (`citation_comment_too_long`) of the files of the worktree's overlay that
+   * hold a citation gap (a comment over the comment size bound, or more mentions than the per-file cap), whose citations are
+   * therefore not all indexed. That count is read from the store after the overlay is written, so a build that parses nothing
+   * repeats it.
    */
   readonly skipped: readonly Diagnostic[];
   readonly failed: readonly FailedPath[];

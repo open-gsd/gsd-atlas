@@ -60,7 +60,7 @@ A relative `--repo` or `--cwd` resolves against the process working directory. W
 
 | Option | Value | Commands | Meaning |
 | --- | --- | --- | --- |
-| `--kind` | text | `find`, `refs`, `history` | `find`: only symbols of this kind, for example `function` or `class`. `refs`: only definitions of this kind are followed. |
+| `--kind` | text | `find`, `refs`, `history` | `find`: only symbols of this kind, for example `function` or `class`. `refs`: only definitions of this kind are followed. For both, the kind `adr` asks about an ADR number instead of a symbol. |
 | `--mode` | `exact`, `prefix`, `fuzzy` or `auto` | `find`, `history` | How names match. Default `auto`. `exact` reads the exact tier, `prefix` the exact and prefix tiers, `fuzzy` and `auto` all three when the name has at least 3 characters. |
 | `--path` | repo-relative file | `refs`, `context`, `impact`, `history` | `refs`, `context`, `impact`: the defining file, to tell same-named symbols apart. `history`: read only this file of the commit. |
 | `--depth` | whole number, 0 or more | `impact`, `history` | Hops to follow outward from the symbol. Default 2, at most 5 (a larger value is reduced, with a hint). 0 follows none. |
@@ -106,6 +106,7 @@ gsd-atlas find <name> [--kind <kind>] [--mode exact|prefix|fuzzy|auto] [selectio
 - Options: `--repo`, `--cwd`, `--budget`, `--more`, `--fresh`, `--limit`, `--kind`, `--mode`.
 - Result schema: `gsd-atlas.code-find/1`.
 - `data.results[]`: `name`, `kind`, `path`, `line`, `col` (both 1-based), `exported` (when known), `confidence`, `citation`.
+- `--kind adr` asks where an ADR is: `<name>` is then an ADR number (`ADR-3473`, `adr 3473`, `#3473` or `3473`) and `data` is `{ number, status, citations, results[] }` with the ADR file or files that carry the number (see [ADR citations](mcp.md#adr-citations)).
 - Errors: `not_indexed`, `not_a_repo`, `invalid_args`, `bad_cursor`, `output_too_large`.
 
 ### gsd-atlas refs
@@ -119,6 +120,7 @@ gsd-atlas refs <name> [--kind <kind>] [--path <file>] [selection and paging flag
 - `data.targets[]`: the definitions the references are to (at most 5): `name`, `kind`, `path`, `line`, `handle`.
 - `data.results[]`: `target` (a target handle), `path`, `line`, `col`, `kind` (`call`, `new`, `read`, `type`, `heritage` or `member`), `enclosing`, `tier`, `confidence`, `ambiguous`, `candidates`, `citation`.
 - A reference matched by name is `INFERRED`, never `EXTRACTED`.
+- `--kind adr` lists the code comments that cite an ADR: `<name>` is then an ADR number, `data` is `{ adr: { number, status, files[] }, results[] }` and each result has `path`, `line`, `col`, `detail`, `attachedTo`, `confidence` and `citation` (see [ADR citations](mcp.md#adr-citations)).
 
 ### gsd-atlas context
 
@@ -189,7 +191,7 @@ gsd-atlas build [--repo <dir>] [--cwd <dir>]   (index the repository; the only w
 - Result schema: `gsd-atlas.build/1`.
 - `data`: `worktree`, `files` (files in the source set), `parsed` (files whose facts were extracted), `linked` (files attached to facts the store already held), `removed` (paths that left the index), `skipped` (count of skipped items), `failed` (count of files that failed), `failedCodes` (failure code to count). `skipped` is still a count; the keys and their types do not change.
 - After the index is built, a repository with a precise tier (the TypeScript compiler) gets one more pass before the command returns: the compiler is asked about every reference site of the indexed files, in batches, and the answers are stored, so the first `refs` after a build is answered from the store and not from a cold compiler. The pass has a time bound (25 seconds, `precise.requestTimeoutMs`). A pass that does not finish leaves the build successful, with a `resolver_timeout` note in `diagnostics`; `gsd-atlas maintain resolve` continues it.
-- `diagnostics` (the envelope field, not `data`): `[]` for a build that left nothing out. Otherwise it lists the notes of the build, in this order: `emit_output_not_indexed` (some files are the emit output of an included source and are not indexed), `citation_comment_too_long` (some files have comments that mention an ADR but are over the comment size bound, so their citations are not indexed), then `resolver_timeout` (the compiler pass above did not finish). Each is an `info` diagnostic with fixed text and a count, and carries no file path and no repository text. They are diagnostics, not degraded codes: a build sets no `degraded`. Any other note the build collects (for example files no language module claims) is counted in `skipped` and goes no further.
+- `diagnostics` (the envelope field, not `data`): `[]` for a build that left nothing out. Otherwise it lists the notes of the build, in this order: `emit_output_not_indexed` (some files are the emit output of an included source and are not indexed), `citation_comment_too_long` (some files have ADR mentions that are not indexed, a comment over the comment size bound or more than 200 mentions in one file, so citations from them are missing; the count is read from the store, so a build that parses nothing repeats it), then `resolver_timeout` (the compiler pass above did not finish). Each is an `info` diagnostic with fixed text and a count, and carries no file path and no repository text. They are diagnostics, not degraded codes: a build sets no `degraded`. Any other note the build collects (for example files no language module claims) is counted in `skipped` and goes no further.
 - Errors: `not_a_repo`, `lease_held` (exit 3), `store_unavailable`, `schema_too_new`.
 
 ### gsd-atlas maintain
@@ -260,7 +262,7 @@ gsd-atlas lang list [root flags]
 
 - Options: the module roots.
 - Result schema: `gsd-atlas.lang-list/1`.
-- `data.modules[]`: `name`, `source` (`repo`, `user`, `npm` or `builtin`), `dir`, `version`, `extensions`, `inactiveExtensions` (extensions another module owns), `tiers[]` (`tier`: `grammar`, `precise` or `platform`; `active`; `reason` when given), `shadowed[]` (`source`, `dir`).
+- `data.modules[]`: `name`, `source` (`repo`, `user`, `npm` or `builtin`), `dir`, `version`, `schemaVersion` (the manifest version the module is written at, 1 or 2), `adrDirs` (the ADR directories its manifest names; empty for a version 1 manifest), `extensions`, `inactiveExtensions` (extensions another module owns), `tiers[]` (`tier`: `grammar`, `precise` or `platform`; `active`; `reason` when given), `shadowed[]` (`source`, `dir`).
 
 ### gsd-atlas lang test
 

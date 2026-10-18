@@ -54,7 +54,7 @@ Description: `Find where a symbol is defined, by name. Returns ranked definition
 | Input | Type | Required | Default | Meaning |
 | --- | --- | --- | --- | --- |
 | `name` | string, at least 1 character after trimming | yes | | The symbol name. |
-| `kind` | string | no | any | Only symbols of this kind, for example `function` or `class`. |
+| `kind` | string | no | any | Only symbols of this kind, for example `function` or `class`. The kind `adr` asks where an ADR is: `name` is then an ADR number (see [ADR citations](#adr-citations)). |
 | `mode` | `exact`, `prefix`, `fuzzy`, `auto` | no | `auto` | How names match; `auto` ranks every tier. |
 | `limit` | integer, greater than 0 | no | 50 | Most results wanted; capped at 200. |
 | `repo` | string | no | the working directory | Path of the repository or worktree to ask about. |
@@ -78,7 +78,7 @@ Description: `List the places that refer to a symbol, each with its confidence. 
 | Input | Type | Required | Default | Meaning |
 | --- | --- | --- | --- | --- |
 | `name` | string, at least 1 character after trimming | yes | | The symbol name. |
-| `kind` | string | no | any | Only definitions of this kind are followed. |
+| `kind` | string | no | any | Only definitions of this kind are followed. The kind `adr` lists the code comments that cite an ADR: `name` is then an ADR number (see [ADR citations](#adr-citations)). |
 | `path` | string | no | any | Repo-relative path of the defining file, to tell same-named symbols apart. |
 | `limit` | integer, greater than 0 | no | 50 | Capped at 200. |
 | `repo`, `cwd`, `budget_tokens`, `more`, `fresh` | | no | | As for `code_find`. |
@@ -104,9 +104,31 @@ Description: `Show a symbol's definition, what contains it, the imports and expo
 Result `data`:
 
 - `results[]`: one ordered list for the best-ranked definition. Each item has a `section`: `definition`, `parent`, `child`, `import`, `export` or `reference`. The definition comes first, and a cut removes the lowest-priority items first. At most 10 references are shown.
+- `citations[]`: present only when the definition has ADR mentions attached to it, never empty (see [ADR citations](#adr-citations)): `number`, `detail` (the section suffix, when the mention has one), `status`, `files[]`, `line`, `col` and `citation`. They count against `limit` and `budget_tokens` and continue with `more` like the other items, and they come before the file's imports.
 - `alternatives[]`: the other definitions of the name (at most 5).
 - `file`: present only when the project's compiler configuration says what the defining file compiles to: `{ path, emittedAs[] }`, with `emittedAs` the repository-relative output paths (for example `src/lib.cts` to `out/lib.cjs`). Absent for a file in no TypeScript project, and for a repository with no tsconfig.
 - `supertypes[]` and `subtypes[]`: present only when the compiler reported a relation of the best-ranked definition, and never empty. A supertype is what the symbol extends or implements, or the base member it overrides (a class lists the `overrides` of its members too); a subtype is what extends or implements it, or the member that overrides it. Each item has `relation` (`extends`, `implements` or `overrides`), `name`, `kind`, `path`, `line`, `col`, `confidence` (always `EXTRACTED`) and `citation`, which points at the other symbol's definition. They count against `limit` and `budget_tokens` and continue with `more` like the items of `results[]`.
+
+### ADR citations
+
+A code comment that says `ADR-3473`, `adr 3473`, `ADR #3473` or `ADR#3473` (any letter case, with an optional `§3.2` section suffix) is stored as a citation of ADR number 3473; mentions in string literals are not citations. The number is compared by value, so `ADR-0007` and `ADR #7` are one number. `code_find`, `code_refs` and `code_context` answer questions about citations and ADR files without a new tool:
+
+- `code_refs` with `kind: adr` and `name` an ADR number (`ADR-3473`, `adr 3473`, `ADR #3473`, `#3473` or `3473`; leading zeros are fine, 11 digits at most) lists the citation sites. `data.adr` is `{ number, status, files[] }`; `results[]` has `path`, `line`, `col`, `detail` (the section suffix, when there is one), `attachedTo` (the definition the mention belongs to, `null` for a file-level mention), `confidence` and `citation`. The citation's text reference holds the matched comment line. A name that is not an ADR number is refused with `invalid_args` and one fixed sentence.
+- `code_find` with `kind: adr` returns the ADR file or files with that number: `data` is `{ number, status, citations, results[] }`, where `citations` is how many comments cite the number and each result has `path`, `number`, `confidence` and a `citation` at line 1 of the file. The file's text is never read, so the citation carries no `untrusted_text`, and its handle (`adr/<path>`) is not accepted by `code_explain`.
+- `code_context` lists the mentions attached to the definition in `data.citations[]` (see above).
+
+`status` says what the number names in the repository's ADR directory: `resolved` (one file; its link is `EXTRACTED`), `ambiguous` (several files carry the number, as gsd-core's duplicate ids `0010` and `0011` do; every file is listed, sorted, with `INFERRED` confidence) and `unresolved` (no file; the citations are still listed, with `INFERRED` confidence, and `code_find` says how many there are, so "not found" is a truthful answer for a missing document). A citation is never dropped because its ADR file is missing. When the listing of an ADR directory was cut, an `unresolved` answer also carries `listTruncated: true`.
+
+An ADR file is recognised by a leading number, a dash and a name, ending in `.md` (`0001-first.md`, `2-second.md`; `README.md`, `12.md` and `adr-0003.md` are not ADR files). The directory is found from the language modules' manifests (`project.adrDirs`, manifest schema version 2; the built-in modules name `docs/adr`, `docs/adrs`, `doc/adr` and `adr`), and a repository's `.gsd-atlas/config.json` can replace that list with its own `adrDirs`. The repository file is untrusted data: only `adrDirs` is read (at most 8 relative paths inside the repository), every other key is ignored, and the answer then carries one `repo_config_ignored` info diagnostic with fixed text; a file over 64 KiB or that is not valid JSON is ignored whole. Directories are listed through a confined reader (a path that leaves the repository, or a link that points outside it, lists nothing), and only file names are used: no ADR document is read, indexed or returned.
+
+**When the index could not store every citation.** A comment over the comment size bound (32,768 UTF-16 units) is skipped whole, and a file with more than 200 mentions keeps the first 200. Both leave a trace stored with the file version, and an ADR answer does not pretend to be complete while the worktree holds such a file. Every `kind: adr` answer of `code_refs` and `code_find` (on every page of a cursor-paged answer) carries one `info` diagnostic with the code `citation_comment_too_long` and no `subject`, when at least one file of the answered worktree holds a gap. Its text is fixed and its only variable is one integer, the number of such files:
+
+- when the answer holds a citation: `Citations may be missing from this answer: 2 files have ADR mentions that were not indexed (a comment over the comment size bound, or more than 200 mentions in one file).` (`1 file has` for one file);
+- when it holds none (a number nobody was found to cite, or one that has an ADR file but no found citation): `No citation of this ADR was found, but 2 files have ADR mentions that were not indexed, so a citation may exist that this answer cannot show.`
+
+The count is worktree-wide and names no file, because the number in a skipped comment was never read, so any such file may hide a citation of the number asked. `code_context` carries the first text, with `1 file has`, only when the file that defines the symbol holds a gap, and not when only another file does. This is a diagnostic and not a degraded code: the set of degraded codes is unchanged, and `degraded` is not set for it. `atlas_status` reports the count as `citations.filesWithGaps`. A development store built before the gap table existed reports no gap until it is rebuilt (remove `facts.db` from the store directory and run `gsd-atlas build` again); the store schema version is still 2.
+
+`code_explain` accepts the `cit/` handle of a citation (the `debug` value of its citation entry): `explanation.kind` is `citation`, the extractor is the grammar tier, `resolution` is `null`, `explanation.citation` is `{ number, detail? }` and `data.adr` is the number's `{ number, status, files[] }`.
 
 ### code_impact
 
@@ -141,9 +163,10 @@ Result `data`:
 | --- | --- |
 | `repo` | The repository path the request named, or `null`. |
 | `worktrees[]` | One entry per worktree the index holds: `worktree`, `seq` (its watermark), `staleCount`. |
-| `store` | `schemaVersion` (2 since Phase 3 added the stored ADR citations; a store written by version 1 is derived data, deleted and recreated when this build opens it, and reports `not_indexed` until `gsd-atlas build` has run once), `sizeBytes`, `writerLeaseHeld` (this process holds the writer lease), `rebuilt` (a corrupt store was found, moved aside and rebuilt). |
+| `store` | `schemaVersion` (2 since Phase 3 added the stored ADR citations; it stays 2 when a development store gains the table of citation gaps, which is additive derived data; a store written by version 1 is derived data, deleted and recreated when this build opens it, and reports `not_indexed` until `gsd-atlas build` has run once), `sizeBytes`, `writerLeaseHeld` (this process holds the writer lease), `rebuilt` (a corrupt store was found, moved aside and rebuilt). |
 | `indexer` | `null` when this process runs no indexer; otherwise `watchMode` (`native`, `poll` or `reconcile-only`), `queued`, `running`, `failed` (a count; the paths are not listed), `reconciling`, `lastReconcileAt` and `lastIndexedAt` (milliseconds since the epoch, or `null`). |
 | `governor` | `queued`, `running`, `leases`. |
+| `citations` | `filesWithGaps`: how many files, summed over the listed worktrees, hold ADR mentions the index could not store (a comment over the comment size bound, or more than 200 mentions in one file). A count only, always present (0 when there is none). It adds no health reason and no degraded code, so a repository with a gap stays `ok`. A development store built before the gap table existed reports 0 until it is rebuilt: remove `facts.db` from the store directory and run `gsd-atlas build` again. |
 | `tiers[]` | One entry per loaded language module: `module`, `grammar`, `precise`, `platform` (whether each tier is active). |
 | `policy` | `off`. |
 | `health` | `ok` or `degraded`. |
@@ -154,7 +177,7 @@ The answer carries `degraded` codes for the reasons `follower`, `rebuilding`, `r
 Example `data` (trimmed; the path is the directory the server was asked about):
 
 ```json
-{"repo":"/path/to/atlas-demo","worktrees":[{"worktree":"/path/to/atlas-demo","seq":4,"staleCount":0}],"store":{"schemaVersion":2,"sizeBytes":110592,"writerLeaseHeld":true,"rebuilt":false},"indexer":{"watchMode":"native","queued":0,"running":0,"failed":0,"reconciling":false,"lastReconcileAt":1792284788463,"lastIndexedAt":null},"governor":{"queued":0,"running":1,"leases":0},"tiers":[{"module":"javascript","grammar":true,"precise":false,"platform":false},{"module":"typescript","grammar":true,"precise":false,"platform":false}],"policy":"off","health":"ok","reasons":[]}
+{"repo":"/path/to/atlas-demo","worktrees":[{"worktree":"/path/to/atlas-demo","seq":4,"staleCount":0}],"store":{"schemaVersion":2,"sizeBytes":110592,"writerLeaseHeld":true,"rebuilt":false},"indexer":{"watchMode":"native","queued":0,"running":0,"failed":0,"reconciling":false,"lastReconcileAt":1792284788463,"lastIndexedAt":null},"governor":{"queued":0,"running":1,"leases":0},"citations":{"filesWithGaps":0},"tiers":[{"module":"javascript","grammar":true,"precise":false,"platform":false},{"module":"typescript","grammar":true,"precise":false,"platform":false}],"policy":"off","health":"ok","reasons":[]}
 ```
 
 ### lang_list
@@ -165,7 +188,7 @@ Description: `List the language modules this installation can load, with the tie
 | --- | --- | --- | --- | --- |
 | `repo` | string, an absolute path | no | the working directory | The repository whose own modules (`<repo>/.gsd-atlas/languages/<name>/`) are listed with the others. A relative path is refused with `invalid_args`. |
 
-Result `data`: `modules[]` with `name`, `source` (`repo`, `user`, `npm` or `builtin`), `dir`, `version`, `extensions`, `inactiveExtensions`, `tiers[]` (`tier`, `active`, and `reason` when given), `shadowed[]` (`source`, `dir`). The built-in modules of this release are `javascript` (`.js`, `.cjs`, `.mjs`, `.jsx`) and `typescript` (`.ts`, `.cts`, `.mts`), each with the `grammar` tier active.
+Result `data`: `modules[]` with `name`, `source` (`repo`, `user`, `npm` or `builtin`), `dir`, `version`, `schemaVersion` (the manifest version, 1 or 2), `adrDirs` (the ADR directories the manifest names; empty for a version 1 manifest), `extensions`, `inactiveExtensions`, `tiers[]` (`tier`, `active`, and `reason` when given), `shadowed[]` (`source`, `dir`). The built-in modules of this release are `javascript` (`.js`, `.cjs`, `.mjs`, `.jsx`) and `typescript` (`.ts`, `.cts`, `.mts`), each with the `grammar` tier active.
 
 `lang_list` reads no repository store and needs no index.
 
@@ -175,13 +198,13 @@ Description: `Explain a fact: pass the handle (the debug value of any citation) 
 
 | Input | Type | Required | Default | Meaning |
 | --- | --- | --- | --- | --- |
-| `handle` | string, at least 1 character | one of `handle` and `answer_id` | | The `debug` value of a citation, passed through unchanged. A handle of a definition (`sym/`), reference (`ref/`), import (`imp/`), export (`exp/`) or compiler relation (`rel/`). At most 2048 characters. |
+| `handle` | string, at least 1 character | one of `handle` and `answer_id` | | The `debug` value of a citation, passed through unchanged. A handle of a definition (`sym/`), reference (`ref/`), import (`imp/`), export (`exp/`), compiler relation (`rel/`) or ADR citation (`cit/`). At most 2048 characters. |
 | `answer_id` | string | one of `handle` and `answer_id` | | The `answer_id` of an earlier answer of this repository. |
 | `repo`, `cwd`, `budget_tokens` | | no | | As for `code_find`. |
 
 Result `data` for a `handle`:
 
-- `explanation.kind`: `symbol`, `reference`, `import`, `export` or `relation`; `explanation.handle` is the handle in its canonical form.
+- `explanation.kind`: `symbol`, `reference`, `import`, `export`, `relation` or `citation`; `explanation.handle` is the handle in its canonical form. For a `citation`, `explanation.citation` is `{ number, detail? }` and `data.adr` says what the number names (see [ADR citations](#adr-citations)).
 - `explanation.fact`: `extractor` (`grammar:<module>@<version>` or `precise:<resolver>`), `tier` (`grammar` or `precise`), `confidence`, `module`, `grammarVersion`, `stale`, `path`, `contentHash` (the file version), `firstSeen`, `lastSeen`, `span`. When the module reports another grammar version now, `currentGrammarVersion` is there too and `stale` is `true`: a fact from an older grammar is explained, not hidden.
 - `explanation.resolution`: `null` for a definition, an import and an export. For a reference or a relation: `contextId`, `configHashCount`, `snapshot`, `cache` (`hit`: a precise edge is stored; `asked_no_edge`: the compiler was asked and found none; `not_asked`; `not_applicable`: no compiler can answer for it) and, for a stored edge or relation, `resolver` and `target` (`name`, `kind`, `path`).
 - `explanation.overlay`: `worktree` (its base name), `seq` and `stalePaths` (a count).
@@ -258,7 +281,7 @@ Only `build` creates an index. No MCP tool creates, opens for writing or changes
 | Code | Meaning |
 | --- | --- |
 | `emit_output_not_indexed` | Some files are the emit output of an included source (for example `lib.cjs` built from `lib.cts`) and are not indexed. |
-| `citation_comment_too_long` | Some files have comments that mention an ADR but are over the comment size bound, so the citations in those comments are not indexed. |
+| `citation_comment_too_long` | Some files have ADR mentions that are not indexed (a comment over the comment size bound, or more than 200 mentions in one file), so citations from them are missing. The count is the number of files of the worktree that hold such a gap, read from the store, so a build that parses nothing repeats it. |
 | `resolver_timeout` | The compiler pass that follows a build did not finish within its bound. The build succeeded; `gsd-atlas maintain resolve` continues the pass. |
 
 These are diagnostics, not degraded codes: they do not appear in `degraded`, and the set of degraded codes is unchanged. Any other note a build collects is counted in `skipped` only.

@@ -136,7 +136,9 @@ function status(parts: StoreParts, lifecycle: StoreLifecycle): StoreStatus {
         `SELECT v.worktree AS worktree, v.seq AS seq,
                 (SELECT count(*) FROM overlay_files o LEFT JOIN files f ON f.id = o.file_id
                   WHERE o.worktree = v.worktree AND (o.file_id IS NULL OR f.stale = 1)) AS stale_paths,
-                (SELECT count(*) FROM overlay_files o WHERE o.worktree = v.worktree) AS files
+                (SELECT count(*) FROM overlay_files o WHERE o.worktree = v.worktree) AS files,
+                (SELECT count(*) FROM overlay_files o JOIN citation_gaps g ON g.file_id = o.file_id
+                  WHERE o.worktree = v.worktree) AS citation_gap_files
          FROM overlays v WHERE v.dropped = 0 ORDER BY v.worktree`,
       )
       .all()
@@ -145,6 +147,7 @@ function status(parts: StoreParts, lifecycle: StoreLifecycle): StoreStatus {
         seq: Number(row.seq),
         stalePaths: Number(row.stale_paths),
         files: Number(row.files),
+        citationGapFiles: Number(row.citation_gap_files),
       }));
     const pages = Number(db.pragma('page_count'));
     const pageSize = Number(db.pragma('page_size'));

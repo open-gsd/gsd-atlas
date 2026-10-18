@@ -29,7 +29,6 @@ import path from 'node:path';
 import { UnknownWorktree } from '../fact-store/index.ts';
 import type { FactStore, Writer } from '../fact-store/index.ts';
 import type { Governor, JobClass } from '../governor/index.ts';
-import { CITATION_COMMENT_TOO_LONG } from '../grammar-engine/index.ts';
 import { SOURCE_TREE_CODES } from '../source-tree/index.ts';
 import type { SourceTree } from '../source-tree/index.ts';
 import type { PathFilter } from './ignore.ts';
@@ -118,11 +117,6 @@ export interface PathResult {
   readonly hash?: string;
   /** Why the path failed (`failed`). */
   readonly code?: string;
-  /**
-   * True on a `parsed` path that holds a comment mentioning an ADR which is over the comment size bound: that comment
-   * was skipped whole, so its citations are not indexed. A Reconcile run counts these files in one note.
-   */
-  readonly commentsTooLong?: true;
 }
 
 /** What one attempt at a path found; `raced` means the file changed under it and nothing was committed. */
@@ -266,9 +260,9 @@ async function indexPath(
 
   const commit = await writer.commitFile({ worktree, path: rel, hash, facts: extracted.facts });
   if (commit.status === 'rejected') return failed(rel, commit.diagnostics[0]?.code ?? 'commit_rejected');
-  // The extractor's own diagnostics name the file and count comments; only the fact that some were skipped is kept here.
-  const skipped = extracted.diagnostics.some((d) => d.code === CITATION_COMMENT_TOO_LONG);
-  return { path: rel, outcome: 'parsed', hash, ...(skipped ? { commentsTooLong: true as const } : {}) };
+  // The extractor's per-file note about a skipped comment is not kept here: the gap is a fact of the file version (stored with it),
+  // and a Reconcile run counts the files that hold one from the store, so a run that parses nothing still reports it.
+  return { path: rel, outcome: 'parsed', hash };
 }
 
 interface Prepared {
