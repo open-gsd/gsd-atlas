@@ -187,6 +187,27 @@ const CASES: Case[] = [
   { group: 'diagnostics', what: 'host deep-importing diagnostics fails and names index.ts', at: 'src/host/x.ts', code: imp('../diagnostics/bundle.ts'), expect: 'fail', rule: 'no-restricted-imports', says: 'index.ts' },
   { group: 'diagnostics', what: 'facts importing diagnostics fails (facts stays a leaf)', at: 'src/facts/x.ts', code: imp('../diagnostics/index.ts'), expect: 'fail', rule: 'no-restricted-imports' },
 
+  // Phase 3 module: project-model (TSM-07) is a compiler-free reader of repository configuration. It may use the shared
+  // kernel, Source Tree types and jsonc-parser, but its production files may never reach the TypeScript package (nor
+  // run a process or open a database); its test files may, because the differential test needs the compiler.
+  { group: 'project-model', what: 'importing typescript in a production file fails and names TSM-07', at: 'src/project-model/x.ts', code: imp('typescript'), expect: 'fail', rule: 'no-restricted-imports', says: 'TSM-07' },
+  { group: 'project-model', what: 'importing a typescript subpath in a production file fails', at: 'src/project-model/x.ts', code: imp('typescript/lib/typescript.js'), expect: 'fail', rule: 'no-restricted-imports', says: 'TSM-07' },
+  { group: 'project-model', what: 'importing the typescript-7 alias in a production file fails', at: 'src/project-model/x.ts', code: imp('typescript-7'), expect: 'fail', rule: 'no-restricted-imports', says: 'TSM-07' },
+  { group: 'project-model', what: 'dynamic import of typescript in a production file fails', at: 'src/project-model/x.ts', code: `await import('typescript');`, expect: 'fail', rule: 'no-restricted-syntax', says: 'TSM-07' },
+  { group: 'project-model', what: 'require of typescript in a production file fails', at: 'src/project-model/x.ts', code: `require('typescript');`, expect: 'fail', rule: 'no-restricted-syntax', says: 'TSM-07' },
+  { group: 'project-model', what: 'importing jsonc-parser passes (control)', at: 'src/project-model/x.ts', code: imp('jsonc-parser'), expect: 'pass' },
+  { group: 'project-model', what: 'importing the facts kernel and Source Tree through index.ts passes (control)', at: 'src/project-model/x.ts', code: imp('../facts/index.ts') + '\n' + imp('../source-tree/index.ts', 'y'), expect: 'pass' },
+  { group: 'project-model', what: 'a test file may import typescript for the differential (control)', at: 'src/project-model/x.test.ts', code: imp('typescript'), expect: 'pass' },
+  { group: 'project-model', what: 'a test file may dynamically import typescript (control)', at: 'src/project-model/x.test.ts', code: `await import('typescript');`, expect: 'pass' },
+  { group: 'project-model', what: 'typescript stays importable in other modules (the restriction is local)', at: 'src/lang/x.ts', code: imp('typescript'), expect: 'pass' },
+  { group: 'project-model', what: 'importing node:child_process fails (no process)', at: 'src/project-model/x.ts', code: imp('node:child_process'), expect: 'fail', rule: 'no-restricted-imports' },
+  { group: 'project-model', what: 'importing node:sqlite fails (no database)', at: 'src/project-model/x.ts', code: imp('node:sqlite'), expect: 'fail', rule: 'no-restricted-imports' },
+  { group: 'project-model', what: 'deep import of source-tree fails and names index.ts', at: 'src/project-model/x.ts', code: imp('../source-tree/read-text.ts'), expect: 'fail', rule: 'no-restricted-imports', says: 'index.ts' },
+  { group: 'project-model', what: 'cli importing project-model fails (adapters import only host-client)', at: 'src/cli/x.ts', code: imp('../project-model/index.ts'), expect: 'fail', rule: 'no-restricted-imports' },
+  { group: 'project-model', what: 'host importing project-model through index.ts passes (control)', at: 'src/host/x.ts', code: imp('../project-model/index.ts'), expect: 'pass' },
+  { group: 'project-model', what: 'host deep-importing project-model fails and names index.ts', at: 'src/host/x.ts', code: imp('../project-model/tsconfig.ts'), expect: 'fail', rule: 'no-restricted-imports', says: 'index.ts' },
+  { group: 'project-model', what: 'facts importing project-model fails (facts stays a leaf)', at: 'src/facts/x.ts', code: imp('../project-model/index.ts'), expect: 'fail', rule: 'no-restricted-imports' },
+
   // No stray console output: stdout carries protocol frames (HST-01, research Pitfall 8). process.stdout.write is the
   // sanctioned path and is not a console call.
   { group: 'console', what: 'console.log in query fails', at: 'src/query/x.ts', code: `console.log('x');`, expect: 'fail', rule: 'no-console' },
@@ -216,14 +237,15 @@ for (const c of CASES) {
 test('config exports the documented tables', async () => {
   const config = (await import(pathToFileURL(path.join(root, 'eslint.config.js')).href)) as ConfigExports;
   assert.equal(new Set(config.MODULES).size, config.MODULES.length, 'MODULES has duplicates');
-  assert.equal(config.MODULES.length, 22);
-  for (const m of ['indexer', 'query', 'tenant', 'host', 'diagnostics']) {
+  assert.equal(config.MODULES.length, 23);
+  for (const m of ['indexer', 'query', 'tenant', 'host', 'diagnostics', 'project-model']) {
     assert.ok(config.MODULES.includes(m), `MODULES lacks ${m}`);
     assert.deepEqual(config.TEST_CONTEXT_FILES[m], [`src/${m}/**/*.test.ts`, `src/${m}/**/contract.ts`]);
   }
-  assert.ok(!config.SQLITE_OWNERS.some((m) => ['indexer', 'query', 'tenant', 'host', 'diagnostics'].includes(m)), 'a new module became a SQLite owner');
-  assert.ok(!config.ADAPTERS.some((m) => ['indexer', 'query', 'tenant', 'host', 'diagnostics'].includes(m)), 'a new module became an adapter');
+  assert.ok(!config.SQLITE_OWNERS.some((m) => ['indexer', 'query', 'tenant', 'host', 'diagnostics', 'project-model'].includes(m)), 'a new module became a SQLite owner');
+  assert.ok(!config.ADAPTERS.some((m) => ['indexer', 'query', 'tenant', 'host', 'diagnostics', 'project-model'].includes(m)), 'a new module became an adapter');
   assert.ok(!('diagnostics' in config.CLOSED_IMPORTS), 'diagnostics became a closed module');
+  assert.ok(!('project-model' in config.CLOSED_IMPORTS), 'project-model became a closed module');
   assert.deepEqual(config.CLOSED_IMPORTS.facts, { allow: [], builtins: true });
   assert.deepEqual(config.CLOSED_IMPORTS['test-kit'], { allow: ['facts'], builtins: true });
   assert.deepEqual(config.CLOSED_IMPORTS.policy, { allow: ['facts'], builtins: false });
