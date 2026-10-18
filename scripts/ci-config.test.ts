@@ -11,6 +11,8 @@ const workflowDir = path.join(root, '.github', 'workflows');
 
 const files = fs.readdirSync(workflowDir).filter((f) => /\.ya?ml$/.test(f)).sort();
 
+const TIMEOUT_LINE = /^ {4}timeout-minutes:\s*(?:\d+|\$\{\{\s*matrix\.os == 'windows-latest' && \d+ \|\| \d+\s*\}\})\s*$/;
+
 const indentOf = (line: string): number => line.length - line.trimStart().length;
 const isBlank = (line: string): boolean => line.trim() === '' || line.trim().startsWith('#');
 
@@ -149,7 +151,8 @@ for (const file of files) {
 
   test(`${file}: every job sets timeout-minutes`, () => {
     for (const [name, body] of jobs(lines)) {
-      assert.ok(body.some((l) => /^ {4}timeout-minutes:\s*\d+\s*$/.test(l)), `job ${name} has no timeout-minutes`);
+      // A number, or the one expression the test job uses to cap only its Windows legs (see the Windows decision below).
+      assert.ok(body.some((l) => TIMEOUT_LINE.test(l)), `job ${name} has no timeout-minutes`);
     }
   });
 }
@@ -412,7 +415,7 @@ test('ci.yml: precise gate step in the gates job', () => {
   }
 });
 
-test('ci.yml: all three operating systems run the precise gate', () => {
+test('ci.yml: all three operating systems still run the precise gate (Windows is non-blocking, see the Windows decision)', () => {
   const body = (jobs(readLines('ci.yml')).get('gates') ?? []).join('\n');
   assert.match(body, /os:\s*\[\s*ubuntu-latest\s*,\s*macos-latest\s*,\s*windows-latest\s*\]/);
   assert.match(body, /runs-on:\s*\$\{\{\s*matrix\.os\s*\}\}/);
@@ -455,4 +458,53 @@ test('nightly.yml: the strict job points temporary files at the fast runner disk
   assert.match(step, /if: runner\.os == 'Windows'/);
   for (const variable of ['TEMP', 'TMP', 'TMPDIR']) assert.match(step, new RegExp(`echo "${variable}=\\$RUNNER_TEMP" >> "\\$GITHUB_ENV"`));
   assert.ok(at < body.findIndex((l) => /npm ci --ignore-scripts/.test(l)), 'the step runs before npm ci');
+});
+
+// Decision 2026-10-18 (Decision 2: Windows postponed past the initial alpha). The Windows legs still RUN on every
+// workflow, so their results stay visible, but they cannot fail the workflow; Ubuntu and macOS stay blocking. The
+// per-job `continue-on-error` is the only form allowed, and it names Windows and nothing else.
+const WINDOWS_NON_BLOCKING = /^ {4}continue-on-error:\s*\$\{\{\s*matrix\.os == 'windows-latest'\s*\}\}\s*$/;
+const jobLevelContinueOnError = (body: string[]): string[] => body.filter((l) => /^ {4}continue-on-error:/.test(l));
+const MATRIX_JOBS: [string, string][] = [
+  ['ci.yml', 'test'],
+  ['ci.yml', 'grammar'],
+  ['ci.yml', 'gates'],
+  ['nightly.yml', 'strict'],
+];
+
+for (const [file, name] of MATRIX_JOBS) {
+  test(`${file}: the ${name} job keeps its Windows leg but only the Windows leg may fail the workflow without blocking`, () => {
+    const lines = readLines(file);
+    const body = jobs(lines).get(name) ?? [];
+    assert.match(body.join('\n'), /os:\s*\[\s*ubuntu-latest\s*,\s*macos-latest\s*,\s*windows-latest\s*\]/, 'the Windows leg still runs');
+    const found = jobLevelContinueOnError(body);
+    assert.equal(found.length, 1, `job ${name} needs exactly one job-level continue-on-error`);
+    assert.match(found[0] as string, WINDOWS_NON_BLOCKING, 'continue-on-error is true for the Windows leg only, never for Ubuntu or macOS');
+    // The reason is written next to the key, with the decision and its date.
+    const at = lines.findIndex((l, i) => l === found[0] && jobs(lines.slice(0, i + 1)).has(name));
+    const above = lines.slice(Math.max(0, at - 6), at).join('\n');
+    assert.match(above, /Decision 2026-10-18/, 'a comment above names the decision and its date');
+    assert.match(above, /Windows/, 'the comment says what is non-blocking');
+  });
+}
+
+test('ci.yml: the static job and every step of the blocking legs are not made optional', () => {
+  const lines = readLines('ci.yml');
+  assert.deepEqual(jobLevelContinueOnError(jobs(lines).get('static') ?? []), [], 'static is blocking on its one OS');
+  for (const file of files) {
+    // No job-level `continue-on-error: true`, which would also exempt Ubuntu and macOS.
+    for (const body of jobs(readLines(file)).values()) {
+      for (const line of jobLevelContinueOnError(body)) assert.doesNotMatch(line, /:\s*true\s*$/, `${file}: ${line.trim()} exempts every OS`);
+    }
+  }
+});
+
+test('ci.yml: the test job caps a hung Windows suite at 20 minutes and keeps 30 for Ubuntu and macOS', () => {
+  const body = jobs(readLines('ci.yml')).get('test') ?? [];
+  const line = body.find((l) => /^ {4}timeout-minutes:/.test(l)) ?? '';
+  const m = /^ {4}timeout-minutes:\s*\$\{\{\s*matrix\.os == 'windows-latest' && (\d+) \|\| (\d+)\s*\}\}\s*$/.exec(line);
+  assert.ok(m !== null, `the test job timeout is the Windows-conditional expression: ${line.trim()}`);
+  const [windowsMinutes, otherMinutes] = [Number(m[1]), Number(m[2])];
+  assert.ok(windowsMinutes >= 15 && windowsMinutes <= 25, 'a hang in src/bin/compose.test.ts must not stall the job for 30 minutes');
+  assert.equal(otherMinutes, 30, 'the Ubuntu and macOS limit is unchanged');
 });
