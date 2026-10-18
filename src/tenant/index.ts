@@ -10,7 +10,7 @@ export { createIdleMaintainer } from './idle.ts';
 export type { IdleMaintainer, IdleMaintainerOptions } from './idle.ts';
 export { leaseHeldEnvelope, notIndexedEnvelope, notIndexedNoStore, storeUnavailableEnvelope } from './messages.ts';
 export type { LeaseHolderName } from './messages.ts';
-export { CURRENT_FILE as FLIGHT_FILE, createFlightRecorder } from './flight.ts';
+export { CURRENT_FILE as FLIGHT_FILE, PREVIOUS_FILE as FLIGHT_PREVIOUS_FILE, createFlightRecorder } from './flight.ts';
 export type { FlightEvent, FlightEventInput, FlightFs, FlightRecorder, FlightRecorderOptions } from './flight.ts';
 export { RATE_SCHEMA, noRecentEnvelope, recordRating } from './rate.ts';
 export type { RateDeps, RateInput } from './rate.ts';

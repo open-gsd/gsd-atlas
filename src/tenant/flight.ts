@@ -48,7 +48,7 @@ export interface FlightFs {
   readFileSync(file: string, encoding: 'utf8'): string;
   renameSync(from: string, to: string): void;
   rmSync(target: string, options: { readonly force: true }): void;
-  statSync(file: string): { readonly size: number };
+  statSync(file: string): { readonly size: number; readonly mtimeMs?: number; readonly ino?: number };
 }
 
 export interface FlightRecorderOptions {
@@ -71,6 +71,8 @@ export interface FlightRecorder {
   lastAnswer(): FlightEvent | null;
   /** The id of the newest session marker, or null. */
   sessionId(): string | null;
+  /** Remove both segments (what `bug --clear` will call). Never throws; another process's recorder sees the folder empty. */
+  clear(): void;
   close(): void;
 }
 
@@ -85,7 +87,9 @@ const ARG_KEYS_MAX = 32;
 const ARG_ITEMS_MAX = 20;
 const ARG_DEPTH_MAX = 3;
 
+/** The segment being written, and the one before it (replaced when the current one is handed over). */
 export const CURRENT_FILE = 'flight.jsonl';
+export const PREVIOUS_FILE = 'flight.prev.jsonl';
 
 /** The first `max` code points of `text`; never splits a surrogate pair, and stops reading a huge string early. */
 function cut(text: string, max: number): string {
@@ -164,10 +168,29 @@ function parseLine(line: string): FlightEvent | null {
   }
 }
 
+const countLines = (text: string): number => {
+  let lines = 0;
+  for (let at = text.indexOf('\n'); at !== -1; at = text.indexOf('\n', at + 1)) lines += 1;
+  return lines;
+};
+
+/** How many times a read is repeated when the previous segment was replaced between its two file reads. */
+const READ_ATTEMPTS = 3;
+
 export function createFlightRecorder(options: FlightRecorderOptions): FlightRecorder {
   const io: FlightFs = options.fs ?? fs;
   const current = path.join(options.dir, CURRENT_FILE);
+  const previous = path.join(options.dir, PREVIOUS_FILE);
+  // At most this many events are readable. The current segment is handed over to `previous` once it holds more than
+  // half the events or half the bytes, so the two segments together stay within about the cap on disk and a reader
+  // always has between half the cap and the whole cap to read.
+  const eventLimit = Math.max(1, Math.floor(options.maxEvents));
+  const rotateAboveEvents = eventLimit / 2;
+  const rotateAboveBytes = Math.max(1, options.maxBytes) / 2;
   let dirReady = false;
+  // What this instance believes the current segment holds. Another process appends to the same file, so the belief is
+  // corrected from the file size after every append; it is an estimate that decides only when to rotate.
+  let known: { bytes: number; events: number } | null = null;
 
   function ensureDir(): void {
     if (dirReady) return;
@@ -175,21 +198,94 @@ export function createFlightRecorder(options: FlightRecorderOptions): FlightReco
     dirReady = true;
   }
 
-  /** Every event on disk, oldest first. A missing or unreadable file is empty. */
-  function readAll(): FlightEvent[] {
-    let text: string;
+  function sizeOf(file: string): number | null {
     try {
-      text = io.readFileSync(current, 'utf8');
+      return io.statSync(file).size;
     } catch {
-      return [];
+      return null;
+    }
+  }
+
+  /** The current segment as it is on disk: its size and the lines already in it. */
+  function openSegment(): { bytes: number; events: number } {
+    const bytes = sizeOf(current);
+    if (bytes === null || bytes === 0) return { bytes: 0, events: 0 };
+    try {
+      return { bytes, events: countLines(io.readFileSync(current, 'utf8')) };
+    } catch {
+      return { bytes, events: 0 };
+    }
+  }
+
+  /** Hand the current segment over to `previous` (the old previous segment is replaced). A failure leaves both as they were. */
+  function rotate(): void {
+    try {
+      io.renameSync(current, previous);
+      known = { bytes: 0, events: 0 };
+    } catch {
+      // Another process may hold the file (Windows) or have rotated first; the next append looks again.
+    }
+  }
+
+  /** Account for the line just written, correct the estimate from the real size, and rotate when the segment is full. */
+  function wrote(lineBytes: number): void {
+    const was = known ?? { bytes: 0, events: 0 };
+    let bytes = was.bytes + lineBytes;
+    let events = was.events + 1;
+    const size = sizeOf(current);
+    if (size === null) {
+      // Someone removed or rotated the file after our write: what is there now is not what we counted.
+      bytes = 0;
+      events = 0;
+    } else if (size !== bytes) {
+      // Another writer appended (or rotated) in between. Estimate its lines from the mean line size.
+      const mean = Math.max(1, bytes / events);
+      bytes = size;
+      events = size === 0 ? 0 : Math.max(1, Math.round(size / mean));
+    }
+    known = { bytes, events };
+    if (events > rotateAboveEvents || bytes > rotateAboveBytes) rotate();
+  }
+
+  function readText(file: string): string {
+    try {
+      return io.readFileSync(file, 'utf8');
+    } catch {
+      return '';
+    }
+  }
+
+  function signature(file: string): string {
+    try {
+      const stat = io.statSync(file);
+      return `${String(stat.ino ?? 0)}:${String(stat.size)}:${String(stat.mtimeMs ?? 0)}`;
+    } catch {
+      return 'none';
+    }
+  }
+
+  /**
+   * Every readable event, oldest first, at most `maxEvents` of them. The previous segment is read, then the current one;
+   * a rotation between the two reads would hide the segment that moved, so when the previous segment was replaced while
+   * reading, the read is repeated. A missing segment is empty and a line that does not parse is skipped.
+   */
+  function readAll(): FlightEvent[] {
+    let text = '';
+    for (let attempt = 0; attempt < READ_ATTEMPTS; attempt += 1) {
+      const before = signature(previous);
+      const older = readText(previous);
+      const newer = readText(current);
+      text = `${older}\n${newer}`;
+      if (signature(previous) === before) break;
     }
     const events: FlightEvent[] = [];
     for (const line of text.split('\n')) {
       const event = parseLine(line);
       if (event !== null) events.push(event);
     }
-    // Stable: equal times keep file order.
-    return events.map((event, index) => ({ event, index })).sort((a, b) => a.event.t - b.event.t || a.index - b.index).map((entry) => entry.event);
+    // Stable: equal times keep file order (previous segment first).
+    const ordered = events.map((event, index) => ({ event, index })).sort((a, b) => a.event.t - b.event.t || a.index - b.index).map((entry) => entry.event);
+    return ordered.length > eventLimit ? ordered.slice(-eventLimit) : ordered;
   }
 
   const newest = (kind: FlightEvent['kind']): FlightEvent | null => {
@@ -205,8 +301,17 @@ export function createFlightRecorder(options: FlightRecorderOptions): FlightReco
     append(event) {
       try {
         const line = `${JSON.stringify(normalise(event, options.clock.now()))}\n`;
-        ensureDir();
-        io.appendFileSync(current, line, { mode: 0o600 });
+        known ??= openSegment();
+        try {
+          ensureDir();
+          io.appendFileSync(current, line, { mode: 0o600 });
+        } catch {
+          // The folder may have been removed under us: make it again and try once more.
+          dirReady = false;
+          ensureDir();
+          io.appendFileSync(current, line, { mode: 0o600 });
+        }
+        wrote(Buffer.byteLength(line));
       } catch {
         // Recording never alters an answer: a write that fails is dropped.
         dirReady = false;
@@ -223,6 +328,16 @@ export function createFlightRecorder(options: FlightRecorderOptions): FlightReco
     },
     lastAnswer: () => newest('answer'),
     sessionId: () => newest('session')?.id ?? null,
+    clear() {
+      for (const file of [previous, current]) {
+        try {
+          io.rmSync(file, { force: true });
+        } catch {
+          // A segment that cannot be removed stays; the next clear tries again.
+        }
+      }
+      known = null;
+    },
     close() {
       // Nothing is held open between appends.
     },
