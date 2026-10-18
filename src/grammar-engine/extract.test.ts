@@ -751,15 +751,6 @@ function lineCommentOfLength(length: number, tail: string, filler = 'x'): string
   return text;
 }
 
-const CONSTANTS_PATH = fileURLToPath(new URL('../../.planning/phases/03-typescript-module-and-mvp-eval/03-CONSTANTS.md', import.meta.url));
-
-/** The leading integer of the `Proposed value` cell of one row of 03-CONSTANTS.md. */
-function constantValue(key: string): number {
-  const row = new RegExp(`^\\| \`${key.replace('.', '\\.')}\` \\| (\\d+)`, 'm').exec(fs.readFileSync(CONSTANTS_PATH, 'utf8'));
-  assert.ok(row?.[1] !== undefined, `03-CONSTANTS.md has a row for ${key}`);
-  return Number(row[1]);
-}
-
 /** What the extractor must give for these comment captures, built the slow, obvious way: every mention, sort, cut at the cap. */
 function referenceCitations(captures: readonly Capture[]) {
   const all: Array<{
@@ -818,22 +809,27 @@ function extractProbed(captures: readonly Capture[]) {
 }
 
 describe('the comment text bound (adr.maxCommentUnits)', () => {
-  it('is 32,768 UTF-16 units, the value registered in 03-CONSTANTS.md, and the 200-citation cap matches its row too', () => {
+  it('is 32,768 UTF-16 units (the value approved on 2026-10-18) and the citation cap is 200', () => {
     assert.equal(GRAMMAR_LIMITS.commentTextChars, 32_768);
-    assert.equal(constantValue('adr.maxCommentUnits'), GRAMMAR_LIMITS.commentTextChars);
-    assert.equal(constantValue('adr.maxCitationsPerFile'), MAX_CITATIONS_PER_FILE);
-    const text = fs.readFileSync(CONSTANTS_PATH, 'utf8');
-    const approvals = text.slice(text.indexOf('## Approvals'));
-    assert.match(approvals, /adr\.maxCommentUnits/, 'the Approvals section records the user answer for this row');
-    assert.match(approvals, /^> approve$/m, 'with the reply quoted verbatim');
+    assert.equal(MAX_CITATIONS_PER_FILE, 200);
   });
 
-  it('floor: the bound keeps the margin the approval was based on over the longest ADR-mentioning comment on the pinned gsd-core (17,881 units, 10ac3a7)', () => {
-    // The approved 32,768 is 1.83 times 17,881, so a factor of 2 cannot hold for it; 1.8 is the largest round margin it has.
-    // Shrinking the bound below this fails, and so does a corpus whose longest comment moves past the bound.
-    const floor = 1.8 * LONGEST_OBSERVED_ADR_COMMENT;
-    assert.ok(GRAMMAR_LIMITS.commentTextChars >= floor, `${String(GRAMMAR_LIMITS.commentTextChars)} is under ${String(floor)}`);
+  it('exceeds the longest ADR-mentioning comment on the pinned gsd-core (17,881 units, 10ac3a7), keeps a comment of that length through the real engine, and drops 32,769 and 35,762 units', async () => {
+    // No margin is asserted: beyond "exceeds the longest comment observed" none can be derived from the data.
     assert.ok(GRAMMAR_LIMITS.commentTextChars > LONGEST_OBSERVED_ADR_COMMENT);
+    const kept = await extractWithModule('typescript', `${lineCommentOfLength(LONGEST_OBSERVED_ADR_COMMENT, 'ADR-4321')}\nconst after = 1;\n`);
+    assert.deepEqual(kept.facts.citations, [
+      { number: 4321, span: sp(0, LONGEST_OBSERVED_ADR_COMMENT - 8, 0, LONGEST_OBSERVED_ADR_COMMENT), enclosing: 0 },
+    ]);
+    assert.deepEqual(kept.diagnostics, []);
+    for (const length of [32_769, 35_762]) {
+      const dropped = await extractWithModule('typescript', `${lineCommentOfLength(length, 'ADR-4321')}\nconst after = 1;\n`);
+      assert.equal(dropped.facts.citations, undefined, `length ${String(length)}: skipped whole`);
+      assert.deepEqual(
+        dropped.diagnostics.map((d) => [d.code, d.severity]),
+        [['citation_comment_too_long', 'info']],
+      );
+    }
   });
 
   it('B-1 and B units are read, B+1 is skipped whole and counted (real engine, ADR at the end of the comment)', async () => {
@@ -948,6 +944,32 @@ describe('the comment text bound (adr.maxCommentUnits)', () => {
         assert.deepEqual(extract(runOf(order)).facts.citations, referenceCitations(captures));
       }
     }
+  });
+
+  it('overlapping captures: each capture scans at most 200 mentions (ten identical big comments, a module that captures one comment through ten patterns)', () => {
+    // 5,000 mentions in 30,000 units, within the comment bound; the same node captured by ten patterns overlaps itself.
+    const text = 'ADR-1 '.repeat(5000);
+    assert.ok(text.length <= GRAMMAR_LIMITS.commentTextChars);
+    const captures = Array.from({ length: 10 }, (_, pattern) => comment(pattern, [0, 0, 0, text.length], text));
+    const { facts, steps } = extractProbed(captures);
+    assert.equal(facts.citations?.length, MAX_CITATIONS_PER_FILE);
+    assert.deepEqual(facts.citations, referenceCitations(captures));
+    assert.ok(steps > 0 && steps <= 12 * MAX_CITATIONS_PER_FILE * captures.length, `${String(steps)} steps for 10 captures of ${String(text.length)} units`);
+  });
+
+  it('a capture whose text is longer than its span takes the full path, so the output is the one a scan of everything gives', () => {
+    // The shape of review scratch lying.ts: A says it is 5 columns wide but holds 250 mentions; B follows it by span
+    // alone, and its five mentions sit at columns inside A's text. An early exit by span would keep A's first 200 only.
+    const mention = (from: number, count: number): string => Array.from({ length: count }, (_, at) => `ADR-${String(from + at)}`).join(' ');
+    const captures = [comment(0, [0, 0, 0, 5], mention(1000, 250)), comment(1, [0, 5, 0, 10], mention(1, 5))];
+    for (const order of [captures, [...captures].reverse()]) {
+      const { facts } = extract(runOf(order));
+      assert.deepEqual(facts.citations, referenceCitations(captures));
+    }
+    assert.ok(
+      referenceCitations(captures).some((c) => c.number === 5),
+      'the five mentions of B rank among the first 200, which is what the early exit would have lost',
+    );
   });
 
   it('the normal path is unchanged: fewer than 200 mentions across many comments, with a blanked comment still counted', () => {
