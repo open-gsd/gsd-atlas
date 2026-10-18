@@ -37,10 +37,13 @@ export interface LifecycleSettings {
  * provider answers synchronously (so its reads reach the resolver, and register their timeout, without yielding,
  * exactly as in Phase 2); a provider's answer is a promise.
  */
-export type ProjectContextSource = (scope: {
+export type ProjectContextSource = ((scope: {
   readonly worktree: string;
   readonly overlay: OverlaySnapshot;
-}) => ProjectContext | Promise<ProjectContext>;
+}) => ProjectContext | Promise<ProjectContext>) & {
+  /** True when a `projectContext` provider was given: only then can a context carry an emit lookup (TSM-03). */
+  readonly provided: boolean;
+};
 
 /** How many (worktree, snapshot id) contexts a store remembers; the most recently used win. */
 const PROJECT_CONTEXT_MEMO_ENTRIES = 16;
@@ -71,10 +74,10 @@ export function createProjectContextSource(
   legacy: (() => ResolutionContext) | undefined,
 ): ProjectContextSource {
   if (provider === undefined) {
-    return () => (legacy === undefined ? DEFAULT_PROJECT_CONTEXT : { context: legacy() });
+    return Object.assign(() => (legacy === undefined ? DEFAULT_PROJECT_CONTEXT : { context: legacy() }), { provided: false });
   }
   const memo = new Map<string, Promise<ProjectContext>>();
-  return (scope) => {
+  const source = (scope: { readonly worktree: string; readonly overlay: OverlaySnapshot }): Promise<ProjectContext> => {
     const key = `${scope.worktree}\u0000${scope.overlay.id}`;
     const known = memo.get(key);
     if (known !== undefined) {
@@ -101,6 +104,7 @@ export function createProjectContextSource(
     });
     return started;
   };
+  return Object.assign(source, { provided: true });
 }
 
 /** Everything the writer, reader and store share. Built once by `openFactStore`. */

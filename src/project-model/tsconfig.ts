@@ -27,6 +27,8 @@ export interface ReadContext {
   readonly fs: ProjectFs;
   readonly diagnostics: Diagnostic[];
   readonly reads: Map<string, Promise<ReadTextResult>>;
+  /** Set by `discoverConfigs`: the config paths it probed and the ones that existed. */
+  probe?: { readonly candidates: readonly string[]; readonly present: readonly string[] };
 }
 
 export function createReadContext(fs: ProjectFs): ReadContext {
@@ -250,7 +252,7 @@ function ancestorDirs(overlayPaths: readonly string[]): string[] {
  * file's up to the root, then the extra configs given. A caller keeps the answer of `exists` for this list to notice
  * a config that appeared or went away without describing the project again.
  */
-export function configCandidates(overlayPaths: readonly string[], extraConfigs: readonly string[] = []): string[] {
+function configCandidates(overlayPaths: readonly string[], extraConfigs: readonly string[] = []): string[] {
   const extras = extraConfigs.map((p) => resolveRepoPath('', p)).filter((p) => p !== '' && p.endsWith('.json'));
   return [
     ...ancestorDirs(overlayPaths).flatMap((d) => CONFIG_FILE_NAMES.map((name) => (d === '' ? name : `${d}/${name}`))),
@@ -267,6 +269,7 @@ export function configCandidates(overlayPaths: readonly string[], extraConfigs: 
 export async function discoverConfigs(ctx: ReadContext, overlayPaths: readonly string[], extraConfigs: readonly string[] = []): Promise<ConfigNode[]> {
   const candidates = configCandidates(overlayPaths, extraConfigs);
   const present = await ctx.fs.exists(candidates);
+  ctx.probe = { candidates, present: candidates.filter((c) => present.has(c)) };
   const found = [...new Set(candidates.filter((c) => present.has(c)))].sort(compareCodeUnits);
   let overflow = found.length > MAX_CONFIGS;
   const seen = new Set(found.slice(0, MAX_CONFIGS));

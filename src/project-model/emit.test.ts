@@ -73,13 +73,25 @@ describe('emit map: the extension rules the tracer needs (TSM-03)', () => {
     assert.equal(beside.emit.outputToSource('src/a/x.js'), 'src/a/x.ts');
   });
 
-  it('a config with noEmit writes nothing, so only the emitting config contributes (the gsd-core pair)', async () => {
+  it('a noEmit config that extends the build config still places outputs by the inherited outDir (the gsd-core pair)', async () => {
+    // gsd-core: tsconfig.json (noEmit, include src/**/*.cts) extends tsconfig.build.json, which nothing references, so
+    // discovery by directory finds only the typecheck config and the build's outDir comes through `extends`.
     const { emit } = await describeTree({
       'tsconfig.build.json': config({ rootDir: 'src', outDir: 'gsd-core/bin/lib' }, { include: ['src/**/*.cts'] }),
       'tsconfig.json': config({ noEmit: true }, { extends: './tsconfig.build.json', include: ['src/**/*.cts'] }),
       'src/semver-compare.cts': 'export {};\n',
     });
     assert.deepStrictEqual(emit.sourceToOutputs('src/semver-compare.cts'), ['gsd-core/bin/lib/semver-compare.cjs']);
+    assert.equal(emit.outputToSource('gsd-core/bin/lib/semver-compare.cjs'), 'src/semver-compare.cts');
+  });
+
+  it('a noEmit config with no outDir maps nothing: it writes no .js beside its sources', async () => {
+    const { emit } = await describeTree({
+      'tsconfig.json': config({ noEmit: true }, { include: ['src'] }),
+      'src/a.cts': 'export {};\n',
+    });
+    assert.deepStrictEqual(emit.sourceToOutputs('src/a.cts'), []);
+    assert.equal(emit.isOutput('src/a.cjs'), false);
   });
 
   it('no tsconfig: nothing is an output and nothing throws', async () => {

@@ -6,6 +6,7 @@
 import type {
   Answer,
   DegradedCode,
+  EmitLookup,
   ImportStyle,
   LocatedSymbol,
   Span,
@@ -96,6 +97,8 @@ export interface Snapshot {
   readonly files: Map<number, FileRow>;
   readonly symbols: Map<number, readonly FileSymbol[]>;
   readonly views: SnapshotViews;
+  /** Where the project's compiler writes its output, when the read was given the project context (TSM-03). */
+  readonly emit?: EmitLookup;
 }
 
 export const str = (value: unknown): string => String(value);
@@ -336,7 +339,7 @@ export function resolveImport(snap: Snapshot, importer: string, specifier: strin
   const key = `${importer}\u0000${specifier}`;
   const known = snap.views.resolved.get(key);
   if (known !== undefined) return known;
-  const found = resolveSpecifier(importer, specifier, overlayView(snap).paths);
+  const found = resolveSpecifier(importer, specifier, overlayView(snap).paths, snap.emit);
   snap.views.resolved.set(key, found);
   return found;
 }
@@ -364,6 +367,7 @@ export function readSnapshot<T>(
   parts: StoreParts,
   worktree: WorktreeId,
   read: (snap: Snapshot) => T,
+  emit?: EmitLookup,
 ): SnapshotRead<T> {
   assertOpen(parts);
   return readTransaction(parts, (db) => {
@@ -383,6 +387,7 @@ export function readSnapshot<T>(
       files: new Map(),
       symbols: new Map(),
       views: { exports: new Map(), resolved: new Map() },
+      ...(emit === undefined ? {} : { emit }),
     });
     const degraded: DegradedCode[] = [...parts.degradedNow()];
     if (stalePaths.length > 0 && !degraded.includes('stale')) degraded.push('stale');
@@ -400,8 +405,8 @@ export function toAnswer<T>(state: ReadState, data: T, extra: readonly DegradedC
 }
 
 /** One synchronous read wrapped in an Answer. */
-export function answer<T>(parts: StoreParts, worktree: WorktreeId, read: (snap: Snapshot) => T): Answer<T> {
-  const done = readSnapshot(parts, worktree, read);
+export function answer<T>(parts: StoreParts, worktree: WorktreeId, read: (snap: Snapshot) => T, emit?: EmitLookup): Answer<T> {
+  const done = readSnapshot(parts, worktree, read, emit);
   return toAnswer(done, done.value);
 }
 

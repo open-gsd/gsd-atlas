@@ -18,7 +18,10 @@ const WORKTREE = '/work/repo';
 
 interface World {
   files: Record<string, string>;
+  /** Paths whose text was read. */
   readonly reads: string[];
+  /** Paths asked about with a one-byte read (does the config exist). */
+  readonly probes: string[];
   describes: number;
   provider: ProjectProvider;
 }
@@ -26,7 +29,7 @@ interface World {
 const tsModuleFor = (p: string): string | undefined => (/\.(?:ts|cts|mts)$/.test(p) ? 'typescript' : undefined);
 
 function makeWorld(files: Record<string, string>, options: { moduleForPath?: (p: string) => string | undefined; throwOnDescribe?: boolean } = {}): World {
-  const world: World = { files, reads: [], describes: 0, provider: undefined as unknown as ProjectProvider };
+  const world: World = { files, reads: [], probes: [], describes: 0, provider: undefined as unknown as ProjectProvider };
   const real = createTypeScriptProjectModel();
   const counting: ProjectModel = {
     id: 'typescript',
@@ -37,9 +40,10 @@ function makeWorld(files: Record<string, string>, options: { moduleForPath?: (p:
     },
   };
   const tree = {
-    async readText(worktree: string, p: string): Promise<ReadTextResult> {
+    async readText(worktree: string, p: string, readOptions?: { readonly maxBytes?: number }): Promise<ReadTextResult> {
       assert.equal(worktree, WORKTREE, 'every read names the worktree it belongs to');
-      world.reads.push(p);
+      // A one-byte read is the provider asking whether a config exists; any other read takes the file's text.
+      (readOptions?.maxBytes === 1 ? world.probes : world.reads).push(p);
       const text = world.files[p];
       return text === undefined ? { kind: 'missing' } : { kind: 'ok', text };
     },
@@ -95,11 +99,14 @@ describe('createProjectContextProvider (TSM-03)', () => {
   it('is cheap on an unchanged project: ten edits of one source file describe once and read only the config', async () => {
     const world = makeWorld({ 'tsconfig.json': BUILD });
     const paths = ['src/lib.cts', 'src/user.cts', 'consumer.cjs'];
-    for (let edit = 0; edit < 10; edit += 1) await ask(world, paths, `rev${String(edit)}`);
+    await ask(world, paths, 'rev0');
+    const afterFirst = world.reads.length;
+    for (let edit = 1; edit < 10; edit += 1) await ask(world, paths, `rev${String(edit)}`);
     assert.equal(world.describes, 1, 'one description for ten overlay snapshots with one path set');
-    const afterFirst = world.reads.filter((p) => p !== 'tsconfig.json');
-    assert.deepStrictEqual(afterFirst, [], 'the only file ever read is the config');
-    assert.ok(world.reads.length <= 1 + 9, 'the first call reads the config while describing, each later call at most one small re-check');
+    assert.deepStrictEqual(world.reads.slice(afterFirst), Array<string>(9).fill('tsconfig.json'), 'each of the nine later calls re-reads only the config');
+    const probed = world.probes.length;
+    await ask(world, paths, 'rev-last');
+    assert.equal(world.probes.length, probed, 'an edit of a source file asks no existence questions');
   });
 
   it('describes again when the set of overlay paths changes', async () => {

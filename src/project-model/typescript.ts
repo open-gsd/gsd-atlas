@@ -5,7 +5,7 @@ import type { FileSetMatcher } from './globs.ts';
 import { compilerFallbackDiagnostic, detectTypeScriptInstall, selectCompiler } from './install.ts';
 import { chooseOwner } from './owners.ts';
 import { buildEmitMap } from './emit.ts';
-import { configCandidates, createReadContext, discoverConfigs, effectiveConfig } from './tsconfig.ts';
+import { createReadContext, discoverConfigs, effectiveConfig } from './tsconfig.ts';
 import type { ConfigInfo, DescribeInput, EmitMap, ProjectDescription, ProjectFs, ProjectModel } from './types.ts';
 
 /** The ids of the built-in ProjectModels a manifest may name through `project.model` (ADR 5). */
@@ -121,7 +121,7 @@ export function createTypeScriptProjectModel(defaultFs?: ProjectFs, options: Typ
           return emit;
         },
         configFiles,
-        configCandidates: configCandidates(overlay, input.extraConfigs),
+        configProbe: ctx.probe ?? { candidates: [], present: [] },
       };
     },
   };

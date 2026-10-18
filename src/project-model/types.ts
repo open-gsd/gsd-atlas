@@ -158,10 +158,11 @@ export interface ProjectDescription {
   /** Every config file read (each config and every file it extends) with the normalised hash of its text. */
   readonly configFiles: ReadonlyMap<string, string>;
   /**
-   * The config paths discovery looked for next to or above the overlay's files (`tsconfig.json`, `jsconfig.json`), so
-   * a caller can notice that one appeared or went away without describing the project again.
+   * What discovery looked for and found: the config paths it probed next to and above the overlay's files
+   * (`tsconfig.json`, `jsconfig.json`) and the subset that existed. A caller that asks `exists` for the same
+   * `candidates` later and gets another set knows a config appeared or went away, without describing again.
    */
-  readonly configCandidates: readonly string[];
+  readonly configProbe: { readonly candidates: readonly string[]; readonly present: readonly string[] };
 }
 
 export interface DescribeInput {

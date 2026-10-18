@@ -1,7 +1,8 @@
-import type { ExportSite, FileFacts, ImportSite, LocalSymbol, RefKind, RefSite } from '../facts/index.ts';
+import type { Answer, EmitLookup, ExportSite, FileFacts, ImportSite, LocalSymbol, RefKind, RefSite } from '../facts/index.ts';
 import {
   clampDepth,
   collectCallEdges,
+  emitLookupFor,
   importerRecord,
   mergeCaller,
   mergeRefs,
@@ -23,6 +24,7 @@ import {
   findRecords,
   findSymbol,
   num,
+  overlayView,
   readSnapshot,
   spanOf,
   str,
@@ -31,7 +33,7 @@ import {
 } from './snapshot.ts';
 import type { Snapshot } from './snapshot.ts';
 import type { StoreParts } from './parts.ts';
-import type { Reader, WorktreeId } from './types.ts';
+import type { ImporterRecord, Reader, WorktreeId } from './types.ts';
 
 function rebuildFacts(snap: Snapshot, path: string, fileId: number): FileFacts {
   const file = fileRow(snap, fileId);
@@ -171,11 +173,20 @@ export function createReader(parts: StoreParts, worktree: WorktreeId): Reader {
       });
     },
     async importers(target, options) {
-      return answer(parts, worktree, (snap) =>
-        walkImporters(snap, target, clampDepth(options?.depth))
-          .slice(0, limitOf(options?.limit))
-          .map((edge) => importerRecord(snap, edge)),
-      );
+      const read = (emit: EmitLookup | undefined): Answer<readonly ImporterRecord[]> =>
+        answer(
+          parts,
+          worktree,
+          (snap) =>
+            walkImporters(snap, target, clampDepth(options?.depth))
+              .slice(0, limitOf(options?.limit))
+              .map((edge) => importerRecord(snap, edge)),
+          emit,
+        );
+      // A build output that a project's config says a source compiles to names that source (TSM-03). A store with no
+      // provider reads at once, as in Phase 2.
+      const emit = emitLookupFor(parts, worktree);
+      return read(emit instanceof Promise ? await emit : emit);
     },
     async fileFacts(path) {
       return answer(parts, worktree, (snap) => {
@@ -183,8 +194,12 @@ export function createReader(parts: StoreParts, worktree: WorktreeId): Reader {
         return fileId === null ? null : rebuildFacts(snap, path, fileId);
       });
     },
-    async emittedAs() {
-      return answer(parts, worktree, (): readonly string[] => []);
+    async emittedAs(path) {
+      const pending = emitLookupFor(parts, worktree);
+      const emit = pending instanceof Promise ? await pending : pending;
+      return answer(parts, worktree, (snap): readonly string[] =>
+        emit !== undefined && overlayView(snap).paths.has(path) ? emit.sourceToOutputs(path) : [],
+      );
     },
   };
 }

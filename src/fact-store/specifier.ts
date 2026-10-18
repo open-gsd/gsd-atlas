@@ -6,7 +6,9 @@ import type { EmitLookup } from '../facts/index.ts';
  * touches the file system, so a hostile specifier can only ever name a path the overlay already holds (T-02-33).
  *
  * Phase 3's ProjectModel replaces this rule for path aliases and packages; until then only relative specifiers
- * resolve, and a package name or an alias never matches.
+ * resolve, and a package name or an alias never matches. The one thing the project adds here is the emit lookup
+ * (TSM-03): a path that is the compiled output of an included source also names that source, so a `.cjs` file that
+ * requires a built module is a user of the `.cts` file it was built from.
  */
 
 /** A 1 to 4 character alphanumeric extension: what makes the tail of a specifier look like `.cjs`, not `.b`. */
@@ -84,7 +86,7 @@ export function resolveSpecifier(
   importerPath: string,
   specifier: string,
   overlayPaths: ReadonlySet<string>,
-  _emit?: EmitLookup,
+  emit?: EmitLookup,
 ): readonly string[] {
   if (!isRelativeSpecifier(specifier)) return [];
   const joined = posix.join(posix.dirname(importerPath), specifier);
@@ -100,6 +102,11 @@ export function resolveSpecifier(
     if (EXTENSION.test(posix.extname(base))) {
       for (const match of index.byStem.get(stem(base)) ?? []) found.add(match);
     }
+    // A path that is the emit output of an included source names that source (TSM-03). Only a source the overlay
+    // holds is offered, so a lookup can never make a specifier reach outside the overlay (T-03-221, T-03-222). A
+    // file that sits at the output path as well stays a candidate, so the importer is ambiguous, never guessed.
+    const built = emit?.outputToSource(base);
+    if (built !== undefined && overlayPaths.has(built)) found.add(built);
   }
   for (const match of index.indexFiles.get(base) ?? []) found.add(match);
   return [...found].sort();
