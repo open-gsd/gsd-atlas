@@ -1,9 +1,11 @@
 /**
  * `code_impact`: how far a change to a symbol reaches (user decision 3, query-and-policy ADR amendment).
  *
- * The seeds are the definitions matching the name. The walk is breadth-first, hop by hop, over two kinds of edge:
+ * The seeds are the definitions matching the name. The walk is breadth-first, hop by hop, over three kinds of edge:
  *   - a reference to a symbol, which makes the symbol that contains the reference site impacted (`call` when the
  *     site is a call, `reference` otherwise) or, when the site sits outside every symbol, the file (`reference`);
+ *   - a compiler relation that ends at the symbol (plan 03-25), which makes the subtype impacted (`extends`,
+ *     `implements`) or the overriding member (`overrides`); a heritage reference such a relation names is that relation;
  *   - an import of a file, which makes the importing file impacted (`import`).
  * Every item carries the confidence of its own edge and the confidence of the whole chain from the seed: the chain
  * is INFERRED as soon as one edge on it is INFERRED, and an INFERRED edge is never presented as EXTRACTED. Each
@@ -21,9 +23,9 @@ import { CURSOR_TOO_LONG_HINT, OUTPUT_TOO_LARGE_MESSAGE, TRUNCATED_HINT, notInde
 import type { FindContext } from './find.ts';
 import { pageItems } from './page.ts';
 import type { PageState } from './page.ts';
-import { compareRanked, cwdHintDir, directoryDistance, impactKeyOf } from './ranking.ts';
+import { compareRanked, cwdHintDir, directoryDistance, edgeRankOf, impactKeyOf } from './ranking.ts';
 import type { ImpactVia, SortKey } from './ranking.ts';
-import { MAX_TARGETS, NO_DEFINITION_HINT, TARGETS_CAPPED_HINT, describeDefinition, findTargets, laterOf } from './refs.ts';
+import { MAX_TARGETS, NO_DEFINITION_HINT, TARGETS_CAPPED_HINT, describeDefinition, findTargets, labelRefs, laterOf } from './refs.ts';
 import type { DefinitionInfo } from './refs.ts';
 import { createLineReader } from './text.ts';
 import type { CodeImpactInput } from './tools.ts';
@@ -52,12 +54,10 @@ interface Edge {
   readonly handle: string;
 }
 
-const confidenceRank = (value: Confidence): number => (value === 'EXTRACTED' ? 0 : 1);
-const viaRank = (via: ImpactVia): number => (via === 'import' ? 0 : via === 'call' ? 1 : 2);
 const byText = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
 
 /** The numeric rank of an edge, the same one the item key uses: confidence, chain confidence, then how it is reached. */
-const edgeRank = (edge: Edge): number => confidenceRank(edge.confidence) * 6 + confidenceRank(edge.chain) * 3 + viaRank(edge.via);
+const edgeRank = (edge: Edge): number => edgeRankOf(edge.confidence, edge.chain, edge.via);
 
 /** Negative when `a` is the better way to reach the same node than `b`; a total order, so the choice never depends on arrival order. */
 const compareEdges = (a: Edge, b: Edge): number =>
@@ -159,6 +159,8 @@ async function walkSeed(reader: Reader, seed: SymbolRecord, start: Watermark, se
   const cappedHops: number[] = [];
 
   for (let hop = 1; hop <= settings.depth && (symbols.length > 0 || files.length > 0); hop += 1) {
+    /** True when a symbol of this hop had more relations than the read returns (the hop is reported as cut). */
+    let relationsCut = false;
     const symbolEdges = new Map<string, { identity: SymbolIdentity; edge: Edge }>();
     const fileEdges = new Map<string, { path: string; edge: Edge }>();
     const offerSymbol = (identity: SymbolIdentity, edge: Edge): void => {
@@ -178,9 +180,18 @@ async function walkSeed(reader: Reader, seed: SymbolRecord, start: Watermark, se
       const answer = await reader.refs(source.identity, { timeoutMs: settings.timeoutMs });
       watermark = laterOf(watermark, answer.watermark);
       for (const code of answer.degraded ?? []) degraded.add(code);
-      for (const ref of answer.data) {
+      // The compiler's relations that end at the symbol: its subtypes (`extends`, `implements`) and the members that
+      // override it (`overrides`). A heritage reference one of them names is that relation, not a plain reference.
+      const relationLimit = settings.cap * CANDIDATE_FACTOR;
+      const related = await reader.relations(source.identity, { direction: 'in', timeoutMs: settings.timeoutMs, limit: relationLimit });
+      watermark = laterOf(watermark, related.watermark);
+      for (const code of related.degraded ?? []) degraded.add(code);
+      if (related.data.length >= relationLimit) relationsCut = true;
+      for (const { ref, edge: label } of labelRefs(source.identity, answer.data, related.data)) {
+        const via: ImpactVia =
+          label === 'extends' || label === 'implements' || label === 'overrides' ? label : ref.kind === 'call' ? 'call' : 'reference';
         const edge: Edge = {
-          via: ref.kind === 'call' ? 'call' : 'reference',
+          via,
           confidence: ref.confidence,
           chain: chainOf(source.chain, ref.confidence),
           path: ref.source_path,
@@ -262,7 +273,7 @@ async function walkSeed(reader: Reader, seed: SymbolRecord, start: Watermark, se
       );
     }
     walked.sort((a, b) => compareRanked(a.key, b.key));
-    if (walked.length > settings.cap || tooMany) cappedHops.push(hop);
+    if (walked.length > settings.cap || tooMany || relationsCut) cappedHops.push(hop);
 
     const nextSymbols: { identity: SymbolIdentity; chain: Confidence }[] = [];
     const nextFiles: { path: string; chain: Confidence }[] = [];

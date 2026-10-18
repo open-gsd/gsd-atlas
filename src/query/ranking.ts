@@ -153,10 +153,24 @@ export function refKeyOf(input: RefRankInput): SortKey {
   ];
 }
 
-/** How an impacted item is reached, in ranking order. */
-export type ImpactVia = 'import' | 'call' | 'reference';
+/**
+ * How an impacted item is reached, in ranking order. The first three are Phase 2's; `extends`, `implements` and
+ * `overrides` (mcp-contract ADR amendment, point 8) come from the compiler's relations and rank after them, in this order.
+ */
+export type ImpactVia = 'import' | 'call' | 'reference' | 'extends' | 'implements' | 'overrides';
 
-const VIA_RANK: Readonly<Record<ImpactVia, number>> = { import: 0, call: 1, reference: 2 };
+const VIA_RANK: Readonly<Record<ImpactVia, number>> = { import: 0, call: 1, reference: 2, extends: 3, implements: 4, overrides: 5 };
+
+/** The number of ways to reach an item: the radix of the edge slot of the key. */
+const VIA_COUNT = Object.keys(VIA_RANK).length;
+
+/**
+ * The edge slot of an impact key: edge confidence (EXTRACTED first), then chain confidence (EXTRACTED first), then how the
+ * item is reached, most significant first. One number, so two edges to the same node compare the same way everywhere.
+ */
+export function edgeRankOf(confidence: 'EXTRACTED' | 'INFERRED', chain: 'EXTRACTED' | 'INFERRED', via: ImpactVia): number {
+  return rankOf(confidence) * 2 * VIA_COUNT + rankOf(chain) * VIA_COUNT + VIA_RANK[via];
+}
 
 export interface ImpactRankInput {
   readonly hop: number;
@@ -181,7 +195,7 @@ export function impactKeyOf(input: ImpactRankInput): SortKey {
   return [
     input.hop,
     input.isFile ? 1 : 0,
-    rankOf(input.confidence) * 6 + rankOf(input.chain) * 3 + VIA_RANK[input.via],
+    edgeRankOf(input.confidence, input.chain, input.via),
     0,
     input.distance,
     input.path,
@@ -191,8 +205,12 @@ export function impactKeyOf(input: ImpactRankInput): SortKey {
   ];
 }
 
-/** The sections of `code_context`, in the order they are listed and cut. */
-export const CONTEXT_SECTIONS = ['definition', 'parent', 'child', 'import', 'export', 'reference'] as const;
+/**
+ * The sections of `code_context`, in the order they are listed and cut. `supertype` and `subtype` (plan 03-25) are the
+ * compiler's relations of the symbol; they are paged like the others but are rendered under `data.supertypes` and
+ * `data.subtypes`, not in `data.results`.
+ */
+export const CONTEXT_SECTIONS = ['definition', 'parent', 'child', 'supertype', 'subtype', 'import', 'export', 'reference'] as const;
 
 export type ContextSection = (typeof CONTEXT_SECTIONS)[number];
 

@@ -892,14 +892,21 @@ interface RelationPlan {
   readonly asked: ReadonlySet<string>;
 }
 
-/** The files with a heritage reference to `target` (a class or an interface), and the types those references sit in. */
+/**
+ * The files that may declare a subtype of `target` (a class or an interface), and the types those references sit in. A
+ * subtype names its base in a heritage clause, so a heritage reference is the sign; so is any other reference that sits
+ * directly in a class or an interface and not in one of its members, because a heritage clause can be an expression the
+ * grammar tier does not tag (`extends Mixin(Base)`). A candidate that is not a subtype costs one extra file and never a
+ * wrong relation, because the compiler decides.
+ */
 function heritageOf(snap: Snapshot, target: SymbolIdentity): { readonly files: readonly string[]; readonly subtypes: readonly SymbolIdentity[] } {
   const files = new Set<string>();
   const subtypes: SymbolIdentity[] = [];
   for (const hit of scopedRefs(snap, target)) {
-    if (hit.kind !== 'heritage') continue;
+    const inType = hit.enclosing !== null && (hit.enclosing.kind === 'class' || hit.enclosing.kind === 'interface');
+    if (hit.kind !== 'heritage' && !inType) continue;
     files.add(hit.path);
-    if (hit.enclosing !== null) subtypes.push(hit.enclosing);
+    if (inType && hit.enclosing !== null) subtypes.push(hit.enclosing);
   }
   return { files: [...files], subtypes };
 }
