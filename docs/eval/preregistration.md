@@ -1,6 +1,6 @@
 # Pre-registration of the MVP eval (plan 03-16)
 
-Status: Frozen (Stage A, 2026-10-18, by Tom Boucher)
+Status: Draft
 
 This document records the design of the eval that decides whether the gsd-atlas MVP meets its claim. It describes the design only. It reports no scored result and hints at none. Once the status line above reads `Frozen`, `node scripts/eval/verify-prereg.ts` (run by the static CI job) fails when any of the sixteen registered files changes, and a changed registered value is a new registered run (see Deviations policy).
 
@@ -103,7 +103,8 @@ OQ4 confirmed by the user: point_estimate
 ```prereg-json
 {
   "stage": "A",
-  "status": "Frozen",
+  "status": "Draft",
+  "revision": 1,
   "params": {
     "marginPoints": 5,
     "intervalLevel": 0.95,
@@ -123,24 +124,7 @@ OQ4 confirmed by the user: point_estimate
     "corpusSha": "10ac3a7a947903ba50f538a907af036744d759d5",
     "npmCiRan": true
   },
-  "files": {
-    "scripts/eval/questions/gsd-core.questions.json": "841b2bdb202f286c3da5ac3a2c6b01ec4a1520e4a6d343089697e1f8f326700f",
-    "scripts/eval/questions/gsd-core.answers.json": "e9e43d565bfbacc1c2ce045debdae4ee11e32510471c85465ad1e1f50d92413a",
-    "scripts/eval/questions.ts": "425623eda7487496bf2a0ef959ef0ee079e8ccf4d0f41fca324ae01cee03dc64",
-    "scripts/eval/oracle.ts": "8d83f5d8197f12e2234b7d83c831951022d658c1306304887bf1650364f53fdc",
-    "scripts/eval/score.ts": "27cae3d4e1bf257d0bdd68ba0e393df7465b10afa8ef06dcd41208379fc1775e",
-    "scripts/eval/answer-schema.json": "6da389ecb51825629b7770a562b88db67e245d775f7ec903475df97f6c03b72a",
-    "scripts/eval/stats.ts": "e6f50d1f08ab1d53f6b9101e0bc890ca6f8b462a3acb671e5fd50e9dd829b851",
-    "scripts/eval/rows.ts": "c2a24b17cf8b0f2508a7ae0ce8f5419bfea6f90056f929a699893e424f3222de",
-    "scripts/eval/analyze.ts": "8328e47c7a21c34e2ffec617f2646cb3b290f6fb3f79fb58f0497eb516c015d0",
-    "scripts/eval/prereg.ts": "2e6d86fe1ccc20171a9e8c41b9f1b827f5207113bbb5de62429cfe2f7bfbcc25",
-    "scripts/eval/claude-session.ts": "e967fc6549ed2072160b35be3caf47f3f80e5f6fbcf020fbbb64fc23ca3c0ca6",
-    "scripts/eval/arms.ts": "e33cc7066d5a3384580baef78d54db1433d98c1ca7b03022a92681a795fd4c31",
-    "scripts/eval/harness.ts": "c659db81e9d7cb3e3a61a8df9c13846ba23463990920b797794e6c8e58852870",
-    "scripts/eval/schedule.ts": "ef4cd8c0157b6e836f8470652b658fb022f55ef96df6c1865c85043a42097d9d",
-    "scripts/eval/results.ts": "669e0b0909cb6d3c73ea966e9b5394154ed762eb2ed15cf238c35f0530abc373",
-    "scripts/eval/prepare-corpus.ts": "cee98c9221f18e0cff4905e60970684cef3a9b6a520cfb668b73397e39ba3dba"
-  },
+  "files": {},
   "questionSet": {
     "count": 75,
     "byCategory": {
@@ -153,6 +137,108 @@ OQ4 confirmed by the user: point_estimate
       "definition": 7,
       "abstain": 9
     }
-  }
+  },
+  "supersedes": [
+    {
+      "revision": 0,
+      "status": "Status: Frozen (Stage A, 2026-10-18, by Tom Boucher)",
+      "frozenAtCommit": "8a1da047ad61aa6d2f41b69dae7de9206d654147",
+      "params": {
+        "marginPoints": 5,
+        "intervalLevel": 0.95,
+        "resamples": 10000,
+        "seed": 20261017,
+        "runsPerCell": 3,
+        "citationRate": 0.8,
+        "citationJudgedOn": "point_estimate",
+        "wilsonZ": 1.96,
+        "tokenCriterion": "upper-bound",
+        "failureRule": "incorrect-keep-tokens",
+        "concurrency": 2,
+        "maxBudgetUsdPerSession": 3,
+        "sessionWallClockMs": 900000,
+        "model": "claude-sonnet-5-5",
+        "claudeVersion": "2.1.302",
+        "corpusSha": "10ac3a7a947903ba50f538a907af036744d759d5",
+        "npmCiRan": true
+      },
+      "files": {
+        "scripts/eval/questions/gsd-core.questions.json": "841b2bdb202f286c3da5ac3a2c6b01ec4a1520e4a6d343089697e1f8f326700f",
+        "scripts/eval/questions/gsd-core.answers.json": "e9e43d565bfbacc1c2ce045debdae4ee11e32510471c85465ad1e1f50d92413a",
+        "scripts/eval/questions.ts": "425623eda7487496bf2a0ef959ef0ee079e8ccf4d0f41fca324ae01cee03dc64",
+        "scripts/eval/oracle.ts": "8d83f5d8197f12e2234b7d83c831951022d658c1306304887bf1650364f53fdc",
+        "scripts/eval/score.ts": "27cae3d4e1bf257d0bdd68ba0e393df7465b10afa8ef06dcd41208379fc1775e",
+        "scripts/eval/answer-schema.json": "6da389ecb51825629b7770a562b88db67e245d775f7ec903475df97f6c03b72a",
+        "scripts/eval/stats.ts": "e6f50d1f08ab1d53f6b9101e0bc890ca6f8b462a3acb671e5fd50e9dd829b851",
+        "scripts/eval/rows.ts": "c2a24b17cf8b0f2508a7ae0ce8f5419bfea6f90056f929a699893e424f3222de",
+        "scripts/eval/analyze.ts": "8328e47c7a21c34e2ffec617f2646cb3b290f6fb3f79fb58f0497eb516c015d0",
+        "scripts/eval/prereg.ts": "2e6d86fe1ccc20171a9e8c41b9f1b827f5207113bbb5de62429cfe2f7bfbcc25",
+        "scripts/eval/claude-session.ts": "e967fc6549ed2072160b35be3caf47f3f80e5f6fbcf020fbbb64fc23ca3c0ca6",
+        "scripts/eval/arms.ts": "e33cc7066d5a3384580baef78d54db1433d98c1ca7b03022a92681a795fd4c31",
+        "scripts/eval/harness.ts": "c659db81e9d7cb3e3a61a8df9c13846ba23463990920b797794e6c8e58852870",
+        "scripts/eval/schedule.ts": "ef4cd8c0157b6e836f8470652b658fb022f55ef96df6c1865c85043a42097d9d",
+        "scripts/eval/results.ts": "669e0b0909cb6d3c73ea966e9b5394154ed762eb2ed15cf238c35f0530abc373",
+        "scripts/eval/prepare-corpus.ts": "cee98c9221f18e0cff4905e60970684cef3a9b6a520cfb668b73397e39ba3dba"
+      },
+      "questionSet": {
+        "count": 75,
+        "byCategory": {
+          "callers": 17,
+          "references": 8,
+          "heritage": 8,
+          "emit": 10,
+          "adr": 10,
+          "impact": 6,
+          "definition": 7,
+          "abstain": 9
+        }
+      }
+    }
+  ]
 }
 ```
+
+## Revision 1 (2026-10-18)
+
+Opened on 2026-10-18 by Tom Boucher. Reason: Under the registered --tools Bash,Read the atlas model sees no skill (the init event lists it, the model has no Skill tool); the atlas arm gets the Skill tool so the scored run carries the skill, per the user's instruction of 2026-10-18.
+
+### What changed
+
+(not written yet)
+
+### Why
+
+(not written yet)
+
+### What did not change
+
+(not written yet)
+
+### No scored data
+
+(not written yet)
+
+### Superseded records
+
+| Record | Value |
+| --- | --- |
+| Superseded status line | `Status: Frozen (Stage A, 2026-10-18, by Tom Boucher)` |
+| Superseded at commit | `8a1da047ad61aa6d2f41b69dae7de9206d654147` |
+| `scripts/eval/questions/gsd-core.questions.json` | `841b2bdb202f286c3da5ac3a2c6b01ec4a1520e4a6d343089697e1f8f326700f` |
+| `scripts/eval/questions/gsd-core.answers.json` | `e9e43d565bfbacc1c2ce045debdae4ee11e32510471c85465ad1e1f50d92413a` |
+| `scripts/eval/questions.ts` | `425623eda7487496bf2a0ef959ef0ee079e8ccf4d0f41fca324ae01cee03dc64` |
+| `scripts/eval/oracle.ts` | `8d83f5d8197f12e2234b7d83c831951022d658c1306304887bf1650364f53fdc` |
+| `scripts/eval/score.ts` | `27cae3d4e1bf257d0bdd68ba0e393df7465b10afa8ef06dcd41208379fc1775e` |
+| `scripts/eval/answer-schema.json` | `6da389ecb51825629b7770a562b88db67e245d775f7ec903475df97f6c03b72a` |
+| `scripts/eval/stats.ts` | `e6f50d1f08ab1d53f6b9101e0bc890ca6f8b462a3acb671e5fd50e9dd829b851` |
+| `scripts/eval/rows.ts` | `c2a24b17cf8b0f2508a7ae0ce8f5419bfea6f90056f929a699893e424f3222de` |
+| `scripts/eval/analyze.ts` | `8328e47c7a21c34e2ffec617f2646cb3b290f6fb3f79fb58f0497eb516c015d0` |
+| `scripts/eval/prereg.ts` | `2e6d86fe1ccc20171a9e8c41b9f1b827f5207113bbb5de62429cfe2f7bfbcc25` |
+| `scripts/eval/claude-session.ts` | `e967fc6549ed2072160b35be3caf47f3f80e5f6fbcf020fbbb64fc23ca3c0ca6` |
+| `scripts/eval/arms.ts` | `e33cc7066d5a3384580baef78d54db1433d98c1ca7b03022a92681a795fd4c31` |
+| `scripts/eval/harness.ts` | `c659db81e9d7cb3e3a61a8df9c13846ba23463990920b797794e6c8e58852870` |
+| `scripts/eval/schedule.ts` | `ef4cd8c0157b6e836f8470652b658fb022f55ef96df6c1865c85043a42097d9d` |
+| `scripts/eval/results.ts` | `669e0b0909cb6d3c73ea966e9b5394154ed762eb2ed15cf238c35f0530abc373` |
+| `scripts/eval/prepare-corpus.ts` | `cee98c9221f18e0cff4905e60970684cef3a9b6a520cfb668b73397e39ba3dba` |
+
+### Approvals (Revision 1)
