@@ -1,5 +1,6 @@
 import { diagnostic } from '../facts/index.ts';
 import { isNeutralisableFilterName } from './filter-name.ts';
+import { commandHash } from './hash.ts';
 import type { CommandSpec, Decision, RunContext, UserPermissions } from './spec.ts';
 import { COMMAND_CODES } from './spec.ts';
 
@@ -8,7 +9,11 @@ import { COMMAND_CODES } from './spec.ts';
  *
  * A spec runs only if
  *   1. it exactly matches a first-party built-in in {@link BUILTINS}, or
- *   2. the injected user-level permission list allows that executable for `ctx.repo`.
+ *   2. the injected user-level permission list allows that executable for `ctx.repo` (and, when the entry carries a
+ *      `sha256`, only the one exact command that hash was computed for, D-15).
+ *
+ * This file reads no file and takes no input from repository data (SEC-01): it imports no `fs`, and the hash is a
+ * pure function of the spec and the host-supplied repo identity.
  *
  * There is deliberately no parameter through which repo-committed config, a module manifest,
  * `precise.command` or an npm package can grant permission (A44): the only inputs are the spec
@@ -246,6 +251,9 @@ function userAllows(spec: CommandSpec, repo: string | undefined, user: UserPermi
   if (user === undefined || repo === undefined) return false;
   return user.allow.some((entry) => {
     if (entry.repo !== repo || entry.executable !== spec.executable) return false;
+    // D-15: an entry with a hash binds to one exact command. The hash is recomputed here from the spec and the
+    // host-supplied repo identity, so a changed argument, executable or directory no longer matches. Narrowing only.
+    if (entry.sha256 !== undefined && commandHash(spec, repo) !== entry.sha256) return false;
     const prefix = entry.argsPrefix;
     if (prefix === undefined) return true;
     return prefix.length <= spec.args.length && prefix.every((p, k) => spec.args[k] === p);

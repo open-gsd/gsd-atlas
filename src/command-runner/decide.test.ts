@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { describe, it } from 'node:test';
-import { allowAll, decide } from './index.ts';
+import { allowAll, commandHash, createRealRunner, decide } from './index.ts';
 import type { CommandSpec, Decision, UserPermissions } from './index.ts';
 
 /** A bare git spec: no overrides, no environment. Only `--version` may run like this. */
@@ -512,6 +515,120 @@ describe('decide: user permissions', () => {
     const sneaky = { executable: tool, args: [], permissions: { commands: [tool] } } as unknown as CommandSpec;
     assertDenied(decide(sneaky, { repo: '/repo/a', permissions: { commands: [tool] } } as never));
     assert.equal(decide.length <= 3, true);
+  });
+});
+
+describe('decide: exact-argv approvals by command hash (D-15)', () => {
+  const tool = process.execPath;
+  const repo = path.resolve(os.tmpdir(), 'ga-approval-repo');
+  const other = path.resolve(os.tmpdir(), 'ga-approval-other');
+  const spec: CommandSpec = { executable: tool, args: ['-e', 'process.stdout.write("ok")'] };
+  const hash = commandHash(spec, repo) as string;
+  const hashed = (extra: Record<string, unknown> = {}): UserPermissions => ({
+    allow: [{ repo, executable: tool, sha256: hash, ...extra }],
+  });
+
+  it('allows the exact command the hash was computed for', () => {
+    assert.deepEqual(decide(spec, { repo }, hashed()), { allowed: true, via: 'user' });
+  });
+
+  it('denies a changed argument, an added argument and a changed executable', () => {
+    assertDenied(decide({ ...spec, args: ['-e', 'process.stdout.write("no")'] }, { repo }, hashed()));
+    assertDenied(decide({ ...spec, args: [...spec.args, '--extra'] }, { repo }, hashed()));
+    assertDenied(decide({ executable: '/bin/other', args: [...spec.args] }, { repo }, hashed()));
+  });
+
+  it('denies the same command from a different directory inside the repository', () => {
+    assertDenied(decide({ ...spec, cwd: path.join(repo, 'sub') }, { repo }, hashed()));
+  });
+
+  it('treats an undefined cwd and the repository root alike', () => {
+    assert.equal(decide({ ...spec, cwd: repo }, { repo }, hashed()).allowed, true);
+  });
+
+  it('denies a cwd outside the repository, which has no valid hash', () => {
+    assertDenied(decide({ ...spec, cwd: path.resolve(os.tmpdir(), 'elsewhere') }, { repo }, hashed()));
+  });
+
+  it('denies the entry under a different repository in the run context', () => {
+    assertDenied(decide(spec, { repo: other }, hashed()));
+  });
+
+  it('compares the repository path literally: an alias of the real path does not match (approval is tied to one location)', () => {
+    const alias = path.resolve(os.tmpdir(), 'ga-approval-alias');
+    assertDenied(decide(spec, { repo: alias }, hashed()));
+  });
+
+  it('an entry without sha256 still matches by executable (and prefix) as before', () => {
+    const plain: UserPermissions = { allow: [{ repo, executable: tool }] };
+    assert.equal(decide(spec, { repo }, plain).allowed, true);
+    assert.equal(decide({ ...spec, cwd: path.join(repo, 'sub') }, { repo }, plain).allowed, true);
+    const prefixed: UserPermissions = { allow: [{ repo, executable: tool, argsPrefix: ['-e'] }] };
+    assert.equal(decide(spec, { repo }, prefixed).allowed, true);
+  });
+
+  it('an entry with both argsPrefix and sha256 requires both', () => {
+    assert.equal(decide(spec, { repo }, hashed({ argsPrefix: ['-e'] })).allowed, true);
+    assertDenied(decide(spec, { repo }, hashed({ argsPrefix: ['--inspect'] })));
+    // the prefix matches, the hash does not
+    assertDenied(decide({ ...spec, args: ['-e', 'other'] }, { repo }, hashed({ argsPrefix: ['-e'] })));
+  });
+
+  it('the hash can only narrow: it never allows what the unhashed entry denies', () => {
+    const wrongExecutable: UserPermissions = { allow: [{ repo, executable: '/bin/other', sha256: hash }] };
+    assertDenied(decide(spec, { repo }, wrongExecutable));
+    const wrongHash: UserPermissions = { allow: [{ repo, executable: tool, sha256: 'a'.repeat(64) }] };
+    assertDenied(decide(spec, { repo }, wrongHash));
+  });
+
+  it('a hashed entry for git allows exactly that argv and nothing wider', () => {
+    const gitHash = commandHash({ executable: 'git', args: ['push'] }, repo) as string;
+    const user: UserPermissions = { allow: [{ repo, executable: 'git', sha256: gitHash }] };
+    // Allowed only because the user approved this exact argv; the built-in table is unchanged.
+    assert.equal(decide({ executable: 'git', args: ['push'] }, { repo }, user).allowed, true);
+    assertDenied(decide({ executable: 'git', args: ['push', '--force'] }, { repo }, user));
+  });
+
+  it('decide.ts reads no file: it imports no fs module and uses commandHash', () => {
+    const text = fs.readFileSync(new URL('./decide.ts', import.meta.url), 'utf8');
+    assert.doesNotMatch(text, /from\s+['"](?:node:)?fs(?:\/promises)?['"]/);
+    assert.doesNotMatch(text, /require\(\s*['"](?:node:)?fs/);
+    assert.ok(text.includes('commandHash'));
+    const hashText = fs.readFileSync(new URL('./hash.ts', import.meta.url), 'utf8');
+    assert.doesNotMatch(hashText, /from\s+['"](?:node:)?fs(?:\/promises)?['"]/);
+  });
+});
+
+describe('real runner: an approval binds to one exact command (D-15)', () => {
+  const text = (bytes: Uint8Array): string => new TextDecoder().decode(bytes);
+  const tool = process.execPath;
+  const repo = path.resolve(os.tmpdir(), 'ga-approval-repo');
+  const spec: CommandSpec = { executable: tool, args: ['-e', 'process.stdout.write("ok")'] };
+  const sha256 = commandHash(spec, repo) as string;
+  const runner = createRealRunner({ user: { allow: [{ repo, executable: tool, sha256 }] } });
+
+  it('runs exactly the approved command and returns its output', async () => {
+    const result = await runner.run(spec, { repo });
+    assert.equal(result.ok, true, JSON.stringify(result.denied ?? result.spawnError));
+    assert.equal(text(result.stdout), 'ok');
+  });
+
+  it('denies one changed argument and starts nothing', async () => {
+    const result = await runner.run({ ...spec, args: ['-e', 'process.stdout.write("changed")'] }, { repo });
+    assert.equal(result.ok, false);
+    assert.equal(result.denied?.code, 'command_denied');
+    assert.equal(result.exitCode, null);
+    assert.equal(text(result.stdout), '');
+  });
+
+  it('denies the same command from a sub-directory', async () => {
+    const result = await runner.run({ ...spec, cwd: path.join(repo, 'sub') }, { repo });
+    assert.equal(result.denied?.code, 'command_denied');
+  });
+
+  it('denies the same entry under a different run-context repository', async () => {
+    const result = await runner.run(spec, { repo: path.resolve(os.tmpdir(), 'ga-approval-other') });
+    assert.equal(result.denied?.code, 'command_denied');
   });
 });
 

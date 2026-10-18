@@ -59,6 +59,8 @@ const schema = z.strictObject({
           repo: absolutePath,
           executable: z.string().min(1),
           argsPrefix: z.array(z.string()).optional(),
+          // D-15: binds the entry to one exact command (see command-runner/hash.ts). A malformed value ignores the whole file.
+          sha256: z.string().regex(/^[0-9a-f]{64}$/).optional(),
         }),
       ),
     })
