@@ -11,7 +11,7 @@
 import path from 'node:path';
 import { IDLE_MAINTENANCE, StoreClosed, UnknownWorktree, WriterBusy, openFactStore, resolveStoreLocation } from '../fact-store/index.ts';
 import type { FactStore, MaintenanceResult, ResolveResult, Resolver } from '../fact-store/index.ts';
-import { createAnswerId, createSessionId, okEnvelope } from '../facts/index.ts';
+import { PROTOCOL_VERSION, createAnswerId, createSessionId, okEnvelope } from '../facts/index.ts';
 import type { DegradedCode, Diagnostic, Envelope, ProjectContextProvider, Request } from '../facts/index.ts';
 import { DEFAULT_INDEXER_CONFIG, IndexerError, createIndexer, createModuleHost } from '../indexer/index.ts';
 import type { BuildResult, Indexer, IndexerNotice, ModuleHost } from '../indexer/index.ts';
@@ -19,26 +19,33 @@ import { resolveModules } from '../lang/index.ts';
 import { createNoopMetrics, openMetrics } from '../metrics/index.ts';
 import type { Metrics } from '../metrics/index.ts';
 import type { PreciseTier } from '../precise-resolver/index.ts';
-import { createQuery, errorEnvelope } from '../query/index.ts';
+import { BUG_HINT, createQuery, errorEnvelope } from '../query/index.ts';
 import type { ExplainPort, FreshPort, TierInfo } from '../query/index.ts';
 import { chooseAdrDirs, createAdrDirectory } from './adr.ts';
 import { DEFAULT_TENANT_TUNING } from './defaults.ts';
 import { createFollowerFresh } from './follower-overlay.ts';
 import { createFlightRecorder } from './flight.ts';
-import type { FlightRecorder } from './flight.ts';
+import type { FlightEventInput, FlightRecorder } from './flight.ts';
 import { createIdleMaintainer } from './idle.ts';
 import { declaredPreciseCommands, mergeCommandReports, runApprovedPreciseCommand } from './precise-command.ts';
 import { recordRating } from './rate.ts';
 import { readRepoConfig } from './repo-config.ts';
 import type { RateInput } from './rate.ts';
-import { answerEvent, flightAnswer, isAnsweredKind } from './record.ts';
+import { answerEvent, flightAnswer, flightFailure, isAnsweredKind } from './record.ts';
 import { buildNotes, leaseHeldEnvelope, notIndexedEnvelope, storeUnavailableEnvelope } from './messages.ts';
 import type { LeaseHolderName } from './messages.ts';
 import { createOutputFilter, createTenantProjectProvider, preciseAdapterIds } from './project.ts';
 import type { ProjectProvider } from './project.ts';
 import { createStatusPort } from './status-port.ts';
 import { BUILD_SCHEMA, MAINTAIN_SCHEMA, STATUS_SCHEMA } from './types.ts';
-import type { CommandReport, MaintainOptions, MaintainTask, TaskReport, Tenant, TenantDeps, TenantStatus, TenantTuning } from './types.ts';
+import type { CommandReport, ExplainSummary, MaintainOptions, MaintainTask, TaskReport, Tenant, TenantDeps, TenantStatus, TenantTuning } from './types.ts';
+
+/** The part of a `code_explain` fact explanation that `explainSummary` reads. */
+interface ExplanationShape {
+  readonly kind?: unknown;
+  readonly fact?: { readonly tier?: unknown; readonly confidence?: unknown; readonly extractor?: unknown };
+  readonly resolution?: { readonly cache?: unknown } | null;
+}
 
 /** The tasks `all` runs, in this order. */
 const ALL_TASKS = ['reconcile', 'resolve', 'refresh', 'collect', 'compact', 'check'] as const;
@@ -232,6 +239,20 @@ export async function createTenant(deps: TenantDeps): Promise<Tenant> {
         });
   const ownSessionId = createSessionId();
   let sessionMarked = false;
+
+  /** Append one answer event; the session marker goes in first, once, just before this Tenant's first recorded answer. */
+  const appendFlight = (event: FlightEventInput): void => {
+    if (flight === null) return;
+    if (!sessionMarked) {
+      sessionMarked = true;
+      flight.append({ kind: 'session', id: ownSessionId });
+    }
+    flight.append(event);
+  };
+
+  /** How many of the newest answers the `gsd-atlas bug` hint looks at (plan 03-32, DIAGNOSTICS 9.1). */
+  const HINT_WINDOW = 50;
+  const recentInternalError = (): boolean => flight?.recent(HINT_WINDOW, 'answer').some((event) => event.outcome === 'internal_error') ?? false;
 
   /** The Indexer's notices feed the freshness panel: how long a changed path waited before it was indexed. */
   const onIndexerNotice = (notice: IndexerNotice): void => {
@@ -468,6 +489,7 @@ export async function createTenant(deps: TenantDeps): Promise<Tenant> {
         roots,
         ...(deps.knownAdapters === undefined ? {} : { knownAdapters: deps.knownAdapters }),
         ...(deps.providers?.disabled === undefined ? {} : { disabledAdapters: deps.providers.disabled }),
+        ...(flight === null ? {} : { recentInternalError }),
       }),
       clock,
     });
@@ -882,6 +904,12 @@ export async function createTenant(deps: TenantDeps): Promise<Tenant> {
           idle.touch();
           return storeUnavailableEnvelope();
         }
+        // Plan 03-32: anything else is a bug in atlas. The Host turns it into an `internal_error` envelope; the recorder keeps an
+        // event for it (the tool, the arguments and the code, never the message) so `status` can point at `gsd-atlas bug`.
+        recording(() => {
+          const event = flightFailure(request, clock.now() - started, createAnswerId());
+          if (event !== null) appendFlight(event);
+        });
         throw error;
       }
       // Until the start-up Reconcile settles, an answer may lag the working tree: say so (D-02).
@@ -903,14 +931,9 @@ export async function createTenant(deps: TenantDeps): Promise<Tenant> {
         if (event !== null) metrics.record(event);
       });
       recording(() => {
-        if (flight === null || id === undefined) return;
+        if (id === undefined) return;
         const event = flightAnswer(request, envelope, elapsed, id);
-        if (event === null) return;
-        if (!sessionMarked) {
-          sessionMarked = true;
-          flight.append({ kind: 'session', id: ownSessionId });
-        }
-        flight.append(event);
+        if (event !== null) appendFlight(event);
       });
       idle.touch();
       return stamped;
@@ -975,7 +998,9 @@ export async function createTenant(deps: TenantDeps): Promise<Tenant> {
       }
       try {
         const [report, tenant] = await Promise.all([metrics.report(range), snapshot()]);
-        return okEnvelope(STATUS_SCHEMA, { range, report, tenant });
+        // Plan 03-32: a store that was rebuilt after corruption, or a recent internal error, points at `gsd-atlas bug`.
+        const hint = tenant.store.rebuiltAfterCorruption !== undefined || recentInternalError();
+        return okEnvelope(STATUS_SCHEMA, { range, report, tenant }, [], hint ? { hints: [BUG_HINT] } : undefined);
       } catch (error) {
         if (error instanceof StoreClosed) return storeUnavailableEnvelope();
         throw error;
@@ -992,6 +1017,34 @@ export async function createTenant(deps: TenantDeps): Promise<Tenant> {
 
     sessionId(): string | null {
       return flight?.sessionId() ?? null;
+    },
+
+    async explainSummary(handle: string, worktree: string): Promise<ExplainSummary> {
+      try {
+        // Straight to Query, not through `handle`: this is a look at an answer for a bug bundle, not an answer, so it must
+        // neither stamp an id nor become the newest event of the recorder it is reading.
+        const reply = await query.ask({ protocol: PROTOCOL_VERSION, kind: 'code_explain', args: { handle }, worktree });
+        if (!reply.ok) return { handle, status: reply.diagnostics[0]?.code === 'stale_handle' ? 'stale' : 'unknown' };
+        const explanation = (reply.data as { explanation?: ExplanationShape } | null)?.explanation;
+        if (explanation === undefined || explanation === null) return { handle, status: 'unknown' };
+        const word = (value: unknown): string | undefined => (typeof value === 'string' ? value : undefined);
+        const kind = word(explanation.kind);
+        const tier = word(explanation.fact?.tier);
+        const confidence = word(explanation.fact?.confidence);
+        const extractor = word(explanation.fact?.extractor);
+        const cache = word(explanation.resolution?.cache);
+        return {
+          handle,
+          status: 'ok',
+          ...(kind === undefined ? {} : { kind }),
+          ...(tier === undefined ? {} : { tier }),
+          ...(confidence === undefined ? {} : { confidence }),
+          ...(extractor === undefined ? {} : { extractor }),
+          ...(cache === undefined ? {} : { cache }),
+        };
+      } catch {
+        return { handle, status: 'unknown' };
+      }
     },
 
     async rate(input: RateInput): Promise<Envelope> {

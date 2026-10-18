@@ -36,6 +36,13 @@ export interface FlightEvent {
   readonly count?: number;
   /** The citations' debug handles, at most {@link HANDLES_MAX}. */
   readonly handles?: readonly string[];
+  /**
+   * The envelope's schema name, the codes of its diagnostics and its watermark sequence number (plan 03-32): what
+   * `gsd-atlas bug` shows of the failing answer. Program-chosen words and a number; never data.
+   */
+  readonly schema?: string;
+  readonly diag?: readonly string[];
+  readonly seq?: number;
 }
 
 /** What a caller appends: the time is optional and defaults to the recorder's clock. */
@@ -71,8 +78,11 @@ export interface FlightRecorder {
   lastAnswer(): FlightEvent | null;
   /** The id of the newest session marker, or null. */
   sessionId(): string | null;
-  /** Remove both segments (what `bug --clear` will call). Never throws; another process's recorder sees the folder empty. */
-  clear(): void;
+  /**
+   * Remove both segments (what `bug --clear` calls). Never throws; another process's recorder sees the folder empty. The
+   * result is how many answers the recorder held (session markers are not counted): what the person is told was removed.
+   */
+  clear(): number;
   close(): void;
 }
 
@@ -86,6 +96,8 @@ const DEGRADED_MAX = 16;
 const ARG_KEYS_MAX = 32;
 const ARG_ITEMS_MAX = 20;
 const ARG_DEPTH_MAX = 3;
+/** The shape of an envelope schema name; anything else is not kept. */
+const SCHEMA_PATTERN = /^gsd-atlas\.[a-z0-9-]{1,40}\/[0-9]{1,3}$/;
 
 /** The segment being written, and the one before it (replaced when the current one is handed over). */
 export const CURRENT_FILE = 'flight.jsonl';
@@ -143,6 +155,14 @@ function normalise(event: FlightEventInput, now: number): FlightEvent {
       .map((code) => cut(code, SHORT_MAX_CHARS));
   }
   if (isCount(event.count)) out.count = event.count;
+  if (typeof event.schema === 'string' && SCHEMA_PATTERN.test(event.schema)) out.schema = event.schema;
+  if (Array.isArray(event.diag)) {
+    out.diag = (event.diag as readonly unknown[])
+      .filter((code): code is string => typeof code === 'string')
+      .slice(0, DEGRADED_MAX)
+      .map((code) => cut(code, SHORT_MAX_CHARS));
+  }
+  if (isCount(event.seq)) out.seq = event.seq;
   if (Array.isArray(event.handles)) {
     out.handles = (event.handles as readonly unknown[])
       .filter((handle): handle is string => typeof handle === 'string')
@@ -329,6 +349,12 @@ export function createFlightRecorder(options: FlightRecorderOptions): FlightReco
     lastAnswer: () => newest('answer'),
     sessionId: () => newest('session')?.id ?? null,
     clear() {
+      let removed = 0;
+      try {
+        removed = readAll().filter((event) => event.kind === 'answer').length;
+      } catch {
+        removed = 0;
+      }
       for (const file of [previous, current]) {
         try {
           io.rmSync(file, { force: true });
@@ -337,6 +363,7 @@ export function createFlightRecorder(options: FlightRecorderOptions): FlightReco
         }
       }
       known = null;
+      return removed;
     },
     close() {
       // Nothing is held open between appends.

@@ -31,6 +31,8 @@ import { DEFAULT_TENANT_TUNING, FLIGHT_FILE, FLIGHT_PREVIOUS_FILE, createFlightR
 import type { Tenant } from '../tenant/index.ts';
 import { ALLOW_KIND, handleAllow, needsApprovalFrom, permissionsFor } from './allow.ts';
 import type { AllowDeps } from './allow.ts';
+import { BUG_KIND, BUG_SCHEMA, configFactsOf, createBugState, handleBug, readTenant } from './bug.ts';
+import type { BugDeps, BugRepoData, BugWant } from './bug.ts';
 import { HOST_DEFAULTS } from './defaults.ts';
 import { DIAGNOSTICS_KIND, factsFromStatus, handleDiagnostics, platformFactsOf } from './diagnostics.ts';
 import type { DiagnosticsDeps, RepoFacts } from './diagnostics.ts';
@@ -65,6 +67,8 @@ const NO_REPOSITORY = '.diagnostics-no-repository';
 
 const DIAGNOSTICS_FORBIDDEN =
   'Diagnostics are controlled only by a person at a terminal with "gsd-atlas diagnostics"; this server cannot change or build them.';
+
+const BUG_FORBIDDEN = 'Bug bundles are made only by a person at a terminal with "gsd-atlas bug"; this server cannot make or write one.';
 
 /** Envelope schema of an `index_state` reply (internal, plan 02-44). */
 export const INDEX_STATE_SCHEMA = 'gsd-atlas.index-state/1';
@@ -535,6 +539,95 @@ export function createHost(options: HostOptions): Host {
     return handleDiagnostics(request, deps);
   }
 
+  /**
+   * `bug` (SKL-04): the two-step bundle request. Its state (collected bundles waiting for their digest, written digests) is
+   * this Host's own. It writes under the Host's cache root, never into a repository.
+   */
+  const bugState = createBugState();
+  const startedAt = clock.now();
+
+  /**
+   * What the approved bug types need from one repository, from its Tenant. It follows `diagnosticsRepoFacts`: a store is never
+   * created (only a repository that already has an index gets a Tenant), the request is counted as in flight so the idle timer
+   * cannot close the tenant under it, and the read runs in a Governor slot. Null: not a repository, or not indexed.
+   */
+  async function bugRepoData(selection: Selection, want: BugWant): Promise<BugRepoData | null> {
+    const resolved = await resolveRepository(selection, hostCwd, makeTree);
+    if (resolved === null) return null;
+    const key = resolved.identity.storeId;
+    tenantIdle.begin(key);
+    try {
+      await closing.get(key);
+      let tenant: Tenant;
+      try {
+        if (!(await hasIndex(resolved))) return null;
+        tenant = await tenantFor(resolved);
+      } catch {
+        return null;
+      }
+      let found = null as BugRepoData | null;
+      await held(tenant.storeId, classFor('status'), async () => {
+        try {
+          found = await readTenant(tenant, resolved.worktree, want);
+        } catch {
+          found = null;
+        }
+        return okEnvelope(BUG_SCHEMA, null);
+      });
+      return found;
+    } finally {
+      tenantIdle.end(key);
+      if (!tenants.has(key)) tenantIdle.forget(key);
+    }
+  }
+
+  /**
+   * `bug --clear`: empty the flight recorder of the repository `selection` names, if its store exists, and report how many
+   * answers it held. It never creates a store or a folder. Null: the selection is not a repository.
+   */
+  async function bugClearFlight(selection: Selection): Promise<number | null> {
+    const resolved = await resolveRepository(selection, hostCwd, makeTree);
+    if (resolved === null) return null;
+    const existing = findExistingStore(locationInput(resolved));
+    if (existing === undefined) return 0;
+    const dir = path.join(existing.dir, 'flight');
+    return createFlightRecorder({ dir, maxEvents: DEFAULT_TENANT_TUNING.flightMaxEvents, maxBytes: DEFAULT_TENANT_TUNING.flightMaxBytes, clock }).clear();
+  }
+
+  function bugRequest(request: Request): Promise<Envelope> {
+    const userDir = options.userDir ?? options.roots.userDir;
+    const deps: BugDeps = {
+      version: options.version ?? '0.0.0',
+      catalogDir: options.diagnostics?.catalogDir,
+      io: options.diagnostics?.io,
+      cacheRoot,
+      clock,
+      state: bugState,
+      machine: () => ({
+        node: process.versions.node,
+        sqlite: process.versions.sqlite ?? 'unknown',
+        // The Host never asks for another driver: `node:sqlite` is what a composed Host opens (better-sqlite3 is a test fallback).
+        driver: 'node:sqlite',
+        // The user's roots only, never the repository (a repository can name a module anything); a module is built in or the user's.
+        modules: resolveModules({ ...options.roots, repoRoot: path.join(userDir, NO_REPOSITORY), npmRoots: [] }).modules.map((entry) => ({
+          name: entry.name,
+          builtin: entry.source === 'builtin',
+          version: entry.version ?? 'unknown',
+          schemaVersion: entry.schemaVersion,
+        })),
+        config: configFactsOf(config, options.metrics),
+      }),
+      hostHealth: () => ({ tenantsLoaded: tenants.size, transport: origin === 'mcp' ? 'stdio' : 'in-process', uptimeMs: Math.max(0, clock.now() - startedAt) }),
+      repoData: bugRepoData,
+      clearFlight: bugClearFlight,
+      excerptEvents: options.bug?.excerptEvents,
+      bundleMaxBytes: options.bug?.bundleMaxBytes,
+      random: options.bug?.random,
+    };
+    // Like `diagnostics`, not wrapped in a Governor slot of its own: the part that reads a repository takes the repository's slot.
+    return handleBug(request, deps);
+  }
+
   async function dispatch(request: Request): Promise<Envelope> {
     if (request.protocol !== PROTOCOL_VERSION) {
       return errorEnvelope(
@@ -576,6 +669,8 @@ export function createHost(options: HostOptions): Host {
     if (request.kind === DIAGNOSTICS_KIND) {
       return origin === 'mcp' ? errorEnvelope('diagnostics_forbidden', DIAGNOSTICS_FORBIDDEN) : diagnosticsRequest(request);
     }
+    // SKL-04: a bug bundle is a person's. An agent's server refuses the whole kind, whatever the arguments, before reading them.
+    if (request.kind === BUG_KIND) return origin === 'mcp' ? errorEnvelope('bug_forbidden', BUG_FORBIDDEN) : bugRequest(request);
     // D-16: users rate, agents do not. There is no MCP tool for it; a Host started for MCP also refuses the request kind itself.
     if (request.kind === 'rate' && origin === 'mcp') return errorEnvelope('rate_forbidden', RATE_FORBIDDEN);
     if (isRepoKind(request.kind)) return repoRequest(request, request.kind);

@@ -7,6 +7,7 @@ import type { GovernorStatus } from '../governor/index.ts';
 import { createHarness } from './harness.test.ts';
 import type { Harness } from './harness.test.ts';
 import type { IndexerStatusLike, StatusPort } from './index.ts';
+import { BUG_HINT } from './status.ts';
 
 async function world(t: TestContext): Promise<Harness> {
   const harness = await createHarness();
@@ -194,6 +195,60 @@ describe('atlas_status health: degraded, with the reasons from a fixed list', ()
 
     assert.deepEqual(snapshotOf(envelope).reasons, ['follower', 'rebuilding', 'reconciling', 'stale_files', 'watch_fallback', 'indexer_failures']);
     assert.deepEqual(envelope.degraded, ['stale', 'follower', 'reconciling', 'rebuilding'], 'degraded codes keep the order of the closed vocabulary');
+  });
+});
+
+describe('atlas_status hints at a bug report (plan 03-32, DIAGNOSTICS 9.1)', () => {
+  const HINT = 'something went wrong; run gsd-atlas bug';
+
+  it('hint after corruption rebuild: a store that was rebuilt carries the fixed hint, and health still says why', async (t) => {
+    const h = await world(t);
+
+    const envelope = await h.query({ status: ports(h, { store: { rebuiltAfterCorruption: { movedTo: '/private/old-store.db', at: 9 } } }) }).ask(statusRequest(h));
+
+    assert.equal(envelope.ok, true, JSON.stringify(envelope.diagnostics));
+    assert.deepEqual(envelope.hints, [HINT]);
+    assert.equal(BUG_HINT, HINT);
+    assert.deepEqual(snapshotOf(envelope).reasons, ['rebuilding']);
+    assert.equal(JSON.stringify(envelope).includes('old-store'), false, 'the hint is a fixed sentence and names no path');
+  });
+
+  it('hint after internal error: the recorder port says one of the last answers was an internal error', async (t) => {
+    const h = await world(t);
+    const flagged: StatusPort = { ...ports(h), recentInternalError: () => true };
+
+    const envelope = await h.query({ status: flagged }).ask(statusRequest(h));
+
+    assert.equal(envelope.ok, true);
+    assert.deepEqual(envelope.hints, [HINT]);
+    assert.equal(snapshotOf(envelope).health, 'ok', 'the hint does not change health or add a reason');
+    assert.equal('degraded' in envelope, false);
+  });
+
+  it('no hint when healthy: a store that was not rebuilt and a recorder without an internal error add nothing', async (t) => {
+    const h = await world(t);
+
+    const plain = await h.query({ status: ports(h) }).ask(statusRequest(h));
+    assert.equal('hints' in plain, false);
+
+    const quiet: StatusPort = { ...ports(h), recentInternalError: () => false };
+    const checked = await h.query({ status: quiet }).ask(statusRequest(h));
+    assert.equal('hints' in checked, false);
+  });
+
+  it('a recorder port that throws is treated as no internal error', async (t) => {
+    const h = await world(t);
+    const broken: StatusPort = {
+      ...ports(h),
+      recentInternalError: () => {
+        throw new Error('the recorder is gone');
+      },
+    };
+
+    const envelope = await h.query({ status: broken }).ask(statusRequest(h));
+
+    assert.equal(envelope.ok, true);
+    assert.equal('hints' in envelope, false);
   });
 });
 

@@ -8,7 +8,8 @@ import path from 'node:path';
 import { describe, it } from 'node:test';
 import { ANSWER_ID_PATTERN, systemClock } from '../facts/index.ts';
 import { LATENCY_BUCKETS_MS } from '../metrics/index.ts';
-import { buildOk, find, makeTenantWorld, recordingMetrics, request } from './harness.test.ts';
+import type { FactStore } from '../fact-store/index.ts';
+import { buildOk, captureStore, find, makeTenantWorld, recordingMetrics, request } from './harness.test.ts';
 import { createFlightRecorder } from './flight.ts';
 import type { FlightEvent } from './flight.ts';
 
@@ -170,5 +171,54 @@ describe('Tenant: answer ids and the flight recorder', () => {
     await buildOk(tenant, repo);
     const reply = await tenant.handle(find('helper', repo.dir), repo.dir);
     assert.equal(tenant.lastAnswerId(), reply.answer_id);
+  });
+
+  it('a request that fails inside the Tenant leaves an internal_error event, and the failure still reaches the caller (plan 03-32)', async (t) => {
+    const { repo, open, storeDir } = await makeTenantWorld(t);
+    let broken = false;
+    const capture = captureStore((store): FactStore => ({
+      ...store,
+      at(worktree) {
+        if (broken) throw new Error('the reader failed with SECRET_ERROR_TEXT in its message');
+        return store.at(worktree);
+      },
+    }));
+    const tenant = await open({ openStore: capture.open });
+    await buildOk(tenant, repo);
+    await tenant.handle(find('helper', repo.dir), repo.dir);
+
+    broken = true;
+    await assert.rejects(tenant.handle(find('boot', repo.dir), repo.dir), /the reader failed/);
+    broken = false;
+
+    const answers = readFlight(storeDir).filter((event) => event.kind === 'answer');
+    assert.deepEqual(
+      answers.map((event) => [event.tool, event.outcome]),
+      [
+        ['code_find', 'ok'],
+        ['code_find', 'internal_error'],
+      ],
+    );
+    const failed = answers[1] as FlightEvent;
+    assert.match(failed.id, ANSWER_ID_PATTERN);
+    assert.equal((failed.args as Record<string, unknown>)['name'], 'boot');
+    assert.equal(JSON.stringify(failed).includes('SECRET_ERROR_TEXT'), false, 'the error message is never recorded');
+    assert.equal(tenant.lastAnswerId(), failed.id);
+  });
+
+  it('the recorder keeps the envelope schema, the diagnostic codes and the watermark sequence of an answer (plan 03-32)', async (t) => {
+    const { repo, open, storeDir } = await makeTenantWorld(t);
+    const tenant = await open();
+    await buildOk(tenant, repo);
+    const reply = await tenant.handle(find('helper', repo.dir), repo.dir);
+    const refused = await tenant.handle(request('code_find', { name: '', repo: repo.dir }), repo.dir);
+    const [good, bad] = readFlight(storeDir).filter((event) => event.kind === 'answer') as [FlightEvent, FlightEvent];
+    assert.equal(good.schema, reply.schema);
+    assert.deepEqual(good.diag, reply.diagnostics.map((entry) => entry.code));
+    assert.equal(good.seq, reply.watermark?.seq);
+    assert.equal(typeof good.seq, 'number');
+    assert.equal(bad.schema, refused.schema);
+    assert.deepEqual(bad.diag, refused.diagnostics.map((entry) => entry.code));
+    assert.equal(bad.seq, undefined, 'a refused request has no watermark');
   });
 });
