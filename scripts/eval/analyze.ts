@@ -7,7 +7,9 @@
  */
 import { mean, pairedClusterBootstrap, wilsonInterval } from './stats.ts';
 import type { QuestionSeries } from './stats.ts';
+import type { Prereg } from './prereg.ts';
 import type { Arm, ResultRow, SessionStatus } from './rows.ts';
+import type { Io } from './verify-prereg.ts';
 
 export type TokenCriterion = 'point' | 'upper-bound';
 export type CitationJudgedOn = 'point_estimate' | 'wilson_lower_bound';
@@ -536,4 +538,13 @@ export function renderReport(analysis: Analysis): string {
     `OVERALL: ${verdicts.overall ? 'MVP met' : 'MVP not met'}`,
   );
   return `${lines.join('\n')}\n`;
+}
+
+// RED stubs for Task 3: the pre-registration wiring and the command are not written yet.
+export function configFromPrereg(_prereg: Prereg): AnalysisConfig {
+  throw new Error('configFromPrereg is implemented in Task 3');
+}
+
+export function runCli(_argv: string[], _io: Io, _root: string): Promise<number> {
+  return Promise.resolve(99);
 }

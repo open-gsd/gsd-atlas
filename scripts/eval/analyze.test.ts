@@ -1,9 +1,12 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
-import { describe, test } from 'node:test';
-import { analyzeAccuracy, analyzeResults, renderReport } from './analyze.ts';
+import { afterEach, beforeEach, describe, test } from 'node:test';
+import { analyzeAccuracy, analyzeResults, configFromPrereg, renderReport, runCli } from './analyze.ts';
 import type { Analysis, AnalysisConfig, CompleteAnalysis, ExpectedCells } from './analyze.ts';
+import { PREREG_BLOCK_LABEL } from './prereg.ts';
+import type { Prereg } from './prereg.ts';
 import type { Category } from './questions.ts';
 import { ResultRowSchema } from './rows.ts';
 import type { Arm, ResultRow, SessionStatus } from './rows.ts';
@@ -425,5 +428,195 @@ describe('renderReport', () => {
     assert.equal(first, shuffled);
     assert.ok(first.endsWith('\n'));
     assert.doesNotMatch(first, /-0\.0000/);
+  });
+});
+
+describe('analyze command', () => {
+  const PREREG: Prereg = {
+    stage: 'A',
+    status: 'Draft',
+    params: {
+      marginPoints: 5,
+      intervalLevel: 0.95,
+      resamples: 2000,
+      seed: 7,
+      runsPerCell: 2,
+      citationRate: 0.8,
+      citationJudgedOn: 'point_estimate',
+      wilsonZ: 1.96,
+      tokenCriterion: 'point',
+      failureRule: 'incorrect-keep-tokens',
+      concurrency: 2,
+      maxBudgetUsdPerSession: 2,
+      sessionWallClockMs: 600000,
+      model: 'claude-test-model',
+      claudeVersion: '2.1.302',
+      corpusSha: 'a'.repeat(40),
+      npmCiRan: true,
+    },
+    files: {},
+    questionSet: { count: 2, byCategory: { callers: 1, definition: 1 } },
+  };
+
+  let root = '';
+
+  beforeEach(() => {
+    root = fs.mkdtempSync(path.join(os.tmpdir(), 'analyze-cli-'));
+    fs.mkdirSync(path.join(root, 'docs', 'eval'), { recursive: true });
+  });
+
+  afterEach(() => {
+    fs.rmSync(root, { recursive: true, force: true });
+  });
+
+  function writePrereg(value: unknown): string {
+    const file = path.join(root, 'docs', 'eval', 'preregistration.md');
+    fs.writeFileSync(file, `# Pre-registration\n\n\`\`\`${PREREG_BLOCK_LABEL}\n${JSON.stringify(value, null, 2)}\n\`\`\`\n`);
+    return file;
+  }
+
+  function writeResults(rows: readonly ResultRow[]): string {
+    const file = path.join(root, 'results.jsonl');
+    fs.writeFileSync(file, rows.map((r) => JSON.stringify(r)).join('\n') + '\n');
+    return file;
+  }
+
+  async function invoke(argv: string[]): Promise<{ code: number; out: string; err: string }> {
+    let out = '';
+    let err = '';
+    const code = await runCli(argv, { out: (text) => (out += text), err: (text) => (err += text) }, root);
+    return { code, out, err };
+  }
+
+  const outFile = (): string => path.join(root, 'docs', 'eval', 'analysis.md');
+
+  test('configFromPrereg copies every parameter from the block and maps wilsonZ to zForWilson', () => {
+    const config = configFromPrereg(PREREG);
+    assert.deepEqual(config, {
+      marginPoints: 5,
+      intervalLevel: 0.95,
+      resamples: 2000,
+      seed: 7,
+      tokenCriterion: 'point',
+      citationRate: 0.8,
+      citationJudgedOn: 'point_estimate',
+      zForWilson: 1.96,
+    });
+  });
+
+  test('the command reads its parameters from the block: exit 0 and the report echoes them', async () => {
+    const prereg = writePrereg(PREREG);
+    const results = writeResults(loadFixture());
+    const result = await invoke([results, '--prereg', prereg, '--out', outFile()]);
+    assert.equal(result.code, 0, result.err);
+    const report = fs.readFileSync(outFile(), 'utf8');
+    assert.match(report, /OVERALL: MVP met/);
+    assert.match(report, /\| citationJudgedOn \| point_estimate \|/);
+    assert.match(result.err, /Draft/); // a Draft registration is allowed but flagged
+  });
+
+  test('changing a registered parameter changes the verdict, not the code, and a complete run exits 0 whatever the verdict', async () => {
+    const rows = withRow(loadFixture(), 'q-2', 'atlas', 2, { correct: false }); // lower bound -0.5
+    const strict = await invoke([writeResults(rows), '--prereg', writePrereg(PREREG), '--out', outFile()]);
+    assert.equal(strict.code, 0, 'a complete run exits 0 whatever the verdict');
+    assert.match(fs.readFileSync(outFile(), 'utf8'), /ACCURACY: NOT non-inferior/);
+    const wide = await invoke([writeResults(rows), '--prereg', writePrereg({ ...PREREG, params: { ...PREREG.params, marginPoints: 60 } }), '--out', outFile()]);
+    assert.equal(wide.code, 0);
+    assert.match(fs.readFileSync(outFile(), 'utf8'), /ACCURACY: non-inferior/);
+  });
+
+  test('the registered question file names the expected questions: a question with no rows at all is listed as missing', async () => {
+    const question = (id: string, category: string, key: object): object => ({ id, category, text: `question ${id}`, key });
+    const file = {
+      corpusId: 'gsd-core',
+      corpusSha: 'a'.repeat(40),
+      questions: [
+        question('q-1', 'callers', { kind: 'callers', symbol: 'foo', definedIn: 'src/a.ts', granularity: 'file', equality: 'exact-set' }),
+        question('q-2', 'definition', { kind: 'definition', symbol: 'bar', granularity: 'file', equality: 'exact-set' }),
+        question('q-3', 'definition', { kind: 'definition', symbol: 'baz', granularity: 'file', equality: 'exact-set' }),
+      ],
+    };
+    const questionsPath = path.join(root, 'scripts', 'eval', 'questions', 'gsd-core.questions.json');
+    fs.mkdirSync(path.dirname(questionsPath), { recursive: true });
+    fs.writeFileSync(questionsPath, JSON.stringify(file));
+    const prereg = writePrereg({ ...PREREG, questionSet: { count: 3, byCategory: { callers: 1, definition: 2 } } });
+    const result = await invoke([writeResults(loadFixture()), '--prereg', prereg]);
+    assert.equal(result.code, 2);
+    for (const cell of ['q-3/atlas/1', 'q-3/atlas/2', 'q-3/grep/1', 'q-3/grep/2']) assert.match(result.err, new RegExp(cell));
+    const wrongCount = writePrereg({ ...PREREG, questionSet: { count: 2, byCategory: { callers: 1, definition: 1 } } });
+    const mismatch = await invoke([writeResults(loadFixture()), '--prereg', wrongCount]);
+    assert.equal(mismatch.code, 2);
+    assert.match(mismatch.err, /question set/i);
+  });
+
+  test('the registered citation rule decides: wilson_lower_bound fails 4 of 4 against 0.8', async () => {
+    const prereg = writePrereg({ ...PREREG, params: { ...PREREG.params, citationJudgedOn: 'wilson_lower_bound' } });
+    const result = await invoke([writeResults(loadFixture()), '--prereg', prereg, '--out', outFile()]);
+    assert.equal(result.code, 0);
+    assert.match(fs.readFileSync(outFile(), 'utf8'), /CITATIONS: below threshold/);
+  });
+
+  test('incomplete run exits 2, lists the missing cell and writes a report without a verdict', async () => {
+    const rows = loadFixture().filter((row) => !(row.questionId === 'q-2' && row.arm === 'grep' && row.run === 2));
+    const result = await invoke([writeResults(rows), '--prereg', writePrereg(PREREG), '--out', outFile()]);
+    assert.equal(result.code, 2);
+    assert.match(result.err, /incomplete/i);
+    assert.match(result.err, /q-2\/grep\/2/);
+    const report = fs.readFileSync(outFile(), 'utf8');
+    assert.match(report, /INCOMPLETE/);
+    assert.doesNotMatch(report, /MVP met/);
+  });
+
+  test('a prereg without citationJudgedOn is invalid: exit 2 and an error naming the field', async () => {
+    const { citationJudgedOn: _omitted, ...rest } = PREREG.params;
+    const result = await invoke([writeResults(loadFixture()), '--prereg', writePrereg({ ...PREREG, params: rest })]);
+    assert.equal(result.code, 2);
+    assert.match(result.err, /params\.citationJudgedOn/);
+  });
+
+  test('a question set that disagrees with the registered count exits 2', async () => {
+    const result = await invoke([
+      writeResults(loadFixture()),
+      '--prereg',
+      writePrereg({ ...PREREG, questionSet: { count: 3, byCategory: { callers: 2, definition: 1 } } }),
+    ]);
+    assert.equal(result.code, 2);
+    assert.match(result.err, /question/i);
+  });
+
+  test('a Frozen prereg that does not verify exits 2 and no verdict is written', async () => {
+    const result = await invoke([writeResults(loadFixture()), '--prereg', writePrereg({ ...PREREG, status: 'Frozen' }), '--out', outFile()]);
+    assert.equal(result.code, 2);
+    assert.match(result.err, /verif/i);
+    assert.equal(fs.existsSync(outFile()), false);
+  });
+
+  test('a results line that is not a valid row exits 2 and names the line', async () => {
+    const file = path.join(root, 'results.jsonl');
+    const lines = fs.readFileSync(FIXTURE, 'utf8').split('\n').filter(Boolean);
+    lines[2] = '{"questionId": "q-1"}';
+    fs.writeFileSync(file, lines.join('\n') + '\n');
+    const result = await invoke([file, '--prereg', writePrereg(PREREG)]);
+    assert.equal(result.code, 2);
+    assert.match(result.err, /line 3/);
+  });
+
+  test('a duplicate cell in the results exits 2', async () => {
+    const rows = [...loadFixture(), loadFixture()[0] as ResultRow];
+    const result = await invoke([writeResults(rows), '--prereg', writePrereg(PREREG)]);
+    assert.equal(result.code, 2);
+    assert.match(result.err, /duplicate/i);
+  });
+
+  test('without --out the report goes to the output sink', async () => {
+    const result = await invoke([writeResults(loadFixture()), '--prereg', writePrereg(PREREG)]);
+    assert.equal(result.code, 0);
+    assert.match(result.out, /OVERALL: MVP met/);
+  });
+
+  test('usage errors exit 2: no results path, an unknown flag, a missing results file', async () => {
+    assert.equal((await invoke([])).code, 2);
+    assert.equal((await invoke(['--nope'])).code, 2);
+    assert.equal((await invoke([path.join(root, 'absent.jsonl'), '--prereg', writePrereg(PREREG)])).code, 2);
   });
 });
