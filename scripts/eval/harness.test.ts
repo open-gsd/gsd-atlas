@@ -220,7 +220,8 @@ describe('runCell tracer', () => {
     assert.equal(calls[1]?.args[0], 'resolve');
     const event = resultEventOf(env, cellId(cell));
     // The session ran in the clone, never in the prepared checkout.
-    assert.equal(fs.realpathSync.native(calls[0]?.cwd ?? ''), fs.realpathSync.native(event['fake_cwd'] as string));
+    assert.equal(calls[0]?.cwd, event['fake_cwd'], 'the build and the session run in the same clone');
+    assert.equal(event['fake_cwd'], path.join(env.scratch, 'q-1.atlas.1', 'repo'));
     assert.ok((event['fake_cwd'] as string).startsWith(env.scratch + path.sep));
     assert.notEqual(event['fake_cwd'], CORPUS);
     // The session directory is gone once the row is written.
