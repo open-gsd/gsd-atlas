@@ -1,5 +1,6 @@
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
+import path from 'node:path';
 import { parseArgs } from 'node:util';
 
 import ts from 'typescript';
@@ -7,6 +8,7 @@ import { z } from 'zod';
 
 import {
   ORACLE_VERSION,
+  OracleError,
   adrFilesOf,
   analyze,
   canon,
@@ -30,13 +32,20 @@ import {
   type Unit,
 } from './oracle.ts';
 import {
+  AnswerFileSchema,
   CategorySchema,
   KeySpecSchema,
+  PreparedRecordCopySchema,
+  loadQuestions,
+  type AnswerFile,
   type AnswerItem,
   type AnswerKey,
   type Category,
   type Granularity,
   type KeySpec,
+  type PreparedRecordCopy,
+  type Question,
+  type QuestionFile,
 } from './questions.ts';
 
 /**
@@ -129,6 +138,9 @@ export interface Census {
   adrOf: AdrOfEntry[];
   nearMisses: NearMiss[];
 }
+
+/** The file `prepare-corpus.ts` writes in a prepared checkout; read here, not imported. */
+const RECORD_FILE = '.eval-prepared.json';
 
 function compareText(a: string, b: string): number {
   return a < b ? -1 : a > b ? 1 : 0;
@@ -613,6 +625,8 @@ export const CandidateRecordSchema = z.strictObject({
   detail: z.string().optional(),
   /** Size of the expected answer after projecting to the key's granularity, when it was computed. */
   size: z.number().int().nonnegative().optional(),
+  /** The census numbers behind the candidate, kept for the candidates that were looked at. */
+  facts: z.record(z.string(), z.union([z.number(), z.string()])).optional(),
 });
 export type CandidateRecord = z.infer<typeof CandidateRecordSchema>;
 
@@ -698,13 +712,39 @@ export const PILOT_COUNT = 5;
 /** The largest expected answer a scored question may have, after projection to its granularity. */
 export const MAX_EXPECTED_ITEMS = 30;
 
-export function pickPilotCategories(_seed: number, _count: number): Category[] {
-  return [];
+function shuffled<T>(items: readonly T[], seed: number): T[] {
+  const list = [...items];
+  const next = mulberry32(seed >>> 0);
+  for (let index = list.length - 1; index > 0; index -= 1) {
+    const other = Math.floor(next() * (index + 1));
+    [list[index], list[other]] = [list[other], list[index]];
+  }
+  return list;
+}
+
+/**
+ * The categories whose first acceptable candidate goes to the pilot set: `count` different
+ * categories chosen by a seeded shuffle, returned in category order. No person chooses them.
+ */
+export function pickPilotCategories(seed: number, count: number): Category[] {
+  const options = CategorySchema.options;
+  if (!Number.isInteger(count) || count < 0 || count > options.length) {
+    throw new Error(`the pilot takes between 0 and ${options.length} categories, not ${count}`);
+  }
+  const chosen = new Set(shuffled(options, (seed ^ salt('pilot')) >>> 0).slice(0, count));
+  return options.filter((category) => chosen.has(category));
 }
 
 /** The number of expected answers a model has to give for `items` at `granularity`. */
-export function projectedSize(_items: readonly AnswerItem[], _granularity: Granularity): number {
-  return 0;
+export function projectedSize(items: readonly AnswerItem[], granularity: Granularity): number {
+  const seen = new Set<string>();
+  for (const item of items) {
+    if (item.file === undefined) continue;
+    if (granularity === 'file') seen.add(item.file);
+    else if (granularity === 'file+symbol') seen.add(`${item.file}\0${item.symbol ?? ''}`);
+    else seen.add(`${item.file}\0${item.line ?? ''}`);
+  }
+  return seen.size;
 }
 
 export type Decision = { status: 'accepted' } | { status: 'rejected'; reason: CandidateReason; detail: string };
@@ -719,7 +759,46 @@ export interface DecideInput {
   used: ReadonlyMap<string, 'scored' | 'pilot' | 'reserved'>;
 }
 
-export function decide(_input: DecideInput): Decision {
+function reject(reason: CandidateReason, detail: string): Decision {
+  return { status: 'rejected', reason, detail };
+}
+
+/**
+ * The closed list of reasons a candidate may be passed over, applied in this order and nowhere
+ * else: the subject is already used (`used-by-pilot`, `duplicate-symbol`); the name is declared more
+ * than once in the program or the oracle refuses it as ambiguous (`ambiguous-name`); the key has a
+ * mention neither included nor classified, or an `adr-of` citation without an ADR file
+ * (`unexplained`); a non-abstain expected answer is empty or larger than 30 after projection to
+ * its granularity (`empty`, `too-large`). Any other oracle error is a bug in the draft and throws.
+ */
+export function decide(input: DecideInput): Decision {
+  const { candidate, answer, error, used } = input;
+  const holder = used.get(candidate.identity);
+  if (holder === 'pilot') return reject('used-by-pilot', `${candidate.identity} is the subject of a pilot question`);
+  if (holder !== undefined) return reject('duplicate-symbol', `${candidate.identity} is already used (${holder})`);
+  const nameCount = Number(candidate.facts.nameCount ?? 1);
+  if (nameCount > 1) return reject('ambiguous-name', `the name is declared ${nameCount} times in the program`);
+  if (error !== undefined) {
+    if (error.code === 'SYMBOL_AMBIGUOUS' || error.code === 'ABSTAIN_PROBE_MATCHES') {
+      return reject('ambiguous-name', `${error.code}: ${error.message}`);
+    }
+    throw new Error(`${error.code}: ${error.message}`);
+  }
+  if (answer === undefined) throw new Error('decide needs the oracle key or the error it threw');
+  if (answer.unexplained.length > 0) {
+    const first = answer.unexplained[0];
+    return reject('unexplained', `${answer.unexplained.length} mention(s) neither included nor classified, first ${first.file}:${first.line}`);
+  }
+  if (candidate.key.kind === 'adr-of' && answer.items.some((item) => item.resolved === false)) {
+    return reject('unexplained', 'a cited ADR number has no ADR file, so the citation cannot be answered with a file');
+  }
+  if (candidate.key.kind === 'abstain') {
+    if (!answer.abstain || answer.items.length > 0) throw new Error(`${candidate.identity}: an abstain key must abstain with no items`);
+    return { status: 'accepted' };
+  }
+  const size = projectedSize(answer.items, answer.granularity);
+  if (size === 0) return reject('empty', 'the expected answer is empty');
+  if (size > MAX_EXPECTED_ITEMS) return reject('too-large', `the expected answer has ${size} items at granularity ${answer.granularity}; the limit is ${MAX_EXPECTED_ITEMS}`);
   return { status: 'accepted' };
 }
 
@@ -729,12 +808,152 @@ export interface DraftOptions {
   corpusSha: string;
   /** Identities already used by questions outside this set (the scan questions). */
   reserved?: readonly string[];
+  /** Scored questions per category and group; the registered `SCORED_MIX` by default. */
   mix?: Readonly<Partial<Record<Category, Readonly<Record<string, number>>>>>;
+  /** How many categories supply a pilot question; `PILOT_COUNT` by default. */
   pilotCount?: number;
+  /** The pilot categories themselves, instead of the seeded pick (for tests on a small fixture). */
+  pilotCategories?: readonly Category[];
 }
 
-export async function draftCandidates(_census: Census, _ctx: OracleContext, options: DraftOptions): Promise<CandidatesFile> {
-  return { corpusId: options.corpusId, corpusSha: options.corpusSha, seed: options.seed, oracleVersion: ORACLE_VERSION, pilotCategories: [], categories: {} as CandidatesFile['categories'] };
+/**
+ * One pass per category over its ordered candidates. Each candidate that could still fill a slot
+ * (its group's scored quota, or the category's pilot slot) has its key computed by the oracle and
+ * is decided by `decide`; the first acceptable candidate of the first group of a pilot category goes
+ * to the pilot, the next ones fill the scored quotas, and everything after the last needed
+ * candidate stays `unused`.
+ * Nothing here looks at what any tool answers. Question ids follow category then rank order.
+ */
+export async function draftCandidates(census: Census, ctx: OracleContext, options: DraftOptions): Promise<CandidatesFile> {
+  const mix = options.mix ?? SCORED_MIX;
+  const pilotCategories =
+    options.pilotCategories === undefined
+      ? pickPilotCategories(options.seed, options.pilotCount ?? PILOT_COUNT)
+      : CategorySchema.options.filter((category) => options.pilotCategories?.includes(category) === true);
+  const used = new Map<string, 'scored' | 'pilot' | 'reserved'>();
+  for (const identity of options.reserved ?? []) used.set(identity, 'reserved');
+
+  const categories = {} as CandidatesFile['categories'];
+  for (const category of CategorySchema.options) {
+    const quota: Record<string, number> = { ...(mix[category] ?? {}) };
+    // The pilot question comes from the category's first group, so it can never use up a scarcer group's scored quota.
+    const pilotGroup = Object.keys(quota)[0];
+    let pilotOpen = pilotCategories.includes(category);
+    const records: CandidateRecord[] = [];
+    const ordered = orderCandidates(census, category, options.seed);
+    for (const [index, entry] of ordered.entries()) {
+      const record: CandidateRecord = {
+        rank: index + 1,
+        group: entry.group,
+        identity: entry.identity,
+        key: entry.key,
+        status: 'unused',
+      };
+      records.push(record);
+      const pilotEligible = pilotOpen && (pilotGroup === undefined || entry.group === pilotGroup);
+      if ((quota[entry.group] ?? 0) <= 0 && !pilotEligible) continue;
+
+      let answer: AnswerKey | undefined;
+      let error: { code: string; message: string } | undefined;
+      try {
+        answer = await computeAnswerKey(entry.key, ctx);
+      } catch (thrown) {
+        if (!(thrown instanceof OracleError)) throw thrown;
+        error = { code: thrown.code, message: thrown.message };
+      }
+      record.facts = entry.facts;
+      if (answer !== undefined) record.size = projectedSize(answer.items, answer.granularity);
+      const decision = decide({ candidate: entry, answer, error, used });
+      if (decision.status === 'rejected') {
+        record.status = 'rejected';
+        record.reason = decision.reason;
+        record.detail = decision.detail;
+        continue;
+      }
+      record.status = 'accepted';
+      if (pilotEligible) {
+        pilotOpen = false;
+        record.slot = 'pilot';
+        used.set(entry.identity, 'pilot');
+      } else {
+        record.slot = 'scored';
+        quota[entry.group] -= 1;
+        used.set(entry.identity, 'scored');
+      }
+    }
+    if (pilotOpen) throw new Error(`not enough ${category} candidates for the pilot question`);
+    for (const [group, remaining] of Object.entries(quota)) {
+      if (remaining > 0) throw new Error(`not enough ${category}/${group} candidates: ${remaining} more scored question(s) needed`);
+    }
+    categories[category] = records;
+  }
+
+  let scoredNumber = 0;
+  let pilotNumber = 0;
+  for (const category of CategorySchema.options) {
+    for (const record of categories[category]) {
+      if (record.status !== 'accepted') continue;
+      if (record.slot === 'pilot') {
+        pilotNumber += 1;
+        record.questionId = `p-${String(pilotNumber).padStart(3, '0')}`;
+      } else {
+        scoredNumber += 1;
+        record.questionId = `q-${String(scoredNumber).padStart(3, '0')}`;
+      }
+    }
+  }
+  return {
+    corpusId: options.corpusId,
+    corpusSha: options.corpusSha,
+    seed: options.seed,
+    oracleVersion: ORACLE_VERSION,
+    pilotCategories,
+    categories,
+  };
+}
+
+// ---------------------------------------------------------------------------------------------
+// Question files from accepted candidates
+
+/** The one sentence that closes every question text, so the answer format is the only shared instruction. */
+export const CLOSING_SENTENCE = 'Give your answer in the required JSON form.';
+
+/** The accepted candidates of one slot as questions, in id order; texts of existing questions with the same id and key are kept. */
+export function scaffoldQuestions(
+  candidates: CandidatesFile,
+  slot: 'scored' | 'pilot',
+  existing: QuestionFile | undefined,
+): QuestionFile {
+  const kept = new Map((existing?.questions ?? []).map((question) => [question.id, question]));
+  const questions: Question[] = [];
+  for (const category of CategorySchema.options) {
+    for (const record of candidates.categories[category]) {
+      if (record.status !== 'accepted' || record.slot !== slot || record.questionId === undefined) continue;
+      const previous = kept.get(record.questionId);
+      const same = previous !== undefined && JSON.stringify(previous.key) === JSON.stringify(record.key);
+      questions.push({
+        id: record.questionId,
+        category,
+        text: same ? previous.text : `TODO write the question text for ${record.identity}`,
+        key: record.key,
+      });
+    }
+  }
+  questions.sort((a, b) => compareText(a.id, b.id));
+  return { corpusId: candidates.corpusId, corpusSha: candidates.corpusSha, questions };
+}
+
+// ---------------------------------------------------------------------------------------------
+// Answers files
+
+const PreparedFileSchema = PreparedRecordCopySchema.extend({ dir: z.string() });
+
+/** Adds the preparation record of the checkout (without its machine-specific `dir`) to an answers file. */
+export function stampAnswers(answers: AnswerFile, record: PreparedRecordCopy): AnswerFile {
+  if (answers.repoSha !== record.sha) {
+    throw new Error(`the answers were computed at ${answers.repoSha} but the checkout was prepared at ${record.sha}`);
+  }
+  return { oracleVersion: answers.oracleVersion, repoSha: answers.repoSha, preparedRecord: record, answers: answers.answers };
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -742,6 +961,15 @@ export async function draftCandidates(_census: Census, _ctx: OracleContext, opti
 
 const USAGE = `usage:
   node scripts/eval/draft-census.ts --repo <dir> --tsconfig <file> --seed <n> --out <candidates.json> [--corpus-id <id>]
+      census of the checkout and every ordered candidate as unused
+  node scripts/eval/draft-census.ts draft --repo <dir> --tsconfig <file> --seed <n> --out <candidates.json> [--corpus-id <id>] [--scan <scan-questions.json>]
+      the single drafting pass: decide candidates by the closed rules and assign question ids
+  node scripts/eval/draft-census.ts list --candidates <candidates.json>
+      the accepted candidates (question id, key, facts) for the person writing the texts
+  node scripts/eval/draft-census.ts scaffold --candidates <candidates.json> --questions-out <file> --pilot-out <file>
+      question files from the accepted candidates; texts already written for the same id and key are kept
+  node scripts/eval/draft-census.ts stamp --answers <answers.json> --checkout <dir>
+      add the preparation record of the checkout to an answers file written by oracle.ts keys
 `;
 
 function repoHead(repoDir: string): string {
@@ -752,38 +980,124 @@ function repoHead(repoDir: string): string {
   return result.stdout.trim();
 }
 
+function readJsonFile(file: string): unknown {
+  return JSON.parse(fs.readFileSync(file, 'utf8').replace(/^﻿/, '')) as unknown;
+}
+
+function writeJsonFile(file: string, value: unknown): void {
+  fs.writeFileSync(file, `${JSON.stringify(value, null, 2)}\n`);
+}
+
+/** Identities of the free-alternatives scan questions, which the scored set must not repeat. */
+function scanIdentities(file: string): string[] {
+  const scan = z.object({ questions: z.array(z.object({ key: KeySpecSchema })) }).parse(readJsonFile(file));
+  return scan.questions.map((question) => identityOfKey(question.key));
+}
+
+const OPTIONS = {
+  repo: { type: 'string' },
+  tsconfig: { type: 'string' },
+  seed: { type: 'string' },
+  out: { type: 'string' },
+  'corpus-id': { type: 'string' },
+  scan: { type: 'string' },
+  candidates: { type: 'string' },
+  'questions-out': { type: 'string' },
+  'pilot-out': { type: 'string' },
+  answers: { type: 'string' },
+  checkout: { type: 'string' },
+} as const;
+
+type Values = { [K in keyof typeof OPTIONS]?: string };
+
+const DEFAULT_SCAN = path.join(import.meta.dirname, 'scan-questions.json');
+
+async function runCensusCommand(command: 'skeleton' | 'draft', values: Values): Promise<number> {
+  const seed = Number(values.seed);
+  if (values.repo === undefined || values.tsconfig === undefined || values.out === undefined || !Number.isInteger(seed)) {
+    process.stderr.write(USAGE);
+    return 2;
+  }
+  const ctx: OracleContext = { repoDir: values.repo, tsconfig: values.tsconfig };
+  const census = await buildCensus(ctx);
+  const base = { corpusId: values['corpus-id'] ?? 'gsd-core', corpusSha: repoHead(values.repo), seed };
+  const file =
+    command === 'skeleton'
+      ? skeletonCandidates(census, base)
+      : await draftCandidates(census, ctx, { ...base, reserved: scanIdentities(values.scan ?? DEFAULT_SCAN) });
+  fs.writeFileSync(values.out, serializeCandidates(file));
+  return 0;
+}
+
+function runList(values: Values): number {
+  if (values.candidates === undefined) {
+    process.stderr.write(USAGE);
+    return 2;
+  }
+  const candidates = CandidatesFileSchema.parse(readJsonFile(values.candidates));
+  const lines: string[] = [];
+  for (const category of CategorySchema.options) {
+    for (const record of candidates.categories[category]) {
+      if (record.status !== 'accepted') continue;
+      lines.push(`${record.questionId ?? '?'} ${category} ${record.group} size=${record.size ?? '-'} ${JSON.stringify(record.key)} ${JSON.stringify(record.facts ?? {})}`);
+    }
+  }
+  process.stdout.write(`${lines.sort().join('\n')}\n`);
+  return 0;
+}
+
+function runScaffold(values: Values): number {
+  if (values.candidates === undefined || values['questions-out'] === undefined || values['pilot-out'] === undefined) {
+    process.stderr.write(USAGE);
+    return 2;
+  }
+  const candidates = CandidatesFileSchema.parse(readJsonFile(values.candidates));
+  const previous = (file: string): QuestionFile | undefined => (fs.existsSync(file) ? loadQuestions(file) : undefined);
+  writeJsonFile(values['questions-out'], scaffoldQuestions(candidates, 'scored', previous(values['questions-out'])));
+  writeJsonFile(values['pilot-out'], scaffoldQuestions(candidates, 'pilot', previous(values['pilot-out'])));
+  return 0;
+}
+
+function runStamp(values: Values): number {
+  if (values.answers === undefined || values.checkout === undefined) {
+    process.stderr.write(USAGE);
+    return 2;
+  }
+  const { dir: _dir, ...record } = PreparedFileSchema.parse(readJsonFile(path.join(values.checkout, RECORD_FILE)));
+  const stamped = stampAnswers(AnswerFileSchema.parse(readJsonFile(values.answers)), record);
+  writeJsonFile(values.answers, stamped);
+  return 0;
+}
+
 export async function main(argv: readonly string[]): Promise<number> {
-  let values: { repo?: string; tsconfig?: string; seed?: string; out?: string; 'corpus-id'?: string };
+  const subcommand = argv[0] !== undefined && !argv[0].startsWith('-') ? argv[0] : undefined;
+  let values: Values;
   try {
     values = parseArgs({
-      args: [...argv],
-      options: {
-        repo: { type: 'string' },
-        tsconfig: { type: 'string' },
-        seed: { type: 'string' },
-        out: { type: 'string' },
-        'corpus-id': { type: 'string' },
-      },
+      args: subcommand === undefined ? [...argv] : argv.slice(1),
+      options: OPTIONS,
       allowPositionals: false,
     }).values;
   } catch (error) {
     process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n${USAGE}`);
     return 2;
   }
-  const seed = Number(values.seed);
-  if (values.repo === undefined || values.tsconfig === undefined || values.out === undefined || !Number.isInteger(seed)) {
-    process.stderr.write(USAGE);
-    return 2;
-  }
   try {
-    const census = await buildCensus({ repoDir: values.repo, tsconfig: values.tsconfig });
-    const file = skeletonCandidates(census, {
-      corpusId: values['corpus-id'] ?? 'gsd-core',
-      corpusSha: repoHead(values.repo),
-      seed,
-    });
-    fs.writeFileSync(values.out, serializeCandidates(file));
-    return 0;
+    switch (subcommand) {
+      case undefined:
+        return await runCensusCommand('skeleton', values);
+      case 'draft':
+        return await runCensusCommand('draft', values);
+      case 'list':
+        return runList(values);
+      case 'scaffold':
+        return runScaffold(values);
+      case 'stamp':
+        return runStamp(values);
+      default:
+        process.stderr.write(`unknown command ${subcommand}\n${USAGE}`);
+        return 2;
+    }
   } catch (error) {
     process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
     return 1;

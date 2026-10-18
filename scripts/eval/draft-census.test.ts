@@ -353,7 +353,8 @@ describe('draftCandidates', () => {
   });
 
   function options(extra: Record<string, unknown> = {}) {
-    return { seed: 20261017, corpusId: 'oracle-fixture', corpusSha: 'abc', mix: MIX, pilotCount: 2, ...extra };
+    // The fixture is tiny, so the pilot categories are named instead of picked by the seed.
+    return { seed: 20261017, corpusId: 'oracle-fixture', corpusSha: 'abc', mix: MIX, pilotCategories: ['callers', 'heritage'] as Category[], ...extra };
   }
 
   test('every candidate is decided once, the quotas and the pilot are met, and ids are assigned in order', async () => {
