@@ -1485,12 +1485,17 @@ interface PreparedRecord {
   readonly npmCi: boolean;
 }
 
-function readPreparedRecord(dir: string): PreparedRecord {
+/**
+ * The record scripts/eval/prepare-corpus.ts leaves in a prepared checkout. With `required` (the `--prepared` flag) a
+ * missing or malformed record is an error; without it a missing record means the checkout is not prepared.
+ */
+function readPreparedRecord(dir: string, required: boolean): PreparedRecord | undefined {
   const file = path.join(dir, '.eval-prepared.json');
   let parsed: unknown;
   try {
     parsed = JSON.parse(fs.readFileSync(file, 'utf8'));
   } catch {
+    if (!required) return undefined;
     throw new SampleError('not_prepared', `--prepared was given but ${file} is missing or not JSON; prepare the checkout with scripts/eval/prepare-corpus.ts`);
   }
   const record = parsed as Partial<PreparedRecord> | null;
@@ -1523,7 +1528,7 @@ export async function runEdgeSample(options: RunOptions): Promise<RunResult> {
   } catch {
     throw new SampleError('usage', `the checkout directory does not exist: ${options.dir}`);
   }
-  const record = options.prepared === true ? readPreparedRecord(dir) : undefined;
+  const record = readPreparedRecord(dir, options.prepared === true);
   const sha = gitOutput(dir, ['rev-parse', 'HEAD'])?.trim() ?? 'unknown';
   if (record !== undefined && record.sha !== sha) {
     throw new SampleError('not_prepared', `the preparation record says ${record.sha} but the checkout is at ${sha}`);

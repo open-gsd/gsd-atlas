@@ -395,6 +395,24 @@ describe('edge-sample against the oracle fixture with an override and an impleme
     assert.throws(() => loadPopulation(dbFile, { worktree: path.join(dir, 'not-an-overlay') }), /overlay/);
   });
 
+  it('a preparation record is read when there is one, and must agree with the checkout', async () => {
+    const head = spawnSync('git', ['rev-parse', 'HEAD'], { cwd: dir, encoding: 'utf8', env: cleanGitEnv(), windowsHide: true }).stdout.trim();
+    const recordFile = path.join(dir, '.eval-prepared.json');
+    try {
+      fs.writeFileSync(recordFile, JSON.stringify({ corpusId: 'fixture-corpus', sha: head, npmCi: true, typescriptVersion: '6.0.3', lockSha256: null, dir }));
+      const withRecord = await runEdgeSample({ dir, seed: 7, n: 100, storeFile: dbFile, tsconfig: 'tsconfig.json' });
+      assert.equal(withRecord.report.header.corpus, 'fixture-corpus');
+      assert.equal(withRecord.report.header.corpusSha, head);
+      assert.match(withRecord.report.header.compilers, /typescript 6\.0\.3 \(prepared/);
+      fs.writeFileSync(recordFile, JSON.stringify({ corpusId: 'fixture-corpus', sha: 'f'.repeat(40), npmCi: true, typescriptVersion: '6.0.3', lockSha256: null, dir }));
+      await assert.rejects(runEdgeSample({ dir, seed: 7, n: 100, storeFile: dbFile, tsconfig: 'tsconfig.json' }), /preparation record says/);
+    } finally {
+      fs.rmSync(recordFile, { force: true });
+    }
+    const without = await runEdgeSample({ dir, seed: 7, n: 100, storeFile: dbFile, tsconfig: 'tsconfig.json' });
+    assert.match(without.report.header.compilers, /not prepared/);
+  });
+
   it('the table is deterministic, keeps the hand-written part, and lists every stratum even when empty', async () => {
     const out = path.join(work, 'table.md');
     const first = await runEdgeSample({ dir, seed: 7, n: 100, storeFile: dbFile, tsconfig: 'tsconfig.json', out });
