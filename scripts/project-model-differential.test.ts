@@ -124,6 +124,54 @@ test('differential script: usage errors exit 2 and a failed preparation exits 1'
   });
 });
 
+// The --emit mode (TSM-03, plan 03-22): where the model says each source is written, against ts.getOutputFileNames.
+
+const EMIT_TREE: Readonly<Record<string, string>> = {
+  'tsconfig.json': '{ "compilerOptions": { "rootDir": "src", "outDir": "out", "module": "nodenext" }, "include": ["src"] }\n',
+  'src/a.cts': 'export {};\n',
+  'src/b.mts': 'export {};\n',
+  'src/c.ts': 'export {};\n',
+  'src/types.d.ts': 'export {};\n',
+  'out/vendor.cjs': 'module.exports = 1;\n',
+  'out/NOTICE.txt': 'hand written\n',
+  'docs/readme.md': '# docs\n',
+};
+
+test('differential script --emit: the model maps every source like the compiler and names the tracked files under outDir that are not outputs', async () => {
+  await withRepo(EMIT_TREE, async (dir) => {
+    const c = capture();
+    const code = await runCli(['--corpus', 'gsd-core', '--dir', dir, '--emit'], c.io);
+    assert.equal(code, 0, c.out() + c.err());
+    assert.match(c.out(), /^emit: sources=3 disagreements=0 crashes=0$/m, 'a.cts, b.mts and c.ts; the declaration file has no output');
+    assert.match(c.out(), /^outDir out: tracked=2 outputs=0 not an output=2$/m);
+    assert.match(c.out(), /^gsd-core: emit sources=3 disagreements=0 crashes=0$/m);
+  });
+});
+
+test('differential script --emit: a model that places outputs elsewhere exits 1 and names the source', async () => {
+  await withRepo(EMIT_TREE, async (dir) => {
+    const c = capture();
+    const code = await runCli(['--corpus', 'gsd-core', '--dir', dir, '--emit'], c.io, {
+      wrapFs: (real) => ({
+        exists: real.exists,
+        async readText(p) {
+          const result = await real.readText(p);
+          return p === 'tsconfig.json' && result.kind === 'ok' ? { kind: 'ok', text: result.text.replace('"outDir": "out"', '"outDir": "elsewhere"') } : result;
+        },
+      }),
+    });
+    assert.equal(code, 1, c.out());
+    assert.match(c.out(), /disagreements=3 /);
+    assert.match(c.out(), /src\/a\.cts: model \["elsewhere\/a\.cjs"\] vs compiler \["out\/a\.cjs"\]/);
+  });
+});
+
+test('differential script --emit: usage errors still exit 2', async () => {
+  const c = capture();
+  assert.equal(await runCli(['--emit'], c.io), 2);
+  assert.match(c.err(), /usage:.*--emit/);
+});
+
 test('differential script: the directory reader is confined to the checkout', async () => {
   await withRepo(TREE, async (dir) => {
     const fsOver = directoryProjectFs(dir);
