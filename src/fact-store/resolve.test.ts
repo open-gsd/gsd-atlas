@@ -5,6 +5,7 @@ import { describe, it } from 'node:test';
 import type {
   FileFacts,
   LocatedSymbol,
+  ProjectContextProvider,
   RefSiteKey,
   ResolutionContext,
   ResolveScope,
@@ -484,6 +485,295 @@ for (const driver of DRIVERS) {
         },
         {},
         old,
+      );
+    });
+  });
+}
+
+function deferred(): { readonly promise: Promise<void>; readonly open: () => void } {
+  let open: () => void = () => {};
+  const promise = new Promise<void>((resolve) => {
+    open = resolve;
+  });
+  return { promise, open };
+}
+
+/** Row count of a table, read through a second connection. */
+const count = (db: Db, table: string): number => Number(db.prepare(`SELECT count(*) AS n FROM ${table}`).get()?.n);
+
+/**
+ * A resolver that binds both sites to `run` and records every call (`seen`), so call counts and arguments can be
+ * asserted. Both sites are answered, so a settled read asks nothing (a site with no edge is the negative marker's case).
+ */
+function binding(): { readonly resolver: Resolver; readonly seen: Seen[] } {
+  const inner = asStoreResolver(
+    createScriptedResolver({
+      id: 'scripted',
+      edges: [
+        { site: SITE_A, target: RUN },
+        { site: SITE_B, target: RUN },
+      ],
+    }),
+  );
+  return probing([], inner);
+}
+
+const BOTH_PRECISE = [[3, 'precise', 'EXTRACTED'], [6, 'precise', 'EXTRACTED']];
+const BOTH_GRAMMAR = [[3, 'grammar', 'INFERRED'], [6, 'grammar', 'INFERRED']];
+
+/** A file with no symbols, added to change the overlay (and so the snapshot id) without touching the sites. */
+async function addNoise(writer: Writer, n: number): Promise<void> {
+  const filePath = `src/noise${n}.ts`;
+  await writer.commitFile({ worktree: 'main', path: filePath, hash: H(100 + n), facts: fileOf(filePath, 100 + n, {}) });
+}
+
+for (const driver of DRIVERS) {
+  describe(`resolver seam: per-overlay project context (${driver})`, () => {
+    it('no provider is grammar: the resolver gets id grammar and no config hashes, as in Phase 2', async () => {
+      const { resolver, seen } = binding();
+      await withRig(
+        driver,
+        async (rig) => {
+          const writer = rig.store.writer();
+          await seed(writer);
+          const peek = await rig.peek();
+          const refs = await rig.store.at('main').refs(RUN);
+          assert.deepStrictEqual(seen[0]?.context, { id: 'grammar', configHashes: [] });
+          assert.deepStrictEqual(seen[0]?.scope?.project, { context: { id: 'grammar', configHashes: [] } });
+          assert.deepStrictEqual(tiers(refs.data), BOTH_PRECISE);
+          assert.deepStrictEqual(
+            peek.prepare('SELECT ctx FROM resolution_contexts').all().map((row) => row.ctx),
+            ['{"id":"grammar","configHashes":[]}'],
+          );
+          writer.release();
+        },
+        {},
+        resolver,
+      );
+    });
+
+    it('provider context reaches the resolver and keys the cache: a second read asks nothing', async () => {
+      const { resolver, seen } = binding();
+      const asked: string[] = [];
+      const projectContext: ProjectContextProvider = async (scope) => {
+        asked.push(`${scope.worktree}:${scope.overlay.id}`);
+        return { context: { id: 'ts:test', configHashes: ['aa'] } };
+      };
+      await withRig(
+        driver,
+        async (rig) => {
+          const writer = rig.store.writer();
+          await seed(writer);
+          const peek = await rig.peek();
+          const reader = rig.store.at('main');
+          const first = await reader.refs(RUN);
+          const second = await reader.refs(RUN);
+          assert.equal(seen.length, 1, 'the second read is served from the cache');
+          assert.deepStrictEqual(seen[0]?.context, { id: 'ts:test', configHashes: ['aa'] });
+          assert.deepStrictEqual(seen[0]?.scope?.project.context, { id: 'ts:test', configHashes: ['aa'] });
+          assert.deepStrictEqual(asked, [`main:${overlaySnapshotId(SEEDED)}`], 'the provider was told the worktree and the snapshot');
+          assert.deepStrictEqual(second.data, first.data);
+          assert.deepStrictEqual(
+            peek.prepare('SELECT ctx FROM resolution_contexts').all().map((row) => row.ctx),
+            ['{"id":"ts:test","configHashes":["aa"]}'],
+          );
+          assert.equal(count(peek, 'resolved_edges'), 2);
+          writer.release();
+        },
+        { projectContext },
+        resolver,
+      );
+    });
+
+    it('changed config hashes miss: another configuration asks the resolver again and both sets of rows coexist', async () => {
+      const { resolver, seen } = binding();
+      let hash = 'aa';
+      const projectContext: ProjectContextProvider = async () => ({ context: { id: 'ts:test', configHashes: [hash] } });
+      await withRig(
+        driver,
+        async (rig) => {
+          const writer = rig.store.writer();
+          await seed(writer);
+          const peek = await rig.peek();
+          const first = await rig.store.at('main').refs(RUN);
+          assert.equal(seen.length, 1);
+          assert.equal(count(peek, 'resolved_edges'), 2);
+
+          hash = 'bb';
+          writer.release();
+          const reopened = await rig.reopen(); // a fresh store asks the provider again; the overlay is unchanged
+          const second = await reopened.at('main').refs(RUN);
+          assert.equal(seen.length, 2, 'the cache key includes the config hashes, so the new configuration misses');
+          assert.deepStrictEqual(seen[1]?.context, { id: 'ts:test', configHashes: ['bb'] });
+          assert.deepStrictEqual(second.data, first.data);
+          assert.equal(count(peek, 'resolved_edges'), 4, 'both contexts keep their rows while the snapshot is current');
+          assert.equal(count(peek, 'resolution_contexts'), 2);
+
+          await reopened.at('main').refs(RUN);
+          assert.equal(seen.length, 2, 'the new configuration is now cached too');
+        },
+        { projectContext },
+        resolver,
+      );
+    });
+
+    it('provider called once per snapshot: reads of an unchanged overlay share one call, a commit asks again', async () => {
+      const { resolver } = binding();
+      let calls = 0;
+      const projectContext: ProjectContextProvider = async () => {
+        calls += 1;
+        return { context: { id: 'ts:test', configHashes: [] } };
+      };
+      await withRig(
+        driver,
+        async (rig) => {
+          const writer = rig.store.writer();
+          await seed(writer);
+          const reader = rig.store.at('main');
+          for (let read = 0; read < 3; read += 1) await reader.refs(RUN);
+          await reader.callers(RUN);
+          await Promise.all([reader.refs(RUN), reader.callers(RUN)]);
+          assert.equal(calls, 1, 'five reads of an unchanged overlay');
+          await addNoise(writer, 1);
+          await reader.refs(RUN);
+          assert.equal(calls, 2, 'a commit that changes the overlay computes the context again');
+          writer.release();
+        },
+        { projectContext },
+        resolver,
+      );
+    });
+
+    it('commit during provider: the read retries once and its cache rows match the snapshot and context it finally used', async () => {
+      const { resolver, seen } = binding();
+      const gate = deferred();
+      const asked: string[] = [];
+      const projectContext: ProjectContextProvider = async (scope) => {
+        asked.push(scope.overlay.id);
+        if (asked.length === 1) await gate.promise;
+        return { context: { id: `ts:${scope.overlay.id}`, configHashes: [] } };
+      };
+      await withRig(
+        driver,
+        async (rig) => {
+          const writer = rig.store.writer();
+          await seed(writer);
+          const peek = await rig.peek();
+          const pending = rig.store.at('main').refs(RUN);
+          assert.equal(asked.length, 1, 'the provider is waiting on the gate');
+          await addNoise(writer, 1); // the overlay moves while the provider waits
+          gate.open();
+          const refs = await pending;
+
+          const moved = new Map([...SEEDED, ['src/noise1.ts', H(101)]]);
+          const finalId = overlaySnapshotId(moved);
+          assert.deepStrictEqual(asked, [overlaySnapshotId(SEEDED), finalId], 'the provider was asked again for the snapshot the read used');
+          assert.equal(seen.length, 1);
+          assert.equal(seen[0]?.scope?.overlay.id, finalId);
+          assert.deepStrictEqual(seen[0]?.context, { id: `ts:${finalId}`, configHashes: [] });
+          assert.equal(refs.degraded, undefined);
+          assert.deepStrictEqual(tiers(refs.data), BOTH_PRECISE);
+          const rows = peek
+            .prepare('SELECT e.snapshot AS snapshot, c.ctx AS ctx FROM resolved_edges e JOIN resolution_contexts c ON c.id = e.context_id')
+            .all()
+            .map((row) => [row.snapshot, row.ctx]);
+          const ctx = `{"id":"ts:${finalId}","configHashes":[]}`;
+          assert.deepStrictEqual(rows, [[finalId, ctx], [finalId, ctx]], 'one row per site, all under the final snapshot and context');
+          writer.release();
+        },
+        { projectContext },
+        resolver,
+      );
+    });
+
+    it('provider always loses: the answer is grammar-tier with resolver_failed and no cached rows', async () => {
+      const { resolver, seen } = binding();
+      let calls = 0;
+      let writerRef: Writer | undefined;
+      const projectContext: ProjectContextProvider = async () => {
+        calls += 1;
+        if (writerRef !== undefined) await addNoise(writerRef, calls); // the overlay moves on every call
+        return { context: { id: 'ts:test', configHashes: [] } };
+      };
+      await withRig(
+        driver,
+        async (rig) => {
+          const writer = rig.store.writer();
+          await seed(writer);
+          writerRef = writer;
+          const peek = await rig.peek();
+          const refs = await rig.store.at('main').refs(RUN);
+          assert.equal(calls, 2, 'one try and one retry, no more');
+          assert.deepStrictEqual(refs.degraded, ['resolver_failed']);
+          assert.deepStrictEqual(tiers(refs.data), BOTH_GRAMMAR);
+          assert.equal(seen.length, 0, 'the resolver is not asked under a context computed for another snapshot');
+          assert.equal(count(peek, 'resolved_edges'), 0);
+          assert.equal(count(peek, 'resolution_contexts'), 0);
+          writer.release();
+        },
+        { projectContext },
+        resolver,
+      );
+    });
+
+    it('provider throws: resolver_failed and the grammar answer, never an error, and a later success is used', async () => {
+      const { resolver, seen } = binding();
+      let mode: 'reject' | 'throw' | 'ok' = 'reject';
+      const projectContext = ((): Promise<{ context: ResolutionContext }> => {
+        if (mode === 'throw') throw new Error('provider threw on the call');
+        if (mode === 'reject') return Promise.reject(new Error('provider rejected'));
+        return Promise.resolve({ context: { id: 'ts:test', configHashes: [] } });
+      }) satisfies ProjectContextProvider;
+      await withRig(
+        driver,
+        async (rig) => {
+          const writer = rig.store.writer();
+          await seed(writer);
+          const reader = rig.store.at('main');
+          for (const failing of ['reject', 'throw'] as const) {
+            mode = failing;
+            const refs = await reader.refs(RUN);
+            assert.deepStrictEqual(refs.degraded, ['resolver_failed'], failing);
+            assert.deepStrictEqual(tiers(refs.data), BOTH_GRAMMAR, failing);
+            const callers = await reader.callers(RUN);
+            assert.deepStrictEqual(callers.degraded, ['resolver_failed'], failing);
+          }
+          assert.equal(seen.length, 0);
+          mode = 'ok';
+          const recovered = await reader.refs(RUN);
+          assert.equal(recovered.degraded, undefined, 'a failure is not remembered');
+          assert.deepStrictEqual(tiers(recovered.data), BOTH_PRECISE);
+          writer.release();
+        },
+        { projectContext },
+        resolver,
+      );
+    });
+
+    it('old resolutionContext option: still read on every resolving read, and a change misses the cache', async () => {
+      const { resolver, seen } = binding();
+      let id = 'ctx-a';
+      await withRig(
+        driver,
+        async (rig) => {
+          const writer = rig.store.writer();
+          await seed(writer);
+          const peek = await rig.peek();
+          const reader = rig.store.at('main');
+          await reader.refs(RUN);
+          await reader.refs(RUN);
+          assert.equal(seen.length, 1);
+          assert.deepStrictEqual(seen[0]?.context, { id: 'ctx-a', configHashes: ['h2', 'h1'] });
+          assert.deepStrictEqual(seen[0]?.scope?.project.context, { id: 'ctx-a', configHashes: ['h2', 'h1'] });
+          id = 'ctx-b';
+          await reader.refs(RUN);
+          assert.equal(seen.length, 2, 'the same overlay under another context misses');
+          assert.equal(count(peek, 'resolved_edges'), 4);
+          assert.equal(count(peek, 'resolution_contexts'), 2);
+          writer.release();
+        },
+        { resolutionContext: () => ({ id, configHashes: ['h2', 'h1'] }) },
+        resolver,
       );
     });
   });
