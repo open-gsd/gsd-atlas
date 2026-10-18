@@ -117,6 +117,98 @@ const everyType = BUG_INCLUDE.join(',');
 /** The directory the bundle was written to, from the printed envelope. */
 const dirOf = (run: Run): string => (run.envelope.data as { path: string }).path;
 
+/** Replace every way a Node program opens a connection by a stub that records the attempt and throws. */
+async function stubTheNetwork(): Promise<{ calls(): number; restore(): void }> {
+  const { default: http } = await import('node:http');
+  const { default: https } = await import('node:https');
+  const { default: net } = await import('node:net');
+  const { syncBuiltinESMExports } = await import('node:module');
+  let attempts = 0;
+  const refuse = (): never => {
+    attempts += 1;
+    throw new Error('network access in a test that must have none');
+  };
+  const saved: Array<() => void> = [];
+  const replace = (target: object, key: string): void => {
+    const holder = target as Record<string, unknown>;
+    const original = holder[key];
+    holder[key] = refuse;
+    saved.push(() => {
+      holder[key] = original;
+    });
+  };
+  replace(globalThis, 'fetch');
+  for (const key of ['request', 'get']) {
+    replace(http, key);
+    replace(https, key);
+  }
+  for (const key of ['connect', 'createConnection']) replace(net, key);
+  syncBuiltinESMExports();
+  return {
+    calls: () => attempts,
+    restore: () => {
+      saved.forEach((undo) => undo());
+      syncBuiltinESMExports();
+    },
+  };
+}
+
+describe('gsd-atlas bug --clear and the status hint over the real Host', () => {
+  it('clear empties the recorder, prints how many answers it held, and a later excerpt is empty', async (t) => {
+    const world = await hostileWorld(t);
+    await useIt(world);
+    const before = await world.cli(['bug', '--what', 'x', '--include', 'recorder', '--repo', world.repo.dir]);
+    assert.equal(before.code, 0, before.stderr);
+    const held = (JSON.parse(fs.readFileSync(path.join(dirOf(before), 'bundle.json'), 'utf8')) as { recorder: { kept: number } }).recorder.kept;
+    assert.ok(held >= 4);
+
+    const cleared = await world.cli(['bug', '--clear', '--repo', world.repo.dir]);
+    assert.equal(cleared.code, 0, cleared.stderr);
+    assert.deepEqual(cleared.envelope.data, { cleared: held });
+    assert.match(cleared.stderr, new RegExp(`removed ${String(held)} events from the flight recorder`));
+
+    const after = await world.cli(['bug', '--what', 'x', '--include', 'recorder', '--repo', world.repo.dir]);
+    assert.equal(after.code, 0, after.stderr);
+    assert.deepEqual(JSON.parse(fs.readFileSync(path.join(dirOf(after), 'bundle.json'), 'utf8')).recorder, { total: 0, kept: 0, events: [] });
+  });
+
+  it('a recorded internal error makes status and health say where to go, and clearing the recorder takes the hint away', async (t) => {
+    const world = await hostileWorld(t);
+    await useIt(world);
+    const flight = path.join(world.repo.dir, '.git', 'gsd-atlas', 'flight', 'flight.jsonl');
+    fs.appendFileSync(flight, `${JSON.stringify({ t: Date.now() + 1000, kind: 'answer', id: 'a_0123456789abcdef', tool: 'code_refs', outcome: 'internal_error', ms: 'le50', degraded: [], count: 0, handles: [] })}\n`);
+    const hint = 'something went wrong; run gsd-atlas bug';
+    const status = await world.cli(['status', '--repo', world.repo.dir]);
+    assert.equal(status.code, 0, status.stderr);
+    assert.deepEqual((status.envelope as unknown as { hints: string[] }).hints, [hint]);
+    assert.match(status.stderr, /something went wrong; run gsd-atlas bug/);
+    const health = await world.cli(['health', '--repo', world.repo.dir]);
+    assert.deepEqual((health.envelope as unknown as { hints: string[] }).hints, [hint]);
+
+    assert.equal((await world.cli(['bug', '--clear', '--repo', world.repo.dir])).code, 0);
+    const later = await world.cli(['status', '--repo', world.repo.dir]);
+    assert.equal('hints' in later.envelope, false);
+  });
+});
+
+describe('gsd-atlas bug opens no network connection over the real Host', () => {
+  it('no network: with fetch, http, https and net replaced by throwing stubs, collecting, writing and clearing all complete', async (t) => {
+    const world = await hostileWorld(t);
+    await useIt(world);
+    const stubs = await stubTheNetwork();
+    try {
+      const written = await world.cli(['bug', '--what', 'x', '--include', everyType, '--repo', world.repo.dir]);
+      assert.equal(written.code, 0, written.stderr);
+      const raw = await world.cli(['bug', '--what', 'x', '--include', everyType, '--mode', 'raw', '--confirm-raw', '--repo', world.repo.dir]);
+      assert.equal(raw.code, 0, raw.stderr);
+      assert.equal((await world.cli(['bug', '--clear', '--repo', world.repo.dir])).code, 0);
+      assert.equal(stubs.calls(), 0, 'nothing tried to open a connection');
+    } finally {
+      stubs.restore();
+    }
+  });
+});
+
 describe('the CLI lists match the diagnostics module', () => {
   it('the data types and modes the CLI accepts are the ones the Host reads', () => {
     assert.deepEqual([...BUG_INCLUDE], [...BUG_TYPES]);

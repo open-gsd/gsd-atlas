@@ -12,7 +12,7 @@ import type { TestContext } from 'node:test';
 
 import type { Envelope } from '../facts/index.ts';
 import { configFactsOf } from './bug.ts';
-import { makeWorld } from './harness.test.ts';
+import { makeWorld, storeIdOf } from './harness.test.ts';
 import type { World } from './harness.test.ts';
 
 const codes = (reply: Envelope): string[] => reply.diagnostics.map((d) => d.code);
@@ -411,6 +411,102 @@ describe('Host bug: what never goes in', () => {
       assert.ok(!out.text.includes('untrusted_text'));
       assert.ok(!out.text.includes(answer.untrusted_text?.nonce ?? 'no-nonce'));
     }
+  });
+});
+
+describe('Host bug: clear', () => {
+  it('clear empties the recorder of the repository and says how many answers it held; the next excerpt is empty', async (t: TestContext) => {
+    const { world, ids } = await answeredWorld(t);
+    const before = await bundleOf(world, { include: ['recorder', 'failing'] });
+    assert.equal((before.bundle['recorder'] as { total: number }).total, ids.length);
+
+    const cleared = await world.ask('bug', { repo: world.repo.dir, action: 'clear' });
+    assert.equal(cleared.ok, true, JSON.stringify(cleared.diagnostics));
+    assert.equal(cleared.schema, 'gsd-atlas.bug/1');
+    assert.deepEqual(cleared.data, { cleared: ids.length });
+    assert.equal(fs.existsSync(path.join(storeDirOf(world), 'flight', 'flight.jsonl')), false);
+
+    const after = await bundleOf(world, { include: ['recorder', 'failing'] });
+    assert.deepEqual(after.bundle['recorder'], { total: 0, kept: 0, events: [] });
+    assert.deepEqual(after.bundle['failing'], { status: 'answer_not_found' });
+    const again = await world.ask('bug', { repo: world.repo.dir, action: 'clear' });
+    assert.deepEqual(again.data, { cleared: 0 });
+  });
+
+  it('clear on a repository with no index removes nothing, creates nothing and is not an error', async (t: TestContext) => {
+    const world = await makeWorld(t, { host: HOST });
+    const reply = await world.ask('bug', { repo: world.repo.dir, action: 'clear' });
+    assert.equal(reply.ok, true, JSON.stringify(reply.diagnostics));
+    assert.deepEqual(reply.data, { cleared: 0 });
+    assert.equal(fs.existsSync(storeDirOf(world)), false);
+  });
+
+  it('clear on a directory that is not a repository is not_a_repo; clear takes only the repository selection', async (t: TestContext) => {
+    const world = await makeWorld(t, { host: HOST });
+    const outside = path.join(world.tmp.path, 'not-a-repo');
+    fs.mkdirSync(outside);
+    assert.deepEqual(codes(await world.ask('bug', { repo: outside, action: 'clear' })), ['not_a_repo']);
+    for (const extra of [{ what: 'x' }, { include: [] }, { mode: 'hashed' }, { confirm: 'a'.repeat(64) }]) {
+      const reply = await world.ask('bug', { repo: world.repo.dir, action: 'clear', ...extra });
+      assert.deepEqual(codes(reply), ['invalid_args'], JSON.stringify(extra));
+    }
+  });
+});
+
+describe('Host status hints at a bug report', () => {
+  const HINT = 'something went wrong; run gsd-atlas bug';
+
+  /** An event line for the recorder with an outcome and a time. */
+  const line = (index: number, outcome: string): string =>
+    JSON.stringify({ t: 1_900_000_000_000 + index * 1000, kind: 'answer', id: `a_${index.toString(16).padStart(16, '0')}`, tool: 'code_find', outcome, ms: 'le50', degraded: [], count: 0, handles: [] });
+
+  const writeRecorder = (world: World, lines: string[]): void => {
+    const dir = path.join(storeDirOf(world), 'flight');
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, 'flight.jsonl'), `${lines.join('\n')}\n`);
+  };
+
+  it('hint after internal error: status and atlas_status carry the fixed sentence when a recent answer was an internal error', async (t: TestContext) => {
+    const { world } = await answeredWorld(t);
+    writeRecorder(world, [line(0, 'ok'), line(1, 'internal_error'), line(2, 'ok')]);
+    const status = await world.ask('status', { repo: world.repo.dir });
+    assert.equal(status.ok, true, JSON.stringify(status.diagnostics));
+    assert.deepEqual(status.hints, [HINT]);
+    const health = await world.ask('atlas_status', { repo: world.repo.dir });
+    assert.equal(health.ok, true, JSON.stringify(health.diagnostics));
+    assert.deepEqual(health.hints, [HINT]);
+  });
+
+  it('hint after internal error: an internal error older than the newest 50 events no longer counts', async (t: TestContext) => {
+    const { world } = await answeredWorld(t);
+    writeRecorder(world, [line(0, 'internal_error'), ...Array.from({ length: 50 }, (_unused, at) => line(at + 1, 'ok'))]);
+    const status = await world.ask('status', { repo: world.repo.dir });
+    assert.equal('hints' in status, false);
+    writeRecorder(world, [line(0, 'internal_error'), ...Array.from({ length: 49 }, (_unused, at) => line(at + 1, 'ok'))]);
+    assert.deepEqual((await world.ask('status', { repo: world.repo.dir })).hints, [HINT], 'the 50th newest still counts');
+  });
+
+  it('hint after corruption rebuild: a store that was found corrupt and rebuilt carries the hint on both', async (t: TestContext) => {
+    const { world } = await answeredWorld(t);
+    await world.host.closeTenant(await storeIdOf(world.repo));
+    for (const name of fs.readdirSync(storeDirOf(world))) {
+      if (name.startsWith('facts.db')) fs.writeFileSync(path.join(storeDirOf(world), name), 'this is not a database '.repeat(400));
+    }
+    const rebuilt = await world.ask('build', { repo: world.repo.dir });
+    assert.equal(rebuilt.ok, true, JSON.stringify(rebuilt.diagnostics));
+    const status = await world.ask('status', { repo: world.repo.dir });
+    assert.deepEqual(status.hints, [HINT]);
+    const health = await world.ask('atlas_status', { repo: world.repo.dir });
+    assert.deepEqual(health.hints, [HINT]);
+    assert.equal((health.data as { store: { rebuilt: boolean } }).store.rebuilt, true);
+  });
+
+  it('no hint when healthy: a fresh store and a recorder of ordinary answers carry none', async (t: TestContext) => {
+    const { world } = await answeredWorld(t);
+    const status = await world.ask('status', { repo: world.repo.dir });
+    assert.equal('hints' in status, false);
+    const health = await world.ask('atlas_status', { repo: world.repo.dir });
+    assert.equal('hints' in health, false);
   });
 });
 
