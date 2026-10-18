@@ -57,6 +57,33 @@ Input plus cache tokens of a one-turn probe with the same prompt, no tool use:
 
 So the visible skill adds about 1,000 input tokens to every turn of every atlas session, and the skill body adds its own size (P3's loaded body) in every session that loads it. Designing Claude Code's own skills out of the list removes about 2,350 tokens per turn from the atlas arm that would otherwise be a second, unrelated cost. The grep arm carries none of this. These tokens count toward the atlas arm's billable tokens in the scored comparison: the criterion was already the stricter `upper-bound`, and this makes it harder for atlas, not easier. Cache effects make a single probe approximate; the difference is for orientation, not a registered number.
 
+## The three wording choices of plan 03-33 (decided before the smoke run; D-23)
+
+Plan 03-33 left three wording choices in `skills/gsd-atlas/SKILL.md` open. They were decided before the smoke run so that nothing is tuned on its behaviour: keep all three as built. Each is routing content of the kind D-23 asks for, and none states a repository fact.
+
+1. The `code_context` row says the tool also tells what a TypeScript file compiles to. This states a capability of a tool (the `file.emittedAs` field), not a fact about the repository, and no answer-key file path appears in the skill (the test `no answer key item is named in the skill` in `scripts/skills.test.ts` checks every file path of the 75 keys against both skills).
+2. The line "confirm with one grep before you conclude" after an empty atlas answer is routing advice about a stale or uncovered index. It may add a tool call to an atlas session.
+3. The line "use `code_impact` once, before the edit, instead of several greps" is routing advice. It may replace several greps with one call, or add one call.
+
+The cost of each is counted: each may add a tool call or tokens to atlas sessions, and every token is billable to the atlas arm (D-06). `skills/gsd-atlas/SKILL.md` was not edited in this plan: the file the probes and the smoke run used is the one committed by plan 03-33 (`ae7ac92`), sha256 `00ce2dc7ab33fe087a5ace67409a161c557c99a658f5c2a4527c7efc60bc48cb`.
+
 ## Smoke run
 
-Filled in by Task 3 of plan 03-38 after the record is reopened.
+Six unscored sessions: the pilot questions `p-001` (references), `p-003` (impact) and `p-004` (definition) times both arms times one run, concurrency 1, the registered model `claude-sonnet-5-5`, Claude Code 2.1.302 (started by its path), the approved per-session bounds (`--max-budget-usd 3`, wall clock 900000 ms), a stated smoke ceiling of 2 USD with the harness stopping new sessions at 1.6 USD. The prepared gsd-core checkout is at the registered corpus sha `10ac3a7a947903ba50f538a907af036744d759d5` (`npm ci --ignore-scripts`). The atlas binary was built from this tree (the Phase 3 precise tier included). The result rows and the session records are not committed (counts and names only below).
+
+| Session | Arm | Status | Init matches the arm | Skills in the init event | Tool calls by name | Atlas calls | Skill calls | Billable tokens | Cost USD |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| p-004, run 1 | atlas | ok | yes | `gsd-atlas-eval:gsd-atlas` only | `code_find` 1, `StructuredOutput` 1 | 1 | 0 | 22,577 | 0.0492 |
+| p-004, run 1 | grep | ok | yes | 19, all Claude Code's own (no Skill tool, so none is visible) | `Bash` 2, `StructuredOutput` 1 | 0 | 0 | 19,168 | 0.0303 |
+| p-001, run 1 | atlas | ok | yes | `gsd-atlas-eval:gsd-atlas` only | `code_refs` 1, `Bash` 1, `StructuredOutput` 1 | 1 | 0 | 24,936 | 0.0312 |
+| p-001, run 1 | grep | ok | yes | 19, as above | `Bash` 1, `StructuredOutput` 1 | 0 | 0 | 14,491 | 0.0236 |
+| p-003, run 1 | atlas | ok | yes | `gsd-atlas-eval:gsd-atlas` only | `code_impact` 1, `Bash` 5, `StructuredOutput` 1 | 1 | 0 | 113,632 | 0.0658 |
+| p-003, run 1 | grep | ok | yes | 19, as above | `Bash` 5, `StructuredOutput` 1 | 0 | 0 | 57,160 | 0.0587 |
+
+Total cost: 0.2588 USD (ceiling 2 USD, stop line 1.6 USD, never approached). No session was contaminated: `checkInit` returned nothing for any of the six, so the atlas sessions listed the Skill tool and the registered skill and no other skill, and the grep sessions listed neither the Skill tool nor the atlas skill. Every answer parsed. The atlas arm made at least one `mcp__gsd-atlas__` call in all three of its sessions. The grep arm's init event lists Claude Code's own skills, as it did before Revision 1 and in the 03-14 pilot; without the Skill tool the model cannot see them (P2).
+
+Findings, recorded and not acted on (D-23, EVL-03: no tuning of the skill or the harness on behaviour seen here):
+
+- The skill body was never loaded: all three atlas sessions made zero `Skill` calls. The model routed from the description alone, which is what it sees on every turn. The scored run will therefore mostly pay for the description (about 1,000 input tokens a turn, see above), not for the body.
+- Unscored and on one run of three easy pilot questions, the atlas sessions used more billable tokens than the grep sessions in all three pairs (161,145 against 90,819 in total). This is a smoke fact, not an estimate: it is one run per cell, the questions are not the scored set, and the atlas arm carries the seven tool definitions, and now the skill description, on every turn. It is the cost Revision 1 declares and the registered token criterion counts.
+- `p-003` was answered incorrectly in both arms; `p-001` and `p-004` correctly in both. The correctness flags are recorded for completeness and nothing is read from three questions.
