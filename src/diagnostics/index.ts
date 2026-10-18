@@ -6,10 +6,12 @@
  */
 export { CATALOG_FILE, CATALOG_VERSION, CatalogSchema, defaultCatalogDir, loadCatalog, parseCatalog, valueFits } from './catalog.ts';
 export type { Catalog, CatalogField, CatalogType, FieldKind, ParsedCatalog } from './catalog.ts';
-export { collectType } from './collect.ts';
-export type { DiagnosticsSources, TypeValues } from './collect.ts';
+export { AGENT_CONCURRENCY_EDGES, REPO_COUNT_EDGES, WORKTREE_COUNT_EDGES, bucketBytes, bucketCount, bucketLines, bucketMs } from './bucket.ts';
+export { BUDGETS, collectType, ratingSymbol } from './collect.ts';
+export type { ActivityFacts, DiagnosticsSources, IndexFacts, ModuleFacts, PlatformFacts, RatingFact, TypeValues } from './collect.ts';
 export { CONSENT_FILE, CONSENT_MAX_BYTES, CONSENT_STATES, emptyConsent, loadConsent, reapprovalNeeded, saveConsent } from './consent.ts';
 export type { Consent, ConsentEntry, ConsentState, LoadedConsent, SaveResult } from './consent.ts';
 export type { DiagnosticsFs } from './io.ts';
 export { renderReport } from './preview.ts';
 export type { RenderInput, Report } from './preview.ts';
+export { NOTE_CUT_MARKER, NOTE_MAX_CHARS, REMOVED, scrubNote } from './scrub.ts';
