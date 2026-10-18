@@ -455,7 +455,6 @@ describe('runCli', () => {
 
   test('a refusal exits 1 and prints its reason', () => {
     setup(documentText(draftPrereg(), []));
-    writeFile('constants.md', 'unused');
     const sink = io();
     const code = runCli(['--stage', 'A', '--by', 'Tester'], sink.sinks, root, { approved: APPROVED, testCommand: OK_TESTS, now: NOW });
     assert.equal(code, 1);
