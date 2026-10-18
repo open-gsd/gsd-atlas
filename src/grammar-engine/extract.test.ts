@@ -5,7 +5,7 @@ import path from 'node:path';
 import { describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
-import { validateFileFacts } from '../facts/index.ts';
+import { MAX_CITATIONS_PER_FILE, validateFileFacts } from '../facts/index.ts';
 import { loadToyScenarios } from './contract.ts';
 import { createGrammarEngine } from './engine.ts';
 import { extractFileFacts, scanAdrMentions } from './extract.ts';
@@ -637,7 +637,7 @@ describe('extractFileFacts: ADR citations', () => {
     assert.deepEqual(validateFileFacts(facts), []);
   });
 
-  it('comment too long: a 20,000 character comment is read, one over the bound of 65,536 is not (fake engine)', async () => {
+  it('comment too long: a 20,000 character comment is read, one over the bound of 32,768 is not (fake engine)', async () => {
     const scenarios = await loadToyScenarios();
     const shortText = `// ${'x'.repeat(19_991)} ADR-44`;
     const longText = `// ${'x'.repeat(GRAMMAR_LIMITS.commentTextChars)} ADR-45`;
@@ -667,7 +667,7 @@ describe('extractFileFacts: ADR citations', () => {
     }
   });
 
-  it('comment too long: the real engine reads a 20,000 character comment and counts one over the bound of 65,536', async () => {
+  it('comment too long: the real engine reads a 20,000 character comment and counts one over the bound of 32,768', async () => {
     const shortText = `// ${'x'.repeat(19_991)} ADR-44`;
     const longText = `// ${'x'.repeat(GRAMMAR_LIMITS.commentTextChars)} ADR-45`;
     const short = await extractWithModule('typescript', `${shortText}\n`);
@@ -735,6 +735,254 @@ describe('extractFileFacts: ADR citations', () => {
       comment(0, [6, 2, 8, 23], '/* Retry rules follow the\n     adr-0001 decision and\n     stay unchanged. */'),
     ];
     assert.deepEqual(extract(runOf(captures)), extract(runOf([...captures].reverse())));
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// The comment text bound (plan 03-24, user approval of 2026-10-18; .planning/research/COMMENT-BOUND.md)
+
+/** The longest comment that mentions an ADR on the pinned gsd-core (10ac3a7): scripts/lint-phase-enumeration-drift.cjs. */
+const LONGEST_OBSERVED_ADR_COMMENT = 17_881;
+
+/** A line comment of exactly `length` UTF-16 units that ends with `tail`, which starts after a space. */
+function lineCommentOfLength(length: number, tail: string, filler = 'x'): string {
+  const text = `// ${filler.repeat(length - 3 - tail.length - 1)} ${tail}`;
+  assert.equal(text.length, length);
+  return text;
+}
+
+const CONSTANTS_PATH = fileURLToPath(new URL('../../.planning/phases/03-typescript-module-and-mvp-eval/03-CONSTANTS.md', import.meta.url));
+
+/** The leading integer of the `Proposed value` cell of one row of 03-CONSTANTS.md. */
+function constantValue(key: string): number {
+  const row = new RegExp(`^\\| \`${key.replace('.', '\\.')}\` \\| (\\d+)`, 'm').exec(fs.readFileSync(CONSTANTS_PATH, 'utf8'));
+  assert.ok(row?.[1] !== undefined, `03-CONSTANTS.md has a row for ${key}`);
+  return Number(row[1]);
+}
+
+/** What the extractor must give for these comment captures, built the slow, obvious way: every mention, sort, cut at the cap. */
+function referenceCitations(captures: readonly Capture[]) {
+  const all: Array<{
+    number: number;
+    detail?: string;
+    span: { startLine: number; startColumn: number; endLine: number; endColumn: number };
+  }> = [];
+  for (const capture of captures) {
+    if (capture.query !== 'tags' || capture.name !== 'comment' || capture.text === '') continue;
+    for (const mention of scanAdrMentions(capture.text)) {
+      const lines = capture.text.slice(0, mention.index).split('\n');
+      const startLine = capture.span.startLine + lines.length - 1;
+      const startColumn = (lines.length === 1 ? capture.span.startColumn : 0) + (lines.at(-1) ?? '').length;
+      all.push({
+        number: mention.number,
+        ...(mention.detail === undefined ? {} : { detail: mention.detail }),
+        span: { startLine, startColumn, endLine: startLine, endColumn: startColumn + (mention.end - mention.index) },
+      });
+    }
+  }
+  all.sort(
+    (a, b) =>
+      a.span.startLine - b.span.startLine ||
+      a.span.startColumn - b.span.startColumn ||
+      a.span.endLine - b.span.endLine ||
+      a.span.endColumn - b.span.endColumn ||
+      a.number - b.number,
+  );
+  return all.slice(0, MAX_CITATIONS_PER_FILE);
+}
+
+/** A deterministic shuffle (a linear congruential walk), so a failure repeats. */
+function shuffled<T>(items: readonly T[]): T[] {
+  const out = [...items];
+  let state = 7;
+  for (let at = out.length - 1; at > 0; at -= 1) {
+    state = (state * 1103515245 + 12345) % 2147483648;
+    const other = state % (at + 1);
+    [out[at], out[other]] = [out[other] as T, out[at] as T];
+  }
+  return out;
+}
+
+/** `extractFileFacts` over scripted captures, with a step probe on the ADR scan. */
+function extractProbed(captures: readonly Capture[]) {
+  const scanProbe = { steps: 0 };
+  const result = extractFileFacts({
+    path: 'src/a.toy',
+    contentHash: 'c'.repeat(40),
+    module: 'toy',
+    grammarVersion: 'toy-0.1.0',
+    run: runOf(captures),
+    scanProbe,
+  });
+  return { ...result, steps: scanProbe.steps };
+}
+
+describe('the comment text bound (adr.maxCommentUnits)', () => {
+  it('is 32,768 UTF-16 units, the value registered in 03-CONSTANTS.md, and the 200-citation cap matches its row too', () => {
+    assert.equal(GRAMMAR_LIMITS.commentTextChars, 32_768);
+    assert.equal(constantValue('adr.maxCommentUnits'), GRAMMAR_LIMITS.commentTextChars);
+    assert.equal(constantValue('adr.maxCitationsPerFile'), MAX_CITATIONS_PER_FILE);
+    const text = fs.readFileSync(CONSTANTS_PATH, 'utf8');
+    const approvals = text.slice(text.indexOf('## Approvals'));
+    assert.match(approvals, /adr\.maxCommentUnits/, 'the Approvals section records the user answer for this row');
+    assert.match(approvals, /^> approve$/m, 'with the reply quoted verbatim');
+  });
+
+  it('floor: the bound is at least twice the longest ADR-mentioning comment seen on the pinned gsd-core (17,881 units, 10ac3a7)', () => {
+    assert.ok(
+      GRAMMAR_LIMITS.commentTextChars >= 2 * LONGEST_OBSERVED_ADR_COMMENT,
+      `${String(GRAMMAR_LIMITS.commentTextChars)} is under ${String(2 * LONGEST_OBSERVED_ADR_COMMENT)}`,
+    );
+  });
+
+  it('B-1 and B units are read, B+1 is skipped whole and counted (real engine, ADR at the end of the comment)', async () => {
+    const bound = GRAMMAR_LIMITS.commentTextChars;
+    for (const length of [bound - 1, bound]) {
+      const text = lineCommentOfLength(length, 'ADR-123');
+      const result = await extractWithModule('typescript', `${text}\nconst after = 1;\n`);
+      assert.deepEqual(result.facts.citations, [{ number: 123, span: sp(0, length - 7, 0, length) }], `length ${String(length)}`);
+      assert.deepEqual(result.diagnostics, []);
+    }
+    const over = await extractWithModule('typescript', `${lineCommentOfLength(bound + 1, 'ADR-123')}\nconst after = 1;\n`);
+    assert.equal(over.facts.citations, undefined, 'skipped whole, never clipped to ADR-1');
+    assert.deepEqual(
+      over.diagnostics.map((d) => [d.code, d.severity]),
+      [['citation_comment_too_long', 'info']],
+    );
+    assert.deepEqual(
+      over.facts.symbols.map((symbol) => symbol.name),
+      ['after'],
+    );
+  });
+
+  it('a number that straddles the bound gives the whole number or nothing, never a prefix of it (real engine)', async () => {
+    const bound = GRAMMAR_LIMITS.commentTextChars;
+    for (let length = bound - 4; length <= bound + 4; length += 1) {
+      const text = lineCommentOfLength(length, 'ADR-123 §12');
+      const { facts } = await extractWithModule('typescript', `${text}\n`);
+      if (length <= bound) {
+        assert.deepEqual(facts.citations, [{ number: 123, detail: '§12', span: sp(0, length - 11, 0, length) }], `length ${String(length)}`);
+      } else {
+        assert.equal(facts.citations, undefined, `length ${String(length)}: nothing, not 1 or 12`);
+      }
+    }
+  });
+
+  it('counts the bound in UTF-16 units, not bytes or code points: B units of astral characters are read, B+1 are not (real engine)', async () => {
+    const bound = GRAMMAR_LIMITS.commentTextChars;
+    const astral = '\u{1F600}';
+    // `// x`, astral pairs, ` ADR-5`: 4 + 2k + 6 units, so k pairs for exactly `length` units.
+    const atBound = `// x${astral.repeat((bound - 10) / 2)} ADR-5`;
+    assert.equal(atBound.length, bound);
+    assert.ok(Buffer.byteLength(atBound) > bound * 1.9, 'about twice as many bytes as units');
+    const kept = await extractWithModule('typescript', `${atBound}\n`);
+    assert.deepEqual(kept.facts.citations, [{ number: 5, span: sp(0, bound - 5, 0, bound) }], 'columns count UTF-16 units');
+    const over = `// xx${astral.repeat((bound - 10) / 2)} ADR-5`;
+    assert.equal(over.length, bound + 1);
+    const skipped = await extractWithModule('typescript', `${over}\n`);
+    assert.equal(skipped.facts.citations, undefined);
+    assert.deepEqual(
+      skipped.diagnostics.map((d) => d.code),
+      ['citation_comment_too_long'],
+    );
+  });
+
+  it('a CRLF header block near the bound keeps its lines and columns (rows count LF only)', async () => {
+    const lines = ['/*'];
+    while (lines.join('\r\n').length < GRAMMAR_LIMITS.commentTextChars - 600) lines.push(' * filler line of the long header block');
+    lines.push(' * governed by ADR-7 §2', ' */');
+    const block = lines.join('\r\n');
+    assert.ok(block.length > GRAMMAR_LIMITS.commentTextChars - 700 && block.length <= GRAMMAR_LIMITS.commentTextChars);
+    const { facts, diagnostics } = await extractWithModule('typescript', `${block}\r\nexport const x = 1;\r\n`);
+    assert.deepEqual(diagnostics, []);
+    assert.deepEqual(facts.citations, [{ number: 7, detail: '§2', span: sp(lines.length - 2, 15, lines.length - 2, 23), enclosing: 0 }]);
+  });
+
+  it('never clips: a scan of a prefix would turn ADR-123 into ADR-1, which is why the engine blanks instead', () => {
+    const text = 'x ADR-123 §12';
+    assert.deepEqual(
+      scanAdrMentions(text).map((m) => m.number),
+      [123],
+    );
+    assert.deepEqual(
+      scanAdrMentions(text.slice(0, 'x ADR-1'.length)).map((m) => m.number),
+      [1],
+      'the hazard a clip would create',
+    );
+  });
+
+  it('hostile: one comment of B units made only of mentions gives exactly 200 citations and stops scanning at the 200th', () => {
+    const bound = GRAMMAR_LIMITS.commentTextChars;
+    const text = 'ADR-1 '.repeat(Math.floor(bound / 6));
+    assert.ok(text.length <= bound && text.length > bound - 6);
+    const capture = comment(0, [0, 0, 0, text.length], text);
+    const { facts, steps } = extractProbed([capture]);
+    assert.equal(facts.citations?.length, MAX_CITATIONS_PER_FILE);
+    assert.deepEqual(facts.citations, referenceCitations([capture]));
+    assert.deepEqual(validateFileFacts(facts), []);
+    assert.ok(steps > 0 && steps <= 12 * MAX_CITATIONS_PER_FILE, `${String(steps)} steps for ${String(text.length)} units`);
+  });
+
+  it('hostile: thousands of one-line comments give exactly 200 citations, the same 200 an uncapped scan ranks first, in any arrival order', () => {
+    const captures = Array.from({ length: 3000 }, (_, row) => comment(row, [row, 0, row, 14], `// ADR-${String(row + 1)} §${String(row % 7)}`));
+    const expected = referenceCitations(captures);
+    assert.equal(expected.length, MAX_CITATIONS_PER_FILE);
+    for (const order of [captures, [...captures].reverse(), shuffled(captures)]) {
+      const { facts, steps } = extractProbed(order);
+      assert.deepEqual(facts.citations, expected);
+      assert.ok(steps > 0 && steps <= 40 * MAX_CITATIONS_PER_FILE, `${String(steps)} steps for 3000 comments`);
+    }
+  });
+
+  it('the early exit does not change the output when comments overlap or repeat (reference comparison)', () => {
+    const text = (from: number): string => Array.from({ length: 150 }, (_, at) => `ADR-${String(from + at)}`).join(' ');
+    const overlapping = [comment(0, [0, 0, 0, 1200], text(1)), comment(1, [0, 3, 0, 1203], text(1001))];
+    const repeated = [comment(0, [0, 0, 0, 1200], text(1)), comment(1, [0, 0, 0, 1200], text(1))];
+    for (const captures of [overlapping, repeated]) {
+      for (const order of [captures, [...captures].reverse()]) {
+        assert.deepEqual(extract(runOf(order)).facts.citations, referenceCitations(captures));
+      }
+    }
+  });
+
+  it('the normal path is unchanged: fewer than 200 mentions across many comments, with a blanked comment still counted', () => {
+    const captures = [
+      ...Array.from({ length: 60 }, (_, row) => comment(row, [row * 2, 0, row * 2, 12], `// ADR-${String(row + 1)} here`)),
+      comment(100, [500, 0, 600, 0], ''),
+    ];
+    const { facts, diagnostics } = extract(runOf(captures));
+    assert.deepEqual(facts.citations, referenceCitations(captures));
+    assert.equal(facts.citations?.length, 60);
+    assert.deepEqual(
+      diagnostics.map((d) => [d.code, d.message.slice(0, 2)]),
+      [['citation_comment_too_long', '1 ']],
+    );
+  });
+
+  it('after the 200th mention the blanked comments are still counted', () => {
+    const captures = [
+      ...Array.from({ length: 400 }, (_, row) => comment(row, [row, 0, row, 12], `// ADR-${String(row + 1)}`)),
+      comment(1000, [500, 0, 600, 0], ''),
+      comment(1001, [700, 0, 800, 0], ''),
+    ];
+    const { facts, diagnostics } = extract(runOf(captures));
+    assert.equal(facts.citations?.length, MAX_CITATIONS_PER_FILE);
+    assert.deepEqual(
+      diagnostics.map((d) => [d.code, d.message.slice(0, 2)]),
+      [['citation_comment_too_long', '2 ']],
+    );
+  });
+
+  it('scanAdrMentions stops at a given maximum and returns the same first mentions as an unlimited scan', () => {
+    const text = 'ADR-1 ADR-2 §3 adr 4 ADR #5 ADR-6';
+    const all = scanAdrMentions(text);
+    assert.equal(all.length, 6);
+    for (const max of [1, 2, 5, 6, 7]) {
+      assert.deepEqual(scanAdrMentions(text, undefined, max), all.slice(0, max));
+    }
+    const probe = { steps: 0 };
+    scanAdrMentions('ADR-1 '.repeat(5000), probe, 3);
+    assert.ok(probe.steps <= 40, `${String(probe.steps)} steps for 3 mentions`);
   });
 });
 

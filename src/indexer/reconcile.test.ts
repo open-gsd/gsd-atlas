@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { createGovernor } from '../governor/index.ts';
+import { GRAMMAR_LIMITS } from '../grammar-engine/index.ts';
 import type { Job } from '../governor/index.ts';
 import { DEFAULT_INDEXER_CONFIG, IndexerError, createIndexer, createManualEventSource } from './index.ts';
 import type { IndexerDeps } from './index.ts';
@@ -13,6 +14,7 @@ import {
   makeWorld,
   newLog,
   recordingTree,
+  shippedModules,
   spyGovernor,
 } from './harness.test.ts';
 import type { EngineLog, World } from './harness.test.ts';
@@ -243,5 +245,45 @@ describe('Reconcile and events: an event that lands while Reconcile is running',
     // And a Reconcile that starts afterwards agrees with the tree: nothing is left to repair.
     const after = await world.indexer.reconcile(world.dir);
     assert.equal(after.changed, 0);
+  });
+});
+
+describe('Reconcile and builds report comments the bound skipped (plan 03-24, approved 2026-10-18)', () => {
+  const over = (number: number): string => `// ${'x'.repeat(GRAMMAR_LIMITS.commentTextChars)} ADR-${String(number)}\nexport const v${String(number)} = 1;\n`;
+
+  it('a build says in one counted note how many files hold an over-bound ADR comment, with no path and no text', async (t) => {
+    const world = await makeWorld(t, {
+      files: { 'src/a.ts': over(45), 'src/b.ts': over(46), 'src/c.ts': '// see ADR-7\nexport const c = 1;\n' },
+      builtinDir: shippedModules,
+    });
+    const result = await world.indexer.build(world.dir);
+    assert.deepEqual(result.failed, []);
+    const notes = result.skipped.filter((d) => d.code === 'citation_comment_too_long');
+    assert.equal(notes.length, 1, 'one aggregated note, not one per file');
+    const [note] = notes;
+    assert.ok(note);
+    assert.equal(note.severity, 'info');
+    assert.equal(note.subject, undefined, 'no path');
+    assert.match(note.message, /^2 files /);
+    assert.ok(!/src\/|\.ts|ADR-4|xxxx/.test(note.message), 'fixed text: no path, no repository text');
+    assert.deepEqual(
+      (await world.reader.fileFacts('src/c.ts')).data?.citations?.map((c) => c.number),
+      [7],
+      'the file within the bound still gets its citation',
+    );
+    assert.equal((await world.reader.fileFacts('src/a.ts')).data?.citations, undefined);
+  });
+
+  it('one file is named in the singular, and a build with nothing over the bound has no such note', async (t) => {
+    const one = await makeWorld(t, { files: { 'src/a.ts': over(45) }, builtinDir: shippedModules });
+    const single = (await one.indexer.build(one.dir)).skipped.filter((d) => d.code === 'citation_comment_too_long');
+    assert.equal(single.length, 1);
+    assert.match(single[0]?.message ?? '', /^1 file has /);
+
+    const none = await makeWorld(t, { files: { 'src/c.ts': '// see ADR-7\nexport const c = 1;\n' }, builtinDir: shippedModules });
+    assert.deepEqual(
+      (await none.indexer.build(none.dir)).skipped.filter((d) => d.code === 'citation_comment_too_long'),
+      [],
+    );
   });
 });

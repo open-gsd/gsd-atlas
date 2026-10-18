@@ -505,10 +505,11 @@ describe('toCapture: bounded capture text', () => {
     assert.equal(GRAMMAR_LIMITS.captureTextChars, 256);
   });
 
-  it('gives a capture named comment the internal bound of 65,536 units and every other capture 256 (size bound, not a gate)', () => {
+  it('gives a capture named comment the internal bound of 32,768 units and every other capture 256 (size bound, not a gate)', () => {
     const bound = GRAMMAR_LIMITS.commentTextChars;
     const source = 'x'.repeat(bound + 10);
-    assert.equal(bound, 65536);
+    assert.equal(bound, 32768);
+    assert.equal(toCapture('tags', 'comment', nodeOf(bound - 1), source, 1).text, 'x'.repeat(bound - 1));
     assert.equal(toCapture('tags', 'comment', nodeOf(bound), source, 1).text, 'x'.repeat(bound));
     assert.equal(toCapture('tags', 'comment', nodeOf(257), source, 1).text, 'x'.repeat(257));
     const over = toCapture('tags', 'comment', nodeOf(bound + 1), source, 1);
