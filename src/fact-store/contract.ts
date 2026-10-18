@@ -2008,6 +2008,33 @@ export function defineFactStoreContract(label: string, driver: DriverName): void
       );
     });
 
+    it('refs negative marker: asking twice calls the resolver once for each distinct site, including the site that has no edge', async () => {
+      const askedSites: number[] = [];
+      const inner = createScriptedResolver({ id: 'scripted', edges: [{ site: SITE_1, target: RUN_CJS }] });
+      const counting: Resolver = (sites, context) => {
+        for (const site of sites) askedSites.push(site.span.startLine);
+        return inner.resolve({ id: 'overlay', pathToHash: new Map() }, context, sites);
+      };
+      await withStore(
+        driver,
+        async (fx) => {
+          const writer = fx.store.writer();
+          await seedAmbiguous(writer);
+          const peek = await fx.peek();
+          const reader = fx.store.at('main');
+          const first = await reader.refs(RUN_CJS);
+          assert.deepStrictEqual(askedSites.sort(), [3, 6], 'both call sites are asked on the first read');
+          assert.equal(Number(peek.prepare('SELECT count(*) AS n FROM resolved_asked').get()?.n), 2);
+          const second = await reader.refs(RUN_CJS);
+          assert.deepStrictEqual(second.data, first.data);
+          assert.deepStrictEqual(askedSites.sort(), [3, 6], 'the second read asks about nothing: the site with no edge is settled too');
+          writer.release();
+        },
+        {},
+        counting,
+      );
+    });
+
     it('callers resolver: precise edges mark the callers they bind and a caller reached only through a removed edge disappears with its own callers', async () => {
       const calls: Calls = { count: 0 };
       await withStore(

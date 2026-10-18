@@ -778,3 +778,242 @@ for (const driver of DRIVERS) {
     });
   });
 }
+
+/** A resolver that binds only SITE_B to `run`: SITE_A is asked about and legitimately has no edge (Pitfall 6). */
+function bindingOnlyB(): { readonly resolver: Resolver; readonly seen: Seen[] } {
+  const inner = asStoreResolver(createScriptedResolver({ id: 'scripted', edges: [{ site: SITE_B, target: RUN }] }));
+  return probing([], inner);
+}
+
+const ONE_PRECISE = [[3, 'grammar', 'INFERRED'], [6, 'precise', 'EXTRACTED']];
+
+/** The snapshot ids that hold rows in a table, sorted. */
+const snapshotsIn = (db: Db, table: string): string[] =>
+  db
+    .prepare(`SELECT DISTINCT snapshot FROM ${table} ORDER BY snapshot`)
+    .all()
+    .map((row) => String(row.snapshot));
+
+for (const driver of DRIVERS) {
+  describe(`resolver seam: negative marker for asked sites (${driver})`, () => {
+    it('asked once: a site with no edge is remembered, so a settled read asks the resolver nothing', async () => {
+      const { resolver, seen } = bindingOnlyB();
+      await withRig(
+        driver,
+        async (rig) => {
+          const writer = rig.store.writer();
+          await seed(writer);
+          const peek = await rig.peek();
+          const reader = rig.store.at('main');
+          const first = await reader.refs(RUN);
+          assert.equal(seen.length, 1);
+          assert.deepStrictEqual(seen[0]?.sites, [SITE_A, SITE_B], 'the first read asks about both sites');
+          assert.equal(count(peek, 'resolved_asked'), 2, 'one asked row per asked site, with or without an edge');
+          assert.equal(count(peek, 'resolved_edges'), 1);
+          assert.deepStrictEqual(tiers(first.data), ONE_PRECISE);
+
+          const second = await reader.refs(RUN);
+          const callers = await reader.callers(RUN);
+          assert.equal(seen.length, 1, 'refs and callers over the same snapshot and context ask nothing');
+          assert.deepStrictEqual(second.data, first.data);
+          assert.equal(callers.degraded, undefined);
+
+          writer.release();
+          const reopened = await rig.reopen(); // the markers are stored, not held in memory
+          const third = await reopened.at('main').refs(RUN);
+          assert.equal(seen.length, 1);
+          assert.deepStrictEqual(third.data, first.data);
+        },
+        {},
+        resolver,
+      );
+    });
+
+    it('a different context asks again and keeps its own markers next to the first', async () => {
+      const { resolver, seen } = bindingOnlyB();
+      let id = 'ctx-a';
+      await withRig(
+        driver,
+        async (rig) => {
+          const writer = rig.store.writer();
+          await seed(writer);
+          const peek = await rig.peek();
+          const reader = rig.store.at('main');
+          await reader.refs(RUN);
+          id = 'ctx-b';
+          await reader.refs(RUN);
+          assert.equal(seen.length, 2);
+          assert.deepStrictEqual(seen[1]?.sites, [SITE_A, SITE_B], 'the second context starts with no markers');
+          assert.equal(count(peek, 'resolved_asked'), 4);
+          assert.equal(count(peek, 'resolved_edges'), 2);
+          writer.release();
+        },
+        { resolutionContext: () => ({ id, configHashes: [] }) },
+        resolver,
+      );
+    });
+
+    it('pruned with the snapshot: markers of a superseded snapshot go with its edges', async () => {
+      const { resolver, seen } = bindingOnlyB();
+      await withRig(
+        driver,
+        async (rig) => {
+          const writer = rig.store.writer();
+          await seed(writer);
+          const peek = await rig.peek();
+          const reader = rig.store.at('main');
+          await reader.refs(RUN);
+          const before = snapshotsIn(peek, 'resolved_asked');
+          assert.deepStrictEqual(before, [overlaySnapshotId(SEEDED)]);
+          assert.deepStrictEqual(snapshotsIn(peek, 'resolved_edges'), before);
+
+          await addNoise(writer, 1); // the overlay moves on
+          await reader.refs(RUN);
+          assert.equal(seen.length, 2, 'a new snapshot asks again');
+          const after = snapshotsIn(peek, 'resolved_asked');
+          assert.equal(after.length, 1, 'only the current snapshot keeps rows');
+          assert.notDeepStrictEqual(after, before);
+          assert.deepStrictEqual(snapshotsIn(peek, 'resolved_edges'), after);
+          assert.equal(count(peek, 'resolved_asked'), 2);
+          assert.equal(count(peek, 'resolved_edges'), 1);
+          writer.release();
+        },
+        {},
+        resolver,
+      );
+    });
+
+    it('timeout writes no asked rows: a slow or failing resolver leaves its sites to be asked again', async () => {
+      const door = deferred();
+      const { resolver: inner } = bindingOnlyB();
+      const slow: Resolver = async function* (sites, context, symbols, scope) {
+        await door.promise;
+        yield* inner(sites, context, symbols, scope);
+      };
+      await withRig(
+        driver,
+        async (rig) => {
+          const writer = rig.store.writer();
+          await seed(writer);
+          const peek = await rig.peek();
+          const reader = rig.store.at('main');
+          const pending = reader.refs(RUN, { timeoutMs: 50 });
+          await rig.clock.advance(50);
+          const timedOut = await pending;
+          assert.deepStrictEqual(timedOut.degraded, ['resolver_timeout']);
+          assert.equal(count(peek, 'resolved_asked'), 0, 'nothing was answered yet, so nothing is settled');
+          assert.equal(count(peek, 'resolved_edges'), 0);
+
+          door.open(); // the background run completes: now the answers are real and are remembered
+          for (let wait = 0; wait < 400 && count(peek, 'resolved_asked') < 2; wait += 1) {
+            await new Promise<void>((resolve) => {
+              setTimeout(resolve, 5);
+            });
+          }
+          assert.equal(count(peek, 'resolved_asked'), 2);
+          assert.equal(count(peek, 'resolved_edges'), 1);
+          writer.release();
+        },
+        {},
+        slow,
+      );
+
+      let attempts = 0;
+      const failing: Resolver = async function* () {
+        attempts += 1;
+        throw new Error('resolver exploded');
+      };
+      await withRig(
+        driver,
+        async (rig) => {
+          const writer = rig.store.writer();
+          await seed(writer);
+          const peek = await rig.peek();
+          const reader = rig.store.at('main');
+          for (let call = 1; call <= 2; call += 1) {
+            const refs = await reader.refs(RUN);
+            assert.deepStrictEqual(refs.degraded, ['resolver_failed']);
+            assert.equal(attempts, call, 'a failed call settles nothing, so the next read asks again');
+          }
+          assert.equal(count(peek, 'resolved_asked'), 0);
+          writer.release();
+        },
+        {},
+        failing,
+      );
+    });
+
+    it('follower writes nothing: a process that may not write the cache keeps asking and says cache_unavailable', async () => {
+      const { resolver, seen } = bindingOnlyB();
+      await withRig(
+        driver,
+        async (rig) => {
+          const writer = rig.store.writer();
+          await seed(writer);
+          const peek = await rig.peek();
+          const reader = rig.store.at('main');
+          const first = await reader.refs(RUN);
+          assert.deepStrictEqual(first.degraded, ['cache_unavailable']);
+          assert.deepStrictEqual(tiers(first.data), ONE_PRECISE);
+          await reader.refs(RUN);
+          assert.equal(seen.length, 2, 'nothing was cached, so the next read asks again');
+          for (const table of ['resolved_asked', 'resolved_edges', 'resolution_contexts']) {
+            assert.equal(count(peek, table), 0, table);
+          }
+          writer.release();
+        },
+        { canCache: () => false },
+        resolver,
+      );
+
+      // A resolver that yields no edge keeps today's behavior: no degraded code, nothing written.
+      const { resolver: silent, seen: silentSeen } = probing([]);
+      await withRig(
+        driver,
+        async (rig) => {
+          const writer = rig.store.writer();
+          await seed(writer);
+          const peek = await rig.peek();
+          const refs = await rig.store.at('main').refs(RUN);
+          assert.equal(refs.degraded, undefined);
+          assert.equal(silentSeen.length, 1);
+          assert.equal(count(peek, 'resolved_asked'), 0);
+          writer.release();
+        },
+        { canCache: () => false },
+        silent,
+      );
+    });
+
+    it('dropping asked rows changes only call counts, never an answer', async () => {
+      const { resolver, seen } = bindingOnlyB();
+      await withRig(
+        driver,
+        async (rig) => {
+          const writer = rig.store.writer();
+          await seed(writer);
+          const peek = await rig.peek();
+          const reader = rig.store.at('main');
+          const first = await reader.refs(RUN);
+          assert.equal(seen.length, 1);
+
+          const tamper = await rig.tamper();
+          tamper.exec('DELETE FROM resolved_asked');
+          assert.equal(count(peek, 'resolved_asked'), 0);
+
+          const second = await reader.refs(RUN);
+          assert.deepStrictEqual(second.data, first.data, 'the answer is the same');
+          assert.equal(seen.length, 2, 'only the call count changed');
+          assert.deepStrictEqual(seen[1]?.sites, [SITE_A], 'the site with a cached edge is not asked again, only the one that lost its marker');
+          assert.equal(count(peek, 'resolved_asked'), 1);
+
+          await reader.refs(RUN);
+          assert.equal(seen.length, 2);
+          writer.release();
+        },
+        {},
+        resolver,
+      );
+    });
+  });
+}
