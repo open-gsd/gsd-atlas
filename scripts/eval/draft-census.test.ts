@@ -1,8 +1,13 @@
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
+import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { before, describe, test } from 'node:test';
 
 import {
+  CANDIDATE_REASONS,
   CandidatesFileSchema,
   PILOT_COUNT,
   SCORED_MIX,
@@ -14,17 +19,21 @@ import {
   orderCandidates,
   pickPilotCategories,
   projectedSize,
+  renderReview,
   sample,
   serializeCandidates,
   type Candidate,
   type Census,
   type DecideInput,
   type ExportEntry,
+  type ReviewInput,
 } from './draft-census.ts';
 import { computeAnswerKey, type OracleContext } from './oracle.ts';
 import {
+  AnswerFileSchema,
   CategorySchema,
   KeySpecSchema,
+  loadQuestions,
   type AnswerItem,
   type AnswerKey,
   type Category,
@@ -404,5 +413,143 @@ describe('draftCandidates', () => {
 
   test('asking for more than the census offers fails loudly', async () => {
     await assert.rejects(draftCandidates(census, CTX, options({ mix: { callers: { callers: 10 } } })), /not enough/);
+  });
+});
+
+describe('review document', () => {
+  const DIR = path.join(import.meta.dirname, 'questions');
+  const DOC = path.join(import.meta.dirname, '..', '..', 'docs', 'eval', 'questions-review.md');
+  const SCRIPT = path.join(import.meta.dirname, 'draft-census.ts');
+
+  function readJson(file: string): unknown {
+    return JSON.parse(fs.readFileSync(path.join(DIR, file), 'utf8')) as unknown;
+  }
+
+  function inputs(): ReviewInput {
+    return {
+      questions: loadQuestions(path.join(DIR, 'gsd-core.questions.json')),
+      answers: AnswerFileSchema.parse(readJson('gsd-core.answers.json')),
+      pilotQuestions: loadQuestions(path.join(DIR, 'pilot.questions.json')),
+      pilotAnswers: AnswerFileSchema.parse(readJson('pilot.answers.json')),
+      candidates: CandidatesFileSchema.parse(readJson('candidates.json')),
+    };
+  }
+
+  test('review opens with the attestation, then the corpus sha, the preparation record, the seed and the category table', () => {
+    const doc = renderReview(inputs());
+    const lines = doc.split('\n');
+    assert.match(lines[0] ?? '', /^# /, 'a title comes first');
+    assert.ok(lines.includes('Drafted without running atlas: yes'), 'the attestation line is present on its own line');
+    const first = doc.indexOf('Drafted without running atlas: yes');
+    for (const needle of [
+      '10ac3a7a947903ba50f538a907af036744d759d5',
+      '`npm ci --ignore-scripts`: yes',
+      'TypeScript 6.0.3',
+      'dccc7f1cc3cd7ee9b8d071a03def1e7a4a535cc68a1828df2b797c6aecb357fb',
+      '20261017',
+    ]) {
+      const at = doc.indexOf(needle);
+      assert.ok(at > first, `${needle} follows the attestation`);
+      assert.ok(at < doc.indexOf('### q-001'), `${needle} comes before the first question`);
+    }
+    const input = inputs();
+    for (const category of CategorySchema.options) {
+      const count = input.questions.questions.filter((question) => question.category === category).length;
+      const pilot = (input.pilotQuestions?.questions ?? []).filter((question) => question.category === category).length;
+      const share = `${Math.round((100 * count) / 50)}%`;
+      assert.ok(doc.includes(`| ${category} | ${count} | ${share} | ${pilot} |`), `the table row for ${category}`);
+    }
+    assert.ok(doc.includes('| total | 50 | 100% | 5 |'));
+  });
+
+  test('one block per scored question and per pilot question, with granularity, equality, size and first expected items', () => {
+    const input = inputs();
+    const doc = renderReview(input);
+    assert.equal((doc.match(/^### q-\d{3} /gm) ?? []).length, 50);
+    assert.equal((doc.match(/^### p-\d{3} /gm) ?? []).length, 5);
+    for (const question of [...input.questions.questions, ...(input.pilotQuestions?.questions ?? [])]) {
+      assert.ok(doc.includes(`### ${question.id} (${question.category})`), `${question.id} has a block`);
+      assert.ok(doc.includes(`> ${question.text}`), `${question.id} shows its text`);
+    }
+    const q1 = input.questions.questions[0];
+    assert.ok(q1);
+    const key = input.answers.answers.find((answer) => answer.questionId === q1.id);
+    assert.ok(key);
+    const block = doc.slice(doc.indexOf(`### ${q1.id} `), doc.indexOf('### q-002 '));
+    assert.ok(block.includes(`- Granularity: ${key.granularity}; equality: ${key.equality}`));
+    assert.ok(block.includes(`- Expected answers: ${projectedSize(key.items, key.granularity)} at granularity ${key.granularity} (${key.items.length} key items)`));
+    const first = key.items[0];
+    assert.ok(first?.file !== undefined);
+    assert.ok(block.includes(`\`${first.file}${first.line === undefined ? '' : `:${first.line}`}${first.symbol === undefined ? '' : ` ${first.symbol}`}\``));
+  });
+
+  test('an abstain block says the expected answer is not found, with no items', () => {
+    const doc = renderReview(inputs());
+    const block = doc.slice(doc.indexOf('### q-045 '), doc.indexOf('### q-046 '));
+    assert.ok(block.includes('- Expected answer: not found (abstain)'));
+    assert.ok(!block.includes('First expected'));
+  });
+
+  test('rejected candidates are listed by reason with counts that match the candidates file', () => {
+    const input = inputs();
+    const doc = renderReview(input);
+    const section = doc.slice(doc.indexOf('## Rejected candidates'));
+    assert.ok(section.length > 0);
+    const rejected = Object.values(input.candidates.categories).flat().filter((record) => record.status === 'rejected');
+    assert.ok(rejected.length > 0, 'the committed draft passed over at least one candidate');
+    for (const reason of CANDIDATE_REASONS) {
+      const count = rejected.filter((record) => record.reason === reason).length;
+      assert.ok(section.includes(`| ${reason} | ${count} |`), `the table row for ${reason}`);
+    }
+    assert.ok(section.includes(`| total | ${rejected.length} |`));
+    for (const record of rejected) assert.ok(section.includes(record.identity), `${record.identity} is listed`);
+  });
+
+  test('rendering twice gives the same bytes and carries no timestamp or absolute path', () => {
+    const first = renderReview(inputs());
+    const second = renderReview(inputs());
+    assert.equal(first, second);
+    assert.ok(!/\/Users\/|\/private\/|\/tmp\/|C:\\/.test(first), 'no machine-specific path');
+    assert.ok(!/\b20\d\d-\d\d-\d\dT\d\d:/.test(first), 'no timestamp');
+  });
+
+  test('stale review document: the committed file is exactly what the committed question files render to', () => {
+    assert.ok(fs.existsSync(DOC), 'docs/eval/questions-review.md is committed');
+    assert.equal(fs.readFileSync(DOC, 'utf8'), renderReview(inputs()), 'regenerate it with the review command');
+  });
+
+  test('the review command writes identical bytes on two runs', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'review-'));
+    try {
+      const outputs = [path.join(dir, 'a.md'), path.join(dir, 'b.md')];
+      for (const out of outputs) {
+        const result = spawnSync(
+          process.execPath,
+          [
+            SCRIPT,
+            'review',
+            '--questions', path.join(DIR, 'gsd-core.questions.json'),
+            '--answers', path.join(DIR, 'gsd-core.answers.json'),
+            '--pilot-questions', path.join(DIR, 'pilot.questions.json'),
+            '--pilot-answers', path.join(DIR, 'pilot.answers.json'),
+            '--candidates', path.join(DIR, 'candidates.json'),
+            '--out', out,
+          ],
+          { encoding: 'utf8', windowsHide: true },
+        );
+        assert.equal(result.status, 0, result.stderr);
+      }
+      const hashes = outputs.map((out) => createHash('sha256').update(fs.readFileSync(out)).digest('hex'));
+      assert.equal(hashes[0], hashes[1]);
+      assert.equal(fs.readFileSync(outputs[0], 'utf8'), fs.readFileSync(DOC, 'utf8'));
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
+    }
+  });
+
+  test('the review command refuses a missing argument', () => {
+    const result = spawnSync(process.execPath, [SCRIPT, 'review', '--questions', 'x.json'], { encoding: 'utf8', windowsHide: true });
+    assert.equal(result.status, 2);
+    assert.match(result.stderr, /usage/);
   });
 });

@@ -957,6 +957,22 @@ export function stampAnswers(answers: AnswerFile, record: PreparedRecordCopy): A
 }
 
 // ---------------------------------------------------------------------------------------------
+// The review document
+
+export interface ReviewInput {
+  questions: QuestionFile;
+  answers: AnswerFile;
+  pilotQuestions?: QuestionFile;
+  pilotAnswers?: AnswerFile;
+  candidates: CandidatesFile;
+}
+
+/** The document the user reads before approving the set; a pure function of the committed files. */
+export function renderReview(_input: ReviewInput): string {
+  return '';
+}
+
+// ---------------------------------------------------------------------------------------------
 // Command line
 
 const USAGE = `usage:
@@ -970,6 +986,8 @@ const USAGE = `usage:
       question files from the accepted candidates; texts already written for the same id and key are kept
   node scripts/eval/draft-census.ts stamp --answers <answers.json> --checkout <dir>
       add the preparation record of the checkout to an answers file written by oracle.ts keys
+  node scripts/eval/draft-census.ts review --questions <file> --answers <file> --candidates <file> --out <review.md> [--pilot-questions <file> --pilot-answers <file>]
+      write the human review document from the committed files (byte-identical on every run)
 `;
 
 function repoHead(repoDir: string): string {
@@ -1006,6 +1024,9 @@ const OPTIONS = {
   'pilot-out': { type: 'string' },
   answers: { type: 'string' },
   checkout: { type: 'string' },
+  questions: { type: 'string' },
+  'pilot-questions': { type: 'string' },
+  'pilot-answers': { type: 'string' },
 } as const;
 
 type Values = { [K in keyof typeof OPTIONS]?: string };
@@ -1058,6 +1079,30 @@ function runScaffold(values: Values): number {
   return 0;
 }
 
+function runReview(values: Values): number {
+  if (
+    values.questions === undefined ||
+    values.answers === undefined ||
+    values.candidates === undefined ||
+    values.out === undefined ||
+    (values['pilot-questions'] === undefined) !== (values['pilot-answers'] === undefined)
+  ) {
+    process.stderr.write(USAGE);
+    return 2;
+  }
+  const input: ReviewInput = {
+    questions: loadQuestions(values.questions),
+    answers: AnswerFileSchema.parse(readJsonFile(values.answers)),
+    candidates: CandidatesFileSchema.parse(readJsonFile(values.candidates)),
+  };
+  if (values['pilot-questions'] !== undefined && values['pilot-answers'] !== undefined) {
+    input.pilotQuestions = loadQuestions(values['pilot-questions']);
+    input.pilotAnswers = AnswerFileSchema.parse(readJsonFile(values['pilot-answers']));
+  }
+  fs.writeFileSync(values.out, renderReview(input));
+  return 0;
+}
+
 function runStamp(values: Values): number {
   if (values.answers === undefined || values.checkout === undefined) {
     process.stderr.write(USAGE);
@@ -1094,6 +1139,8 @@ export async function main(argv: readonly string[]): Promise<number> {
         return runScaffold(values);
       case 'stamp':
         return runStamp(values);
+      case 'review':
+        return runReview(values);
       default:
         process.stderr.write(`unknown command ${subcommand}\n${USAGE}`);
         return 2;
