@@ -168,7 +168,8 @@ export type KeySpec = z.infer<typeof KeySpecSchema>;
 
 export const QuestionSchema = z
   .strictObject({
-    id: z.string().regex(/^q-\d+$/, 'must be q- followed by digits'),
+    // `q-` for the scored set, `p-` for the pilot set (plan 03-09); the two never share an id.
+    id: z.string().regex(/^[qp]-\d+$/, 'must be q- or p- followed by digits'),
     category: CategorySchema,
     text: z.string().min(1),
     key: KeySpecSchema,
@@ -247,9 +248,27 @@ export const AnswerKeySchema = z.strictObject({
 });
 export type AnswerKey = z.infer<typeof AnswerKeySchema>;
 
+/**
+ * How the checkout the keys were computed against was prepared (OQ8): a copy of the preparation
+ * record of `prepare-corpus.ts` without its machine-specific `dir`, so the answers file is the same
+ * on every machine. Optional because `oracle.ts keys` does not know it; `draft-census.ts stamp` adds it.
+ */
+export const PreparedRecordCopySchema = z.strictObject({
+  corpusId: z.string().min(1),
+  sha: z.string().min(1),
+  npmCi: z.boolean(),
+  typescriptVersion: z.string().min(1).nullable(),
+  lockSha256: z
+    .string()
+    .regex(/^[0-9a-f]{64}$/)
+    .nullable(),
+});
+export type PreparedRecordCopy = z.infer<typeof PreparedRecordCopySchema>;
+
 export const AnswerFileSchema = z.strictObject({
   oracleVersion: z.string().min(1),
   repoSha: z.string().min(1),
+  preparedRecord: PreparedRecordCopySchema.optional(),
   answers: z.array(AnswerKeySchema),
 });
 export type AnswerFile = z.infer<typeof AnswerFileSchema>;
