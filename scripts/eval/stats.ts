@@ -115,7 +115,23 @@ export function pairedClusterBootstrap(
   };
 }
 
-/** The Wilson score interval (implemented with the citation analysis, Task 2 of plan 03-05). */
-export function wilsonInterval(_successes: number, _n: number, _z: number): WilsonResult {
-  throw new Error('wilsonInterval is implemented in Task 2');
+/**
+ * The Wilson score interval for `successes` out of `n` at normal quantile `z` (1.96 for 95 percent two-sided).
+ * With p = successes / n: centre = (p + z*z/(2n)) / (1 + z*z/n) and half-width = z * sqrt(p(1-p)/n + z*z/(4n*n)) /
+ * (1 + z*z/n); the bounds are centre minus and plus half-width, clamped to [0, 1]. `point` is p itself. Used for
+ * the citation rate (EVL-03, PITFALLS C4): 46 of 50 gives a lower bound of about 0.8115 and 45 of 50 about 0.7864.
+ * No observations, a count that is not a whole number in [0, n], or a z that is not positive throw a RangeError.
+ */
+export function wilsonInterval(successes: number, n: number, z: number): WilsonResult {
+  if (!Number.isInteger(n) || n < 1) throw new RangeError(`wilsonInterval needs at least one observation, got n ${String(n)}`);
+  if (!Number.isInteger(successes) || successes < 0 || successes > n) {
+    throw new RangeError(`successes must be a whole number in [0, ${String(n)}], got ${String(successes)}`);
+  }
+  if (!(Number.isFinite(z) && z > 0)) throw new RangeError(`z must be a positive number, got ${String(z)}`);
+  const p = successes / n;
+  const z2 = z * z;
+  const denominator = 1 + z2 / n;
+  const centre = (p + z2 / (2 * n)) / denominator;
+  const half = (z * Math.sqrt((p * (1 - p)) / n + z2 / (4 * n * n))) / denominator;
+  return { point: p, lower: Math.max(0, centre - half), upper: Math.min(1, centre + half) };
 }
