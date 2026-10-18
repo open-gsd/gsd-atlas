@@ -735,16 +735,30 @@ export function pickPilotCategories(seed: number, count: number): Category[] {
   return options.filter((category) => chosen.has(category));
 }
 
+/** What makes two expected items the same answer at a granularity; undefined for an item without a file. */
+function projectionId(item: AnswerItem, granularity: Granularity): string | undefined {
+  if (item.file === undefined) return undefined;
+  if (granularity === 'file') return item.file;
+  if (granularity === 'file+symbol') return `${item.file}\0${item.symbol ?? ''}`;
+  return `${item.file}\0${item.line ?? ''}`;
+}
+
+/** The first item of each distinct answer at `granularity`, in key order. */
+function distinctAnswers(items: readonly AnswerItem[], granularity: Granularity): AnswerItem[] {
+  const seen = new Set<string>();
+  const out: AnswerItem[] = [];
+  for (const item of items) {
+    const id = projectionId(item, granularity);
+    if (id === undefined || seen.has(id)) continue;
+    seen.add(id);
+    out.push(item);
+  }
+  return out;
+}
+
 /** The number of expected answers a model has to give for `items` at `granularity`. */
 export function projectedSize(items: readonly AnswerItem[], granularity: Granularity): number {
-  const seen = new Set<string>();
-  for (const item of items) {
-    if (item.file === undefined) continue;
-    if (granularity === 'file') seen.add(item.file);
-    else if (granularity === 'file+symbol') seen.add(`${item.file}\0${item.symbol ?? ''}`);
-    else seen.add(`${item.file}\0${item.line ?? ''}`);
-  }
-  return seen.size;
+  return distinctAnswers(items, granularity).length;
 }
 
 export type Decision = { status: 'accepted' } | { status: 'rejected'; reason: CandidateReason; detail: string };
@@ -967,9 +981,141 @@ export interface ReviewInput {
   candidates: CandidatesFile;
 }
 
-/** The document the user reads before approving the set; a pure function of the committed files. */
-export function renderReview(_input: ReviewInput): string {
-  return '';
+/** `file:line symbol` of an expected item; an item without a file (an unresolved citation) has none. */
+function describeItem(item: AnswerItem): string | undefined {
+  if (item.file === undefined) return undefined;
+  const where = item.line === undefined ? item.file : `${item.file}:${item.line}`;
+  return item.symbol === undefined ? where : `${where} ${item.symbol}`;
+}
+
+function percent(count: number, total: number): string {
+  return `${total === 0 ? 0 : Math.round((100 * count) / total)}%`;
+}
+
+function tableCell(text: string): string {
+  return text.replace(/\|/g, '\\|').replace(/\r?\n/g, ' ');
+}
+
+function describeProbe(key: KeySpec): string {
+  if (key.kind !== 'abstain') return '';
+  return 'adrNoFile' in key.probe
+    ? `- Probe: ADR number ${key.probe.adrNoFile}, which no ADR file carries`
+    : `- Probe: the name \`${key.probe.symbol}\`, which no tracked file mentions`;
+}
+
+function questionBlocks(heading: string, questions: QuestionFile, answers: AnswerFile): string[] {
+  const lines: string[] = [`## ${heading}`, ''];
+  const keys = new Map(answers.answers.map((answer) => [answer.questionId, answer]));
+  for (const question of questions.questions) {
+    const key = keys.get(question.id);
+    if (key === undefined) throw new Error(`the answers file has no key for ${question.id}`);
+    lines.push(`### ${question.id} (${question.category})`, '', `> ${question.text}`, '');
+    lines.push(`- Key kind: ${question.key.kind}`);
+    lines.push(`- Granularity: ${key.granularity}; equality: ${key.equality}`);
+    if (key.abstain) {
+      lines.push('- Expected answer: not found (abstain)');
+      lines.push(describeProbe(question.key));
+    } else {
+      lines.push(`- Expected answers: ${projectedSize(key.items, key.granularity)} at granularity ${key.granularity} (${key.items.length} key items)`);
+      const first = distinctAnswers(key.items, key.granularity).flatMap((item) => {
+        const text = describeItem(item);
+        return text === undefined ? [] : [`\`${text}\``];
+      });
+      lines.push(`- First expected: ${first.slice(0, 3).join(', ')}`);
+    }
+    lines.push('');
+  }
+  return lines;
+}
+
+/**
+ * The document the user reads before approving the set (D-01): a pure function of the committed
+ * question, answer and candidate files, with fixed ordering and no timestamp or machine path, so
+ * running it twice gives the same bytes and a test can prove the committed copy is current.
+ */
+export function renderReview(input: ReviewInput): string {
+  const { questions, answers, pilotQuestions, pilotAnswers, candidates } = input;
+  const record = answers.preparedRecord;
+  if (record === undefined) throw new Error('the answers file has no preparedRecord; run the stamp command');
+  const scoredTotal = questions.questions.length;
+  const pilotList = pilotQuestions?.questions ?? [];
+  const lines: string[] = [];
+  lines.push('# Question set review (plan 03-09)', '');
+  lines.push('Drafted without running atlas: yes', '');
+  lines.push(
+    `Attestation. The ${scoredTotal} scored questions and the ${pilotList.length} pilot questions were drafted from the gsd-core source and ADRs. ` +
+      'The candidates come from a compiler-derived census of the prepared checkout (the oracle\'s TypeScript program), ordered by a seeded shuffle; ' +
+      'the texts were written by reading files and `git grep` on the checkout; the expected answers come from the oracle. ' +
+      'No atlas command, no atlas MCP tool and no code-intelligence server was run or read while choosing or writing a question.',
+    '',
+  );
+  lines.push('## Corpus and preparation', '');
+  lines.push(`- Corpus: \`${questions.corpusId}\` at \`${questions.corpusSha}\``);
+  lines.push(
+    record.npmCi
+      ? '- Prepared checkout: `npm ci --ignore-scripts`: yes'
+      : '- Prepared checkout: `npm ci --ignore-scripts`: no (the bundled compiler is used)',
+  );
+  lines.push(`- Compiler used for the keys: ${record.typescriptVersion === null ? 'the bundled one' : `TypeScript ${record.typescriptVersion}`}`);
+  lines.push(`- package-lock.json sha256 (CRLF read as LF): ${record.lockSha256 === null ? 'none' : `\`${record.lockSha256}\``}`);
+  lines.push(`- Oracle version: \`${answers.oracleVersion}\``);
+  lines.push(`- Candidate order seed: ${candidates.seed} (\`eval.bootstrapSeed\`)`);
+  lines.push(`- Pilot categories (picked by the seed): ${candidates.pilotCategories.join(', ')}`);
+  lines.push('');
+
+  lines.push('## Summary', '', '| Category | Scored | Share | Pilot |', '| --- | --- | --- | --- |');
+  for (const category of CategorySchema.options) {
+    const scored = questions.questions.filter((question) => question.category === category).length;
+    const pilot = pilotList.filter((question) => question.category === category).length;
+    lines.push(`| ${category} | ${scored} | ${percent(scored, scoredTotal)} | ${pilot} |`);
+  }
+  lines.push(`| total | ${scoredTotal} | ${percent(scoredTotal, scoredTotal)} | ${pilotList.length} |`, '');
+
+  lines.push('## How the questions were chosen', '');
+  lines.push(
+    'Candidates of each category were ordered by a seeded shuffle of the census (sorted by file and name first). ' +
+      'One pass over that order looked at a candidate only while a slot was open for it, and passed over a candidate only for one of these rules:',
+    '',
+    '- `used-by-pilot`: its subject belongs to a pilot question.',
+    '- `duplicate-symbol`: its subject is already used by an earlier question or by a free-alternatives scan question.',
+    '- `ambiguous-name`: the name is declared more than once in the program, or the oracle refuses it as ambiguous (an abstain probe that matches something is the same case).',
+    '- `unexplained`: the key has a textual mention the compiler result neither includes nor classifies, or an ADR citation without an ADR file.',
+    `- \`empty\` and \`too-large\`: a non-abstain expected answer is empty, or larger than ${MAX_EXPECTED_ITEMS} entries at the key's granularity.`,
+    '',
+    'Candidates after the last one needed stay `unused`: they were never looked at, and a larger N continues the same order.',
+    '',
+  );
+
+  lines.push(...questionBlocks('Scored questions', questions, answers));
+  if (pilotQuestions !== undefined && pilotAnswers !== undefined) {
+    lines.push(...questionBlocks('Pilot questions', pilotQuestions, pilotAnswers));
+  }
+
+  lines.push('## Rejected candidates', '');
+  const all = CategorySchema.options.flatMap((category) => candidates.categories[category].map((entry) => ({ category, entry })));
+  const rejected = all.filter(({ entry }) => entry.status === 'rejected');
+  lines.push('| Reason | Count |', '| --- | --- |');
+  for (const reason of CANDIDATE_REASONS) {
+    lines.push(`| ${reason} | ${rejected.filter(({ entry }) => entry.reason === reason).length} |`);
+  }
+  lines.push(`| total | ${rejected.length} |`, '');
+  lines.push('| Category | Candidates | Accepted | Rejected | Unused |', '| --- | --- | --- | --- | --- |');
+  for (const category of CategorySchema.options) {
+    const entries = candidates.categories[category];
+    const count = (status: string): number => entries.filter((entry) => entry.status === status).length;
+    lines.push(`| ${category} | ${entries.length} | ${count('accepted')} | ${count('rejected')} | ${count('unused')} |`);
+  }
+  lines.push('');
+  for (const reason of CANDIDATE_REASONS) {
+    const group = rejected.filter(({ entry }) => entry.reason === reason);
+    if (group.length === 0) continue;
+    lines.push(`### ${reason}`, '');
+    for (const { category, entry } of group) {
+      lines.push(`- ${category} rank ${entry.rank}, \`${entry.identity}\` (${entry.group}): ${tableCell(entry.detail ?? '')}`);
+    }
+    lines.push('');
+  }
+  return `${lines.join('\n').replace(/\n+$/, '')}\n`;
 }
 
 // ---------------------------------------------------------------------------------------------
