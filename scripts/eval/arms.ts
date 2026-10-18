@@ -4,8 +4,10 @@
  * This is the one small file the freeze hashes for the run configuration: the tools each arm may use,
  * the read-only shell patterns, the atlas tool names, the MCP configuration and the plugin directory
  * that carries the skill. Both arms get the same prompt text, the same answer schema, the same model
- * and the same bounds; the atlas arm adds the atlas MCP server and the `gsd-atlas` skill and nothing
- * else.
+ * and the same bounds; the atlas arm adds the atlas MCP server, the `gsd-atlas` skill and the `Skill`
+ * built-in tool that makes the skill visible to the model (Revision 1, plan 03-38: under `--tools
+ * Bash,Read` the init event lists the skill, yet the model sees no skill list and has no Skill tool),
+ * and nothing else. The grep arm is what it always was.
  *
  * Eval tooling: it must never import from src/ (D-02). The atlas binary is only ever run as a
  * program.
@@ -65,8 +67,14 @@ export const ATLAS_TOOL_NAMES: readonly string[] = [
  */
 export const STRUCTURED_OUTPUT_TOOL = 'StructuredOutput';
 
-/** The built-in tools of both arms: a shell restricted to the patterns below, and the file reader. */
+/** The built-in tools of the grep arm: a shell restricted to the patterns below, and the file reader. */
 export const BUILTIN_TOOLS: readonly string[] = ['Bash', 'Read'];
+
+/** The built-in `Skill` tool: the model sees the listed skill descriptions and can load a skill body through it. */
+export const SKILL_TOOL = 'Skill';
+
+/** The built-in tools of the atlas arm: those of the grep arm and the Skill tool (Revision 1). */
+export const ATLAS_BUILTIN_TOOLS: readonly string[] = [...BUILTIN_TOOLS, SKILL_TOOL];
 
 /**
  * The shell commands a session may run: search and read-only inspection, nothing that installs,
@@ -97,13 +105,23 @@ export interface ArmDef {
 
 export const ARMS: Readonly<Record<ArmId, ArmDef>> = {
   grep: { id: 'grep', builtinTools: BUILTIN_TOOLS, allowedShell: ALLOWED_SHELL, atlasToolNames: [] },
-  atlas: { id: 'atlas', builtinTools: BUILTIN_TOOLS, allowedShell: ALLOWED_SHELL, atlasToolNames: ATLAS_TOOL_NAMES },
+  atlas: { id: 'atlas', builtinTools: ATLAS_BUILTIN_TOOLS, allowedShell: ALLOWED_SHELL, atlasToolNames: ATLAS_TOOL_NAMES },
 };
 
-/** The `--allowedTools` list of an arm: the shell patterns, `Read`, and the atlas tools when the arm has them. */
+/**
+ * The single allow rule for the Skill tool: the exact registered skill, `Skill(<plugin>:<skill>)`. No
+ * other skill (bundled or otherwise) can be loaded through the tool in the atlas arm.
+ */
+export const SKILL_ALLOW_RULE = `${SKILL_TOOL}(${PLUGIN_NAME}:${SKILL_NAME})`;
+
+/**
+ * The `--allowedTools` list of an arm: the shell patterns, `Read`, and for the atlas arm the one Skill
+ * rule and the atlas tools.
+ */
 export function allowedToolsFor(arm: ArmId): string[] {
   const def = ARMS[arm];
-  return [...def.allowedShell, 'Read', ...def.atlasToolNames];
+  const skillRules = def.builtinTools.includes(SKILL_TOOL) ? [SKILL_ALLOW_RULE] : [];
+  return [...def.allowedShell, 'Read', ...skillRules, ...def.atlasToolNames];
 }
 
 /** The arm's `--mcp-config` content: no server for the grep arm, the atlas MCP server for the atlas arm. */
@@ -162,8 +180,9 @@ export function buildPluginDir(scratch: string, skillPath: string, expectedSha25
 
 /**
  * What an arm's init event must contain, for `assertToolSet`: the built-in tools exactly `Bash` and
- * `Read`; the server `gsd-atlas` for the atlas arm and no server for the grep arm. The atlas MCP tools
- * are checked by `checkInit`, because a session may list a subset of the seven.
+ * `Read` (plus `Skill` for the atlas arm); the server `gsd-atlas` for the atlas arm and no server for
+ * the grep arm. The atlas MCP tools are checked by `checkInit`, because a session may list a subset of
+ * the seven.
  */
 export function expectedToolSet(arm: ArmId): ExpectedToolSet {
   return {
@@ -178,10 +197,11 @@ const isAtlasSkill = (skill: string): boolean => skill === SKILL_NAME || skill =
  * Compares an init event with the arm's registered environment (Pitfall 14). Returns one string per
  * difference; an empty array means the session ran where it was meant to.
  *
- * - Built-in tools must equal `Bash` and `Read` exactly, in both arms.
+ * - Built-in tools must equal `Bash` and `Read` exactly in the grep arm and `Bash`, `Read` and `Skill`
+ *   exactly in the atlas arm.
  * - Atlas arm: the server `gsd-atlas` is present, the MCP tools are a non-empty subset of the seven
  *   atlas tools, and the skill is listed. No other server, no other MCP tool.
- * - Grep arm: no MCP server, no MCP tool, no atlas skill.
+ * - Grep arm: no MCP server, no MCP tool, no Skill tool (an extra tool) and no atlas skill.
  */
 export function checkInit(arm: ArmId, init: InitEvent | null): string[] {
   if (init === null) return ['init event absent'];

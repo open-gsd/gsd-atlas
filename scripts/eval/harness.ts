@@ -795,7 +795,7 @@ function printPlan(context: RunContext, values: Values, io: Io, header: string):
     `  wall-clock-ms: ${settings.wallClockMs === undefined ? '(unset)' : String(settings.wallClockMs)}`,
     `  stop-at-cost-usd: ${values['stop-at-cost-usd'] ?? '(unset)'}`,
     `  retry: ${String(MAX_INFRASTRUCTURE_RETRIES)} retries after ${values['retry-delay-ms'] ?? String(DEFAULT_RETRY_DELAY_MS)} ms, infrastructure failures only`,
-    `  tools: ${ARMS.grep.builtinTools.join(',')} in both arms; the atlas arm adds the gsd-atlas MCP server and skill`,
+    `  tools: grep arm ${ARMS.grep.builtinTools.join(',')}; atlas arm ${ARMS.atlas.builtinTools.join(',')} (the atlas arm adds the Skill tool, the gsd-atlas MCP server and the skill)`,
     `  results: ${context.outDir ?? '(--out-dir unset)'}`,
     ...settings.registered,
   ];
