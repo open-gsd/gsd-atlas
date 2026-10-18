@@ -95,6 +95,24 @@ export const READ_TEXT_WORLD: SourceTreeWorld = {
   ignored: [],
 };
 
+/**
+ * A world for the listDirectory cases (plan 03-28): regular files in a directory, a subdirectory, a name that starts with a
+ * dash, names that differ only in case so the code-unit order shows, and an untracked file.
+ */
+export const LIST_DIRECTORY_WORLD: SourceTreeWorld = {
+  committed: {
+    'docs/adr/0001-first.md': '# one\n',
+    'docs/adr/2-second.md': '# two\n',
+    'docs/adr/README.md': 'readme\n',
+    'docs/adr/a-lower.md': 'lower\n',
+    'docs/adr/-dash.md': 'dash\n',
+    'docs/adr/sub/inner.md': 'inner\n',
+    'notes.txt': 'notes\n',
+  },
+  working: { 'docs/adr/untracked.md': 'not committed\n' },
+  ignored: [],
+};
+
 /** The first commit of {@link HISTORY_WORLD}: a CRLF file, a binary file with NUL, a deleted-later file. */
 export const HISTORY_FIRST: Readonly<Record<string, string>> = {
   'a.ts': 'export const a = 1;\n',
@@ -718,6 +736,85 @@ export function defineSourceTreeContract(label: string, make: MakeSourceTree): v
           const viaPartial = await tree.sourceSet(worktree, files, claimed({ attributes: partial }));
           assert.deepEqual([...viaPartial.files], [...plain.files]);
           assert.deepEqual(viaPartial.skipped, plain.skipped);
+        }),
+      );
+    });
+
+    describe('listDirectory', () => {
+      const ADR_NAMES = ['0001-first.md', '2-second.md', 'README.md', 'a-lower.md', 'untracked.md'];
+
+      it(
+        'lists the regular files of a directory sorted by code unit, leaving out subdirectories and names that start with a dash, with a finite mtime',
+        withTree(LIST_DIRECTORY_WORLD, async ({ tree, worktree }) => {
+          const listing = await tree.listDirectory(worktree, 'docs/adr');
+          assert.equal(listing.status, 'ok');
+          assert.deepEqual([...listing.names], ADR_NAMES);
+          assert.equal(listing.truncated, false);
+          assert.ok(Number.isFinite(listing.mtimeMs));
+          assert.equal(listing.unchanged, undefined);
+        }),
+      );
+
+      it(
+        'a trailing slash names the same directory, and a directory that holds only a directory lists no names',
+        withTree(LIST_DIRECTORY_WORLD, async ({ tree, worktree }) => {
+          assert.deepEqual([...(await tree.listDirectory(worktree, 'docs/adr/')).names], ADR_NAMES);
+          const docs = await tree.listDirectory(worktree, 'docs');
+          assert.equal(docs.status, 'ok');
+          assert.deepEqual([...docs.names], []);
+        }),
+      );
+
+      it(
+        'a path that does not exist is missing, and a file is not_directory',
+        withTree(LIST_DIRECTORY_WORLD, async ({ tree, worktree }) => {
+          const missing = await tree.listDirectory(worktree, 'docs/nothing');
+          assert.equal(missing.status, 'missing');
+          assert.deepEqual([...missing.names], []);
+          assert.equal((await tree.listDirectory(worktree, 'docs/adr/README.md')).status, 'not_directory');
+          assert.equal((await tree.listDirectory(worktree, 'notes.txt')).status, 'not_directory');
+        }),
+      );
+
+      it(
+        'a parent segment, an absolute path, a drive path, NUL and an empty path are escape, and nothing is listed',
+        withTree(LIST_DIRECTORY_WORLD, async ({ tree, worktree }) => {
+          for (const bad of ['../x', 'docs/../../x', '/etc', '/', 'C:x', 'C:\\x', 'a\0b', '', '..']) {
+            const listing = await tree.listDirectory(worktree, bad);
+            assert.equal(listing.status, 'escape', JSON.stringify(bad));
+            assert.deepEqual([...listing.names], [], JSON.stringify(bad));
+            assert.equal(listing.truncated, false);
+          }
+        }),
+      );
+
+      it(
+        'more names than maxEntries keep the first ones in order and set truncated',
+        withTree(LIST_DIRECTORY_WORLD, async ({ tree, worktree }) => {
+          const cut = await tree.listDirectory(worktree, 'docs/adr', { maxEntries: 2 });
+          assert.equal(cut.status, 'ok');
+          assert.deepEqual([...cut.names], ['0001-first.md', '2-second.md']);
+          assert.equal(cut.truncated, true);
+          const exact = await tree.listDirectory(worktree, 'docs/adr', { maxEntries: ADR_NAMES.length });
+          assert.deepEqual([...exact.names], ADR_NAMES);
+          assert.equal(exact.truncated, false);
+        }),
+      );
+
+      it(
+        'asked with the mtime it last returned, it answers unchanged with no names; with another mtime it lists again',
+        withTree(LIST_DIRECTORY_WORLD, async ({ tree, worktree }) => {
+          const first = await tree.listDirectory(worktree, 'docs/adr');
+          const same = await tree.listDirectory(worktree, 'docs/adr', { ifMtimeMs: first.mtimeMs });
+          assert.equal(same.status, 'ok');
+          assert.equal(same.unchanged, true);
+          assert.deepEqual([...same.names], []);
+          assert.equal(same.mtimeMs, first.mtimeMs);
+          const other = await tree.listDirectory(worktree, 'docs/adr', { ifMtimeMs: first.mtimeMs - 1 });
+          assert.equal(other.unchanged, undefined);
+          assert.deepEqual([...other.names], ADR_NAMES);
+          // A missing directory is missing whatever mtime was remembered.
+          assert.equal((await tree.listDirectory(worktree, 'docs/nothing', { ifMtimeMs: first.mtimeMs })).status, 'missing');
         }),
       );
     });

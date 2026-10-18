@@ -180,6 +180,76 @@ for (const driver of ['node:sqlite', 'better-sqlite3'] as const satisfies readon
       });
     });
 
+    it('Reader.citations by number: ordered by path, line and column, with provenance, the cit handle and the enclosing identity', async () => {
+      await withRig(driver, async (rig) => {
+        const store = await rig.open();
+        const writer = store.writer();
+        await writer.commitFile({ worktree: 'main', path: 'src/a.ts', hash: H(1), facts: citedFacts('src/a.ts', H(1)) });
+        // The same bytes at a second path, and another file that cites 3473 too, to prove the order is by path.
+        await writer.commitFile({ worktree: 'main', path: 'lib/b.ts', hash: H(1), facts: citedFacts('lib/b.ts', H(1)) });
+        const extra: FileFacts = { ...citedFacts('app/c.ts', H(3)), citations: [{ number: 3473, detail: '§1.2', span: span(7, 4, 7, 20) }] };
+        await writer.commitFile({ worktree: 'main', path: 'app/c.ts', hash: H(3), facts: extra });
+
+        const answer = await store.at('main').citations({ number: 3473 });
+        assert.deepStrictEqual(
+          answer.data.map((record) => [record.source_path, record.span.startLine, record.span.startColumn]),
+          [
+            ['app/c.ts', 7, 4],
+            ['lib/b.ts', 3, 23],
+            ['src/a.ts', 3, 23],
+          ],
+        );
+        const [first, second] = answer.data;
+        assert.ok(first !== undefined && second !== undefined);
+        assert.equal(first.number, 3473);
+        assert.equal(first.detail, '§1.2');
+        assert.equal(first.enclosing, null, 'a file-level mention has no enclosing symbol');
+        assert.equal(first.confidence, 'EXTRACTED');
+        assert.equal(first.extractor, 'grammar:typescript@0.23.2');
+        assert.equal(first.content_hash, H(3));
+        assert.equal(first.debug, `cit/${encodeURIComponent('app/c.ts')}/${H(3)}/0`);
+        assert.equal(second.detail, undefined);
+        assert.deepStrictEqual(second.enclosing, { repo: 'repo', path: 'lib/b.ts', qualifiedName: 'load', kind: 'function' });
+        assert.equal(second.debug, `cit/${encodeURIComponent('lib/b.ts')}/${H(1)}/1`, 'the handle names the overlay path, not the first path that stored the bytes');
+        assert.equal(answer.watermark.stalePaths.length, 0);
+        writer.release();
+      });
+    });
+
+    it('Reader.citations by symbol: the citations attached to that definition, and none for another or an unknown one', async () => {
+      await withRig(driver, async (rig) => {
+        const store = await rig.open();
+        const writer = store.writer();
+        await writer.commitFile({ worktree: 'main', path: 'src/a.ts', hash: H(1), facts: citedFacts('src/a.ts', H(1)) });
+        const reader = store.at('main');
+        const load = { repo: 'repo', path: 'src/a.ts', qualifiedName: 'load', kind: 'function' };
+        const attached = await reader.citations({ symbol: load });
+        assert.deepStrictEqual(attached.data.map((record) => record.number), [3473]);
+        assert.deepStrictEqual(attached.data[0]?.enclosing, load);
+        assert.deepStrictEqual((await reader.citations({ symbol: { ...load, qualifiedName: 'other' } })).data, []);
+        assert.deepStrictEqual((await reader.citations({ symbol: { ...load, path: 'src/none.ts' } })).data, []);
+        assert.deepStrictEqual((await reader.citations({ number: 999 })).data, []);
+        assert.deepStrictEqual((await reader.citations({})).data, [], 'a query that names neither a number nor a symbol asks for nothing');
+        writer.release();
+      });
+    });
+
+    it('Reader.citations limit: the first rows in order, and an unknown worktree is UnknownWorktree', async () => {
+      await withRig(driver, async (rig) => {
+        const store = await rig.open();
+        const writer = store.writer();
+        const many: FileFacts = {
+          ...citedFacts('src/m.ts', H(4)),
+          citations: [1, 2, 3, 4].map((line) => ({ number: 5, span: span(line, 0, line, 5) })),
+        };
+        await writer.commitFile({ worktree: 'main', path: 'src/m.ts', hash: H(4), facts: many });
+        const cut = await store.at('main').citations({ number: 5 }, { limit: 2 });
+        assert.deepStrictEqual(cut.data.map((record) => record.span.startLine), [1, 2]);
+        await assert.rejects(store.at('nowhere').citations({ number: 5 }), UnknownWorktree);
+        writer.release();
+      });
+    });
+
     it('version 1 store is recreated: the derived data of the old schema is dropped, reported as not built, and the new store works', async () => {
       await withRig(driver, async (rig) => {
         const old = await rig.open({ schemaVersion: SCHEMA_VERSION - 1 });
