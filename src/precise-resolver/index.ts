@@ -5,14 +5,20 @@ export { createScriptedResolver } from './stub.ts';
 export type { ScriptedEdge, ScriptedRelation, ScriptedResolverOptions } from './stub.ts';
 export {
   BUNDLED_TYPESCRIPT_VERSION,
+  MEMORY_DEFAULTS,
   PRECISE_DEFAULTS,
   PRECISE_LIMITS,
+  PROGRAM_EVICT_FRACTION,
   TYPESCRIPT_RESOLVER_ID,
   bundledCompilerDir,
   compilerFallbackText,
   compilerForRequest,
+  createMemoryBudget,
+  createResolverMemory,
   createStats,
   createTypeScriptResolver,
+  createWorkerPool,
+  deriveBudget,
   defaultHeapMb,
   mapTarget,
   PROVIDER_OFF_TEXT,
@@ -21,16 +27,23 @@ export {
   resolveWorkerUrl,
 } from './typescript/index.ts';
 export type {
+  BudgetStatus,
+  DerivedBudget,
   KindStats,
+  MemoryBudget,
+  PoolStatus,
+  PoolWorker,
   PreciseLimits,
   PreciseTier,
   RelationStats,
+  ResolverMemory,
   Stats,
   TypeScriptResolver,
   TypeScriptResolverDeps,
   TypeScriptTierDeps,
   TypeScriptTierTuning,
   WorkerInfo,
+  WorkerPool,
 } from './typescript/index.ts';
 
 /**

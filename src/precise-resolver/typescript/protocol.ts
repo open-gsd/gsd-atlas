@@ -53,6 +53,9 @@ export const RequestSchema = z.discriminatedUnion('t', [
     bundledDir: z.string().min(1).max(MAX_PATH_CHARS),
     configs: z.array(z.string().min(1).max(MAX_PATH_CHARS)).max(200),
     heapMb: z.int().min(1).max(1_048_576),
+    /** Plan 03-27: the RSS limit (megabytes) and period (milliseconds) of the worker's own sampler thread. Absent: no sampler. */
+    rssLimitMb: z.int().min(1).max(1_048_576).optional(),
+    sampleMs: z.int().min(1).max(3_600_000).optional(),
   }),
   z.strictObject({
     t: z.literal('resolve'),
@@ -83,11 +86,21 @@ export const ResponseSchema = z.discriminatedUnion('t', [
     rssMb: z.number().min(0).max(1_048_576),
     /** The worker's own process id, for observation only; the parent never signals a process by this number. */
     pid: z.int().min(1).max(4_294_967_295).optional(),
+    /** Plan 03-27: true when the worker's RSS sampler thread is running (observation only). */
+    sampler: z.boolean().optional(),
   }),
   z.strictObject({ t: z.literal('edge'), id: Id, site: Site, targets: z.array(Target).max(64) }),
   /** Plan 03-25: one relation between two declarations, both as the name token of the declaration plus its kind. */
   z.strictObject({ t: z.literal('relation'), id: Id, from: Target, to: Target, relation: RelationName }),
-  z.strictObject({ t: z.literal('done'), id: Id, asked: z.int().min(0), answered: z.int().min(0) }),
+  z.strictObject({
+    t: z.literal('done'),
+    id: Id,
+    asked: z.int().min(0),
+    answered: z.int().min(0),
+    /** Plan 03-27 (observation only): programs this worker holds after the request, and its resident memory in megabytes. */
+    programs: z.int().min(0).max(100_000).optional(),
+    rssMb: z.number().min(0).max(1_048_576).optional(),
+  }),
   z.strictObject({
     t: z.literal('error'),
     id: Id.nullable(),

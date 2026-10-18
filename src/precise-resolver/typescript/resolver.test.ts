@@ -576,7 +576,7 @@ describe('compiler selection (D-12, D-13, TSM-02)', () => {
 });
 
 describe('typed failures and the worker lifecycle (TSM-05)', () => {
-  it('heap abort is memory_budget: grammar edges, no resolver_failed, and the next read starts a fresh worker once', async (t) => {
+  it('heap abort is memory_budget: grammar edges, no resolver_failed, and the next read does not start a worker again (plan 03-27 latch)', async (t) => {
     const runner = countingRunner();
     const world = await makeWorld(t, FIXTURE, { runner, host: { precise: { heapMb: 24 } } });
     assert.equal((await world.build()).ok, true);
@@ -586,10 +586,11 @@ describe('typed failures and the worker lifecycle (TSM-05)', () => {
     assert.equal((first.degraded ?? []).includes('resolver_failed'), false);
     assert.ok(at(refRows(first), 'src/user.cts').every((row) => row.tier === 'grammar'), 'the grammar edges are still there');
     assert.equal(runner.workers.length, 1);
-    // The tier is not stuck: the next read starts a fresh worker, once, and that aborts too.
+    // Plan 03-27: a project stopped for memory is not retried on every read. The answer is `memory_budget` at once and no
+    // second worker starts until the project context changes (memory.test.ts covers the restart).
     const second = await world.ask('code_refs', { name: 'compute', path: 'src/lib.cts' });
     assert.ok((second.degraded ?? []).includes('memory_budget'));
-    assert.equal(runner.workers.length, 2);
+    assert.equal(runner.workers.length, 1);
     assert.deepStrictEqual(diagnosticsOf(second, 'memory_budget'), ['the compiler worker reached its memory limit; this answer uses grammar facts']);
   });
 
