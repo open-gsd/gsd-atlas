@@ -13,11 +13,13 @@ import { parseArgs } from 'node:util';
 
 import { INDEX_STATE_SCHEMA, PROTOCOL_VERSION } from '../host-client/index.ts';
 import type { Envelope, HostClient, IndexStateData, Request } from '../host-client/index.ts';
+import { runAllow } from './allow.ts';
 import { EXIT_FAILURE, EXIT_LEASE_HELD, EXIT_OK, EXIT_USAGE, exitCodeFor } from './exit.ts';
 import { INIT_SCHEMA, runInit } from './init.ts';
 import type { IndexState, InitEnvironment } from './init.ts';
 import { AGENT_IDS } from './init-targets.ts';
 import type { AgentId } from './init-targets.ts';
+import { oneLine, printEnvelope } from './text.ts';
 import { COMMANDS, FLAGS, inputFromFlags, requestFor, resolveCommand, unusedFlag } from './tool-commands.ts';
 import type { FlagValues } from './tool-commands.ts';
 
@@ -35,6 +37,10 @@ export interface CliIo {
   readonly init?: InitEnvironment;
   /** The working directory relative `--repo` and `--cwd` values are resolved against. Default: this process's. */
   readonly cwd?: string;
+  /** True when standard input and the stream the person reads are a terminal. Only `allow` needs one; absent means none. */
+  readonly isTTY?: boolean;
+  /** Asks one question on the terminal and resolves to the line typed. Only `allow` asks. */
+  readonly prompt?: (question: string) => Promise<string>;
 }
 
 const USAGE = [
@@ -51,16 +57,6 @@ const USAGE = [
 
 function reasonOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
-}
-
-/** Control characters, C1 controls and the Unicode line and paragraph separators. */
-const isControl = (code: number): boolean => code < 0x20 || (code >= 0x7f && code <= 0x9f) || code === 0x2028 || code === 0x2029;
-
-/** A message on one line: a stray newline must not turn one reason into several (stderr is line-oriented). */
-function oneLine(text: string): string {
-  let clean = '';
-  for (const char of text) clean += isControl(char.codePointAt(0) as number) ? ' ' : char;
-  return clean;
 }
 
 /** A usage error: the reason (one line, it can quote what the user typed), then the usage text. */
@@ -106,14 +102,7 @@ async function send(io: CliIo, request: Request): Promise<number> {
     io.stderr.write(`gsd-atlas: error internal_error: ${oneLine(reasonOf(error))}\n`);
     return EXIT_FAILURE;
   }
-  io.stdout.write(`${JSON.stringify(envelope)}\n`);
-  for (const d of envelope.diagnostics) {
-    if (d.severity === 'error' || d.severity === 'warning') {
-      // A busy answer says when to come back; that number lives on the envelope, so the reason line repeats it.
-      const wait = d.code === 'busy' && typeof envelope.retry_after === 'number' ? ` (retry after ${String(envelope.retry_after)} ms)` : '';
-      io.stderr.write(`gsd-atlas: ${d.severity} ${d.code}: ${oneLine(d.message)}${wait}\n`);
-    }
-  }
+  printEnvelope(io, envelope);
   return exitCodeFor(envelope);
 }
 
@@ -208,6 +197,24 @@ export async function runCli(argv: readonly string[], io: CliIo): Promise<number
         return usageError(io, 'init takes no arguments, only --agent and --dry-run');
       }
       return init(io, values);
+    case 'allow': {
+      // Everything after the first `--` is the command to approve, flags and all, so it is cut from argv here: parseArgs
+      // reports those tokens as positionals but not where the `--` was.
+      const dash = argv.indexOf('--');
+      const toApprove = dash === -1 ? [] : argv.slice(dash + 1);
+      if (positionals.length - toApprove.length > 1) {
+        return usageError(io, 'allow takes its command after a double dash: gsd-atlas allow -- <executable> <args...>');
+      }
+      if (toApprove.length === 0) {
+        return usageError(io, 'allow needs the command to approve after a double dash: gsd-atlas allow -- <executable> <args...>');
+      }
+      const base = io.cwd ?? path.resolve('.');
+      return runAllow(io, {
+        repo: typeof values.repo === 'string' ? path.resolve(base, values.repo) : undefined,
+        cwd: typeof values.cwd === 'string' ? path.resolve(base, values.cwd) : undefined,
+        argv: toApprove,
+      });
+    }
     case 'lang': {
       const roots = rootsFrom(values as RootFlags);
       if (command.name === 'lang list') {

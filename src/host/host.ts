@@ -24,6 +24,8 @@ import { createSourceTree } from '../source-tree/index.ts';
 import type { SourceTree } from '../source-tree/index.ts';
 import { createTenant, notIndexedNoStore } from '../tenant/index.ts';
 import type { Tenant } from '../tenant/index.ts';
+import { ALLOW_KIND, handleAllow } from './allow.ts';
+import type { AllowDeps } from './allow.ts';
 import { HOST_DEFAULTS } from './defaults.ts';
 import { HISTORY_KIND, runHistory } from './history.ts';
 import type { HistoryDeps } from './history.ts';
@@ -327,6 +329,23 @@ export function createHost(options: HostOptions): Host {
     return held(resolved.identity.storeId, classFor('code_find'), () => runHistory(deps, request));
   }
 
+  /**
+   * `allow` (D-15): the CLI's two-step approval of one command. It needs the repository's identity (git, through the same
+   * resolver every repo request uses) and the user's directory, never a tenant or a store, so it works on a repository
+   * nobody indexed. It runs in the `interactive` class under one fixed Governor key: approvals are rare and have no
+   * tenant to be fair to.
+   */
+  function allowRequest(request: Request): Promise<Envelope> {
+    const deps: AllowDeps = {
+      userDir: options.userDir ?? options.roots.userDir,
+      resolveRepo: async (selection) => {
+        const resolved = await resolveRepository(selection, hostCwd, makeTree);
+        return resolved === null ? null : { repoDir: resolved.repoDir };
+      },
+    };
+    return held(ALLOW_KIND, classFor('allow'), () => handleAllow(request, deps));
+  }
+
   async function dispatch(request: Request): Promise<Envelope> {
     if (request.protocol !== PROTOCOL_VERSION) {
       return errorEnvelope(
@@ -339,6 +358,7 @@ export function createHost(options: HostOptions): Host {
       return handleLang(request, { roots: options.roots, engine: options.engine });
     }
     if (request.kind === HISTORY_KIND) return historyRequest(request);
+    if (request.kind === ALLOW_KIND) return allowRequest(request);
     if (isRepoKind(request.kind)) return repoRequest(request, request.kind);
     return errorEnvelope('unknown_kind', `request kind ${short(JSON.stringify(request.kind))} is not known to this host`);
   }

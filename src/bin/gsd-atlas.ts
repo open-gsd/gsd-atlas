@@ -9,6 +9,7 @@
 import os from 'node:os';
 import path from 'node:path';
 import process from 'node:process';
+import readline from 'node:readline';
 import { fileURLToPath } from 'node:url';
 
 import { runCli } from '../cli/index.ts';
@@ -25,6 +26,23 @@ const cwd = process.cwd();
 const binFile = fileURLToPath(import.meta.url);
 const mcpEntry = path.join(path.dirname(binFile), `gsd-atlas-mcp${path.extname(binFile)}`);
 
+/**
+ * One question to the person, on the terminal: the question and the preview go to standard error (standard output stays
+ * one JSON envelope) and the answer is one line from standard input. End of input answers with an empty line, which is "no".
+ */
+function askOnTerminal(question: string): Promise<string> {
+  return new Promise((resolve) => {
+    const lines = readline.createInterface({ input: process.stdin, output: process.stderr, terminal: true });
+    lines.once('close', () => {
+      resolve('');
+    });
+    lines.question(question, (answer) => {
+      resolve(answer);
+      lines.close();
+    });
+  });
+}
+
 process.exitCode = await runCliMain({
   argv: process.argv.slice(2),
   compose: () => composeHost({ cwd, env: process.env, stderr: process.stderr }),
@@ -33,6 +51,9 @@ process.exitCode = await runCliMain({
   stdout: process.stdout,
   stderr: process.stderr,
   cwd,
+  // `allow` needs a person: both standard input (the answer) and standard error (the preview and the question) must be a terminal.
+  isTTY: process.stdin.isTTY === true && process.stderr.isTTY === true,
+  prompt: askOnTerminal,
   init: {
     home: os.homedir(),
     cwd,

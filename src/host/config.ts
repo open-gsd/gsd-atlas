@@ -48,7 +48,8 @@ const indexerSchema = z
     }
   });
 
-const schema = z.strictObject({
+/** The strict schema of the whole file. Exported so the allow-entry writer validates its result with the loader's own rules. */
+export const USER_CONFIG_SCHEMA = z.strictObject({
   store: z.strictObject({ dir: absolutePath.optional() }).optional(),
   indexer: indexerSchema.optional(),
   gc: z.strictObject({ graceMs: z.int().nonnegative().optional() }).optional(),
@@ -67,10 +68,10 @@ const schema = z.strictObject({
     .optional(),
 });
 
-type Read = { readonly kind: 'ok'; readonly text: string } | { readonly kind: 'missing' } | { readonly kind: 'refused'; readonly why: string };
+export type BoundedRead = { readonly kind: 'ok'; readonly text: string } | { readonly kind: 'missing' } | { readonly kind: 'refused'; readonly why: string };
 
-/** Read the file through a bounded buffer, so a huge file is never loaded whole. */
-function readBounded(file: string): Read {
+/** Read the file through a bounded buffer, so a huge file is never loaded whole. The allow-entry writer reads with it too. */
+export function readBounded(file: string): BoundedRead {
   let fd: number;
   try {
     fd = fs.openSync(file, 'r');
@@ -100,6 +101,29 @@ function problemOf(error: z.ZodError): string {
   return `${where}: ${issue?.message ?? 'invalid'}`;
 }
 
+/** What a rejected issue of each zod code means, as fixed words: the writer's reason must not quote the file. */
+const ISSUE_WORDS: Readonly<Record<string, string>> = {
+  unrecognized_keys: 'unknown key',
+  invalid_type: 'wrong type',
+  invalid_format: 'malformed value',
+  invalid_value: 'value not allowed',
+  too_small: 'value too small',
+  too_big: 'value too large',
+};
+
+/**
+ * The first problem of a refused file as ONE sentence made only of fixed words and the schema's own key names: unlike
+ * {@link problemOf} it never carries a zod message, because zod quotes the offending key of an unknown-key issue, and
+ * that key is file content. A `custom` issue uses our own refinement text, which is a constant.
+ */
+export function fixedProblemOf(error: z.ZodError): string {
+  const issue = error.issues[0];
+  if (issue === undefined) return 'the file is invalid';
+  const where = issue.path.length === 0 ? 'the file' : issue.path.map(String).join('.');
+  const what = issue.code === 'custom' ? issue.message : (ISSUE_WORDS[issue.code] ?? 'invalid value');
+  return `${where}: ${what}`;
+}
+
 /**
  * Load the user's configuration. A missing file gives the defaults and no diagnostic. `GSD_ATLAS_STORE_DIR`, when
  * it is an absolute path, replaces `store.dir`; a relative one is ignored with a warning.
@@ -120,7 +144,7 @@ export function loadUserConfig(userDir: string, env: Readonly<Record<string, str
       diagnostics.push(ignored('it is not valid JSON'));
     }
     if (json !== undefined) {
-      const parsed = schema.safeParse(json);
+      const parsed = USER_CONFIG_SCHEMA.safeParse(json);
       if (parsed.success) config = parsed.data;
       else diagnostics.push(ignored(problemOf(parsed.error)));
     }

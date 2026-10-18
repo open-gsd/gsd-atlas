@@ -14,7 +14,9 @@ import type { MaintainTask } from '../tenant/index.ts';
 
 /**
  * The request kinds that name a repository. `index_state` is internal (plan 02-44): the CLI's `no index yet` hint asks
- * it, it is not an MCP tool and not a CLI command, so the six-tool profile (QRY-06) is unchanged.
+ * it, it is not an MCP tool and not a CLI command, so the six-tool profile (QRY-06) is unchanged. `allow` (D-15) is the
+ * CLI's two-step approval of one command: not an MCP tool either, refused by a Host started for MCP, served in the
+ * `interactive` class, and it needs no tenant and no store (it reads the repository's identity and writes the user's config).
  */
 export const REPO_KINDS = [
   'code_find',
@@ -26,6 +28,7 @@ export const REPO_KINDS = [
   'maintain',
   'status',
   'index_state',
+  'allow',
 ] as const;
 
 export type RepoKind = (typeof REPO_KINDS)[number];

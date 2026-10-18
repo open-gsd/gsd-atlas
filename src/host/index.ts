@@ -3,6 +3,8 @@
  * the tenant of its repository, schedules it through the Governor and returns an Envelope. Adapters reach it only
  * through the HostClient.
  */
+export { ALLOW_KIND, ALLOW_SCHEMA, addAllowEntry, applyAllow, previewAllow } from './allow.ts';
+export type { AddResult, AllowDeps, AllowEntry, AllowInput, AllowPreview, AllowResult, AllowWritten } from './allow.ts';
 export { loadUserConfig } from './config.ts';
 export type { LoadedUserConfig } from './config.ts';
 export { INDEX_STATE_SCHEMA, createHost } from './host.ts';
