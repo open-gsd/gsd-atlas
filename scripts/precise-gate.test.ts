@@ -88,7 +88,7 @@ describe('--nobreak (D-21, D-22)', () => {
     assert.equal(bounded.crashed, 0);
     assert.equal(bounded.unexplained, 0);
     assert.equal(bounded.workers.withinLimit, true, JSON.stringify(bounded.workers));
-    assert.equal(bounded.budget.rssLimitMb, limitMb);
+    assert.equal(bounded.workers.limitMb, limitMb);
     assert.ok(bounded.answers.some((answer) => answer.outcome === 'resolved'), 'at least one resolved answer');
   });
 
