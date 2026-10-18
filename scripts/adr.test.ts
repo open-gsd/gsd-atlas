@@ -484,6 +484,10 @@ const AMENDED: readonly AmendedAdr[] = [
         title: 'Parser pool deadlines',
         keywords: ['pool.loadTimeoutMs', '30,000', 'pool.terminateGraceMs', '7,000', 'parse_timeout', 'engine_init_failed'],
       },
+      {
+        title: 'TypeScript project model, adapter ids and manifest version 2',
+        keywords: ['adrDirs', 'schemaVersion', '.gsd-atlas/config.json', 'project.model', 'adapter', 'version 1'],
+      },
     ],
   },
   {
@@ -640,6 +644,19 @@ const AMENDED: readonly AmendedAdr[] = [
         title: 'One pathspec-free ls-files listing for the ignore check',
         keywords: ['--cached', '--pathspec-from-file', 'ls-files', '--literal-pathspecs', 'git-allowlist.test.ts'],
       },
+      {
+        title: 'Compiler worker built-in and exact-argv approvals',
+        keywords: [
+          'typescript-resolver',
+          'exact',
+          'sha256',
+          'stdout',
+          'stdin',
+          'max-old-space-size',
+          'sampler',
+          'D-21',
+        ],
+      },
     ],
   },
   {
@@ -735,6 +752,18 @@ const AMENDED: readonly AmendedAdr[] = [
     ],
     amendments: [
       { title: 'git runs repo-controlled code', keywords: GIT_HARDENING_KEYWORDS, extra: 'git-hardening' },
+      {
+        title: 'Per-command approvals, MCP origin and compiler trust',
+        keywords: [
+          'allow',
+          '--allow-build',
+          'needs_approval',
+          'repository files can never',
+          'sha256',
+          'residual risk',
+          'skills',
+        ],
+      },
     ],
   },
 ];
