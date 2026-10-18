@@ -29,7 +29,7 @@ import { createSourceTree } from '../source-tree/index.ts';
 import type { SourceTree } from '../source-tree/index.ts';
 import { DEFAULT_TENANT_TUNING, FLIGHT_FILE, FLIGHT_PREVIOUS_FILE, createFlightRecorder, createTenant, noRecentEnvelope, notIndexedNoStore } from '../tenant/index.ts';
 import type { Tenant } from '../tenant/index.ts';
-import { ALLOW_KIND, handleAllow, permissionsFor } from './allow.ts';
+import { ALLOW_KIND, handleAllow, needsApprovalFrom, permissionsFor } from './allow.ts';
 import type { AllowDeps } from './allow.ts';
 import { HOST_DEFAULTS } from './defaults.ts';
 import { DIAGNOSTICS_KIND, factsFromStatus, handleDiagnostics, platformFactsOf } from './diagnostics.ts';
@@ -178,6 +178,18 @@ export function createHost(options: HostOptions): Host {
       ...(config.providers === undefined ? {} : { providers: config.providers }),
       tiers: tierFor,
       knownAdapters,
+      // SEC-02 (plan 03-29): a language module's `precise.command` runs only for a command a person approved exactly, through
+      // this Host's own runner, and only when THIS Host may use the user's list (an MCP server has none without `--allow-build`).
+      commands: {
+        runner: getRunner(),
+        approved: (command) => {
+          const [executable, ...rest] = command;
+          if (executable === undefined || permissions === undefined || permissions.allow.length === 0) return false;
+          const decision = decide({ executable, args: rest, cwd: resolved.repoDir }, { repo: resolved.repoDir }, permissions);
+          return decision.allowed && decision.via === 'user';
+        },
+        needsApprovalFrom,
+      },
       ...(options.resolverFactory === undefined ? {} : { resolverFactory: options.resolverFactory }),
       ...(options.version === undefined ? {} : { version: options.version }),
       ...(options.metrics === undefined ? {} : { metrics: options.metrics }),

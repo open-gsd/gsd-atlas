@@ -8,6 +8,7 @@ import { assertOpen, readTransaction } from './parts.ts';
 import type { StoreParts } from './parts.ts';
 import { createReader } from './reader.ts';
 import type { DirtyGuard } from './recovery.ts';
+import { resolveAllSites } from './resolve.ts';
 import { SCHEMA_VERSION } from './schema.ts';
 import type {
   FactStore,
@@ -217,6 +218,17 @@ export function createStore(parts: StoreParts, lifecycle: StoreLifecycle = {}): 
     async check() {
       requireAuthority();
       return dirtied(() => checkStore(parts, lifecycle.rebuild));
+    },
+    async resolve(worktree, options) {
+      requireAuthority();
+      if (typeof options !== 'object' || options === null || !Number.isFinite(options.budgetMs) || options.budgetMs < 0) {
+        throw new RangeError('the resolve budget must be a finite number of milliseconds, zero or more');
+      }
+      if (options.batchSize !== undefined && (!Number.isInteger(options.batchSize) || options.batchSize < 1)) {
+        throw new RangeError('the resolve batch size must be a whole number of at least 1');
+      }
+      // Like collect and compact it writes derived rows with the writer connection and needs the lease, not the writer slot.
+      return dirtied(() => resolveAllSites(parts, worktree, options));
     },
     async maintain(budgetMs, options) {
       requireAuthority();

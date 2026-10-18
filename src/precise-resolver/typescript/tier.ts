@@ -8,9 +8,9 @@
  */
 import type { CommandRunner } from '../../command-runner/index.ts';
 import { diagnostic } from '../../facts/index.ts';
-import type { DegradedCode, Diagnostic, NoticingResolverPort, PreciseFacts, RelationsPort, ResolvedEdge, ResolvedRelation } from '../../facts/index.ts';
+import type { DegradedCode, Diagnostic, NoticingResolverPort, PreciseFacts, RelationsPort, ResolutionContext, ResolvedEdge, ResolvedRelation } from '../../facts/index.ts';
 import { TYPESCRIPT_RESOLVER_ID, createTuningMemory, createTypeScriptResolver } from './client.ts';
-import type { PreciseLimits, RelationStats, ResolverMemory, TypeScriptResolver, WorkerInfo } from './client.ts';
+import type { PreciseLimits, RelationStats, ResolverMemory, TypeScriptResolver, WireEvent, WorkerInfo } from './client.ts';
 import { compilerFallbackText } from './compiler.ts';
 import { createStats } from './identity.ts';
 import type { KindStats, Stats } from './identity.ts';
@@ -34,6 +34,12 @@ export interface PreciseTier {
   readonly memory: ResolverMemory;
   /** Forget every memory stop: the next read of a project that was stopped for memory starts a worker again (plan 03-27). */
   clearMemoryStop(): void;
+  /**
+   * Start the worker of `worktree` in the background (plan 03-29, Pitfall 5) so the first question after a start does not pay
+   * for it. Resolves when the worker is up or the attempt ended; never rejects and says nothing on failure. Absent on a tier
+   * that has nothing to start.
+   */
+  warm?(worktree: string, facts: PreciseFacts, context: ResolutionContext): Promise<void>;
   /** End every worker. Safe to call twice. */
   close(): Promise<void>;
 }
@@ -59,6 +65,8 @@ export interface TypeScriptTierTuning {
   readonly workerPath?: string;
   readonly bundledDir?: string;
   readonly onCleanup?: () => void;
+  /** TEST HOOK. Every message sent to or read from a worker (plan 03-29). */
+  readonly onWire?: (event: WireEvent) => void;
 }
 
 export interface TypeScriptTierDeps extends TypeScriptTierTuning {
@@ -123,6 +131,7 @@ export function createTypeScriptTier(deps: TypeScriptTierDeps): PreciseTier {
         memory,
         ...(deps.limits === undefined ? {} : { limits: deps.limits }),
         ...(deps.onCleanup === undefined ? {} : { onCleanup: deps.onCleanup }),
+        ...(deps.onWire === undefined ? {} : { onWire: deps.onWire }),
       });
       resolvers.set(worktree, resolver);
     }
@@ -182,6 +191,10 @@ export function createTypeScriptTier(deps: TypeScriptTierDeps): PreciseTier {
     },
     clearMemoryStop() {
       for (const each of resolvers.values()) each.clearMemoryStop();
+    },
+    async warm(worktree, facts, context) {
+      if (disabled || closed) return;
+      await resolverFor(worktree).warm(facts, context);
     },
     async close() {
       closed = true;

@@ -23,6 +23,7 @@ import { openDatabase } from '../sqlite/index.ts';
 import type { Db, DriverName } from '../sqlite/index.ts';
 import { FakeClock, makeTempDir } from '../test-kit/index.ts';
 import { contextKey, overlaySnapshotId, siteId } from './cache.ts';
+import { UnknownWorktree, WriterBusy } from './errors.ts';
 import { openFactStore } from './open.ts';
 import type { OpenFactStoreOptions } from './open.ts';
 import { STORE_FILE_NAME } from './schema.ts';
@@ -1606,6 +1607,359 @@ for (const driver of DRIVERS) {
         assert.deepStrictEqual(calls, []);
         writer.release();
       }, {}, resolver);
+    });
+  });
+}
+
+// ---------------------------------------------------------------------------------------------------------
+// The eager pass (plan 03-29, research Pattern 10): `FactStore.resolve` asks the resolver about every reference site of
+// an overlay in batches, stores the answers and the asked markers, and resumes from a cursor after a stop.
+// ---------------------------------------------------------------------------------------------------------
+
+/** Five files of seven `run` call sites each (35 sites) and the file that defines `run`; paths sort as `use0` to `use4`. */
+const MANY_FILES = 5;
+const SITES_PER_FILE = 7;
+
+async function seedMany(writer: Writer, worktree = 'main'): Promise<RefSiteKey[]> {
+  await writer.commitFile({
+    worktree,
+    path: 'src/lib.ts',
+    hash: H(1),
+    facts: fileOf('src/lib.ts', 1, {
+      symbols: [{ name: 'run', kind: 'function', span: span(1, 0, 3, 1), exported: true }],
+      exports: [{ name: 'run', span: span(1, 0, 3, 1) }],
+    }),
+  });
+  const sites: RefSiteKey[] = [];
+  for (let file = 0; file < MANY_FILES; file += 1) {
+    const filePath = `src/use${String(file)}.ts`;
+    const refSites = Array.from({ length: SITES_PER_FILE }, (_, index) => ({
+      name: 'run',
+      span: span(2 + index, 2, 2 + index, 5),
+      kind: 'call' as const,
+      importPath: './lib',
+    }));
+    await writer.commitFile({
+      worktree,
+      path: filePath,
+      hash: H(10 + file),
+      facts: fileOf(filePath, 10 + file, {
+        symbols: [{ name: `main${String(file)}`, kind: 'function', span: span(1, 0, 20, 1) }],
+        imports: [{ path: './lib', span: span(0, 0, 0, 22), style: 'es', bindings: [{ imported: 'run', local: 'run' }] }],
+        refSites,
+      }),
+    });
+    for (const site of refSites) sites.push({ path: filePath, span: site.span, name: site.name });
+  }
+  return sites;
+}
+
+/** A resolver that records the sites of each call and binds the sites on even lines to `run`; `during` runs inside each call. */
+function manyBinding(during?: () => Promise<void>): { readonly resolver: Resolver; readonly calls: RefSiteKey[][] } {
+  const calls: RefSiteKey[][] = [];
+  const resolver: Resolver = async function* (sites) {
+    calls.push([...sites]);
+    await during?.();
+    for (const site of sites) {
+      if (site.span.startLine % 2 === 0) yield { site, target: RUN, confidence: 'EXTRACTED', resolver: 'counting' };
+    }
+  };
+  return { resolver, calls };
+}
+
+const EVEN_LINES_PER_FILE = Array.from({ length: SITES_PER_FILE }, (_, index) => 2 + index).filter((line) => line % 2 === 0).length;
+const distinctSites = (calls: readonly RefSiteKey[][]): string[] => [...new Set(calls.flat().map(siteId))];
+
+/** Rows of `meta` whose name starts with `prefix`, read through a second connection. */
+const metaNamed = (db: Db, prefix: string): string[] =>
+  db
+    .prepare('SELECT name FROM meta ORDER BY name')
+    .all()
+    .map((row) => String(row.name))
+    .filter((name) => name.startsWith(prefix));
+
+for (const driver of DRIVERS) {
+  describe(`FactStore.resolve: the eager pass (${driver})`, () => {
+    it('resolve asks each site once: every reference site of the overlay, in batches of at most the batch size, with edges and markers stored', async () => {
+      const { resolver, calls } = manyBinding();
+      await withRig(
+        driver,
+        async (rig) => {
+          const writer = rig.store.writer();
+          const sites = await seedMany(writer);
+          const peek = await rig.peek();
+          const result = await rig.store.resolve('main', { budgetMs: 10_000, batchSize: 10 });
+          assert.equal(result.complete, true);
+          assert.equal(result.processed, 35);
+          assert.equal(typeof result.spentMs, 'number');
+          assert.deepStrictEqual(
+            calls.map((call) => call.length),
+            [10, 10, 10, 5],
+            'batches of at most ten, in path order',
+          );
+          assert.deepStrictEqual(calls.flat().map(siteId), sites.map(siteId), 'every site once, in path then position order');
+          assert.equal(count(peek, 'resolved_asked'), 35);
+          assert.equal(count(peek, 'resolved_edges'), MANY_FILES * EVEN_LINES_PER_FILE);
+
+          // The first read afterwards is a cache hit: the resolver is not called again.
+          const before = calls.length;
+          const refs = await rig.store.at('main').refs(RUN);
+          assert.equal(calls.length, before, 'the cache answered');
+          assert.equal(refs.degraded, undefined);
+          assert.equal(refs.data.length, 35);
+          for (const record of refs.data) {
+            assert.equal(record.tier, record.span.startLine % 2 === 0 ? 'precise' : 'grammar');
+          }
+          writer.release();
+        },
+        {},
+        resolver,
+      );
+    });
+
+    it('second pass asks nothing: a settled snapshot is complete with nothing processed, also after the store is opened again', async () => {
+      const { resolver, calls } = manyBinding();
+      await withRig(
+        driver,
+        async (rig) => {
+          const writer = rig.store.writer();
+          await seedMany(writer);
+          const first = await rig.store.resolve('main', { budgetMs: 10_000, batchSize: 10 });
+          assert.equal(first.processed, 35);
+          const asked = calls.length;
+          const second = await rig.store.resolve('main', { budgetMs: 10_000, batchSize: 10 });
+          assert.equal(second.complete, true);
+          assert.equal(second.processed, 0);
+          assert.equal(calls.length, asked);
+          writer.release();
+          const reopened = await rig.reopen();
+          const third = await reopened.resolve('main', { budgetMs: 10_000, batchSize: 10 });
+          assert.equal(third.complete, true);
+          assert.equal(third.processed, 0);
+          assert.equal(calls.length, asked, 'the markers and the cursor are stored, not held in memory');
+        },
+        {},
+        resolver,
+      );
+    });
+
+    it('tiny budget resumes: a budget of 1 ms makes progress and the next call continues from the cursor without asking a settled batch again', async () => {
+      let clock: FakeClock | undefined;
+      const { resolver, calls } = manyBinding(async () => {
+        await clock?.advance(5);
+      });
+      await withRig(
+        driver,
+        async (rig) => {
+          clock = rig.clock;
+          const writer = rig.store.writer();
+          const sites = await seedMany(writer);
+          const first = await rig.store.resolve('main', { budgetMs: 1, batchSize: 10 });
+          assert.equal(first.complete, false);
+          assert.ok(first.processed >= 10, 'at least one batch was asked');
+          assert.ok(calls.length >= 1);
+          let calls1 = calls.length;
+          let rounds = 0;
+          for (let again = await rig.store.resolve('main', { budgetMs: 1, batchSize: 10 }); !again.complete; again = await rig.store.resolve('main', { budgetMs: 1, batchSize: 10 })) {
+            assert.ok(calls.length > calls1, 'each call that is not complete made progress');
+            calls1 = calls.length;
+            rounds += 1;
+            assert.ok(rounds < 20, 'the pass ends');
+          }
+          assert.deepStrictEqual(calls.flat().map(siteId), sites.map(siteId), 'no batch was asked twice');
+          assert.equal(distinctSites(calls).length, 35);
+          writer.release();
+        },
+        {},
+        resolver,
+      );
+    });
+
+    it('a pass stopped in the middle resumes after the store is opened again: the markers stay and the next batch is the first unasked one', async () => {
+      let clock: FakeClock | undefined;
+      const { resolver, calls } = manyBinding(async () => {
+        await clock?.advance(5);
+      });
+      await withRig(
+        driver,
+        async (rig) => {
+          clock = rig.clock;
+          const writer = rig.store.writer();
+          const sites = await seedMany(writer);
+          const peek = await rig.peek();
+          const partial = await rig.store.resolve('main', { budgetMs: 1, batchSize: 10 });
+          assert.equal(partial.complete, false);
+          const askedBefore = count(peek, 'resolved_asked');
+          assert.ok(askedBefore >= 10 && askedBefore < 35, 'some of the sites are settled');
+          writer.release();
+          const reopened = await rig.reopen();
+          const rest = await reopened.resolve('main', { budgetMs: 10_000, batchSize: 10 });
+          assert.equal(rest.complete, true);
+          assert.equal(rest.processed, 35 - askedBefore);
+          assert.deepStrictEqual(calls.flat().map(siteId), sites.map(siteId), 'every site was asked once across the two runs');
+          assert.equal(count(peek, 'resolved_asked'), 35);
+        },
+        {},
+        resolver,
+      );
+    });
+
+    it('a resolver that fails stops the pass, settles nothing and reports the code; the next call asks again', async () => {
+      let broken = true;
+      const inner = manyBinding();
+      const resolver: Resolver = (sites, context, symbols, scope) => {
+        if (broken) {
+          return (async function* () {
+            throw new ResolverFailure('memory_budget', 'out of memory');
+          })();
+        }
+        return inner.resolver(sites, context, symbols, scope);
+      };
+      await withRig(
+        driver,
+        async (rig) => {
+          const writer = rig.store.writer();
+          await seedMany(writer);
+          const peek = await rig.peek();
+          const failed = await rig.store.resolve('main', { budgetMs: 10_000, batchSize: 10 });
+          assert.equal(failed.complete, false);
+          assert.equal(failed.processed, 0);
+          assert.ok(failed.degraded.includes('memory_budget'));
+          assert.equal(count(peek, 'resolved_asked'), 0);
+          broken = false;
+          const fixed = await rig.store.resolve('main', { budgetMs: 10_000, batchSize: 10 });
+          assert.equal(fixed.complete, true);
+          assert.equal(fixed.processed, 35);
+          writer.release();
+        },
+        {},
+        resolver,
+      );
+    });
+
+    it('a project with no compiler config asks nothing: the pass is complete at once and writes no marker', async () => {
+      const { resolver, calls } = manyBinding();
+      const precise: PreciseFacts = {
+        ownerOf: () => undefined,
+        requiresOwner: (p) => p.endsWith('.ts'),
+        compiler: { source: 'bundled', version: '6.0.3', case: 'none' },
+        configs: [],
+      };
+      const projectContext: ProjectContextProvider = async () => ({ context: { id: 'ts:bare', configHashes: [] }, precise });
+      await withRig(
+        driver,
+        async (rig) => {
+          const writer = rig.store.writer();
+          await seedMany(writer);
+          const peek = await rig.peek();
+          const result = await rig.store.resolve('main', { budgetMs: 10_000, batchSize: 10 });
+          assert.equal(result.complete, true);
+          assert.equal(result.processed, 0);
+          assert.equal(calls.length, 0);
+          assert.equal(count(peek, 'resolved_asked'), 0);
+          writer.release();
+        },
+        { projectContext },
+        resolver,
+      );
+    });
+
+    it('a file no compiler config owns is not asked: its sites cost no marker, the others are asked once, and the pass is complete', async () => {
+      const { resolver, calls } = manyBinding();
+      const precise: PreciseFacts = {
+        ownerOf: (p) => (p === 'src/use1.ts' || p === 'src/use3.ts' ? undefined : 'tsconfig.json'),
+        requiresOwner: (p) => p.endsWith('.ts'),
+        compiler: { source: 'bundled', version: '6.0.3', case: 'none' },
+        configs: ['tsconfig.json'],
+      };
+      const projectContext: ProjectContextProvider = async () => ({ context: { id: 'ts:owned', configHashes: ['aa'] }, precise });
+      await withRig(
+        driver,
+        async (rig) => {
+          const writer = rig.store.writer();
+          const sites = await seedMany(writer);
+          const peek = await rig.peek();
+          const result = await rig.store.resolve('main', { budgetMs: 10_000, batchSize: 10 });
+          const owned = sites.filter((site) => site.path !== 'src/use1.ts' && site.path !== 'src/use3.ts');
+          assert.equal(result.complete, true);
+          assert.equal(result.processed, owned.length);
+          assert.deepStrictEqual(calls.flat().map(siteId), owned.map(siteId), 'only the sites of owned files, in order');
+          assert.ok(calls.every((call) => call.length <= 10));
+          assert.equal(count(peek, 'resolved_asked'), owned.length);
+          const again = await rig.store.resolve('main', { budgetMs: 10_000, batchSize: 10 });
+          assert.equal(again.processed, 0);
+          writer.release();
+        },
+        { projectContext },
+        resolver,
+      );
+    });
+
+    it('the cursor is keyed by snapshot and context and a superseded snapshot loses its cursor', async () => {
+      const { resolver } = manyBinding();
+      await withRig(
+        driver,
+        async (rig) => {
+          const writer = rig.store.writer();
+          await seedMany(writer);
+          const peek = await rig.peek();
+          await rig.store.resolve('main', { budgetMs: 10_000, batchSize: 10 });
+          const first = metaNamed(peek, 'resolve_cursor:');
+          assert.equal(first.length, 1);
+          assert.match(first[0] ?? '', /^resolve_cursor:[0-9a-f]{64}:\d+$/);
+          await addNoise(writer, 1); // the overlay moves on: a new snapshot
+          const again = await rig.store.resolve('main', { budgetMs: 10_000, batchSize: 10 });
+          assert.equal(again.processed, 35, 'a new snapshot has no markers');
+          const second = metaNamed(peek, 'resolve_cursor:');
+          assert.equal(second.length, 1, 'the cursor of the superseded snapshot is gone');
+          assert.notDeepStrictEqual(second, first);
+          writer.release();
+        },
+        {},
+        resolver,
+      );
+    });
+
+    it('follower refused: a process that does not hold the writer lease gets WriterBusy and asks nothing', async () => {
+      const { resolver, calls } = manyBinding();
+      const tmp = makeTempDir();
+      const dir = path.join(tmp.path, 'store');
+      const deps: StoreDeps = { resolver, clock: new FakeClock(1000), gitHas: async () => true };
+      const opened: FactStore[] = [];
+      try {
+        const leader = await openFactStore(dir, deps, { driver, repo: 'repo', lease: 'acquire' });
+        opened.push(leader);
+        const follower = await openFactStore(dir, deps, { driver, repo: 'repo', lease: 'acquire' });
+        opened.push(follower);
+        const writer = leader.writer();
+        await seedMany(writer);
+        await assert.rejects(follower.resolve('main', { budgetMs: 10_000 }), WriterBusy);
+        assert.equal(calls.length, 0);
+        const led = await leader.resolve('main', { budgetMs: 10_000 });
+        assert.equal(led.complete, true);
+        writer.release();
+      } finally {
+        for (const store of opened) await store.close();
+        tmp.cleanup();
+      }
+    });
+
+    it('an unknown worktree and a bad budget are refused without asking anything', async () => {
+      const { resolver, calls } = manyBinding();
+      await withRig(
+        driver,
+        async (rig) => {
+          const writer = rig.store.writer();
+          await seedMany(writer);
+          await assert.rejects(rig.store.resolve('nowhere', { budgetMs: 10_000 }), UnknownWorktree);
+          await assert.rejects(rig.store.resolve('main', { budgetMs: -1 }), RangeError);
+          await assert.rejects(rig.store.resolve('main', { budgetMs: 10, batchSize: 0 }), RangeError);
+          assert.equal(calls.length, 0);
+          writer.release();
+        },
+        {},
+        resolver,
+      );
     });
   });
 }

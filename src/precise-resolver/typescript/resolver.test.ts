@@ -104,6 +104,35 @@ export function workerRunner(env?: Readonly<Record<string, string | undefined>>)
   });
 }
 
+/**
+ * A runner whose first compiler worker ends at once with an exit code, as a worker that could not start does; every later
+ * start, and every other process (git), is `inner`. A build's eager pass meets that failure and leaves the cache cold.
+ */
+export function failingFirstWorkerStart(inner: CommandRunner): CommandRunner {
+  let failed = false;
+  return {
+    run: (spec, ctx) => inner.run(spec, ctx),
+    stream(spec, ctx) {
+      if (failed || spec.builtinId !== 'typescript-resolver') return inner.stream(spec, ctx);
+      failed = true;
+      return {
+        stdout: (async function* (): AsyncGenerator<Uint8Array> {})(),
+        result: Promise.resolve({
+          ok: false,
+          exitCode: 1,
+          signal: null,
+          stdout: new Uint8Array(0),
+          stderr: new Uint8Array(0),
+          truncated: false,
+          timedOut: false,
+          diagnostics: [],
+        }),
+        kill() {},
+      };
+    },
+  };
+}
+
 /** A real repository, a Host over it with the TypeScript tier known, and everything cleaned up when the test ends. */
 export async function makeWorld(t: TestContext, files: Readonly<Record<string, string>> = FIXTURE, options: WorldOptions = {}): Promise<World> {
   const repo = await createTempGitRepo({
@@ -248,7 +277,10 @@ describe('TypeScript precise tier: a real worker over a fixture project', () => 
   });
 
   it('stale file yields no edge: a file changed after indexing gives no precise record and no error', async (t) => {
-    const world = await makeWorld(t, FIXTURE, { hook: true });
+    // Plan 03-29: the build now asks the compiler about every site, and the answers describe the text that was indexed. The
+    // case here is a compiler that reads the changed file for the first time after the edit, so the eager pass of the build
+    // loses its worker (a worker that could not start); the read then meets a cold cache and a fresh worker.
+    const world = await makeWorld(t, FIXTURE, { hook: true, runner: failingFirstWorkerStart(workerRunner()) });
     assert.equal((await world.build()).ok, true);
     // Shift every position by adding a line at the top; the overlay still holds the old positions.
     world.repo.write('src/user.cts', `// a new first line\n${USER}`);
@@ -276,6 +308,46 @@ describe('TypeScript precise tier: a real worker over a fixture project', () => 
     assert.doesNotThrow(() => process.kill(pid, 0), 'the worker is alive between the reads');
     await world.close();
     await waitGone(pid);
+  });
+});
+
+describe('TypeScript precise tier: the eager pass of build (plan 03-29)', () => {
+  it('first refs after build is a cache hit: precise EXTRACTED records on the first try and the compiler is not asked at read time', async (t) => {
+    const world = await makeWorld(t, FIXTURE);
+    const built = await world.build();
+    assert.equal(built.ok, true, JSON.stringify(built.diagnostics));
+    assert.deepEqual(built.diagnostics, [], 'a clean build has no notes');
+    const tier = world.tier();
+    assert.ok(tier !== undefined, 'a precise tier was built');
+    const askedByBuild = tier.stats().sites.asked;
+    assert.ok(askedByBuild >= 1, 'the build asked the compiler about the reference sites');
+
+    const envelope = await world.ask('code_refs', { name: 'compute', path: 'src/lib.cts' });
+    assert.equal(envelope.ok, true, JSON.stringify(envelope.diagnostics));
+    assert.equal((envelope.degraded ?? []).includes('resolver_timeout'), false, 'no timeout on the first read');
+    for (const code of envelope.degraded ?? []) assert.equal(code, 'compiler_fallback', `unexpected degraded code ${code}`);
+    const inUser = at(refRows(envelope), 'src/user.cts');
+    assert.equal(inUser.length, 2, JSON.stringify(refRows(envelope)));
+    for (const row of inUser) {
+      assert.equal(row.tier, 'precise');
+      assert.equal(row.confidence, 'EXTRACTED');
+    }
+    assert.equal(tier.stats().sites.asked, askedByBuild, 'the cache answered: the compiler was not asked at read time');
+  });
+
+  it('maintain resolve after a build processes nothing and the tier is not asked again', async (t) => {
+    const world = await makeWorld(t, FIXTURE);
+    assert.equal((await world.build()).ok, true);
+    const tier = world.tier();
+    assert.ok(tier !== undefined);
+    const asked = tier.stats().sites.asked;
+    const reply = await world.ask('maintain', { task: 'resolve' });
+    assert.equal(reply.ok, true, JSON.stringify(reply.diagnostics));
+    const report = (reply.data as { tasks: Record<string, { complete: boolean; processed: number; precise?: { asked: number; complete: boolean } }> }).tasks['resolve'];
+    assert.equal(report?.complete, true);
+    assert.equal(report?.processed, 0);
+    assert.equal(report?.precise?.complete, true);
+    assert.equal(tier.stats().sites.asked, asked);
   });
 });
 
@@ -623,6 +695,10 @@ describe('typed failures and the worker lifecycle (TSM-05)', () => {
     assert.ok(precise(warm.envelope), JSON.stringify(refRows(warm.envelope)));
     assert.equal(runner.workers.length, 1);
 
+    // Plan 03-29: the build's eager pass filled the cache, so the read that meets the dying worker needs a new snapshot: an
+    // added file, indexed by a reconcile, makes every cached answer a miss.
+    world.repo.write('src/extra.cts', 'export const extra = 1;\n');
+    assert.equal((await world.ask('maintain', { task: 'reconcile' })).ok, true);
     fs.writeFileSync(flag, 'kill');
     const killed = await world.ask('code_refs', { name: 'greet', path: 'src/lib.cts' });
     assert.ok((killed.degraded ?? []).includes('resolver_failed'), JSON.stringify(killed.degraded));

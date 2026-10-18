@@ -34,10 +34,27 @@ interface FileInfo {
   readonly starts: readonly number[];
 }
 
+/** What an `update` told a held program: the files to read again, the files that left, and whether the root files may differ. */
+interface Dirty {
+  /** Absolute file names (case-folded where the file system folds them) the compiler must read again. */
+  readonly changed: Set<string>;
+  readonly removed: Set<string>;
+  /** True when the set of root files may differ (a new or removed source file): the config is parsed again. */
+  reparse: boolean;
+  /** True when a path the program does not hold was reported: it may be new, and an import that failed before may now resolve. */
+  added: boolean;
+}
+
 interface ProgramEntry {
   readonly program: ts.Program;
   readonly checker: ts.TypeChecker;
   readonly files: Map<string, FileInfo>;
+  /** What the program was made from, so a rebuild with no config change does not parse the config again. */
+  readonly rootNames: readonly string[];
+  readonly options: ts.CompilerOptions;
+  readonly projectReferences: readonly ts.ProjectReference[] | undefined;
+  /** Set by `update`, applied at the next use of the program. */
+  dirty: Dirty | undefined;
 }
 
 if (process.env['GSD_ATLAS_WORKER'] !== '1') {
@@ -104,23 +121,101 @@ function init(message: Extract<Request, { t: 'init' }>): void {
   send({ t: 'ready', compiler: { version: loaded.version, source }, rssMb: process.memoryUsage().rss / 1_048_576, pid: process.pid, sampler: samplerRunning });
 }
 
-function createEntry(config: string): ProgramEntry | undefined {
-  const api = compiler as Compiler;
-  const configPath = path.join(rootDir, config);
+/** Source files read from disk since the last report (a rebuild with the old program reads only the files that changed). */
+let readsSinceReport = 0;
+
+const takeReads = (): number => {
+  const reads = readsSinceReport;
+  readsSinceReport = 0;
+  return reads;
+};
+
+/** A file name as the compiler compares it: folded where the file system folds names. */
+function fold(api: Compiler, name: string): string {
+  return api.sys.useCaseSensitiveFileNames ? name : name.toLowerCase();
+}
+
+/**
+ * The compiler's host with one change (plan 03-29): a file the previous program already holds, and that `invalid` does not
+ * name, is that program's own `SourceFile` object, not a new read. The compiler then sees an unchanged file and reuses what it
+ * knows about it (its binding, its resolved imports), so a rebuild after one edit reads one file. Everything else is the
+ * compiler's own default host, so a first build reads exactly what it always did.
+ */
+function cachingHost(api: Compiler, options: ts.CompilerOptions, previous: ts.Program | undefined, invalid: ReadonlySet<string>): ts.CompilerHost {
+  const host = api.createCompilerHost(options);
+  const read = host.getSourceFile.bind(host);
+  host.getSourceFile = (fileName, languageVersionOrOptions, onError, shouldCreateNewSourceFile) => {
+    const held = invalid.has(fold(api, fileName)) ? undefined : previous?.getSourceFile(fileName);
+    if (held !== undefined) return held;
+    readsSinceReport += 1;
+    return read(fileName, languageVersionOrOptions, onError, shouldCreateNewSourceFile);
+  };
+  return host;
+}
+
+/** The config's root files, options and references, or undefined when the config cannot be read. */
+function parseConfig(api: Compiler, config: string): { rootNames: readonly string[]; options: ts.CompilerOptions; projectReferences: readonly ts.ProjectReference[] | undefined } | undefined {
   const host: ts.ParseConfigFileHost = {
     ...api.sys,
     useCaseSensitiveFileNames: api.sys.useCaseSensitiveFileNames,
     getCurrentDirectory: () => rootDir,
     onUnRecoverableConfigFileDiagnostic: () => {},
   };
-  const parsed = api.getParsedCommandLineOfConfigFile(configPath, {}, host);
+  const parsed = api.getParsedCommandLineOfConfigFile(path.join(rootDir, config), {}, host);
   if (parsed === undefined) return undefined;
+  return { rootNames: parsed.fileNames, options: { ...parsed.options, noEmit: true }, projectReferences: parsed.projectReferences };
+}
+
+const sameRoots = (a: readonly string[], b: readonly string[]): boolean => a.length === b.length && a.every((name, index) => name === b[index]);
+
+/**
+ * A program for `config`. Without `previous` it is made from the files on disk. With `previous` (a held program that `update`
+ * marked) it is made from the old program: the files named dirty are read again, every other file is the old program's own,
+ * and the config is parsed again only when a source file may have been added or removed. Returns `previous` itself when the
+ * update turned out to change nothing the program is made of (a file outside the project), and undefined when the config can
+ * no longer be read.
+ */
+function createEntry(config: string, previous?: ProgramEntry): ProgramEntry | undefined {
+  const api = compiler as Compiler;
+  const dirty = previous?.dirty;
+  let roots: { readonly rootNames: readonly string[]; readonly options: ts.CompilerOptions; readonly projectReferences: readonly ts.ProjectReference[] | undefined };
+  let rootsChanged = false;
+  if (previous !== undefined && dirty?.reparse !== true) {
+    roots = previous;
+  } else {
+    const parsed = parseConfig(api, config);
+    if (parsed === undefined) return undefined;
+    rootsChanged = previous !== undefined && !sameRoots(previous.rootNames, parsed.rootNames);
+    roots = parsed;
+  }
+  if (previous !== undefined && !rootsChanged && dirty !== undefined && dirty.changed.size === 0 && dirty.removed.size === 0 && !dirty.added) {
+    previous.dirty = undefined;
+    return previous;
+  }
+  // A source file that appeared or went away can change what an unchanged file's imports mean, so those are resolved again.
+  const resolutionsChanged = rootsChanged || (dirty?.added ?? false) || (dirty?.removed.size ?? 0) > 0;
+  const invalid = new Set<string>([...(dirty?.changed ?? []), ...(dirty?.removed ?? [])]);
+  const host = cachingHost(api, roots.options, previous?.program, invalid);
+  if (resolutionsChanged) host.hasInvalidatedResolutions = () => true;
   const program = api.createProgram({
-    rootNames: parsed.fileNames,
-    options: { ...parsed.options, noEmit: true },
-    ...(parsed.projectReferences === undefined ? {} : { projectReferences: parsed.projectReferences }),
+    rootNames: [...roots.rootNames],
+    options: roots.options,
+    host,
+    ...(roots.projectReferences === undefined ? {} : { projectReferences: [...roots.projectReferences] }),
+    ...(previous === undefined ? {} : { oldProgram: previous.program }),
   });
-  return { program, checker: program.getTypeChecker(), files: new Map() };
+  // The line tables of the files that did not change are still right.
+  const files = new Map<string, FileInfo>();
+  if (previous !== undefined) for (const [name, info] of previous.files) if (!invalid.has(fold(api, name))) files.set(name, info);
+  return {
+    program,
+    checker: program.getTypeChecker(),
+    files,
+    rootNames: roots.rootNames,
+    options: roots.options,
+    projectReferences: roots.projectReferences,
+    dirty: undefined,
+  };
 }
 
 function infoOf(entry: ProgramEntry, file: ts.SourceFile): FileInfo {
@@ -245,8 +340,11 @@ function trimPrograms(keep: string | undefined): void {
   }
 }
 
-/** What a finished request reports besides its counts: the programs held and the resident memory (observation only). */
-const status = (): { programs: number; rssMb: number } => ({ programs: programs.size, rssMb: process.memoryUsage.rss() / 1_048_576 });
+/** What a finished request reports besides its counts: the programs held, the resident memory and the files read (observation only). */
+const status = (): { programs: number; rssMb: number; reads: number } => ({ programs: programs.size, rssMb: process.memoryUsage.rss() / 1_048_576, reads: takeReads() });
+
+/** True once the process is past `PROGRAM_EVICT_FRACTION` of its RSS limit: not the time to hold an old and a new program at once. */
+const underPressure = (): boolean => rssLimitBytes !== undefined && process.memoryUsage.rss() > rssLimitBytes * PROGRAM_EVICT_FRACTION;
 
 /** The compiler and the program of an owner config, or undefined after the failure has been reported for request `id`. */
 function programFor(id: number, config: string): { readonly api: Compiler; readonly entry: ProgramEntry } | undefined {
@@ -260,14 +358,26 @@ function programFor(id: number, config: string): { readonly api: Compiler; reado
     return undefined;
   }
   let entry = programs.get(config);
+  let previous: ProgramEntry | undefined;
+  if (entry?.dirty !== undefined) {
+    // An update marked this program (plan 03-29). Past the memory rule the old program goes first and the new one is built from
+    // the files on disk; otherwise the new one is built from the old one, which then ends (research Pitfall 4: the transient
+    // double of an incremental update is what the limit is for).
+    if (underPressure()) programs.delete(config);
+    else previous = entry;
+    entry = undefined;
+  }
   if (entry === undefined) {
+    if (previous === undefined) programs.delete(config);
     // Room first: building a program while the process is already large is what the limit is for.
-    trimPrograms(undefined);
-    entry = createEntry(config);
+    trimPrograms(config);
+    entry = createEntry(config, previous);
     if (entry === undefined) {
+      programs.delete(config);
       fail(id, 'config_unreadable', 'the config could not be read');
       return undefined;
     }
+    programs.delete(config);
     programs.set(config, entry);
     trimPrograms(config);
   } else {
@@ -276,6 +386,46 @@ function programFor(id: number, config: string): { readonly api: Compiler; reado
     programs.set(config, entry);
   }
   return { api, entry };
+}
+
+/**
+ * Plan 03-29 (TSM-06): remember what changed in the programs this worker holds. Nothing is rebuilt here; each marked program is
+ * rebuilt from its old self when a request next uses it, so a burst of updates costs one rebuild and a program nobody asks about
+ * costs none. A program the worker does not hold (never built, or dropped by the memory rule) needs no mark: it is built from
+ * the files on disk when it is needed. A path no held program contains is only a hint that a source file may have been added.
+ */
+function update(message: Extract<Request, { t: 'update' }>): void {
+  const api = compiler;
+  if (api === undefined) {
+    fail(message.id, 'not_initialized', 'the worker has not been initialized');
+    return;
+  }
+  const absolute = (rel: string): string => fold(api, `${rootPosix}/${rel}`);
+  for (const [config, entry] of [...programs]) {
+    // A changed config may mean other options: that program ends and is built from the files when it is next needed.
+    if (message.changed.includes(config)) {
+      programs.delete(config);
+      continue;
+    }
+    const holds = (rel: string): boolean => entry.program.getSourceFile(`${rootPosix}/${rel}`) !== undefined;
+    const mark: Dirty = entry.dirty ?? { changed: new Set<string>(), removed: new Set<string>(), reparse: false, added: false };
+    for (const rel of message.changed) {
+      if (holds(rel)) {
+        mark.changed.add(absolute(rel));
+      } else {
+        mark.reparse = true;
+        mark.added = true;
+      }
+    }
+    for (const rel of message.removed) {
+      if (holds(rel)) {
+        mark.removed.add(absolute(rel));
+        mark.reparse = true;
+      }
+    }
+    if (mark.changed.size > 0 || mark.removed.size > 0 || mark.added) entry.dirty = mark;
+  }
+  send({ t: 'done', id: message.id, asked: 0, answered: 0, ...status() });
 }
 
 /** The relations of the classes and interfaces declared in the requested files (plan 03-25). */
@@ -331,6 +481,9 @@ function handle(line: string): void {
         return;
       case 'relations':
         relations(message);
+        return;
+      case 'update':
+        update(message);
         return;
       case 'ping':
         send({ t: 'done', id: message.id, asked: 0, answered: 0 });

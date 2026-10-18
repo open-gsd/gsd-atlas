@@ -18,7 +18,7 @@ import { createPooledGrammarEngine } from '../grammar-engine/index.ts';
 import { createInProcessHostClient } from '../host-client/index.ts';
 import type { HostClient, Roots } from '../host-client/index.ts';
 import { createHost, createTierMemory, defaultStateDir, loadUserConfig, permissionsFor } from '../host/index.ts';
-import type { Host, HostOrigin } from '../host/index.ts';
+import type { Host, HostOptions, HostOrigin } from '../host/index.ts';
 import { createParcelEventSource } from '../indexer/index.ts';
 import { resolveWorkerPath } from '../precise-resolver/index.ts';
 import type { PreciseTier, TypeScriptTierTuning } from '../precise-resolver/index.ts';
@@ -63,6 +63,11 @@ export interface ComposeOptions {
   readonly totalMemBytes?: number;
   /** TEST HOOK. Tuning of the TypeScript tier (limits, sampler period). The memory budget and pool are always the Host's own. */
   readonly precise?: Omit<TypeScriptTierTuning, 'memory'>;
+  /**
+   * TEST HOOK. Tuning of every tenant (plan 03-29: `resolveBoundMs: 0` builds without the eager compiler pass, which the
+   * measurement script `precise-gate.ts --lazy` uses to look at the reads' own memory behavior). Production omits it.
+   */
+  readonly tuning?: HostOptions['tuning'];
 }
 
 export interface Composed {
@@ -125,6 +130,7 @@ export function composeHost(options: ComposeOptions): Composed {
     knownAdapters: KNOWN_ADAPTERS,
     precise: { ...options.precise, memory },
     ...(options.tierHook === undefined ? {} : { tierHook: options.tierHook }),
+    ...(options.tuning === undefined ? {} : { tuning: options.tuning }),
   });
   const client = createInProcessHostClient({ roots, engine, host });
 

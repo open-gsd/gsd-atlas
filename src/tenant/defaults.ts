@@ -1,3 +1,4 @@
+import { PRECISE_DEFAULTS } from '../precise-resolver/index.ts';
 import type { TenantTuning } from './types.ts';
 
 /**
@@ -15,6 +16,11 @@ import type { TenantTuning } from './types.ts';
  * 2026-10-18), DIAGNOSTICS.md section 9.1, locked.
  * - `flightMaxEvents`: `recorder.maxEvents`, the events the flight recorder keeps (2000).
  * - `flightMaxBytes`: `recorder.maxBytes`, the bytes the flight recorder keeps (5242880).
+ *
+ * Plan 03-29 (same file, `precise.*` rows), taken from the precise-resolver's own copy of the approved values so there is one:
+ * - `resolveBoundMs`: `precise.requestTimeoutMs`, the bound of the eager pass after a build and of a module command (25000 ms).
+ * - `resolveBatchSites`: `precise.sitesPerRequest`, the sites one resolver call of the eager pass carries (2000).
+ * - `warmStart`: whether the compiler worker is started in the background over an indexed worktree (true; not a constant).
  */
 export const DEFAULT_TENANT_TUNING: TenantTuning = {
   maintenanceSliceMs: 200,
@@ -24,4 +30,7 @@ export const DEFAULT_TENANT_TUNING: TenantTuning = {
   takeoverRetryMaxMs: 30000,
   flightMaxEvents: 2000,
   flightMaxBytes: 5242880,
+  resolveBoundMs: PRECISE_DEFAULTS.requestTimeoutMs,
+  resolveBatchSites: PRECISE_DEFAULTS.sitesPerRequest,
+  warmStart: true,
 };

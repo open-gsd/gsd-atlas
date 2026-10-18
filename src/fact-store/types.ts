@@ -10,6 +10,7 @@ import type {
   Answer,
   Clock,
   Confidence,
+  DegradedCode,
   Diagnostic,
   FileFacts,
   ImportStyle,
@@ -417,6 +418,37 @@ export interface MaintenanceResult {
   readonly processed: number;
 }
 
+/** What {@link FactStore.resolve} is asked: the time box, and how many sites one resolver call may carry. */
+export interface ResolveBatchOptions extends MaintenanceOptions {
+  /**
+   * The most reference sites one resolver call is given. Default 2000, the approved `precise.sitesPerRequest`. A whole
+   * number of at least 1.
+   */
+  readonly batchSize?: number;
+}
+
+/**
+ * Outcome of the eager resolution pass (plan 03-29). `processed` is the number of reference sites the resolver was asked
+ * about in this call (a site that was settled before is not counted). `complete` is false when the time box ran out or the
+ * resolver failed; the call can be repeated and resumes where the last one stopped.
+ */
+export interface ResolveResult extends MaintenanceResult {
+  /** Sites asked in this call (the same number as `processed`). */
+  readonly asked: number;
+  /** Of those, the sites for which the resolver produced an edge the store kept. */
+  readonly answered: number;
+  /**
+   * The degraded codes the resolver or the cache produced while the pass ran: a failure (`resolver_failed`,
+   * `memory_budget`, `cache_unavailable`) that stopped the pass, or a state (`compiler_fallback`, `precise_unavailable`).
+   */
+  readonly degraded: readonly DegradedCode[];
+  /**
+   * Why an incomplete call stopped: `budget` (the time box ran out; the pass is only late) or `failure` (the resolver or the
+   * cache failed; `degraded` names the code, and repeating the call asks again). Absent when `complete`.
+   */
+  readonly stopped?: 'budget' | 'failure';
+}
+
 export interface CheckResult {
   readonly ok: boolean;
   /** One line per problem found. A failed `quick_check` also moves the file aside and rebuilds (A17). */
@@ -467,6 +499,17 @@ export interface FactStore {
 
   /** Compact the file (incremental vacuum, checkpoint) within the budget. */
   compact(options: MaintenanceOptions): Promise<MaintenanceResult>;
+
+  /**
+   * The eager resolution pass (plan 03-29, research Pattern 10; amends ADR 7): ask the resolver about the reference sites of
+   * `worktree`'s overlay, in path order and in batches of at most `options.batchSize`, validate the answers the way a read
+   * does, and store the edges and the asked markers, so the first read after a build is a cache hit. It is time-boxed
+   * (`options.budgetMs`, checked between batches; at least one batch runs per call), resumable (a cursor in `meta`, keyed by
+   * overlay snapshot and resolution context, and the asked markers) and idempotent (a settled snapshot asks nothing).
+   * Needs write authority like the other tasks: a follower gets `WriterBusy`. Throws `UnknownWorktree` for a worktree nobody
+   * built. A resolver that fails never throws: the pass stops and reports the code in `degraded`.
+   */
+  resolve(worktree: WorktreeId, options: ResolveBatchOptions): Promise<ResolveResult>;
 
   /** Integrity check. */
   check(): Promise<CheckResult>;

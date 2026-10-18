@@ -330,9 +330,17 @@ describe('precise refs over the real stdio server (D-07)', () => {
     try {
       await withFixture(fixture, async (f) => {
         assert.equal((await f.cli(['build', '--repo', f.dir])).code, 0);
+        // Plan 03-29: the build's own worker loaded the project compiler and wrote its pid; it is gone with the build. The
+        // server's worker starts only for a question the cache cannot answer, so a new file (a new snapshot) makes one.
+        assert.equal(fs.existsSync(marker), true, 'the build ran the eager compiler pass');
+        fs.rmSync(marker);
+        f.repo.write('src/extra.cts', 'export const extra = 1;\n');
         const server = f.mcp();
         await server.initialize();
-        await refsOverMcp(server, f);
+        for (let read = 0; read < 20 && !fs.existsSync(marker); read += 1) {
+          await refsOverMcp(server, f);
+          if (!fs.existsSync(marker)) await sleep(300);
+        }
         await waitFor(() => fs.existsSync(marker), 'the worker to record its pid');
         const pid = Number(fs.readFileSync(marker, 'utf8'));
         assert.ok(Number.isInteger(pid) && pid > 0);

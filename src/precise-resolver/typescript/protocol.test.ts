@@ -11,6 +11,8 @@ const REQUESTS: readonly Request[] = [
   { t: 'init', protocol: 1, worktreeRoot: '/work/repo', compilerDir: '/work/repo/node_modules/typescript', bundledDir: '/pkg/typescript', configs: [], heapMb: 512 },
   { t: 'resolve', id: 7, config: 'tsconfig.json', sites: [SITE, { ...SITE, row: 9 }] },
   { t: 'resolve', id: 0, config: 'packages/a/tsconfig.json', sites: [] },
+  { t: 'update', id: 4, changed: ['src/lib.cts', 'src/new.cts'], removed: ['src/old.cts'] },
+  { t: 'update', id: 5, changed: [], removed: [] },
   { t: 'ping', id: 3 },
 ];
 
@@ -20,6 +22,7 @@ const RESPONSES: readonly Response[] = [
   { t: 'edge', id: 7, site: SITE, targets: [TARGET] },
   { t: 'edge', id: 7, site: SITE, targets: [] },
   { t: 'done', id: 7, asked: 2, answered: 1 },
+  { t: 'done', id: 8, asked: 0, answered: 0, programs: 1, rssMb: 120.5, reads: 1 },
   { t: 'error', id: 7, code: 'bad_site', message: 'a site was refused' },
   { t: 'error', id: null, code: 'init_failed', message: 'the compiler could not be loaded' },
 ];
@@ -90,6 +93,17 @@ describe('worker protocol', () => {
   it('more sites than one request may carry are rejected', () => {
     const sites = Array.from({ length: PRECISE_LIMITS.sitesPerRequest + 1 }, (_, i) => ({ ...SITE, row: i }));
     assert.equal(parseRequest(JSON.stringify({ t: 'resolve', id: 1, config: 'tsconfig.json', sites })).ok, false);
+  });
+
+  it('an update carries at most one request of paths in each list, no empty path and nothing else', () => {
+    const many = Array.from({ length: PRECISE_LIMITS.sitesPerRequest + 1 }, (_, i) => `src/f${String(i)}.cts`);
+    assert.equal(parseRequest(JSON.stringify({ t: 'update', id: 1, changed: many.slice(0, PRECISE_LIMITS.sitesPerRequest), removed: [] })).ok, true);
+    assert.equal(parseRequest(JSON.stringify({ t: 'update', id: 1, changed: many, removed: [] })).ok, false);
+    assert.equal(parseRequest(JSON.stringify({ t: 'update', id: 1, changed: [], removed: many })).ok, false);
+    assert.equal(parseRequest(JSON.stringify({ t: 'update', id: 1, changed: [''], removed: [] })).ok, false);
+    assert.equal(parseRequest(JSON.stringify({ t: 'update', id: 1, changed: [], removed: [], extra: 1 })).ok, false);
+    assert.equal(parseRequest(JSON.stringify({ t: 'update', changed: [], removed: [] })).ok, false);
+    assert.equal(parseRequest(JSON.stringify({ t: 'update', id: 1, changed: ['a'] })).ok, false);
   });
 
   it('a refusal names the field and the problem and quotes no file text', () => {

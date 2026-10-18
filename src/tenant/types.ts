@@ -3,8 +3,9 @@
  * per-repository state: Source Tree, Fact Store (with the writer lease), Indexer, Query and Metrics. The Grammar
  * Engine, the CommandRunner and the Governor are shared across tenants and arrive as dependencies.
  */
+import type { CommandResult, CommandRunner } from '../command-runner/index.ts';
 import type { Resolver, StoreLocation, StoreStatus, openFactStore } from '../fact-store/index.ts';
-import type { Clock, Envelope, Request } from '../facts/index.ts';
+import type { Clock, DegradedCode, Diagnostic, Envelope, Request } from '../facts/index.ts';
 import type { Governor, GovernorStatus } from '../governor/index.ts';
 import type { GrammarEngine } from '../grammar-engine/index.ts';
 import type { EventSource, Indexer, IndexerConfig, IndexerDeps, IndexerStatus } from '../indexer/index.ts';
@@ -42,6 +43,19 @@ export interface TenantTuning {
   readonly flightMaxEvents: number;
   /** Bytes the flight recorder keeps (`recorder.maxBytes`, 03-CONSTANTS.md). */
   readonly flightMaxBytes: number;
+  /**
+   * The time bound of the eager resolution pass that follows a build, and of an approved `precise.command` (plan 03-29):
+   * `precise.requestTimeoutMs`, 03-CONSTANTS.md (25000 ms). Zero or less turns the pass after a build off, so every read meets
+   * a cold cache (a measurement hook of `scripts/precise-gate.ts --lazy`; `maintain resolve` still works).
+   */
+  readonly resolveBoundMs: number;
+  /** The most reference sites one resolver call of the eager pass carries: `precise.sitesPerRequest`, 03-CONSTANTS.md (2000). */
+  readonly resolveBatchSites: number;
+  /**
+   * Start the precise tier's worker in the background when the Tenant starts over a worktree that is already indexed (plan
+   * 03-29, Pitfall 5). False leaves the first question to start it, as before; a measurement hook, not a setting.
+   */
+  readonly warmStart: boolean;
 }
 
 export interface TenantDeps {
@@ -79,6 +93,11 @@ export interface TenantDeps {
   readonly knownAdapters?: readonly string[];
   /** TEST HOOK. The store's resolver for this repository, given its directory; wins over `tiers`. Production omits it. */
   readonly resolverFactory?: (repoDir: string) => Resolver;
+  /**
+   * How a language module's `precise.command` is run (plan 03-29, SEC-02). Built by the Host. Absent: no command is ever run
+   * and `maintain resolve` does not look for one.
+   */
+  readonly commands?: CommandGate;
   /** The version of this build, recorded in a new store. */
   readonly version?: string;
   /**
@@ -96,6 +115,50 @@ export interface TenantDeps {
   readonly tuning?: Partial<TenantTuning>;
 }
 
+/**
+ * What the Tenant needs to run a language module's `precise.command` (plan 03-29, SEC-02). The Host builds it from its own runner
+ * and the permission list THIS Host may use (an MCP server has none unless it was started with `--allow-build`), so the Tenant
+ * never reads a permission, a config or a hash of its own.
+ */
+export interface CommandGate {
+  /** The Host's runner: the only thing that starts a process, and the owner of the last word on a permission. */
+  readonly runner: CommandRunner;
+  /** True when a person approved exactly this command (executable first) for this repository and this Host may use the approval. */
+  approved(command: readonly string[]): boolean;
+  /** Maps a refused start to the degraded answer and its fixed diagnostic; null for anything else. */
+  needsApprovalFrom(result: Pick<CommandResult, 'denied'>): { readonly degraded: Extract<DegradedCode, 'needs_approval'>; readonly diagnostic: Diagnostic } | null;
+}
+
+/**
+ * What running a language module's approved `precise.command` came to (plan 03-29, SEC-02). Only the facts of the process, never
+ * what it printed: its output is neither stored nor returned.
+ */
+export interface CommandReport {
+  /** True when the command was started. False when it was not approved (or could not be started). */
+  readonly ran: boolean;
+  /** True when it ended with exit code 0 inside its time limit. */
+  readonly ok: boolean;
+  readonly exitCode: number | null;
+  readonly signal: string | null;
+  readonly timedOut: boolean;
+  /** How long it ran, in milliseconds. */
+  readonly ms: number;
+  /** True when the command was not started because the person has not approved exactly this command for this repository. */
+  readonly needsApproval: boolean;
+}
+
+/** What the eager resolution pass of `resolve` did (plan 03-29). */
+export interface PreciseReport {
+  /** Reference sites the resolver was asked about in this run. */
+  readonly asked: number;
+  /** Of those, the sites it produced an edge for. */
+  readonly answered: number;
+  /** True when the pass reached the end of the overlay. */
+  readonly complete: boolean;
+  /** `resolve` only, for a module that declares a `precise.command`. */
+  readonly command?: CommandReport;
+}
+
 /** What one maintenance task did. */
 export interface TaskReport {
   /** True when the task finished; false when its slice bound ran out first. */
@@ -107,6 +170,8 @@ export interface TaskReport {
   readonly note?: string;
   /** `check` only: whether the integrity check passed. */
   readonly ok?: boolean;
+  /** `resolve` only, when a precise tier or a module command took part. */
+  readonly precise?: PreciseReport;
 }
 
 export interface MaintainOptions {
