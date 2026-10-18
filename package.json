@@ -38,6 +38,7 @@
     "size-gate": "node scripts/size-gate.ts",
     "gates:corpus": "node scripts/corpus-gates.ts",
     "gates:freshness": "node scripts/freshness-gate.ts",
+    "gates:precise": "node scripts/precise-gate.ts --strict --corpus gsd-core",
     "prepack": "npm run build"
   },
   "dependencies": {

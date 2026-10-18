@@ -201,9 +201,10 @@ describe('--nobreak command line', () => {
     return { written, write: (text: string): boolean => (written.push(text), true) };
   };
 
-  it('exits 2 with a usage line for a missing directory, a bad budget, and both modes at once', async () => {
+  it('exits 2 with a usage line for a missing corpus, a bad budget, and both modes at once', async () => {
     for (const argv of [
-      ['--nobreak', '--corpus', 'gsd-pi'],
+      ['--nobreak'],
+      ['--nobreak', '--corpus', 'gsd-pi', '--dir', path.join(repo.dir, 'no-such-checkout')],
       ['--nobreak', '--corpus', 'gsd-pi', '--dir', repo.dir, '--budget-mb', 'lots'],
       ['--nobreak', '--corpus', 'gsd-pi', '--dir', repo.dir, '--budget-mb', '0'],
       ['--nobreak', '--trace', '--corpus', 'gsd-pi', '--dir', repo.dir],
@@ -215,6 +216,38 @@ describe('--nobreak command line', () => {
       assert.match(err.written.join(''), /usage:/);
       assert.equal(out.written.length, 0);
     }
+  });
+
+  it('without --dir the pinned corpus is fetched, traced and removed (the nightly gsd-pi step)', async () => {
+    const calls: string[] = [];
+    const report = { ok: true, answers: [] } as unknown as NoBreakReport;
+    const out = sink();
+    const err = sink();
+    const code = await main(
+      ['--nobreak', '--corpus', 'gsd-pi'],
+      { stdout: out, stderr: err },
+      {
+        fetchCheckout: (corpus, prepared) => {
+          calls.push(`fetch ${corpus} ${String(prepared)}`);
+          return Promise.resolve({ dir: repo.dir, cleanup: () => void calls.push('cleanup') });
+        },
+        runNoBreak: (options) => {
+          calls.push(`trace ${options.corpus} ${path.basename(options.dir) === path.basename(fs.realpathSync.native(repo.dir)) ? 'in the fetched checkout' : options.dir}`);
+          return Promise.resolve(report);
+        },
+      },
+    );
+    assert.equal(code, 0, err.written.join(''));
+    assert.deepStrictEqual(calls, ['fetch gsd-pi false', 'trace gsd-pi in the fetched checkout', 'cleanup']);
+
+    // A fetch that fails is a failed gate with the reason, not a pass, and nothing is traced.
+    const failed = sink();
+    const failedErr = sink();
+    assert.equal(
+      await main(['--nobreak', '--corpus', 'gsd-pi'], { stdout: failed, stderr: failedErr }, { fetchCheckout: () => Promise.reject(new Error('fetch_failed: offline')), runNoBreak: () => Promise.reject(new Error('must not run')) }),
+      1,
+    );
+    assert.match(failedErr.written.join(''), /precise-gate: fetch_failed: offline/);
   });
 });
 

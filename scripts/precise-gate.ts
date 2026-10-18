@@ -40,6 +40,36 @@
  * TypeScript 6.x is used). Without `--dir` this script prepares one in a temporary directory, which uses the network. The
  * checkout is only read; the store, the user directory and the cache go to a temporary directory that is removed at the end.
  * Dev-time tooling: nothing in the shipped package imports it.
+ *
+ * node scripts/precise-gate.ts [--pr | --strict] --corpus gsd-core|fixture [--dir <checkout>] [--prepared] [--samples-update n] [--samples-warm n]
+ *
+ * THE GATE (plan 03-30, D-10, TSM-06, ROADMAP criterion 2). Three budgets, judged two ways like the freshness gate: the pull
+ * request tier (`--pr`) uses the approved loose ceilings `gate.buildPrCeilingMs`, `gate.updatePrCeilingMs` and
+ * `gate.warmQueryPrCeilingMs`; the strict tier (`--strict`, nightly and local) uses the roadmap figures `gate.buildStrictMs`
+ * (30 s), `gate.updateStrictMs` (5 s) and `gate.warmQueryStrictMs` (2 s). Every one is a row of 03-CONSTANTS.md that a person
+ * approved; the exported constants carry the key in their names and a test compares them with the file. There is no flag that
+ * moves a ceiling: an unknown flag is a usage error (exit 2).
+ *
+ * MEASUREMENT RULES (stated once, here):
+ *   - build: the clock starts when the `build` request is sent and stops when it returns. The index build and the eager
+ *     compiler pass of plan 03-29 are both inside it. One sample.
+ *   - update: for each sample a different tracked source file that a compiler config owns is edited (a function and a call to
+ *     it are appended). The clock starts when the file write returns and stops at the first `code_refs` answer, asked without
+ *     any freshness argument and polled every 25 ms, that lists the new function as the caller of the new callee with a
+ *     precise record. Failing to see it within a minute fails the gate.
+ *   - warm: `code_refs` asked through the composed Host for a function whose edges the build cached. Symbols are found after
+ *     the build by one untimed look at candidate names (the first look, which is printed as `firstLookMs`, is not a sample);
+ *     the timed queries then cycle through them.
+ *   - statistics: nearest rank (`percentile` of the freshness gate). The pull request tier gates the median of 5 update
+ *     samples and the p95 of 10 warm samples, so one slow sample on a noisy runner does not fail a pull request. The strict
+ *     tier gates the p95 of 20 update samples and the p95 of 50 warm samples.
+ *   - a gate that cannot take its samples (the Host fails to build, no symbol qualifies, an edit never shows) fails with the
+ *     reason and never passes by default.
+ *
+ * The corpus is the pinned one, fetched by `scripts/corpus-fetch.ts` into a temporary folder; nothing is installed, so the
+ * compiler is the bundled one and its version and source are printed. `--prepared` runs `npm ci --ignore-scripts` in the
+ * checkout first (the project's own compiler, what the eval uses), and so does a `--dir` checkout that has its own
+ * `node_modules` only with `--prepared`. `--corpus fixture` generates a small repository instead.
  */
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
@@ -49,7 +79,8 @@ import { pathToFileURL } from 'node:url';
 import { parseArgs } from 'node:util';
 
 import { composeHost } from '../src/bin/compose.ts';
-import { createRealRunner } from '../src/command-runner/index.ts';
+import { allowAll, createRealRunner } from '../src/command-runner/index.ts';
+import { createTempGitRepo } from '../src/test-kit/index.ts';
 import { PROTOCOL_VERSION } from '../src/facts/index.ts';
 import type { Envelope } from '../src/facts/index.ts';
 import type { PreciseTier } from '../src/precise-resolver/index.ts';
@@ -58,7 +89,9 @@ import type { DerivedBudget, TypeScriptTierTuning } from '../src/precise-resolve
 import { createProjectModel } from '../src/project-model/index.ts';
 import type { ProjectFs } from '../src/project-model/index.ts';
 import { createSourceTree } from '../src/source-tree/index.ts';
+import { fetchCorpus } from './corpus-fetch.ts';
 import { prepareCorpus } from './eval/prepare-corpus.ts';
+import { percentile } from './freshness-gate.ts';
 
 /** The tracer's stop rule. */
 export const LIMITS = Object.freeze({ firstPreciseMs: 30_000, rssMb: 1024 });
@@ -70,8 +103,9 @@ const TRACES: Readonly<Record<string, { readonly symbol: string; readonly file: 
 
 const USAGE = [
   'usage: node scripts/precise-gate.ts --trace --corpus gsd-core [--dir <prepared checkout>] [--config tsconfig.json] [--max-wait-ms 120000] [--budget-mb <n>]',
-  '       node scripts/precise-gate.ts --nobreak --corpus gsd-pi --dir <checkout> [--budget-mb <n>] [--seed <n>] [--symbols <n>] [--max-wait-ms 120000] [--lazy]',
+  '       node scripts/precise-gate.ts --nobreak --corpus gsd-pi [--dir <checkout>] [--prepared] [--budget-mb <n>] [--seed <n>] [--symbols <n>] [--max-wait-ms 120000] [--lazy]',
   '       node scripts/precise-gate.ts --update --corpus gsd-core --dir <prepared checkout> [--max-wait-ms 60000]',
+  '       node scripts/precise-gate.ts (--pr | --strict) --corpus gsd-core|fixture [--dir <checkout>] [--prepared] [--samples-update <n>] [--samples-warm <n>]',
   '',
 ].join('\n');
 
@@ -127,10 +161,10 @@ function sampleRssMb(pid: number | undefined): number | null {
   }
 }
 
-/** The config that owns `file`, found with the compiler-free ProjectModel over the checkout (the same reader the Host uses). */
-async function ownerOf(dir: string, file: string): Promise<string | null> {
+/** The checkout as the compiler-free ProjectModel reads it (the same reader the Host uses). */
+function projectFsOf(dir: string): ProjectFs {
   const tree = createSourceTree({ runner: createRealRunner(), repoDir: dir });
-  const fsView: ProjectFs = {
+  return {
     readText: (p) => tree.readText(dir, p),
     async exists(paths) {
       const found = new Set<string>();
@@ -141,10 +175,24 @@ async function ownerOf(dir: string, file: string): Promise<string | null> {
       return found;
     },
   };
+}
+
+/** The config that owns `file`, found with the compiler-free ProjectModel over the checkout. */
+async function ownerOf(dir: string, file: string): Promise<string | null> {
+  const fsView = projectFsOf(dir);
   const model = createProjectModel('typescript', fsView);
   if (model === undefined) return null;
   const description = await model.describe({ overlayPaths: [file], fs: fsView });
   return description.ownerOf(file) ?? null;
+}
+
+/** The files of `files` that some compiler config of the checkout owns: only those can have precise records. */
+async function ownedAmong(dir: string, files: readonly string[]): Promise<Set<string>> {
+  const fsView = projectFsOf(dir);
+  const model = createProjectModel('typescript', fsView);
+  if (model === undefined) return new Set();
+  const description = await model.describe({ overlayPaths: [...files], fs: fsView });
+  return new Set(files.filter((file) => description.ownerOf(file) !== undefined));
 }
 
 export interface TraceOptions {
@@ -589,10 +637,10 @@ export interface UpdateReport {
 }
 
 /** The checkout copied without `node_modules`, which is linked instead: the project's own compiler is used, and copying it would take a minute. */
-function copyCheckout(source: string, dest: string): void {
+function copyCheckout(source: string, dest: string, linkModules = true): void {
   fs.cpSync(source, dest, { recursive: true, filter: (from) => path.basename(from) !== 'node_modules' });
   const modules = path.join(source, 'node_modules');
-  if (fs.existsSync(modules)) fs.symlinkSync(fs.realpathSync.native(modules), path.join(dest, 'node_modules'), 'junction');
+  if (linkModules && fs.existsSync(modules)) fs.symlinkSync(fs.realpathSync.native(modules), path.join(dest, 'node_modules'), 'junction');
 }
 
 interface ProbeRow extends RefRow {
@@ -709,6 +757,349 @@ export async function runUpdate(options: UpdateOptions): Promise<UpdateReport> {
   }
 }
 
+// ---------------------------------------------------------------------------------------------------------------------
+// The gate: --pr and --strict (plan 03-30, D-10, TSM-06)
+
+// Each constant is named after its row of 03-CONSTANTS.md (Status: Approved). The three pull request ceilings are the approved
+// looser rows (D-10: three times the roadmap figure); the three strict figures are ROADMAP criterion 2, locked. A test reads
+// the file and compares, and there is no flag that overrides one.
+
+/** `gate.buildPrCeilingMs`: the full build, including the eager pass, on a pull request. */
+export const BUILD_PR_CEILING_MS = 90_000;
+/** `gate.updatePrCeilingMs`: save one file to a precise answer that reflects it, on a pull request. */
+export const UPDATE_PR_CEILING_MS = 15_000;
+/** `gate.warmQueryPrCeilingMs`: a warm `code_refs`, on a pull request. */
+export const WARM_QUERY_PR_CEILING_MS = 6_000;
+/** `gate.buildStrictMs`: ROADMAP criterion 2, 30 seconds. */
+export const BUILD_STRICT_MS = 30_000;
+/** `gate.updateStrictMs`: ROADMAP criterion 2, 5 seconds. */
+export const UPDATE_STRICT_MS = 5_000;
+/** `gate.warmQueryStrictMs`: ROADMAP criterion 2, 2 seconds. */
+export const WARM_QUERY_STRICT_MS = 2_000;
+
+export type GateTier = 'pr' | 'strict';
+
+/** Samples per tier (plan 03-30): the pull request tier gates the median of 5 updates and the p95 of 10 warm queries; the strict tier the p95 of 20 and of 50. */
+export const GATE_SAMPLES: Readonly<Record<GateTier, { readonly update: number; readonly warm: number }>> = Object.freeze({
+  pr: Object.freeze({ update: 5, warm: 10 }),
+  strict: Object.freeze({ update: 20, warm: 50 }),
+});
+
+/** How often the update clock asks again (the freshness gate's poll interval). */
+const GATE_POLL_MS = 25;
+
+export interface Measurements {
+  /** Milliseconds from the build request to its answer. */
+  readonly buildMs: number;
+  /** One per sample: from the file write to the first answer that reflects it. */
+  readonly updateMs: readonly number[];
+  /** One per sample: one warm `code_refs`. */
+  readonly warmMs: readonly number[];
+}
+
+export type Budget = 'build' | 'update' | 'warm';
+
+export interface Verdict {
+  readonly budget: Budget;
+  /** The `03-CONSTANTS.md` key of the ceiling used. */
+  readonly key: string;
+  readonly statistic: 'single' | 'median' | 'p95';
+  readonly samples: number;
+  readonly valueMs: number;
+  readonly ceilingMs: number;
+  readonly ok: boolean;
+}
+
+export interface Evaluation {
+  readonly tier: GateTier;
+  readonly verdicts: readonly Verdict[];
+  readonly ok: boolean;
+}
+
+const JUDGEMENT = Object.freeze({
+  pr: {
+    build: { key: 'gate.buildPrCeilingMs', ceilingMs: BUILD_PR_CEILING_MS },
+    update: { key: 'gate.updatePrCeilingMs', ceilingMs: UPDATE_PR_CEILING_MS, statistic: 'median' },
+    warm: { key: 'gate.warmQueryPrCeilingMs', ceilingMs: WARM_QUERY_PR_CEILING_MS, statistic: 'p95' },
+  },
+  strict: {
+    build: { key: 'gate.buildStrictMs', ceilingMs: BUILD_STRICT_MS },
+    update: { key: 'gate.updateStrictMs', ceilingMs: UPDATE_STRICT_MS, statistic: 'p95' },
+    warm: { key: 'gate.warmQueryStrictMs', ceilingMs: WARM_QUERY_STRICT_MS, statistic: 'p95' },
+  },
+} as const);
+
+/** The samples sorted ascending; throws when there are none or one is not a duration (a gate that could not measure never passes). */
+function sortedDurations(label: string, values: readonly number[]): number[] {
+  if (values.length === 0) throw new RangeError(`${label}: no samples`);
+  for (const value of values) {
+    if (!Number.isFinite(value) || value < 0) throw new RangeError(`${label}: ${String(value)} is not a duration`);
+  }
+  return [...values].sort((a, b) => a - b);
+}
+
+/** Judge the measurements against the tier's ceilings. Pure. Nearest-rank percentiles (the freshness gate's `percentile`). */
+export function evaluate(measurements: Measurements, tier: GateTier): Evaluation {
+  const rules = JUDGEMENT[tier];
+  const [build] = sortedDurations('build', [measurements.buildMs]);
+  const update = sortedDurations('update', measurements.updateMs);
+  const warm = sortedDurations('warm', measurements.warmMs);
+  const pick = (sorted: readonly number[], statistic: 'median' | 'p95'): number => percentile(sorted, statistic === 'median' ? 50 : 95);
+  const verdicts: Verdict[] = [
+    { budget: 'build', key: rules.build.key, statistic: 'single', samples: 1, valueMs: build as number, ceilingMs: rules.build.ceilingMs, ok: (build as number) <= rules.build.ceilingMs },
+    (() => {
+      const valueMs = pick(update, rules.update.statistic);
+      return { budget: 'update' as const, key: rules.update.key, statistic: rules.update.statistic, samples: update.length, valueMs, ceilingMs: rules.update.ceilingMs, ok: valueMs <= rules.update.ceilingMs };
+    })(),
+    (() => {
+      const valueMs = pick(warm, rules.warm.statistic);
+      return { budget: 'warm' as const, key: rules.warm.key, statistic: rules.warm.statistic, samples: warm.length, valueMs, ceilingMs: rules.warm.ceilingMs, ok: valueMs <= rules.warm.ceilingMs };
+    })(),
+  ];
+  return { tier, verdicts, ok: verdicts.every((verdict) => verdict.ok) };
+}
+
+/** What one measured run hands back: the numbers, and the facts that make two runs comparable. */
+export interface GateRun {
+  readonly corpus: string;
+  /** The compiler the worker used; null when no worker ran (then no update sample could have been taken). */
+  readonly compiler: { readonly source: string; readonly version: string } | null;
+  readonly workerPeakRssMb: number | null;
+  /** Distinct functions the warm queries cycled through. */
+  readonly warmSymbols: number;
+  readonly measurements: Measurements;
+  /** The untimed first look at each warm function, in milliseconds (not gated; printed so a cold cost stays visible). */
+  readonly firstLookMs?: readonly number[];
+}
+
+export interface GateRunOptions {
+  readonly tier: GateTier;
+  readonly corpus: string;
+  /** A checkout to copy; without it the pinned corpus is fetched (or generated, for `fixture`). */
+  readonly dir?: string;
+  /** Run `npm ci --ignore-scripts` (fetched corpus) or link the checkout's `node_modules` (`--dir`): the project's own compiler. */
+  readonly prepared: boolean;
+  readonly samplesUpdate: number;
+  readonly samplesWarm: number;
+}
+
+const round1 = (value: number): number => Math.round(value * 10) / 10;
+
+// A generated repository for the tracer and the tests: `.cts` modules under one tsconfig, one file that calls them all.
+const FIXTURE_TSCONFIG = JSON.stringify({ compilerOptions: { module: 'nodenext', moduleResolution: 'nodenext', strict: true, target: 'es2022' }, include: ['src'] }, null, 2);
+const FIXTURE_MIN_MODULES = 24;
+
+/** The files of the fixture repository: `modules` small `.cts` files and `src/use.cts`, which imports and calls every one. */
+export function fixtureFiles(modules: number): Record<string, string> {
+  const files: Record<string, string> = { 'package.json': JSON.stringify({ name: 'fixture-gate', private: true }), 'tsconfig.json': FIXTURE_TSCONFIG };
+  const imports: string[] = [];
+  const calls: string[] = [];
+  for (let index = 0; index < modules; index += 1) {
+    const id = String(index).padStart(3, '0');
+    files[`src/mod${id}.cts`] = `export function fixtureFn${id}(value: number): number {\n  return value + ${String(index)};\n}\n`;
+    imports.push(`import { fixtureFn${id} } from './mod${id}.cjs';`);
+    calls.push(`fixtureFn${id}(1)`);
+  }
+  files['src/use.cts'] = `${imports.join('\n')}\n\nexport function useAllFixtureFunctions(): number {\n  return ${calls.join(' + ')};\n}\n`;
+  return files;
+}
+
+interface Workspace {
+  readonly dir: string;
+  readonly env: Readonly<Record<string, string | undefined>>;
+  readonly cleanup: () => void;
+}
+
+/** The pinned corpus fetched (or prepared) into a new temporary folder. */
+export async function fetchCheckout(corpus: string, prepared: boolean): Promise<{ readonly dir: string; readonly cleanup: () => void }> {
+  const scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'ga-precise-fetch-'));
+  const cleanup = (): void => fs.rmSync(scratch, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+  try {
+    const dir = prepared ? prepareCorpus({ id: corpus, dest: scratch, npmCi: true }).dir : (await fetchCorpus({ id: corpus, destination: scratch })).dir;
+    return { dir: fs.realpathSync.native(dir), cleanup };
+  } catch (error) {
+    cleanup();
+    throw error;
+  }
+}
+
+async function openWorkspace(options: GateRunOptions, scratch: string): Promise<Workspace> {
+  if (options.corpus === 'fixture') {
+    const repo = await createTempGitRepo({
+      runner: createRealRunner({ decide: allowAll }),
+      world: { committed: fixtureFiles(Math.max(FIXTURE_MIN_MODULES, options.samplesUpdate + 4)) },
+    });
+    return { dir: fs.realpathSync.native(repo.dir), env: repo.envOverlay, cleanup: () => repo.cleanup() };
+  }
+  if (options.dir !== undefined) {
+    const copy = path.join(scratch, 'checkout');
+    copyCheckout(options.dir, copy, options.prepared);
+    return { dir: fs.realpathSync.native(copy), env: {}, cleanup: () => undefined };
+  }
+  const fetched = await fetchCheckout(options.corpus, options.prepared);
+  return { dir: fetched.dir, env: {}, cleanup: fetched.cleanup };
+}
+
+/** Tracked files that look like compiler sources, in name order. */
+function sourceCandidates(dir: string, env: Readonly<Record<string, string | undefined>>): string[] {
+  return trackedFiles(dir, env)
+    .filter((file) => SOURCE_FILE.test(file) && !SKIPPED_FILE.test(file))
+    .sort();
+}
+
+/** `count` files spread evenly over `files`; throws when there are fewer. */
+function spread(files: readonly string[], count: number, what: string): string[] {
+  if (files.length < count) throw new Error(`${what}: ${String(files.length)} usable files, ${String(count)} samples need one each`);
+  return Array.from({ length: count }, (_, at) => files[Math.floor((at * files.length) / count)] as string);
+}
+
+/** Exported functions, classes and constants of `files` that another one of them mentions, in file order, at most `limit`. */
+function exportedCandidates(dir: string, files: readonly string[], limit: number): Array<{ readonly symbol: string; readonly file: string }> {
+  const texts = new Map<string, string>();
+  const textOf = (file: string): string => {
+    let text = texts.get(file);
+    if (text === undefined) {
+      try {
+        const buffer = fs.readFileSync(path.join(dir, file));
+        text = buffer.length > MAX_SOURCE_BYTES ? '' : buffer.toString('utf8');
+      } catch {
+        text = '';
+      }
+      texts.set(file, text);
+    }
+    return text;
+  };
+  const found: Array<{ symbol: string; file: string }> = [];
+  const taken = new Set<string>();
+  let tried = 0;
+  for (const file of files) {
+    for (const match of textOf(file).matchAll(EXPORT_NAME)) {
+      const symbol = match[1];
+      if (symbol === undefined || symbol.length < 4 || taken.has(symbol)) continue;
+      tried += 1;
+      if (tried > limit * 10) return found;
+      const word = new RegExp(`\\b${symbol.replaceAll('$', '\\$')}\\b`);
+      if (!files.some((other) => other !== file && word.test(textOf(other)))) continue;
+      taken.add(symbol);
+      found.push({ symbol, file });
+      if (found.length >= limit) return found;
+    }
+  }
+  return found;
+}
+
+/** The function the update samples append, and the call to it: the answer that lists the caller is the answer that reflects the edit. */
+function gateProbe(index: number): { readonly callee: string; readonly caller: string; readonly text: string } {
+  const callee = `atlasGateCallee${String(index)}`;
+  const caller = `atlasGateCaller${String(index)}`;
+  return { callee, caller, text: `\n// atlas gate probe\nfunction ${callee}(): number {\n  return ${String(index)};\n}\nfunction ${caller}(): number {\n  return ${callee}();\n}\n` };
+}
+
+/** Build, warm-query and update-edit one checkout through the composed Host, and report the milliseconds. */
+export async function runGate(options: GateRunOptions): Promise<GateRun> {
+  const scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'ga-gate-'));
+  let workspace: Workspace | undefined;
+  let composed: ReturnType<typeof composeHost> | undefined;
+  const tiers: PreciseTier[] = [];
+  try {
+    workspace = await openWorkspace(options, scratch);
+    const { dir } = workspace;
+
+    // Which files to edit and which functions to ask about: only files a compiler config owns can have precise records.
+    const owned = await ownedAmong(dir, sourceCandidates(dir, workspace.env));
+    const ownedFiles = [...owned].sort();
+    if (ownedFiles.length === 0) throw new Error('no source file of the checkout is owned by a compiler config; there is nothing to measure');
+    const editFiles = spread(ownedFiles, options.samplesUpdate, 'update samples');
+    const candidates = exportedCandidates(dir, ownedFiles, 120);
+    const traced = TRACES[options.corpus];
+    if (traced !== undefined && ownedFiles.includes(traced.file) && !candidates.some((entry) => entry.symbol === traced.symbol)) candidates.unshift(traced);
+
+    for (const each of [path.join(scratch, 'home'), path.join(scratch, 'user'), path.join(scratch, 'store')]) fs.mkdirSync(each, { recursive: true });
+    composed = composeHost({
+      cwd: dir,
+      env: { ...process.env, ...workspace.env, GSD_ATLAS_USER_DIR: path.join(scratch, 'user'), GSD_ATLAS_STORE_DIR: path.join(scratch, 'store') },
+      home: path.join(scratch, 'home'),
+      stderr: process.stderr,
+      tierHook: (built) => {
+        tiers.push(built);
+      },
+    });
+    const host = composed;
+    const refs = async (name: string, file: string): Promise<{ readonly ok: boolean; readonly rows: ProbeRow[] }> => {
+      const answer = await host.client.handle({ protocol: PROTOCOL_VERSION, kind: 'code_refs', args: { name, path: file, repo: dir, limit: 200 } });
+      return { ok: answer.ok, rows: answer.ok ? (answer.data as { results: ProbeRow[] }).results : [] };
+    };
+
+    // Build: from the request to its answer, the eager pass included.
+    const startedBuild = performance.now();
+    const built = await host.client.handle({ protocol: PROTOCOL_VERSION, kind: 'build', args: { repo: dir } });
+    const buildMs = round1(performance.now() - startedBuild);
+    if (!built.ok) throw new Error(`build failed: ${built.diagnostics.map((entry) => entry.code).join(', ')}`);
+
+    // Warm queries: one untimed first look at candidate functions until enough have a precise record, then the timed cycle.
+    const wanted = Math.min(10, options.samplesWarm);
+    const symbols: Array<{ readonly symbol: string; readonly file: string }> = [];
+    const firstLookMs: number[] = [];
+    for (const entry of candidates) {
+      if (symbols.length >= wanted) break;
+      const began = performance.now();
+      const looked = await refs(entry.symbol, entry.file);
+      firstLookMs.push(round1(performance.now() - began));
+      if (looked.ok && looked.rows.some((row) => row.tier === 'precise')) symbols.push(entry);
+    }
+    if (symbols.length < Math.min(3, wanted)) throw new Error(`only ${String(symbols.length)} function(s) of the checkout have a precise reference, ${String(Math.min(3, wanted))} needed for the warm queries`);
+    const warmMs: number[] = [];
+    for (let sample = 0; sample < options.samplesWarm; sample += 1) {
+      const entry = symbols[sample % symbols.length] as { symbol: string; file: string };
+      const began = performance.now();
+      const answer = await refs(entry.symbol, entry.file);
+      const elapsed = performance.now() - began;
+      if (!answer.ok || answer.rows.length === 0) throw new Error(`warm query ${String(sample)} for ${entry.symbol} returned ${answer.ok ? 'no references' : 'an error'}`);
+      warmMs.push(round1(elapsed));
+    }
+
+    // Update: a different owned file per sample; the clock starts when the write returns.
+    const updateMs: number[] = [];
+    for (let sample = 0; sample < editFiles.length; sample += 1) {
+      const file = editFiles[sample] as string;
+      const probe = gateProbe(sample);
+      const full = path.join(dir, file);
+      fs.writeFileSync(full, `${fs.readFileSync(full, 'utf8')}${probe.text}`);
+      const saved = performance.now();
+      for (;;) {
+        const answer = await refs(probe.callee, file);
+        if (answer.rows.some((row) => row.enclosing === probe.caller && row.tier === 'precise')) break;
+        if (performance.now() - saved > UPDATE_LIMIT_MS) throw new Error(`update sample ${String(sample)} (${file}): no precise reference to ${probe.callee} within ${String(UPDATE_LIMIT_MS)} ms`);
+        await sleep(GATE_POLL_MS);
+      }
+      updateMs.push(round1(performance.now() - saved));
+    }
+
+    const infos = tiers.flatMap((each) => each.info());
+    const [info] = infos;
+    const peaks = infos.map((each) => each.peakRssMb);
+    return {
+      corpus: options.corpus,
+      compiler: info === undefined ? null : { source: info.compiler.source, version: info.compiler.version },
+      workerPeakRssMb: peaks.length === 0 ? null : round1(Math.max(...peaks)),
+      warmSymbols: symbols.length,
+      measurements: { buildMs, updateMs, warmMs },
+      firstLookMs,
+    };
+  } finally {
+    if (composed !== undefined) await composed.dispose();
+    workspace?.cleanup();
+    fs.rmSync(scratch, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+  }
+}
+
+/** Test seams of `main`: the measured run, the corpus fetch and the no-break trace. */
+export interface GateDeps {
+  readonly run?: (options: GateRunOptions) => Promise<GateRun>;
+  readonly fetchCheckout?: typeof fetchCheckout;
+  readonly runNoBreak?: typeof runNoBreak;
+}
+
 /** A positive whole number from a flag, or undefined when the flag is absent; null when it is present and wrong. */
 function positive(text: string | undefined): number | undefined | null {
   if (text === undefined) return undefined;
@@ -717,11 +1108,20 @@ function positive(text: string | undefined): number | undefined | null {
 }
 
 /** Exit codes: 0 the mode's condition holds, 1 it does not, 2 usage. */
-export async function main(argv: readonly string[], io: { stdout: { write(text: string): unknown }; stderr: { write(text: string): unknown } }): Promise<number> {
+export async function main(
+  argv: readonly string[],
+  io: { stdout: { write(text: string): unknown }; stderr: { write(text: string): unknown } },
+  deps: GateDeps = {},
+): Promise<number> {
   let values: {
     trace?: boolean;
     nobreak?: boolean;
     update?: boolean;
+    pr?: boolean;
+    strict?: boolean;
+    prepared?: boolean;
+    'samples-update'?: string;
+    'samples-warm'?: string;
     lazy?: boolean;
     corpus?: string;
     dir?: string;
@@ -738,6 +1138,11 @@ export async function main(argv: readonly string[], io: { stdout: { write(text: 
         trace: { type: 'boolean' },
         nobreak: { type: 'boolean' },
         update: { type: 'boolean' },
+        pr: { type: 'boolean' },
+        strict: { type: 'boolean' },
+        prepared: { type: 'boolean' },
+        'samples-update': { type: 'string' },
+        'samples-warm': { type: 'string' },
         lazy: { type: 'boolean' },
         corpus: { type: 'string' },
         dir: { type: 'string' },
@@ -758,27 +1163,76 @@ export async function main(argv: readonly string[], io: { stdout: { write(text: 
     io.stderr.write(`precise-gate: ${message}\n${USAGE}`);
     return 2;
   };
-  const modes = [values.trace, values.nobreak, values.update].filter((mode) => mode === true).length;
-  if (modes > 1) return usage('--trace, --nobreak and --update are separate modes');
-  if (modes === 0) return usage('--trace, --nobreak or --update is required');
+  const modes = [values.trace, values.nobreak, values.update, values.pr, values.strict].filter((mode) => mode === true).length;
+  if (modes > 1) return usage('--trace, --nobreak, --update, --pr and --strict are separate modes');
+  if (modes === 0) return usage('--trace, --nobreak, --update, --pr or --strict is required');
   const maxWaitMs = positive(values['max-wait-ms']) ?? 120_000;
   const budgetMb = positive(values['budget-mb']);
   const seed = positive(values.seed);
   const symbols = positive(values.symbols);
+  const samplesUpdate = positive(values['samples-update']);
+  const samplesWarm = positive(values['samples-warm']);
   if (maxWaitMs === null) return usage('--max-wait-ms must be a positive whole number');
   if (budgetMb === null) return usage('--budget-mb must be a positive whole number');
   if (seed === null) return usage('--seed must be a positive whole number');
   if (symbols === null) return usage('--symbols must be a positive whole number');
+  if (samplesUpdate === null) return usage('--samples-update must be a positive whole number');
+  if (samplesWarm === null) return usage('--samples-warm must be a positive whole number');
   const corpus = values.corpus;
+
+  if (values.pr === true || values.strict === true) {
+    const tier: GateTier = values.pr === true ? 'pr' : 'strict';
+    if (corpus === undefined || (corpus !== 'fixture' && TRACES[corpus] === undefined)) return usage(`--corpus must be one of fixture, ${Object.keys(TRACES).join(', ')}`);
+    if (values.dir !== undefined && corpus === 'fixture') return usage('--dir is for a pinned corpus; the fixture is generated');
+    if (values.dir !== undefined && !fs.existsSync(path.join(values.dir, '.git'))) return usage('--dir must be a git checkout');
+    const sampleCounts = { update: samplesUpdate ?? GATE_SAMPLES[tier].update, warm: samplesWarm ?? GATE_SAMPLES[tier].warm };
+    try {
+      const run = await (deps.run ?? runGate)({
+        tier,
+        corpus,
+        prepared: values.prepared === true,
+        samplesUpdate: sampleCounts.update,
+        samplesWarm: sampleCounts.warm,
+        ...(values.dir === undefined ? {} : { dir: fs.realpathSync.native(values.dir) }),
+      });
+      const evaluation = evaluate(run.measurements, tier);
+      io.stdout.write(
+        `${JSON.stringify({
+          gate: 'precise',
+          tier,
+          corpus: run.corpus,
+          compiler: run.compiler,
+          buildMs: run.measurements.buildMs,
+          updateMs: run.measurements.updateMs,
+          warmMs: run.measurements.warmMs,
+          samples: { update: run.measurements.updateMs.length, warm: run.measurements.warmMs.length },
+          warmSymbols: run.warmSymbols,
+          firstLookMs: run.firstLookMs ?? [],
+          workerPeakRssMb: run.workerPeakRssMb,
+          verdicts: evaluation.verdicts,
+          ok: evaluation.ok,
+        })}\n`,
+      );
+      for (const verdict of evaluation.verdicts.filter((entry) => !entry.ok)) {
+        io.stderr.write(`precise-gate: ${verdict.key} breached: ${verdict.budget} ${verdict.statistic} ${String(verdict.valueMs)} ms is over ${String(verdict.ceilingMs)} ms\n`);
+      }
+      return evaluation.ok ? 0 : 1;
+    } catch (error) {
+      io.stderr.write(`precise-gate: ${error instanceof Error ? error.message : String(error)}\n`);
+      return 1;
+    }
+  }
 
   if (values.nobreak === true) {
     if (corpus === undefined || corpus === '') return usage('--corpus is required');
-    if (values.dir === undefined) return usage('--dir <checkout> is required');
-    if (!fs.existsSync(path.join(values.dir, '.git'))) return usage('--dir must be a git checkout');
+    if (values.dir !== undefined && !fs.existsSync(path.join(values.dir, '.git'))) return usage('--dir must be a git checkout');
+    let fetched: { readonly dir: string; readonly cleanup: () => void } | undefined;
     try {
-      const report = await runNoBreak({
+      // Without --dir the pinned corpus is fetched (no install, so the bundled compiler, unless --prepared).
+      fetched = values.dir === undefined ? await (deps.fetchCheckout ?? fetchCheckout)(corpus, values.prepared === true) : undefined;
+      const report = await (deps.runNoBreak ?? runNoBreak)({
         corpus,
-        dir: fs.realpathSync.native(values.dir),
+        dir: fs.realpathSync.native(fetched?.dir ?? (values.dir as string)),
         maxWaitMs,
         ...(budgetMb === undefined ? {} : { budgetMb }),
         ...(seed === undefined ? {} : { seed }),
@@ -790,6 +1244,8 @@ export async function main(argv: readonly string[], io: { stdout: { write(text: 
     } catch (error) {
       io.stderr.write(`precise-gate: ${error instanceof Error ? error.message : String(error)}\n`);
       return 1;
+    } finally {
+      fetched?.cleanup();
     }
   }
 
