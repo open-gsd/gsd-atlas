@@ -940,7 +940,7 @@ describe('summary', () => {
     const grep = text.slice(text.indexOf('arm grep'));
     assert.match(atlas, /sessions: 2/);
     assert.match(atlas, /ok: 2/);
-    assert.match(atlas, /billable tokens: mean 225\.0, total 450/);
+    assert.match(atlas, /billable tokens: mean 175\.0, total 350/);
     assert.match(atlas, /cache-read tokens: mean 25\.0, total 50/);
     assert.match(atlas, /mean tool calls: 5\.0/);
     assert.match(atlas, /mean wall time: 2500 ms/);

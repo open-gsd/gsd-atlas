@@ -1,5 +1,5 @@
 /**
- * node scripts/eval/harness.ts plan|run|pilot ...   (summary and project: see the end of this file)
+ * node scripts/eval/harness.ts plan|run|pilot|summary|project ...
  *
  * The eval harness (D-03, D-04, D-06, EVL-02, EVL-03): turns a question set into scored sessions.
  *
@@ -51,7 +51,8 @@ import type { Prereg } from './prereg.ts';
 import { cloneCheckout, readPreparedRecord } from './prepare-corpus.ts';
 import { AnswerFileSchema, loadQuestions } from './questions.ts';
 import type { AnswerKey, Question, QuestionFile } from './questions.ts';
-import { ResultsStore } from './results.ts';
+import { ResultsStore, readJsonLines } from './results.ts';
+import { ResultRowSchema } from './rows.ts';
 import type { ResultRow } from './rows.ts';
 import { scoreAnswer, toResultRow } from './score.ts';
 import { cellId, makeSchedule } from './schedule.ts';
@@ -503,6 +504,8 @@ const USAGE = [
   '  plan    --questions <file> [--arms atlas,grep] [--runs n] [--seed n] [--scored|--pilot] ...',
   '  run     (--scored | --pilot) --questions <file> --answers <file> --corpus-dir <dir> --out-dir <dir> ...',
   '  pilot   the same as run --pilot',
+  '  summary --out-dir <dir>                         per-arm totals of a results directory',
+  '  project --out-dir <pilot dir> --questions <n> --runs <k>   projected cost and the pilot paired sd',
   'options: --questions --answers --corpus-dir --out-dir --arms --runs --concurrency --seed --model',
   '         --max-budget-usd --wall-clock-ms --atlas-bin --skill --prereg --scored --pilot --dry-run',
   '         --scratch-dir --keep-sessions --retry-delay-ms --prep-timeout-ms',
@@ -895,6 +898,210 @@ async function runCommand(command: 'plan' | 'run' | 'pilot', values: Values, io:
   }
 }
 
+// ---------------------------------------------------------------------------------------------
+// Command line: summary and project (pure functions over result rows)
+
+/** The one-sided 95 percent normal quantile: the lower bound of a paired mean is `mean - 1.645 * sd / sqrt(N)`. */
+const Z_ONE_SIDED_95 = 1.645;
+
+const mean = (values: readonly number[]): number => values.reduce((a, b) => a + b, 0) / values.length;
+
+/** Sample standard deviation (n - 1); undefined for fewer than two values. */
+function sampleSd(values: readonly number[]): number | undefined {
+  if (values.length < 2) return undefined;
+  const m = mean(values);
+  return Math.sqrt(values.reduce((a, v) => a + (v - m) ** 2, 0) / (values.length - 1));
+}
+
+export interface ArmSummary {
+  arm: ArmId;
+  sessions: number;
+  ok: number;
+  failedByStatus: Record<string, number>;
+  meanBillableTokens: number;
+  totalBillableTokens: number;
+  meanCacheReadTokens: number;
+  totalCacheReadTokens: number;
+  meanToolCalls: number;
+  meanWallMs: number;
+  /** The sum over sessions that reported a cost; null when none did. */
+  totalCostUsd: number | null;
+  sessionsWithCost: number;
+}
+
+export function summarizeRows(rows: readonly ResultRow[]): ArmSummary[] {
+  const out: ArmSummary[] = [];
+  for (const arm of ARM_IDS) {
+    const own = rows.filter((row) => row.arm === arm);
+    if (own.length === 0) continue;
+    const failedByStatus: Record<string, number> = {};
+    for (const row of own) if (row.status !== 'ok') failedByStatus[row.status] = (failedByStatus[row.status] ?? 0) + 1;
+    const costs = own.flatMap((row) => (row.costUsd === null ? [] : [row.costUsd]));
+    out.push({
+      arm,
+      sessions: own.length,
+      ok: own.filter((row) => row.status === 'ok').length,
+      failedByStatus,
+      meanBillableTokens: mean(own.map((row) => row.billableTokens)),
+      totalBillableTokens: own.reduce((a, row) => a + row.billableTokens, 0),
+      meanCacheReadTokens: mean(own.map((row) => row.usage.cacheRead)),
+      totalCacheReadTokens: own.reduce((a, row) => a + row.usage.cacheRead, 0),
+      meanToolCalls: mean(own.map((row) => row.toolCalls)),
+      meanWallMs: mean(own.map((row) => row.wallMs)),
+      totalCostUsd: costs.length === 0 ? null : costs.reduce((a, b) => a + b, 0),
+      sessionsWithCost: costs.length,
+    });
+  }
+  return out;
+}
+
+/** Per question, the run-mean correctness of each arm; only questions that have rows in both arms. */
+function pairedAccuracy(rows: readonly ResultRow[]): Array<{ questionId: string; atlas: number; grep: number }> {
+  const ids = [...new Set(rows.map((row) => row.questionId))];
+  const out: Array<{ questionId: string; atlas: number; grep: number }> = [];
+  for (const questionId of ids) {
+    const accuracy = (arm: ArmId): number | undefined => {
+      const own = rows.filter((row) => row.questionId === questionId && row.arm === arm);
+      return own.length === 0 ? undefined : mean(own.map((row) => (row.correct ? 1 : 0)));
+    };
+    const atlas = accuracy('atlas');
+    const grep = accuracy('grep');
+    if (atlas !== undefined && grep !== undefined) out.push({ questionId, atlas, grep });
+  }
+  return out;
+}
+
+/** Questions where one arm's run-mean correctness is above 0.5 and the other's is not. */
+export function disagreement(rows: readonly ResultRow[]): { questions: number; disagree: number } {
+  const paired = pairedAccuracy(rows);
+  return { questions: paired.length, disagree: paired.filter((q) => (q.atlas > 0.5) !== (q.grep > 0.5)).length };
+}
+
+interface LoadedRows {
+  file: string;
+  rows: ResultRow[];
+  problems: string[];
+}
+
+/** Reads a results file without touching it. Looks in `<dir>/pilot` when `dir` has no results of its own. */
+function loadRows(dir: string): LoadedRows | undefined {
+  let file = path.join(dir, 'results.jsonl');
+  if (!fs.existsSync(file)) {
+    const pilot = path.join(dir, 'pilot', 'results.jsonl');
+    if (!fs.existsSync(pilot)) return undefined;
+    file = pilot;
+  }
+  const problems: string[] = [];
+  const rows: ResultRow[] = [];
+  let values: unknown[] = [];
+  try {
+    values = readJsonLines(file);
+  } catch (error) {
+    problems.push(error instanceof Error ? error.message : String(error));
+  }
+  values.forEach((value, index) => {
+    const parsed = ResultRowSchema.safeParse(value);
+    if (parsed.success) rows.push(parsed.data);
+    else problems.push(`${file}: row ${String(index + 1)}: ${parsed.error.issues.map((i) => `${i.path.join('.') || '(root)'}: ${i.message}`).join('; ')}`);
+  });
+  const seen = new Map<string, number>();
+  for (const row of rows) seen.set(cellId(row), (seen.get(cellId(row)) ?? 0) + 1);
+  for (const [id, count] of seen) if (count > 1) problems.push(`duplicate cell ${id} (${String(count)} rows in ${file})`);
+  return { file, rows, problems };
+}
+
+function summaryCommand(values: Values, io: Io): number {
+  if (values['out-dir'] === undefined) return fail(io, '--out-dir is required');
+  const loaded = loadRows(path.resolve(values['out-dir']));
+  if (loaded === undefined) return fail(io, `no results in ${values['out-dir']} (looked for results.jsonl and pilot/results.jsonl)`);
+  if (loaded.problems.length > 0) {
+    for (const problem of loaded.problems) io.err(`harness: ${problem}\n`);
+    return 1;
+  }
+  const lines = [`results: ${loaded.file}`, `rows: ${String(loaded.rows.length)}`];
+  for (const s of summarizeRows(loaded.rows)) {
+    const failed = Object.entries(s.failedByStatus).map(([status, n]) => `${status} ${String(n)}`).join(', ');
+    lines.push(
+      `arm ${s.arm}`,
+      `  sessions: ${String(s.sessions)}`,
+      `  ok: ${String(s.ok)}`,
+      `  failed: ${failed === '' ? 'none' : failed}`,
+      `  billable tokens: mean ${s.meanBillableTokens.toFixed(1)}, total ${String(s.totalBillableTokens)}`,
+      `  cache-read tokens: mean ${s.meanCacheReadTokens.toFixed(1)}, total ${String(s.totalCacheReadTokens)}`,
+      `  mean tool calls: ${s.meanToolCalls.toFixed(1)}`,
+      `  mean wall time: ${String(Math.round(s.meanWallMs))} ms`,
+      s.totalCostUsd === null
+        ? '  cost: not reported'
+        : `  cost: total ${s.totalCostUsd.toFixed(4)} USD (${String(s.sessionsWithCost)} of ${String(s.sessions)} sessions)`,
+    );
+  }
+  const d = disagreement(loaded.rows);
+  lines.push(`questions with both arms: ${String(d.questions)}`);
+  lines.push(
+    d.questions === 0
+      ? 'disagreement: not defined (no question has rows in both arms)'
+      : `disagreement: ${String(d.disagree)} of ${String(d.questions)} questions (${((d.disagree / d.questions) * 100).toFixed(1)}%)`,
+  );
+  io.out(`${lines.join('\n')}\n`);
+  return 0;
+}
+
+const OFFSET_QUESTION_COUNTS = [50, 75, 100] as const;
+
+function projectCommand(values: Values, io: Io): number {
+  if (values['out-dir'] === undefined) return fail(io, '--out-dir is required');
+  if (values.questions === undefined || values.runs === undefined) return fail(io, 'project needs --questions <n> and --runs <k>');
+  const questionCount = whole('questions', values.questions, 1);
+  const runs = whole('runs', values.runs, 1);
+  const loaded = loadRows(path.resolve(values['out-dir']));
+  if (loaded === undefined) return fail(io, `no results in ${values['out-dir']} (looked for results.jsonl and pilot/results.jsonl)`);
+  if (loaded.problems.length > 0) {
+    for (const problem of loaded.problems) io.err(`harness: ${problem}\n`);
+    return 1;
+  }
+  const summaries = summarizeRows(loaded.rows);
+  const sessionsPerArm = questionCount * runs;
+  const lines = [
+    `projection from ${loaded.file} (an estimate from ${String(loaded.rows.length)} pilot sessions, not a quote)`,
+    `full run: ${String(questionCount)} questions x ${String(runs)} runs = ${String(sessionsPerArm)} sessions per arm`,
+  ];
+  let totalCost = 0;
+  let costKnown = true;
+  for (const s of summaries) {
+    const costRows = loaded.rows.filter((row) => row.arm === s.arm && row.costUsd !== null);
+    if (costRows.length === 0) {
+      lines.push(`  ${s.arm}: no cost reported in the pilot`);
+      costKnown = false;
+      continue;
+    }
+    const perSession = mean(costRows.map((row) => row.costUsd as number));
+    totalCost += perSession * sessionsPerArm;
+    lines.push(`  ${s.arm}: ${perSession.toFixed(4)} USD per session x ${String(sessionsPerArm)} sessions = ${(perSession * sessionsPerArm).toFixed(2)} USD (estimate)`);
+  }
+  const totalSessions = sessionsPerArm * summaries.length;
+  lines.push(
+    costKnown
+      ? `  total: ${String(totalSessions)} sessions, ${totalCost.toFixed(2)} USD (estimate)`
+      : `  total: ${String(totalSessions)} sessions, cost unknown (an arm reported no cost)`,
+  );
+  if (summaries.length > 0) {
+    lines.push(`pilot mean wall time per session: ${String(Math.round(mean(loaded.rows.map((row) => row.wallMs))))} ms (concurrency not applied)`);
+  }
+  const diffs = pairedAccuracy(loaded.rows).map((q) => q.atlas - q.grep);
+  const sd = sampleSd(diffs);
+  if (sd === undefined) {
+    lines.push('paired difference sd: needs at least 2 paired questions (a question with rows in both arms)');
+  } else {
+    lines.push(
+      `paired difference sd: ${sd.toFixed(4)} over ${String(diffs.length)} questions (atlas minus grep accuracy, run means)`,
+      `one-sided 95 percent lower-bound offset below the observed difference, ${String(Z_ONE_SIDED_95)} * sd / sqrt(N):`,
+      ...OFFSET_QUESTION_COUNTS.map((n) => `  N = ${String(n)}: ${(((Z_ONE_SIDED_95 * sd) / Math.sqrt(n)) * 100).toFixed(2)} points`),
+    );
+  }
+  io.out(`${lines.join('\n')}\n`);
+  return 0;
+}
+
 /** The command body. Returns the exit code: 0 ok, 1 the run stopped, 2 usage or a refused gate. */
 export async function runCli(argv: readonly string[], io: Io, deps: CliDeps = {}): Promise<number> {
   try {
@@ -902,6 +1109,8 @@ export async function runCli(argv: readonly string[], io: Io, deps: CliDeps = {}
     const [command, ...extra] = positionals;
     if (extra.length > 0) throw new UsageError(`unexpected argument "${extra.join(' ')}"`);
     if (command === 'plan' || command === 'run' || command === 'pilot') return await runCommand(command, values, io, deps);
+    if (command === 'summary') return summaryCommand(values, io);
+    if (command === 'project') return projectCommand(values, io);
     throw new UsageError(command === undefined ? 'a command is required' : `unknown command "${command}"`);
   } catch (error) {
     if (error instanceof UsageError || (error instanceof TypeError && 'code' in error)) {
