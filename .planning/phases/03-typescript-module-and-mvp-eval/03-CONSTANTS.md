@@ -49,6 +49,7 @@ A consuming plan reads its value from the table below instead of inventing a num
 | `eval.maxBudgetUsdPerSession` | 3 (USD) | 03-14, 03-16 | approved by the user's reply to the plan 03-14 checkpoint (see Approvals): the pilot rule gave 1, the user kept the `scan.maxBudgetUsdPerSession` value because a bound set from five easy questions could fail slow correct sessions |
 | `eval.sessionWallClockMs` | 900000 | 03-14, 03-16 | approved by the same reply: the pilot rule gave 60000, the user kept the `scan.sessionWallClockMs` value |
 | `eval.scoredQuestions` | 75 | 03-14, 03-16 | planner-added row recording the user's choice of N at the plan 03-14 checkpoint; `eval.minQuestions` 50 stays the locked floor |
+| `eval.retryDelayMs` | 60000 | 03-16 | `DEFAULT_RETRY_DELAY_MS` in `scripts/eval/arms.ts` (planner-added in plan 03-10): the wait before retrying an infrastructure failure (429 or 529 with no tool call made), at most 2 retries; approved by the user together with the pre-registration at the plan 03-16 checkpoint (see Approvals). The constant stays in `arms.ts`; this row only records the approval |
 | `scan.maxBudgetUsdPerSession` | 3 | 03-06 | planner-added: cost cap for each free-alternatives live run |
 | `scan.sessionWallClockMs` | 900000 | 03-06 | planner-added: wall-clock kill for each live run |
 
@@ -176,3 +177,13 @@ Task 2 of plan 03-14 (blocking-human checkpoint, the pilot decision) was answere
 > n75 keep-scan fix-oracle
 
 Meaning: the scored question set is extended from 50 to 75 questions (`eval.scoredQuestions` 75; `eval.minQuestions` 50 is unchanged); the per-session bounds keep the `scan.*` values, so `eval.maxBudgetUsdPerSession` is 3 (USD) and `eval.sessionWallClockMs` is 900000; and the oracle blind spot found by the pilot (computed `require(path.join(...))` paths, `docs/eval/pilot.md` Findings 7) is fixed and the affected answer keys are regenerated before the plan 03-16 freeze. Only these two eval rows and the new `eval.scoredQuestions` row changed; the Status line stays `Approved` and no other constant or package changed. This is the approval of those values; plan 03-16 still records them in the pre-registration and asks the user to approve the frozen files.
+
+Task 3 of plan 03-16 (blocking-human checkpoint, the pre-registration) was answered by the user on 2026-10-18. Replies, verbatim:
+
+> point_estimate, stricter point estimate, approve pre-registration
+
+and, when asked whether the replies conflicted:
+
+> both unless they conflict and you didn't tell me
+
+Meaning: the replies do not conflict and both apply, resolved as `approve` with `stricter oq4=point_estimate`. The pre-registration (including its Run configuration) is approved as written, and that approval covers `DEFAULT_RETRY_DELAY_MS` = 60000 (infrastructure failures only, at most 2 retries), recorded in the `eval.retryDelayMs` row above. `scripts/eval/arms.ts` is not edited. No other constant changed.

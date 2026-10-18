@@ -189,6 +189,19 @@ test('ci.yml: static job runs lint, typecheck and schema:check once; test job ru
   for (const cmd of ['npm run lint', 'npm run typecheck', 'npm run schema:check']) assert.ok(!testJob.includes(cmd), cmd + ' must run only in static');
 });
 
+test('ci.yml: the static job checks the frozen pre-registration hashes after npm ci (03-16)', () => {
+  const j = jobs(readLines('ci.yml'));
+  const staticLines = j.get('static') ?? [];
+  const stepIndex = staticLines.findIndex((l) => /^\s+-\s+name:\s*Pre-registration \(frozen hashes\)\s*$/.test(l));
+  assert.ok(stepIndex >= 0, 'step "Pre-registration (frozen hashes)" missing from the static job');
+  const install = staticLines.findIndex((l) => /^\s+-\s+run:\s*npm ci --ignore-scripts\s*$/.test(l));
+  assert.ok(install >= 0 && install < stepIndex, 'the step must come after npm ci --ignore-scripts');
+  assert.match(staticLines[stepIndex + 1] ?? '', /^\s+run:\s*node scripts\/eval\/verify-prereg\.ts\s*$/);
+  for (const name of ['test', 'grammar', 'gates']) {
+    assert.ok(!(j.get(name) ?? []).join('\n').includes('verify-prereg'), `verify-prereg must run only in the static job, not ${name}`);
+  }
+});
+
 test('ci.yml: only the grammar job caches the tree-sitter toolchain and fetches wasi-sdk (D-07)', () => {
   const j = jobs(readLines('ci.yml'));
   const grammar = (j.get('grammar') ?? []).join('\n');

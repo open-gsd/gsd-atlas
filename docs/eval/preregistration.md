@@ -1,0 +1,158 @@
+# Pre-registration of the MVP eval (plan 03-16)
+
+Status: Frozen (Stage A, 2026-10-18, by Tom Boucher)
+
+This document records the design of the eval that decides whether the gsd-atlas MVP meets its claim. It describes the design only. It reports no scored result and hints at none. Once the status line above reads `Frozen`, `node scripts/eval/verify-prereg.ts` (run by the static CI job) fails when any of the sixteen registered files changes, and a changed registered value is a new registered run (see Deviations policy).
+
+## Purpose
+
+The claim under test is the Phase 3 goal in ROADMAP.md: agents using atlas consume fewer tokens than a grep-only baseline at non-inferior accuracy, and give answers whose cited file and line can be verified (EVL-02, EVL-03). The design below fixes, before any scored session runs, the question set and its answer keys, the scorer, the statistics, the harness and the run configuration. The human reviews and approves the question set and the registered parameters at the checkpoints recorded under Approvals; the freeze tool then computes the hashes and writes them into the `prereg-json` block at the end of this document. The precise-tier code is written after the freeze, never before it (D-08).
+
+## Hypotheses
+
+- **H1, accuracy is non-inferior (D-04).** The accuracy of the atlas arm is not worse than the accuracy of the grep arm by 5 percentage points or more. It is judged on the lower end of the paired cluster bootstrap of the accuracy difference: the claim holds when the 5th percentile of the bootstrap distribution of (atlas accuracy minus grep accuracy) is strictly greater than minus 0.05. A miss means the MVP is not met; the work is then diagnosed and iterated before Phase 4.
+- **H2, atlas uses fewer billable tokens.** Billable tokens of a session are input, output, cache-creation and cache-read tokens added together (D-06). The registered criterion is the stricter form set under Analysis: the 95th percentile of the paired bootstrap difference must be below zero.
+- **H3, citations are verifiable (EVL-03).** In at least 80 percent of the atlas arm's sessions on questions that have an answer, the answer cites at least one file and line and every cited file and line verifies on disk. How "at least 80 percent" is judged (the point estimate, or the Wilson lower bound) was the user's explicit choice (OQ4): the point estimate, with the interval reported.
+
+## Design
+
+- **Paired by question.** Every question is asked in both arms. The comparison is the difference between the arms on the same question.
+- **Size.** 75 scored questions (`eval.scoredQuestions`; the locked floor `eval.minQuestions` is 50), 3 runs of every question in every arm (`eval.runsPerCell`), two arms: 75 x 3 x 2 = 450 scored sessions.
+- **Grep arm.** The built-in tools `Bash` and `Read` only. `Bash` is limited to these read-only commands: `rg`, `git grep`, `git ls-files`, `grep`, `cat`, `head`, `tail`, `wc`, `ls`, `find`, `sort`, `uniq`. No other server, tool or skill.
+- **Atlas arm.** The same two built-in tools with the same shell limits, plus the `gsd-atlas` MCP server with its seven tools (`code_find`, `code_refs`, `code_context`, `code_impact`, `code_explain`, `atlas_status`, `lang_list`) and the `gsd-atlas` skill, loaded from a plugin directory that holds the registered skill file and nothing else. The init event of every session is compared with its arm's registered environment; a session that differs is not scored and stops the run.
+- **The same prompt and answer schema.** Both arms receive the same text: one fixed sentence ("Answer the question about the repository in the current directory. Report file paths relative to the repository root.") followed by the question. Both arms deliver the answer through the same JSON schema (`scripts/eval/answer-schema.json`), which makes Claude Code add its own `StructuredOutput` tool to both.
+- **Isolation flags.** Each session runs `claude -p --output-format stream-json --verbose --setting-sources "" --strict-mcp-config --mcp-config <per-session file> [--plugin-dir <skill plugin>] --tools Bash,Read --allowedTools <read-only shell patterns, Read, atlas tools> --max-budget-usd <budget> --json-schema <answer schema> --no-session-persistence`. Each session works in its own throwaway clone of the prepared checkout, with its own atlas store and an empty user directory. The atlas index for a session is built before the session clock starts and is not part of its token count.
+- **Balanced seeded order.** For every (question, run) the two arms form one adjacent group in random order, and the groups are shuffled, using the registered seed 20261017. Prompt-cache warmth and rate-limit drift then fall evenly on both arms.
+
+## Corpus
+
+- Repository: `gsd-core`, pinned at commit `10ac3a7a947903ba50f538a907af036744d759d5`.
+- Preparation (OQ8): `npm ci --ignore-scripts` ran in a throwaway checkout at that commit, so the project's own TypeScript 6.0.3 is installed under `node_modules`; `package-lock.json` has sha256 `dccc7f1cc3cd7ee9b8d071a03def1e7a4a535cc68a1828df2b797c6aecb357fb`. The registered value is `npmCiRan: true`, and a scored run refuses a checkout whose preparation record says otherwise.
+- The compiler used for the answer keys is TypeScript 6.0.3 on that prepared checkout.
+
+## Questions
+
+- 75 scored questions: callers 17, references 8, heritage 8, emit 10, adr 10, impact 6, definition 7, abstain 9. The categories include callers, implementers, the `.cts` to `.cjs` emit mapping, ADR citations and abstain, as the requirement asks. A separate set of 5 pilot questions (`p-001` to `p-005`) is not part of the scored set.
+- The questions were drafted by an agent from the gsd-core source and ADRs without running atlas, and the order of the candidates comes from a seeded shuffle of a compiler-derived census (seed 20261017). The set was extended from 50 to 75 questions by continuing the same order. `docs/eval/questions-review.md` lists every question, its answer-set size and the rejected candidates.
+- Answer keys come from the independent compiler-based oracle `scripts/eval/oracle.ts`, version `03-14.1`. Of the 75 keys, 60 are compared at granularity `file`, 8 at `file+symbol` and 7 at `file+line`; all 75 use the equality rule `exact-set`.
+- The sha256 of the question file and the answer file are in the `prereg-json` block of this document, with the hashes of the other registered files.
+
+## Scoring
+
+- **Granularity and equality.** An answered item is reduced to what the key's granularity compares: the file for `file`, the file and symbol for `file+symbol`, the file and line for `file+line`. Key items and answered items are matched one to one. With `exact-set` equality an answer is correct when no key item is missing and no answered item is extra.
+- **Line slack.** At `file+line` granularity an answered line matches a key line when the two are at most 2 lines apart (`LINE_SLACK` in `scripts/eval/score.ts`), and each key line is matched at most once. Symbols match when they are equal, or when one names only the method and the other names it with its class.
+- **Paths.** An answered path is normalised (backslashes to slashes, a leading `./` removed, an absolute path inside the checkout made relative). A path that is outside the checkout, has a `..` segment, is empty or contains a NUL byte makes the answer incorrect.
+- **Citation verification.** Every answered item that carries a line is checked on disk against the pinned prepared checkout with the oracle's `verifyCitation`. The answer has a verifiable citation when it cites at least one line and every cited line verifies. At most 200 citations of one answer are checked; the rest count as failures. Abstain questions have nothing to cite and are left out of the citation rate.
+- **Abstain rule.** On an abstain question the only correct answer is `not_found` with no items. A `found` answer is a fabricated answer; `not_found` with items is incorrect. On any other question `not_found` is incorrect ("gave up").
+- **Unparseable answers.** Text that is not the registered JSON shape is scored incorrect. The only tolerance is that the text between the first `{` and the last `}` is tried once when the whole text is not JSON. Nothing is repaired.
+
+## Analysis
+
+- **Accuracy statistic.** For every question, the accuracy of an arm is the mean of its runs (1 for a correct session, 0 for an incorrect one), and the question's difference is atlas minus grep. The unit of resampling is the question: all runs of a question stay together. The bootstrap draws 75 questions with replacement, 10,000 times (`resamples`), from a random stream seeded with 20261017 (`seed`, the mulberry32 generator), and records the mean difference of each draw. The sorted distribution is read without interpolation: the 5th percentile is the element at index floor(0.05 x (10,000 - 1)) and the 95th percentile the element at index floor(0.95 x (10,000 - 1)). The registered interval level is 0.95 one-sided (`intervalLevel`), which is the 90 percent two-sided interval whose lower end is the 5th percentile. H1 holds when the 5th percentile is strictly greater than minus 0.05 (`marginPoints` 5).
+- **Token criterion.** The same paired cluster bootstrap is applied to billable tokens per session: the question's difference is the mean billable tokens of the atlas runs minus the mean of the grep runs. The criterion `point` would be that the observed mean of those differences is below zero (atlas uses fewer tokens overall). The registered criterion is the stricter `upper-bound`: the 95th percentile of the bootstrap distribution of the difference (atlas minus grep) must be below zero, which is more likely to miss on noise. The observed difference and the 5th and 95th percentiles are reported. The user chose the stricter criterion at the Task 3 checkpoint (see Approvals).
+- **Citation criterion.** The rate is the share of atlas-arm sessions on the 66 non-abstain questions (66 x 3 = 198 sessions) whose answer has a verifiable citation, with the Wilson score interval at z = 1.96 (`wilsonZ`) reported for both arms. The threshold is 0.8 (`citationRate`). The registered judgement (`citationJudgedOn`) is the point estimate: the criterion holds when the observed rate is at or above 0.8, which needs 159 of the 198 sessions. The Wilson interval is reported next to it, not judged on (judged on its lower bound, 170 of 198 sessions, 85.9 percent, would be needed). The Wilson interval treats the sessions as independent, although the three runs of a question are not. The user confirmed `point_estimate` explicitly at the Task 3 checkpoint, which replaces the earlier answer `wilson_lower_bound` given at plan 03-01; the confirmation is the `OQ4 confirmed by the user:` line under Approvals.
+- **Failure handling.** A session that ran and did not finish with status `ok` (timeout, budget stop, error, kill) counts as incorrect, has no verifiable citation, and keeps its tokens. Failed sessions are never dropped. The only registered rule is `incorrect-keep-tokens`.
+- **Completeness rule.** The expected cells are every (question, arm, run) triple. A row outside the expected cells, or two rows for one cell, is an error. A run with a missing cell is incomplete: it gets no verdict, and the analysis exits non-zero.
+- **Verdict.** The overall verdict is true when accuracy (H1), tokens (H2) and citations (H3) all hold.
+
+## Run configuration
+
+- **Model.** `claude-sonnet-5-5`, the id the Claude Code default resolved to and reported in every session's init event; the harness passes it as `--model` in a scored run.
+- **Claude Code.** Version `2.1.302`; a scored run refuses a different version.
+- **Concurrency.** 2 sessions in flight at once (`eval.concurrency`).
+- **Per-session bounds.** `--max-budget-usd` 3 (USD) and a wall-clock kill at 900,000 ms (15 minutes), the values the user chose at plan 03-14 (`eval.maxBudgetUsdPerSession`, `eval.sessionWallClockMs`).
+- **Retry rule.** A session that reached the model is final, whether it succeeded or failed; it is never retried. Only an infrastructure failure, a rate-limit or overload result (status 429 or 529, or the same words in the result text) with no tool call made, is retried, at most 2 times, after waiting 60,000 ms (`DEFAULT_RETRY_DELAY_MS` in `scripts/eval/arms.ts`, a planner-added value approved by the user together with this pre-registration; see Approvals). Every attempt is logged.
+- **Cost stop.** The harness has an optional running-cost stop (`--stop-at-cost-usd`) that stops scheduling when the results directory has cost that much. It is a spending guard, not a registered value, and it cannot change a session's result; a run stopped by it is incomplete and gets no verdict.
+- **Registered flags.** Model, runs, concurrency, seed, per-session budget and wall clock are taken from the `prereg-json` block; a scored run refuses a command-line flag that differs.
+
+## Stages
+
+- **Stage A (this document, plan 03-16)** freezes everything except the skill and the final atlas build. It registers the sha256 of these sixteen files: `scripts/eval/questions/gsd-core.questions.json`, `scripts/eval/questions/gsd-core.answers.json`, `scripts/eval/questions.ts`, `scripts/eval/oracle.ts`, `scripts/eval/score.ts`, `scripts/eval/answer-schema.json`, `scripts/eval/stats.ts`, `scripts/eval/rows.ts`, `scripts/eval/analyze.ts`, `scripts/eval/prereg.ts`, `scripts/eval/claude-session.ts`, `scripts/eval/arms.ts`, `scripts/eval/harness.ts`, `scripts/eval/schedule.ts`, `scripts/eval/results.ts` and `scripts/eval/prepare-corpus.ts`. Line endings are read as LF.
+- **Stage B (plan 03-33)** adds the sha256 of `skills/gsd-atlas/SKILL.md` and the atlas commit before the first scored session, and may change nothing else (D-09, D-23). `verifyPrereg` refuses a Stage B record without a frozen Stage A.
+
+## Deviations policy
+
+Nothing registered here changes after the freeze. A change to a question, a key, a registered parameter or a registered file, made after the freeze, is a new registered run: a new version of this document with its own approvals and hashes, run from the start, with the earlier registration kept and cited. A change made after the first scored session never replaces the earlier result. Findings from the scored run, including defects in the harness or the keys, are reported as findings next to the original result and are not applied to it.
+
+## Approvals
+
+The question set and its answer keys (Task 2 of plan 03-16) and the registered parameters, the citation and token criteria and the run configuration (Task 3) were approved by the user on 2026-10-18. The replies are recorded verbatim.
+
+Question set and answer keys (all 75 scored questions and the 5 pilot questions, no replacements). Reply:
+
+> approve questions
+
+Registered parameters, criteria and run configuration. Reply, as first sent:
+
+> point_estimate, stricter point estimate, approve pre-registration
+
+The reply did not use the `oq4=` form and named both the `approve` and the `stricter` options, so the user was asked to clarify which applied. The user answered:
+
+> both unless they conflict and you didn't tell me
+
+The parts do not conflict, so both apply. The reply is resolved as `approve` with `stricter oq4=point_estimate`:
+
+- The EVL-03 citation criterion (OQ4) is judged on the point estimate at or above 0.8 (`citationJudgedOn` is `point_estimate`), replacing the answer `wilson_lower_bound` given at plan 03-01.
+- The token criterion is the stricter form: the 95th percentile of the paired bootstrap difference below zero (`tokenCriterion` is `upper-bound`).
+- The rest of the document is approved as written, including the 5-point margin on the 5th percentile, the failure rule and the run configuration. The approval covers the retry delay `DEFAULT_RETRY_DELAY_MS` of 60,000 ms (infrastructure failures only, at most 2 retries).
+
+OQ4 confirmed by the user: point_estimate
+
+## Machine-readable block
+
+```prereg-json
+{
+  "stage": "A",
+  "status": "Frozen",
+  "params": {
+    "marginPoints": 5,
+    "intervalLevel": 0.95,
+    "resamples": 10000,
+    "seed": 20261017,
+    "runsPerCell": 3,
+    "citationRate": 0.8,
+    "citationJudgedOn": "point_estimate",
+    "wilsonZ": 1.96,
+    "tokenCriterion": "upper-bound",
+    "failureRule": "incorrect-keep-tokens",
+    "concurrency": 2,
+    "maxBudgetUsdPerSession": 3,
+    "sessionWallClockMs": 900000,
+    "model": "claude-sonnet-5-5",
+    "claudeVersion": "2.1.302",
+    "corpusSha": "10ac3a7a947903ba50f538a907af036744d759d5",
+    "npmCiRan": true
+  },
+  "files": {
+    "scripts/eval/questions/gsd-core.questions.json": "841b2bdb202f286c3da5ac3a2c6b01ec4a1520e4a6d343089697e1f8f326700f",
+    "scripts/eval/questions/gsd-core.answers.json": "e9e43d565bfbacc1c2ce045debdae4ee11e32510471c85465ad1e1f50d92413a",
+    "scripts/eval/questions.ts": "425623eda7487496bf2a0ef959ef0ee079e8ccf4d0f41fca324ae01cee03dc64",
+    "scripts/eval/oracle.ts": "8d83f5d8197f12e2234b7d83c831951022d658c1306304887bf1650364f53fdc",
+    "scripts/eval/score.ts": "27cae3d4e1bf257d0bdd68ba0e393df7465b10afa8ef06dcd41208379fc1775e",
+    "scripts/eval/answer-schema.json": "6da389ecb51825629b7770a562b88db67e245d775f7ec903475df97f6c03b72a",
+    "scripts/eval/stats.ts": "e6f50d1f08ab1d53f6b9101e0bc890ca6f8b462a3acb671e5fd50e9dd829b851",
+    "scripts/eval/rows.ts": "c2a24b17cf8b0f2508a7ae0ce8f5419bfea6f90056f929a699893e424f3222de",
+    "scripts/eval/analyze.ts": "8328e47c7a21c34e2ffec617f2646cb3b290f6fb3f79fb58f0497eb516c015d0",
+    "scripts/eval/prereg.ts": "2e6d86fe1ccc20171a9e8c41b9f1b827f5207113bbb5de62429cfe2f7bfbcc25",
+    "scripts/eval/claude-session.ts": "e967fc6549ed2072160b35be3caf47f3f80e5f6fbcf020fbbb64fc23ca3c0ca6",
+    "scripts/eval/arms.ts": "e33cc7066d5a3384580baef78d54db1433d98c1ca7b03022a92681a795fd4c31",
+    "scripts/eval/harness.ts": "c659db81e9d7cb3e3a61a8df9c13846ba23463990920b797794e6c8e58852870",
+    "scripts/eval/schedule.ts": "ef4cd8c0157b6e836f8470652b658fb022f55ef96df6c1865c85043a42097d9d",
+    "scripts/eval/results.ts": "669e0b0909cb6d3c73ea966e9b5394154ed762eb2ed15cf238c35f0530abc373",
+    "scripts/eval/prepare-corpus.ts": "cee98c9221f18e0cff4905e60970684cef3a9b6a520cfb668b73397e39ba3dba"
+  },
+  "questionSet": {
+    "count": 75,
+    "byCategory": {
+      "callers": 17,
+      "references": 8,
+      "heritage": 8,
+      "emit": 10,
+      "adr": 10,
+      "impact": 6,
+      "definition": 7,
+      "abstain": 9
+    }
+  }
+}
+```
