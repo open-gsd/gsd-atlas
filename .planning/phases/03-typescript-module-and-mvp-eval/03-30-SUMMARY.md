@@ -200,3 +200,66 @@ None beyond the plan's register. T-03-301 (constants named after approved keys, 
 
 - Files present: scripts/precise-gate.ts, scripts/precise-gate.test.ts, scripts/ci-config.test.ts, .github/workflows/ci.yml, .github/workflows/nightly.yml, docs/how-to/run-the-measured-gates-locally.md, package.json.
 - Commits 587581d, 0f268ff, 975b6bb and 3a1eee1 are ancestors of HEAD; `git rev-list --count 6ef95cb..HEAD` was 4 before this file was added.
+
+## Build ceiling follow-up (2026-10-18)
+
+Needs-a-decision item 1 above was answered by the user: "Decision 1: B and C", optimise the build and raise the strict build ceiling. Hosted Windows is postponed past the alpha (another task handles its CI policy), so the new ceiling is sized on hosted ubuntu (2 vCPU) and local macOS arm64. Commits: 8ed6234 (RED test), 02bf083 (the optimisation), 0eb6540 (RED ceiling test) and 1fd529d (the ceiling). Stage A (`scripts/eval`, `docs/eval/preregistration.md`) is untouched and `verify-prereg` prints `ok`.
+
+### Where the build time goes
+
+Measured with the composed Host (`build` request, wire timeline of the compiler worker, V8 CPU profiles of the Host process and of the compiler worker) on the pinned gsd-core, and on a throwaway probe branch `ci/phase3-build-perf` run on hosted ubuntu-latest only (the branch and its workflow have been deleted from origin). All figures are milliseconds.
+
+| Phase | macOS arm64, before | hosted Linux 2 vCPU, before (probe job 39169505431) |
+|-------|---------------------|-----------------------------------------------------|
+| Index (the build with the eager pass switched off, `resolveBoundMs: 0`) | 5,700 to 5,900 | 28,900 to 32,000 (two runs) |
+| Compiler worker start (`init` to `ready`) | 170 | 400 to 450 |
+| Program creation plus first batch (first `resolve` to first edge) | 340 | 2,100 |
+| Rest of the eager pass (17 more batches of 2,000 sites; 35,727 sites in all, 15,581 edges) | 3,500 | 9,700 |
+| Total build | 10,000 to 10,900 | 41,800 (three runs) |
+
+What the profiles showed:
+
+1. **The eager pass was bound by the Host process, not by the compiler.** The compiler worker's own CPU profile was 72% idle: of 18.7 s sampled it worked about 5.2 s (program creation 2.3 s, symbol lookup in the checker 1.2 s, the rest of site resolution 1.5 s). On the Host side, `mapTarget` (identity.ts) asked `SymbolLookup.findIn(path, name)` once per edge target, 15,581 times, and every call opened a read transaction (`readSnapshot`: the overlay row, a scan of the stale-path join over all 1,689 overlay files) and read every symbol of the file (`fileSymbols`) before filtering by name. That was 8.8 s of a 52 s sampled Host profile on a loaded Mac (17%) and 6.1 s of 49 s on the hosted Linux runner (12%); the pass waited for it between batches.
+2. **The index is CPU-bound on parsing and does not respond to parallelism on two vCPUs.** The hosted runner has `os.availableParallelism()` = 2, so the approved `pool.size` rule (min(4, cpus minus 1)) gives one parse worker. Its profile is 55% `Query.matches` (tree-sitter query matching) and 38% parse. Pool sizes 2 and 4 and 16 paths in flight left the index at 27.4 to 28.5 s (default 27.9 s) while the process CPU time rose from 35 s to 49.5 s: two vCPUs are two hyperthreads of one core. The pool rule is an approved Phase 2 constant and was not changed; the data say changing it would not help on this runner class.
+3. **Starting the compiler worker during the index was not done.** The worker needs the project facts (configs and owners), which exist only after the overlay is described; the whole overlap is at most the 2.1 s of worker start and program creation, on a runner whose two hardware threads are already shared by the parse worker and the Host.
+
+### The change (answers unchanged)
+
+`symbolLookupOf` (src/fact-store/resolve.ts) now keeps, per resolver call, the symbols of each file by name (`symbolsByNameIn`, src/fact-store/snapshot.ts): the first ask for a file reads it in one transaction, the other asks of that call are map lookups. A save that lands during a call is not seen by that call; an edge is stored only when the overlay is still the one it was asked about (`store` in resolve.ts), so nothing stale stays, and the next call reads the file as it is. RED test first (8ed6234): 'findIn reads a file once for one resolver call' (a save lands between two asks of one call; the second ask must still come from the first read, and a new call must see the save), failing before 02bf083 and passing after it; the whole `resolve.test.ts` suite (123 tests, both drivers) is green.
+
+What was not changed: no bound, timeout, sample count, batch size (`precise.sitesPerRequest` 2000) or pool size.
+
+Answers are identical, checked four ways on a prepared gsd-core (project TypeScript 6.0.3) against the code at the base 5b032e4:
+
+- `precise-gate.ts --trace`: sites asked 35,727, answered 15,600, edges 15,272, dropped by kind, by-kind table (FunctionDeclaration 7,447 of 7,447 = 100%) and the `identity` block are byte-identical before and after; only the timings differ.
+- Stores built by the two versions (`gsd-atlas build`): `resolved_edges` (15,272 rows) and `resolved_asked` (35,727 rows) hash to the same value over every column.
+- The 03-31 audit again, on the new code (`edge-sample.ts --n 70000 --seed 20261017 --prepared`, after the 16 interface `refs` calls): 61,013 facts, 61,013 correct, 0 wrong.
+- `relations-check.ts`: 22 agree, 0 store-only, 0 oracle-only. `emit-e2e`, `explain-e2e`, `precise-e2e` and `precise-gate` tests pass; `npm test` 4,405 tests, 4,403 pass, 2 skipped, 0 fail.
+
+### Before and after
+
+Hosted ubuntu-latest, 2 vCPU, Node 24.16.0. Each job built the base copy (5b032e4) and the changed code on the same machine, alternating, three builds each (full build in milliseconds, one `build` request including the eager pass):
+
+| Machine (3 jobs) | Before (3 builds) | After (3 builds) | Gain |
+|------------------|-------------------|------------------|------|
+| Xeon Platinum 8573C | 41,184 / 39,282 / 37,115 | 34,609 / 34,344 / 32,723 | 6,575 / 4,938 / 4,392 |
+| AMD EPYC 9V45 | 32,757 / 27,613 / 27,869 | 25,519 / 25,146 / 24,881 | 7,238 / 2,467 / 2,988 |
+| AMD EPYC 7763 | 42,287 / 41,295 / 41,325 | 36,494 / 36,717 / 36,598 | 5,793 / 4,578 / 4,727 |
+
+Every one of the nine pairs is faster, by 2.5 to 7.2 s (9 to 22%). The strict gate itself (`precise-gate.ts --strict --corpus gsd-core`, the figure under decision) on the changed code: 33,167 (8573C), 24,746 (EPYC 9V45), 36,622 (EPYC 7763), and in four earlier throwaway jobs 36,950, 37,723, 23,280 and 34,983. Update and warm are unchanged by this work (strict update p95 about 0.4 to 0.5 s, warm p95 about 0.2 s on the runner). The slowest hosted Linux full build seen after the change was 42,997 (the first of three builds in one throwaway job on a slow runner; the other two were 36,925 and 39,991, and that job's strict gate took 36,950); the slowest before it was 42,287 in the paired jobs and 42,167 in the original CI run.
+
+| OS | Before | After |
+|----|--------|-------|
+| macOS arm64 (local, Node 26.11.1, same machine, interleaved, 3 builds each, load average 6) | 10,864 / 10,391 / 10,555 | 7,925 / 8,118 / 8,072 (about 23% faster) |
+| hosted Linux | 37,115 to 42,287 (27,613 to 32,757 on the fast host class) | 32,723 to 36,718 (24,881 to 25,519 on the fast host class); worst seen 42,997 |
+| hosted Windows | 54,920 (original run) | not measured: postponed past the alpha |
+
+The local strict gate on the final code: build 8,107, update p95 301.6, warm p95 74.9, all within the new ceilings.
+
+### The new strict build ceiling
+
+`gate.buildStrictMs` is 60,000 (was 30,000), in 03-CONSTANTS.md (row and an Approvals entry quoting the reply "Decision 1: B and C", 2026-10-18) and as `BUILD_STRICT_MS` in scripts/precise-gate.ts; `precise-gate.test.ts` reads the file and pins the value, the quoted reply and the five other ceilings, which are unchanged (90,000 / 15,000 / 6,000 PR; 5,000 / 2,000 strict), as are all sample counts and timeouts.
+
+Rationale: the requirement was at least about 30% above the worst hosted Linux build observed after the optimisation. That worst was 42,997 ms, so the floor is 55,900; 60,000 is 40% above it and 64% above the worst strict-gate sample (36,622 to 37,723). It stays below the PR ceiling (90,000), so the strict tier is still the tighter one. The ceiling is wide on purpose: the same code takes 25 to 43 s depending on which runner class the job lands on (a spread of 1.7x), which no code change inside this plan removes.
+
+Consequences to know: the strict build gate no longer detects a regression on macOS or a fast runner until it is about 6 times slower than the local figure (use the printed `buildMs` for that); ROADMAP criterion 2 still says 30 s (not edited here), and so do the comment above the strict step in `.github/workflows/nightly.yml` and PRD section 5 ("< 30 s on a modern laptop", which the 8 s local figure meets). The two workflow comments belong to the CI-policy task. The remaining cost is the index, which is bound by the parse worker's tree-sitter query matching and parsing (about 28 of 35 s on a hosted Xeon runner): a real saving needs cheaper queries in the TypeScript module, or fewer files parsed, and is outside this plan.

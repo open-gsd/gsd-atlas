@@ -45,10 +45,11 @@
  *
  * THE GATE (plan 03-30, D-10, TSM-06, ROADMAP criterion 2). Three budgets, judged two ways like the freshness gate: the pull
  * request tier (`--pr`) uses the approved loose ceilings `gate.buildPrCeilingMs`, `gate.updatePrCeilingMs` and
- * `gate.warmQueryPrCeilingMs`; the strict tier (`--strict`, nightly and local) uses the roadmap figures `gate.buildStrictMs`
- * (30 s), `gate.updateStrictMs` (5 s) and `gate.warmQueryStrictMs` (2 s). Every one is a row of 03-CONSTANTS.md that a person
- * approved; the exported constants carry the key in their names and a test compares them with the file. There is no flag that
- * moves a ceiling: an unknown flag is a usage error (exit 2).
+ * `gate.warmQueryPrCeilingMs`; the strict tier (`--strict`, nightly and local) uses `gate.buildStrictMs` (60 s: the roadmap's
+ * 30 s was raised by the decision "B and C" of 2026-10-18, see the Approvals of 03-CONSTANTS.md and the follow-up of
+ * 03-30-SUMMARY.md), `gate.updateStrictMs` (5 s) and `gate.warmQueryStrictMs` (2 s). Every one is a row of 03-CONSTANTS.md that
+ * a person approved; the exported constants carry the key in their names and a test compares them with the file. There is no
+ * flag that moves a ceiling: an unknown flag is a usage error (exit 2).
  *
  * MEASUREMENT RULES (stated once, here):
  *   - build: the clock starts when the `build` request is sent and stops when it returns. The index build and the eager
@@ -762,8 +763,9 @@ export async function runUpdate(options: UpdateOptions): Promise<UpdateReport> {
 // The gate: --pr and --strict (plan 03-30, D-10, TSM-06)
 
 // Each constant is named after its row of 03-CONSTANTS.md (Status: Approved). The three pull request ceilings are the approved
-// looser rows (D-10: three times the roadmap figure); the three strict figures are ROADMAP criterion 2, locked. A test reads
-// the file and compares, and there is no flag that overrides one.
+// looser rows (D-10: three times the roadmap figure); the update and warm strict figures are ROADMAP criterion 2, locked, and the
+// strict build figure is 60 s by the user's decision of 2026-10-18 ("B and C", plan 03-30 follow-up). A test reads the file and
+// compares, and there is no flag that overrides one.
 
 /** `gate.buildPrCeilingMs`: the full build, including the eager pass, on a pull request. */
 export const BUILD_PR_CEILING_MS = 90_000;
@@ -771,8 +773,12 @@ export const BUILD_PR_CEILING_MS = 90_000;
 export const UPDATE_PR_CEILING_MS = 15_000;
 /** `gate.warmQueryPrCeilingMs`: a warm `code_refs`, on a pull request. */
 export const WARM_QUERY_PR_CEILING_MS = 6_000;
-/** `gate.buildStrictMs`: ROADMAP criterion 2, 30 seconds. */
-export const BUILD_STRICT_MS = 30_000;
+/**
+ * `gate.buildStrictMs`: the full build, including the eager pass, at the strict tier. ROADMAP criterion 2 says 30 seconds; the
+ * hosted two-vCPU Linux runners build the pinned gsd-core in 25 to 43 seconds after the build was optimised (42 seconds before),
+ * so on 2026-10-18 the user chose to raise it (decision "B and C"); 60 seconds is 40% above the slowest hosted Linux build seen.
+ */
+export const BUILD_STRICT_MS = 60_000;
 /** `gate.updateStrictMs`: ROADMAP criterion 2, 5 seconds. */
 export const UPDATE_STRICT_MS = 5_000;
 /** `gate.warmQueryStrictMs`: ROADMAP criterion 2, 2 seconds. */

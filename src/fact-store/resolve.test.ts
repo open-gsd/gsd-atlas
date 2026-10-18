@@ -494,6 +494,47 @@ for (const driver of DRIVERS) {
         old,
       );
     });
+
+    it('findIn reads a file once for one resolver call (plan 03-30, build time): every name of the file comes from that read, and the next call reads again', async () => {
+      const looked: Array<{ readonly parse: readonly LocatedSymbol[]; readonly extra: readonly LocatedSymbol[] }> = [];
+      let writer: Writer | undefined;
+      const resolver: Resolver = async function* (_sites, _context, symbols) {
+        const parse = await symbols.findIn('src/a.ts', 'parse');
+        // A save lands between two asks of the same call: the second ask must still come from the first read of the file.
+        if (looked.length === 0) {
+          await writer?.commitFile({
+            worktree: 'main',
+            path: 'src/a.ts',
+            hash: H(4),
+            facts: fileOf('src/a.ts', 4, {
+              symbols: [
+                { name: 'parse', kind: 'function', span: span(1, 0, 3, 1) },
+                { name: 'extra', kind: 'function', span: span(12, 0, 14, 1) },
+              ],
+            }),
+          });
+        }
+        const extra = await symbols.findIn('src/a.ts', 'extra');
+        looked.push({ parse, extra });
+      };
+      await withRig(
+        driver,
+        async (rig) => {
+          writer = rig.store.writer();
+          await seed(writer);
+          await rig.store.at('main').refs(RUN);
+          assert.equal(looked[0]?.parse.length, 2, 'the first ask sees the two parse symbols of the seeded file');
+          assert.deepStrictEqual(looked[0]?.extra, [], 'the second ask of the same call is answered from the first read of the file');
+          await rig.store.at('main').refs(RUN);
+          const last = looked[looked.length - 1];
+          assert.equal(last?.parse.length, 1, 'a new call reads the file as it is now');
+          assert.deepStrictEqual(last?.extra.map((symbol) => symbol.qualifiedName), ['extra']);
+          writer.release();
+        },
+        {},
+        resolver,
+      );
+    });
   });
 }
 
