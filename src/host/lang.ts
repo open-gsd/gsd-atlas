@@ -99,6 +99,9 @@ export interface LangContext {
    * list this Host may use (D-15). Absent: nothing is approved, so every module command still needs approval.
    */
   readonly approved?: (command: readonly string[]) => boolean;
+  /** The built-in precise adapter ids the composition root knows (plan 03-23), and the ones the user turned off. */
+  readonly knownAdapters?: readonly string[];
+  readonly disabledAdapters?: readonly string[];
 }
 
 /** Answer a `lang_test` or `lang_list` request. */
@@ -123,6 +126,10 @@ export async function handleLang(request: Request, context: LangContext): Promis
     }
     effective = { ...roots.roots, repoRoot: repo };
   }
-  const { modules, diagnostics } = resolveModules(effective, context.approved === undefined ? {} : { approved: context.approved });
+  const { modules, diagnostics } = resolveModules(effective, {
+    ...(context.approved === undefined ? {} : { approved: context.approved }),
+    ...(context.knownAdapters === undefined ? {} : { knownAdapters: context.knownAdapters }),
+    ...(context.disabledAdapters === undefined ? {} : { disabledAdapters: context.disabledAdapters }),
+  });
   return okEnvelope<LangListData>(LANG_LIST_SCHEMA, { modules }, diagnostics);
 }

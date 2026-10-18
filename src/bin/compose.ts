@@ -9,7 +9,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { createRealRunner } from '../command-runner/index.ts';
+import { compilerWorkerShape, createRealRunner } from '../command-runner/index.ts';
 import type { CommandRunner, UserPermissions } from '../command-runner/index.ts';
 import { defaultCacheRoot } from '../fact-store/index.ts';
 import { systemClock } from '../facts/index.ts';
@@ -20,6 +20,8 @@ import type { HostClient, Roots } from '../host-client/index.ts';
 import { createHost, defaultStateDir, loadUserConfig, permissionsFor } from '../host/index.ts';
 import type { Host, HostOrigin } from '../host/index.ts';
 import { createParcelEventSource } from '../indexer/index.ts';
+import { resolveWorkerPath } from '../precise-resolver/index.ts';
+import type { PreciseTier } from '../precise-resolver/index.ts';
 
 /** The package root: two levels up from src/bin (dev) or dist/bin (published). */
 export const PACKAGE_ROOT = fileURLToPath(new URL('../../', import.meta.url));
@@ -52,6 +54,8 @@ export interface ComposeOptions {
   readonly origin?: HostOrigin;
   /** `gsd-atlas-mcp --allow-build`: the user's permission list applies to an `mcp` origin too. Default false. */
   readonly allowBuild?: boolean;
+  /** TEST HOOK. Called with each precise tier the Host builds (the trace script reads its statistics). Production omits it. */
+  readonly tierHook?: (tier: PreciseTier) => void;
 }
 
 export interface Composed {
@@ -108,6 +112,8 @@ export function composeHost(options: ComposeOptions): Composed {
     // SKL-03: where saved diagnostics reports live. Only this root knows the environment and the home directory.
     stateDir: defaultStateDir(options.env, home),
     eventSource: () => createParcelEventSource(),
+    knownAdapters: KNOWN_ADAPTERS,
+    ...(options.tierHook === undefined ? {} : { tierHook: options.tierHook }),
   });
   const client = createInProcessHostClient({ roots, engine, host });
 
@@ -145,8 +151,16 @@ export interface RunnerOptions {
  */
 export function makeRunner(options: RunnerOptions): CommandRunner {
   const user = permissionsFor(options.origin ?? 'cli', options.allowBuild === true, options.permissions);
-  return createRealRunner({ env: options.env, ...(user === undefined ? {} : { user }) });
+  return createRealRunner({
+    env: options.env,
+    // The one non-git built-in (plan 03-19/03-23): the TypeScript compiler worker, accepted only as this exact shape.
+    builtinShapes: [compilerWorkerShape({ execPath: process.execPath, workerPath: resolveWorkerPath() })],
+    ...(user === undefined ? {} : { user }),
+  });
 }
+
+/** The built-in precise adapters this composition root knows (SEC-02): the Host builds a tier only for these. */
+export const KNOWN_ADAPTERS: readonly string[] = ['typescript'];
 
 /** The usage line of `gsd-atlas-mcp`. */
 export const MCP_USAGE = [

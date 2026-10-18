@@ -549,7 +549,13 @@ export function createHost(options: HostOptions): Host {
   async function route(request: Request): Promise<Envelope> {
     if ((LANG_KINDS as readonly string[]).includes(request.kind)) {
       const approved = await approvalCheck(request);
-      return handleLang(request, { roots: options.roots, engine: options.engine, ...(approved === undefined ? {} : { approved }) });
+      return handleLang(request, {
+        roots: options.roots,
+        engine: options.engine,
+        knownAdapters,
+        disabledAdapters: disabledProviders,
+        ...(approved === undefined ? {} : { approved }),
+      });
     }
     if (request.kind === HISTORY_KIND) return historyRequest(request);
     // D-15: an agent's server never records an approval, whatever the request carries. Checked before the arguments are read.

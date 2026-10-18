@@ -83,9 +83,30 @@ describe('createProjectContextProvider (TSM-03)', () => {
     assert.equal(none.describes, 0, 'no model applies, so nothing is described');
     assert.deepStrictEqual(none.reads, [], 'and nothing is read');
 
+    // No tsconfig: the cache key and the emit lookup are the Phase 2 ones. The only addition (plan 03-23) is the precise
+    // facts that say no config covers anything, so a TypeScript file is answered `precise_unavailable` and a JavaScript one is not.
     const noConfig = makeWorld({});
-    assert.deepStrictEqual(await ask(noConfig, ['src/lib.cts']), DEFAULT_PROJECT_CONTEXT);
+    const bare = await ask(noConfig, ['src/lib.cts']);
+    assert.deepStrictEqual(bare.context, DEFAULT_PROJECT_CONTEXT.context);
+    assert.equal(bare.emit, undefined);
+    assert.deepStrictEqual(bare.precise?.configs, []);
+    assert.equal(bare.precise?.ownerOf('src/lib.cts'), undefined);
+    assert.equal(bare.precise?.requiresOwner('src/lib.cts'), true);
+    assert.equal(bare.precise?.requiresOwner('src/lib.cjs'), false);
     assert.equal(noConfig.provider.isOutput(WORKTREE, 'out/lib.cjs'), false);
+  });
+
+  it('the precise facts of a project: the owner config, the configs and the compiler choice, and requiresOwner for TypeScript only', async () => {
+    const world = makeWorld({ 'tsconfig.json': BUILD });
+    const project = await ask(world, ['src/lib.cts', 'src/user.cts', 'consumer.cjs']);
+    assert.deepStrictEqual(project.precise?.configs, ['tsconfig.json']);
+    assert.equal(project.precise?.ownerOf('src/lib.cts'), 'tsconfig.json');
+    assert.equal(project.precise?.ownerOf('consumer.cjs'), undefined, 'a .cjs outside include has no owner');
+    assert.equal(project.precise?.requiresOwner('consumer.cjs'), false);
+    assert.equal(project.precise?.requiresOwner('src/a.mts'), true);
+    assert.equal(project.precise?.requiresOwner('src/a.tsx'), true);
+    assert.equal(project.precise?.compiler.source, 'bundled', 'no node_modules in the fixture');
+    assert.equal(world.provider.precise(WORKTREE), project.precise);
   });
 
   it('a model that throws makes the provider reject (the store answers resolver_failed) while the output filter fails open', async () => {

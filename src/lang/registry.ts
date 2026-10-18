@@ -232,7 +232,7 @@ function healthProblem(dir: string, location: Location, manifest: Manifest): Dia
  * started, resolved or imported: `precise.command` and `precise.adapter` are only ever read as text,
  * so a precise tier is inactive until user-level config approves it through the CommandRunner (T-01-36).
  */
-function tiersOf(manifest: Manifest, approved: boolean): TierStatus[] {
+function tiersOf(manifest: Manifest, approved: boolean, options: ResolveOptions = {}): TierStatus[] {
   const tiers: TierStatus[] = [];
   // Declaring a precise command or adapter asks for the precise tier even if `tiers` forgot to list it.
   for (const tier of ['grammar', 'precise', 'platform'] as const) {
@@ -242,6 +242,15 @@ function tiersOf(manifest: Manifest, approved: boolean): TierStatus[] {
     if (tier === 'grammar') {
       tiers.push({ tier, active: true });
     } else if (tier === 'precise') {
+      if (manifest.precise !== undefined && 'adapter' in manifest.precise && options.knownAdapters !== undefined) {
+        // The composition root told the registry which built-in adapters exist (plan 03-23). The id is only ever compared
+        // to that list; nothing it names is looked up, loaded or started here.
+        const id = manifest.precise.adapter;
+        if (!options.knownAdapters.includes(id)) tiers.push({ tier, active: false, reason: 'unknown precise adapter' });
+        else if (options.disabledAdapters?.includes(id) === true) tiers.push({ tier, active: false, reason: 'provider_disabled' });
+        else tiers.push({ tier, active: true });
+        continue;
+      }
       const reason =
         manifest.precise === undefined
           ? 'precise_not_declared'
@@ -259,11 +268,15 @@ function tiersOf(manifest: Manifest, approved: boolean): TierStatus[] {
 }
 
 /** One info diagnostic when the manifest declares a precise command or adapter that is therefore not run. */
-function preciseNotes(entry: Pick<ModuleEntry, 'name' | 'dir'>, manifest: Manifest, approved: boolean): Diagnostic[] {
+function preciseNotes(entry: Pick<ModuleEntry, 'name' | 'dir'>, manifest: Manifest, approved: boolean, options: ResolveOptions = {}): Diagnostic[] {
   if (manifest.precise === undefined) {
     return [];
   }
   const isCommand = 'command' in manifest.precise;
+  // A built-in adapter the composition root knows is not "declared but not run": the tier status says what it does.
+  if (!isCommand && options.knownAdapters?.includes((manifest.precise as { readonly adapter: string }).adapter) === true) {
+    return [];
+  }
   if (approved) {
     // Approved by the person, for exactly this command. Listing a module still runs nothing.
     return [diagnostic('precise_command_approved', 'info', `${entry.name}: precise.command is approved by user-level config for this repository`, entry.dir)];
@@ -288,6 +301,15 @@ function preciseNotes(entry: Pick<ModuleEntry, 'name' | 'dir'>, manifest: Manife
 export interface ResolveOptions {
   /** True when the person approved exactly this command (an executable and its arguments) for the repository being listed. */
   readonly approved?: (command: readonly string[]) => boolean;
+  /**
+   * The built-in precise adapter ids the composition root knows (plan 03-23). A module's `precise.adapter` makes its precise
+   * tier active only when its id is listed; a listed id the user turned off (`disabledAdapters`) is inactive with the
+   * reason `provider_disabled`, and an unlisted one is inactive with the reason `unknown precise adapter`. Without the
+   * option no adapter is known, as before.
+   */
+  readonly knownAdapters?: readonly string[];
+  /** The known adapter ids the user turned off in user-level configuration (`providers.disabled`). */
+  readonly disabledAdapters?: readonly string[];
 }
 
 interface Built {
@@ -315,7 +337,7 @@ function buildOne(group: readonly Candidate[], options: ResolveOptions): Built {
       ...(manifest.version === undefined ? {} : { version: manifest.version }),
       extensions: [...manifest.extensions],
       inactiveExtensions: [],
-      tiers: tiersOf(manifest, approved),
+      tiers: tiersOf(manifest, approved, options),
       shadowed: rest.map((c) => ({ source: c.source, dir: c.dir })),
     },
   };
@@ -374,7 +396,7 @@ export function resolveModules(roots: Roots, options: ResolveOptions = {}): Reso
   const scanned = scan(roots);
   const built = group(scanned.candidates, options);
   const settled = settleExtensions(built);
-  const notes = built.flatMap((b) => preciseNotes(b.entry, b.manifest, b.approved));
+  const notes = built.flatMap((b) => preciseNotes(b.entry, b.manifest, b.approved, options));
   return { modules: settled.modules, diagnostics: [...scanned.diagnostics, ...settled.diagnostics, ...notes] };
 }
 
@@ -388,6 +410,6 @@ export function resolveModule(roots: Roots, name: string, options: ResolveOption
   }
   const scanned = scan(roots, name);
   const [only] = group(scanned.candidates, options);
-  const notes = only === undefined ? [] : preciseNotes(only.entry, only.manifest, only.approved);
+  const notes = only === undefined ? [] : preciseNotes(only.entry, only.manifest, only.approved, options);
   return { entry: only?.entry, diagnostics: [...scanned.diagnostics, ...notes] };
 }

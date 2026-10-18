@@ -17,6 +17,10 @@ export interface StatusPortParts {
   readonly indexer: () => Indexer | undefined;
   readonly governor: Pick<Governor, 'status'>;
   readonly roots: Roots;
+  /** The precise adapter ids the composition root knows (plan 03-23); a module's precise tier is active only for these. */
+  readonly knownAdapters?: readonly string[];
+  /** The known adapter ids the user turned off (`providers.disabled`). */
+  readonly disabledAdapters?: readonly string[];
 }
 
 export function createStatusPort(parts: StatusPortParts): StatusPort {
@@ -25,7 +29,10 @@ export function createStatusPort(parts: StatusPortParts): StatusPort {
     indexer: () => parts.indexer()?.status() ?? null,
     governor: () => parts.governor.status(),
     tiers: () =>
-      resolveModules(parts.roots).modules.map((entry) => ({
+      resolveModules(parts.roots, {
+        ...(parts.knownAdapters === undefined ? {} : { knownAdapters: parts.knownAdapters }),
+        ...(parts.disabledAdapters === undefined ? {} : { disabledAdapters: parts.disabledAdapters }),
+      }).modules.map((entry) => ({
         module: entry.name,
         tiers: entry.tiers.map((tier) => ({ tier: tier.tier, active: tier.active })),
       })),

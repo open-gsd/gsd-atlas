@@ -362,7 +362,14 @@ export async function createTenant(deps: TenantDeps): Promise<Tenant> {
       store,
       text: tree,
       fresh,
-      status: createStatusPort({ store, indexer: () => indexer, governor, roots }),
+      status: createStatusPort({
+        store,
+        indexer: () => indexer,
+        governor,
+        roots,
+        ...(deps.knownAdapters === undefined ? {} : { knownAdapters: deps.knownAdapters }),
+        ...(deps.providers?.disabled === undefined ? {} : { disabledAdapters: deps.providers.disabled }),
+      }),
       clock,
     });
   } catch (error) {

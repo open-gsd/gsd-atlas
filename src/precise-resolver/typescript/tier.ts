@@ -115,10 +115,13 @@ export function createTypeScriptTier(deps: TypeScriptTierDeps): PreciseTier {
       if (disabled) return code === 'precise_unavailable' ? diagnostic(code, 'info', PROVIDER_OFF_TEXT) : undefined;
       if (code === 'compiler_fallback') {
         const text = facts === undefined ? undefined : compilerFallbackText(facts.compiler);
-        return text === undefined ? undefined : diagnostic(code, 'warning', text);
+        // A state, not a fault: the answer is still precise. `info` keeps the CLI's stderr for problems.
+        return text === undefined ? undefined : diagnostic(code, 'info', text);
       }
       const text = TEXT[code];
-      return text === undefined ? undefined : diagnostic(code, 'warning', text);
+      if (text === undefined) return undefined;
+      // `precise_unavailable` is a state too (no config covers the file); a worker that failed or ran out of memory is a problem.
+      return diagnostic(code, code === 'precise_unavailable' ? 'info' : 'warning', text);
     },
     stats() {
       const total = createStats();

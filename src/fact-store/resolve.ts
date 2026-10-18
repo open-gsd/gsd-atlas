@@ -5,7 +5,7 @@
  * once the resolver integration lands). Internal; not exported from index.ts.
  */
 import { posix } from 'node:path';
-import { DEFAULT_PROJECT_CONTEXT, isResolverNotice, symbolKey } from '../facts/index.ts';
+import { DEFAULT_PROJECT_CONTEXT, degradedCodeOf, isResolverNotice, symbolKey } from '../facts/index.ts';
 import type {
   Clock,
   DegradedCode,
@@ -583,20 +583,27 @@ export interface ResolvedSites {
   readonly degraded: readonly DegradedCode[];
 }
 
+/** What one drained resolver call produced: its edges, and the codes its notices asked the answer to carry. */
+interface Collected {
+  readonly edges: ResolvedEdge[];
+  readonly notices: ReadonlySet<DegradedCode>;
+}
+
 type Settled =
-  | { readonly kind: 'done'; readonly edges: readonly ResolvedEdge[] }
+  | { readonly kind: 'done'; readonly edges: readonly ResolvedEdge[]; readonly notices: ReadonlySet<DegradedCode> }
   | { readonly kind: 'timeout' }
-  | { readonly kind: 'failed' };
+  | { readonly kind: 'failed'; readonly code: DegradedCode };
 
 /**
  * Drain the resolver for `sites`, telling it where it resolves (`scope`) and giving it a read-only lookup of the
- * grammar tier's symbols. Rejects when it throws, on the call or while iterating.
+ * grammar tier's symbols. Edges and notices (a condition the answer should say without failing, plan 03-23) arrive in
+ * one stream and are separated here. Rejects when it throws, on the call or while iterating.
  */
 async function collectEdges(
   parts: StoreParts,
   sites: readonly RefSiteKey[],
   scope: ResolveScope,
-): Promise<ResolvedEdge[]> {
+): Promise<Collected> {
   const { worktree } = scope;
   const lookup: SymbolLookup = {
     // Read back through the read-only connection, one short transaction per call (never held across an await).
@@ -604,15 +611,17 @@ async function collectEdges(
       readSnapshot(parts, worktree, (snap) => findRecords(snap, name, { mode: 'exact' }).map((record) => record.identity)).value,
     findIn: async (path, name) => readSnapshot(parts, worktree, (snap) => symbolsIn(snap, path, name)).value,
   };
-  const out: ResolvedEdge[] = [];
+  const edges: ResolvedEdge[] = [];
+  const notices = new Set<DegradedCode>();
   for await (const item of parts.deps.resolver(sites, scope.project.context, lookup, scope)) {
-    if (!isResolverNotice(item)) out.push(item);
+    if (isResolverNotice(item)) notices.add(item.degraded);
+    else edges.push(item);
   }
-  return out;
+  return { edges, notices };
 }
 
 /** Race the resolver against the caller's timeout on the injected clock. The resolver keeps running after a timeout. */
-function settle(run: Promise<ResolvedEdge[]>, clock: Clock, timeoutMs: number | undefined): Promise<Settled> {
+function settle(run: Promise<Collected>, clock: Clock, timeoutMs: number | undefined): Promise<Settled> {
   return new Promise<Settled>((resolve) => {
     let done = false;
     let cancel = (): void => {};
@@ -628,11 +637,12 @@ function settle(run: Promise<ResolvedEdge[]>, clock: Clock, timeoutMs: number | 
       });
     }
     run.then(
-      (edges) => {
-        finish({ kind: 'done', edges });
+      (collected) => {
+        finish({ kind: 'done', edges: collected.edges, notices: collected.notices });
       },
-      () => {
-        finish({ kind: 'failed' });
+      (error: unknown) => {
+        // A typed failure asks for its own code (`memory_budget`); anything else is `resolver_failed`.
+        finish({ kind: 'failed', code: degradedCodeOf(error) });
       },
     );
   });
@@ -738,7 +748,7 @@ export async function resolveSites(
   for (const [id, list] of input.cached) edges.set(id, [...list]);
   // A site is settled when the cache holds an edge for it or the resolver was already asked about it (the marker).
   const pending = input.sites.filter((site) => !input.cached.has(siteId(site)) && !input.asked.has(siteId(site)));
-  if (pending.length === 0) return { edges, degraded: [] };
+  if (pending.length === 0) return { edges, degraded: tierState(input, edges) };
   // No project context for this snapshot: the resolver is not asked, and nothing is cached.
   if (input.unavailable === true) return { edges, degraded: ['resolver_failed'] };
   const asked = new Set(pending.map(siteId));
@@ -746,12 +756,12 @@ export async function resolveSites(
   const run = collectEdges(parts, pending, { worktree, overlay: input.overlay, project: input.project });
   const outcome = await settle(run, parts.deps.clock, options?.timeoutMs);
 
-  if (outcome.kind === 'failed') return { edges, degraded: ['resolver_failed'] };
+  if (outcome.kind === 'failed') return { edges, degraded: withState([outcome.code], input, edges) };
   if (outcome.kind === 'timeout') {
     run.then(
       (fresh) => {
         try {
-          const accepted = validate(parts, worktree, asked, fresh);
+          const accepted = validate(parts, worktree, asked, fresh.edges);
           if (accepted !== null) store(parts, input, accepted.edges, pending, accepted.snapshotId);
         } catch {
           // Background work has no caller to tell; the next call computes again.
@@ -759,14 +769,43 @@ export async function resolveSites(
       },
       () => undefined,
     );
-    return { edges, degraded: ['resolver_timeout'] };
+    return { edges, degraded: withState(['resolver_timeout'], input, edges) };
   }
 
   const accepted = validate(parts, worktree, asked, outcome.edges);
-  if (accepted === null) return { edges, degraded: [] };
+  if (accepted === null) return { edges, degraded: withState([...outcome.notices], input, edges) };
   groupBySite(accepted.edges, edges);
   const stored = store(parts, input, accepted.edges, pending, accepted.snapshotId);
-  return { edges, degraded: stored ? [] : ['cache_unavailable'] };
+  return { edges, degraded: withState([...outcome.notices, ...(stored ? [] : ['cache_unavailable' as const])], input, edges) };
+}
+
+/**
+ * The codes a read carries because of the state of the precise tier, whether or not a resolver ran (plan 03-23): the
+ * codes the project context itself names, `precise_unavailable` when a site's path needs a config that no config
+ * covers, and `compiler_fallback` when precise edges are in use under the bundled compiler. A cached answer says what a
+ * fresh one would, so a fallback is never hidden by the cache.
+ */
+function tierState(input: ResolveInput, edges: ReadonlyMap<string, readonly CachedEdge[]>): DegradedCode[] {
+  const codes = new Set<DegradedCode>();
+  if (input.sites.length === 0 || input.unavailable === true) return [];
+  for (const code of input.project.degraded ?? []) codes.add(code);
+  const precise = input.project.precise;
+  if (precise !== undefined) {
+    if (input.sites.some((site) => precise.requiresOwner(site.path) && precise.ownerOf(site.path) === undefined)) {
+      codes.add('precise_unavailable');
+    }
+    if (precise.compiler.source === 'bundled' && [...edges.values()].some((list) => list.length > 0)) codes.add('compiler_fallback');
+  }
+  return [...codes];
+}
+
+/** `codes` followed by the state codes, each once. */
+function withState(
+  codes: readonly DegradedCode[],
+  input: ResolveInput,
+  edges: ReadonlyMap<string, readonly CachedEdge[]>,
+): DegradedCode[] {
+  return [...new Set([...codes, ...tierState(input, edges)])];
 }
 
 /** What the precise edges say about one grammar edge of `target` at `site`. */

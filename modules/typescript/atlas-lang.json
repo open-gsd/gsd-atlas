@@ -12,10 +12,13 @@
     "refs": "queries/refs.scm",
     "imports": "queries/imports.scm"
   },
-  "tiers": ["grammar"],
+  "tiers": ["grammar", "precise"],
   "parseBudget": 0.005,
   "project": {
     "markers": ["tsconfig.json"],
     "model": "typescript"
+  },
+  "precise": {
+    "adapter": "typescript"
   }
 }
