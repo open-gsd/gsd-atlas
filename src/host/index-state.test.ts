@@ -209,8 +209,8 @@ describe('Host: index_state answers whether the repository has an index, without
     assert.equal(rebuilt.ok, true, JSON.stringify(rebuilt.diagnostics));
   });
 
-  it('is not an MCP tool: the six-tool profile of QRY-06 does not list it', () => {
-    assert.equal(TOOL_NAMES.length, 6);
+  it('is not an MCP tool: the seven-tool profile of QRY-06 and QRY-07 does not list it', () => {
+    assert.equal(TOOL_NAMES.length, 7);
     assert.ok(!(TOOL_NAMES as readonly string[]).includes('index_state'));
   });
 });

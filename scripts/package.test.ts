@@ -487,7 +487,7 @@ test('installed tarball runs the bins', async () => {
   );
   assert.equal(loaded.exitCode, 0, `@parcel/watcher and @modelcontextprotocol/server must load from the installed tree:\n${loaded.stderr}`);
 
-  // The installed MCP bin serves a real stdio session: initialize, then tools/list with the six tools, and it
+  // The installed MCP bin serves a real stdio session: initialize, then tools/list with the seven tools, and it
   // exits 0 when input ends. It does so with an empty user directory and no repository.
   const server = new McpProcess(mcpBin, prefix, { GSD_ATLAS_USER_DIR: empty('empty user for mcp') });
   try {
@@ -496,8 +496,8 @@ test('installed tarball runs the bins', async () => {
     const tools = await server.listTools();
     assert.deepEqual(
       tools.map((tool) => tool.name).sort(),
-      ['atlas_status', 'code_context', 'code_find', 'code_impact', 'code_refs', 'lang_list'],
-      'the installed bin lists exactly six tools',
+      ['atlas_status', 'code_context', 'code_explain', 'code_find', 'code_impact', 'code_refs', 'lang_list'],
+      'the installed bin lists exactly seven tools',
     );
     assert.ok(tools.every((tool) => tool.annotations?.readOnlyHint === true));
     const exit = await server.shutdown();

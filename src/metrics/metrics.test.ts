@@ -159,6 +159,15 @@ describe('validateEvent', () => {
   }
 });
 
+describe('the tool list has the seventh tool (plan 03-26, QRY-07)', () => {
+  it('code_explain is a tool name, an answer of it validates, and it can be rated as a feature', () => {
+    assert.equal(TOOL_NAMES.length, 7);
+    assert.ok((TOOL_NAMES as readonly string[]).includes('code_explain'));
+    assert.deepStrictEqual(validateEvent(answer({ tool: 'code_explain' })).ok, true);
+    assert.deepStrictEqual(validateEvent({ kind: 'rating', scope: 'feature', value: 'up', feature: 'code_explain' }).ok, true);
+  });
+});
+
 describe('rating closed vocabulary: constants', () => {
   it('the scopes and values are the closed lists, and the features are the tool names plus skill, build and init', () => {
     assert.deepStrictEqual([...RATING_SCOPES], ['answer', 'feature', 'session']);

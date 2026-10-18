@@ -567,9 +567,9 @@ describe('allow: the MCP origin', () => {
     }
   });
 
-  it('there is no MCP tool for allow: the tool list holds the six code tools only', () => {
+  it('there is no MCP tool for allow: the tool list holds the seven read tools only', () => {
     assert.ok(!(TOOL_NAMES as readonly string[]).includes('allow'));
-    assert.deepEqual([...TOOL_NAMES].sort(), ['atlas_status', 'code_context', 'code_find', 'code_impact', 'code_refs', 'lang_list']);
+    assert.deepEqual([...TOOL_NAMES].sort(), ['atlas_status', 'code_context', 'code_explain', 'code_find', 'code_impact', 'code_refs', 'lang_list']);
   });
 });
 

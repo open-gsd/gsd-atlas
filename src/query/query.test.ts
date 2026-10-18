@@ -4,7 +4,7 @@ import { describe, it } from 'node:test';
 import type { TestContext } from 'node:test';
 import type { Citation, Envelope, Request } from '../facts/index.ts';
 import { estimateTokens } from './budget.ts';
-import { createHarness } from './harness.test.ts';
+import { blobId, createHarness } from './harness.test.ts';
 import type { Harness, SymbolSpec } from './harness.test.ts';
 import { TOOLS, TOOL_NAMES, buildRequest } from './index.ts';
 import type { QueryConfig } from './index.ts';
@@ -199,8 +199,9 @@ describe('Query tracer: code_find returns a ranked citation with fenced line tex
 });
 
 describe('Query tools: the shared definitions behind the CLI and the MCP server', () => {
-  it('names exactly six tools in the stated order, each read-only with a fixed description', () => {
-    assert.deepEqual([...TOOL_NAMES], ['code_find', 'code_refs', 'code_context', 'code_impact', 'atlas_status', 'lang_list']);
+  it('names exactly seven tools in the stated order, each read-only with a fixed description', () => {
+    assert.deepEqual([...TOOL_NAMES], ['code_find', 'code_refs', 'code_context', 'code_impact', 'atlas_status', 'lang_list', 'code_explain']);
+    assert.equal(TOOLS.length, 7);
     assert.deepEqual(
       TOOLS.map((tool) => tool.name),
       [...TOOL_NAMES],
@@ -224,6 +225,7 @@ describe('Query tools: the shared definitions behind the CLI and the MCP server'
       code_impact: { name: 'parse', path: 'src/a.ts', limit: 5, depth: 2, ...common },
       atlas_status: { repo: '/r' },
       lang_list: { repo: '/r' },
+      code_explain: { handle: `sym/src%2Fa.ts/${blobId('x')}/0`, repo: '/r', cwd: '/r/src', budget_tokens: 100 },
     };
     for (const tool of TOOLS) {
       const input = documented[tool.name];
@@ -231,6 +233,12 @@ describe('Query tools: the shared definitions behind the CLI and the MCP server'
       assert.equal(tool.inputSchema.safeParse(input).success, true, `${tool.name} accepts its arguments`);
       assert.equal(tool.inputSchema.safeParse({ ...input, surprise: true }).success, false, `${tool.name} rejects unknown keys`);
     }
+    // The answer id is the other way to name what to explain; an empty handle is refused by the schema.
+    const explain = TOOLS.find((tool) => tool.name === 'code_explain');
+    assert.equal(explain?.inputSchema.safeParse({ answer_id: 'a_0123456789abcdef' }).success, true);
+    assert.equal(explain?.inputSchema.safeParse({ handle: '' }).success, false);
+    assert.ok(explain?.description.includes('handle'), 'code_explain says what it takes');
+    assert.ok(explain?.description.includes('untrusted_text'), 'code_explain says where repo text would go');
     const find = TOOLS.find((tool) => tool.name === 'code_find');
     assert.equal(find?.inputSchema.safeParse({ name: '   ' }).success, false, 'a blank name is refused');
     assert.equal(find?.inputSchema.safeParse({}).success, false, 'a name is required');
@@ -247,6 +255,151 @@ describe('Query tools: the shared definitions behind the CLI and the MCP server'
     const withRepo = buildRequest('code_find', { name: 'parse', repo: '/r' });
     assert.equal(withRepo.worktree, '/r');
     assert.deepEqual(withRepo.args, { name: 'parse', repo: '/r' });
+  });
+});
+
+interface ExplainedData {
+  readonly explanation: {
+    readonly handle: string;
+    readonly kind: string;
+    readonly fact: { readonly extractor: string; readonly tier: string; readonly confidence: string; readonly grammarVersion: string; readonly stale: boolean; readonly path: string; readonly contentHash: string };
+    readonly resolution: { readonly cache: string; readonly contextId: string } | null;
+    readonly overlay: { readonly worktree: string; readonly seq: number; readonly stalePaths: number };
+  };
+  readonly tiers: { readonly grammar: string; readonly precise: string };
+}
+
+/** Every message an explain failure may carry: fixed sentences that never contain the handle. */
+const EXPLAIN_MESSAGES = {
+  invalid_handle: 'That handle is not a fact handle of this repository index. Pass the debug value of a citation unchanged.',
+  stale_handle: 'The file behind that handle has changed since the handle was issued. Ask the question again to get a current handle.',
+  answer_not_found: 'No recorded answer has that id. The recorder keeps only the newest answers of this repository.',
+  invalid_args: 'Give exactly one of handle and answer_id.',
+} as const;
+
+describe('code_explain: why atlas said something (QRY-07)', () => {
+  const explainRequest = (h: Harness, args: Record<string, unknown>): Request => ({ protocol: 1, kind: 'code_explain', args: { repo: h.dir, ...args }, worktree: h.dir });
+  const B_TS = '// b.ts\nimport { parse } from "./a";\nexport function use() {\n  return parse(1);\n}\n';
+
+  it('explains a definition: grammar extractor and version, the file version, EXTRACTED, no resolution, and one citation with no repository text', async (t) => {
+    const h = await world(t);
+    const hash = await h.addFile('src/a.ts', A_TS, [PARSE]);
+    const stored = (await h.store.at(h.dir).find('parse')).data[0];
+    assert.ok(stored !== undefined);
+
+    const envelope = await h.query().ask(explainRequest(h, { handle: stored.debug }));
+
+    assert.equal(envelope.ok, true, JSON.stringify(envelope.diagnostics));
+    assert.equal(envelope.schema, 'gsd-atlas.code-explain/1');
+    const data = envelope.data as ExplainedData;
+    assert.equal(data.explanation.handle, stored.debug);
+    assert.equal(data.explanation.kind, 'symbol');
+    assert.equal(data.explanation.fact.extractor, 'grammar:typescript@0.23.2');
+    assert.equal(data.explanation.fact.tier, 'grammar');
+    assert.equal(data.explanation.fact.confidence, 'EXTRACTED');
+    assert.equal(data.explanation.fact.grammarVersion, '0.23.2');
+    assert.equal(data.explanation.fact.stale, false);
+    assert.equal(data.explanation.fact.path, 'src/a.ts');
+    assert.equal(data.explanation.fact.contentHash, hash);
+    assert.equal(data.explanation.resolution, null);
+    assert.equal(data.explanation.overlay.seq, envelope.watermark?.seq);
+    assert.equal(data.tiers.grammar, 'active');
+    assert.equal(data.tiers.precise, 'inactive', 'a Query with no tier port says the precise tier is not there');
+    const citations = envelope.citations ?? [];
+    assert.equal(citations.length, 1);
+    assert.equal(citations[0]?.debug, stored.debug, 'the citation carries the same handle');
+    assert.equal(citations[0]?.line, 3);
+    assert.equal('untrusted_text' in envelope, false, 'no repository text is returned');
+    assert.equal(citations[0]?.text_ref, undefined);
+  });
+
+  it('explains a reference: INFERRED at the grammar tier, with the resolution context of the site', async (t) => {
+    const h = await world(t);
+    await h.addFile('src/a.ts', A_TS, [PARSE]);
+    await h.addFileWith('src/b.ts', B_TS, {
+      symbols: [{ name: 'use', kind: 'function', line: 2, col: 16, exported: true }],
+      refs: [{ name: 'parse', line: 3, col: 9, kind: 'call', enclosing: 0, importPath: './a' }],
+      imports: [{ path: './a', line: 1, style: 'es', bindings: [{ imported: 'parse', local: 'parse' }] }],
+    });
+    const target = (await h.store.at(h.dir).find('parse')).data[0];
+    assert.ok(target !== undefined);
+    const ref = (await h.store.at(h.dir).refs(target.identity)).data[0];
+    assert.ok(ref !== undefined);
+
+    const envelope = await h.query().ask(explainRequest(h, { handle: ref.debug }));
+
+    assert.equal(envelope.ok, true, JSON.stringify(envelope.diagnostics));
+    const data = envelope.data as ExplainedData;
+    assert.equal(data.explanation.kind, 'reference');
+    assert.equal(data.explanation.fact.tier, 'grammar');
+    assert.equal(data.explanation.fact.confidence, 'INFERRED');
+    assert.equal(data.explanation.fact.path, 'src/b.ts');
+    assert.equal(data.explanation.resolution?.contextId, 'grammar');
+    assert.equal(data.explanation.resolution?.cache, 'not_applicable');
+    const imported = await h.query().ask(explainRequest(h, { handle: `imp/${encodeURIComponent('src/b.ts')}/${blobId(B_TS)}/0` }));
+    assert.equal((imported.data as ExplainedData).explanation.kind, 'import');
+  });
+
+  it('refuses a malformed, oversized or unknown handle with invalid_handle and a fixed message that never echoes it', async (t) => {
+    const h = await world(t);
+    await h.addFile('src/a.ts', A_TS, [PARSE]);
+    const query = h.query();
+    const marker = 'LEAK-ME-PLEASE';
+    const handles = [
+      `not a handle ${marker}`,
+      `sym/${marker}/${blobId('x')}/0`,
+      `sym/${encodeURIComponent('src/missing.ts')}/${blobId(A_TS)}/0`,
+      `sym/${encodeURIComponent('src/a.ts')}/${blobId(A_TS)}/9`,
+      `sym/${'x'.repeat(2049)}/${blobId(A_TS)}/0`,
+      `sym/${encodeURIComponent('../a.ts')}/${blobId(A_TS)}/0`,
+    ];
+    for (const handle of handles) {
+      const envelope = await query.ask(explainRequest(h, { handle }));
+      assert.equal(envelope.ok, false, handle.slice(0, 40));
+      assert.equal(envelope.schema, 'gsd-atlas.error/1');
+      assert.equal(envelope.diagnostics[0]?.code, 'invalid_handle', handle.slice(0, 40));
+      assert.equal(envelope.diagnostics[0]?.message, EXPLAIN_MESSAGES.invalid_handle);
+      assert.equal(JSON.stringify(envelope).includes(marker), false, 'the handle is not echoed');
+    }
+  });
+
+  it('stale hash: a handle whose file changed since it was issued answers stale_handle', async (t) => {
+    const h = await world(t);
+    await h.addFile('src/a.ts', A_TS, [PARSE]);
+    const old = (await h.store.at(h.dir).find('parse')).data[0]?.debug ?? '';
+    await h.addFile('src/a.ts', `${A_TS}// edited\n`, [PARSE]);
+
+    const stale = await h.query().ask(explainRequest(h, { handle: old }));
+
+    assert.equal(stale.ok, false);
+    assert.equal(stale.diagnostics[0]?.code, 'stale_handle');
+    assert.equal(stale.diagnostics[0]?.message, EXPLAIN_MESSAGES.stale_handle);
+    assert.equal(JSON.stringify(stale).includes(old), false);
+    const current = (await h.store.at(h.dir).find('parse')).data[0]?.debug ?? '';
+    assert.notEqual(current, old);
+    assert.equal((await h.query().ask(explainRequest(h, { handle: current }))).ok, true);
+  });
+
+  it('answer_id and handle together, or neither, are invalid_args with a fixed sentence', async (t) => {
+    const h = await world(t);
+    await h.addFile('src/a.ts', A_TS, [PARSE]);
+    const stored = (await h.store.at(h.dir).find('parse')).data[0]?.debug ?? '';
+    const query = h.query();
+    for (const args of [{}, { handle: stored, answer_id: 'a_0123456789abcdef' }]) {
+      const envelope = await query.ask(explainRequest(h, args));
+      assert.equal(envelope.ok, false);
+      assert.equal(envelope.diagnostics[0]?.code, 'invalid_args');
+      assert.equal(envelope.diagnostics[0]?.message, EXPLAIN_MESSAGES.invalid_args);
+    }
+    const unknownKey = await query.ask(explainRequest(h, { handle: stored, surprise: 1 }));
+    assert.equal(unknownKey.diagnostics[0]?.code, 'invalid_args');
+  });
+
+  it('an unindexed worktree answers not_indexed like the other tools', async (t) => {
+    const h = await world(t);
+    const envelope = await h.query().ask({ protocol: 1, kind: 'code_explain', args: { handle: `sym/a.ts/${blobId('x')}/0` }, worktree: `${h.dir}-never-indexed` });
+    assert.equal(envelope.ok, false);
+    assert.equal(envelope.diagnostics[0]?.code, 'not_indexed');
   });
 });
 

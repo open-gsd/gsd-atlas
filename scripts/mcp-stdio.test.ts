@@ -103,7 +103,7 @@ interface FindRow {
 export const findRows = (envelope: Envelope): FindRow[] => (envelope.data as { results: FindRow[] }).results;
 
 describe('gsd-atlas-mcp over stdio: the default profile and a first tool call', () => {
-  it('tools/list over a real stdio session returns exactly the six tools, each read-only', async (t) => {
+  it('tools/list over a real stdio session returns exactly the seven tools, each read-only', async (t) => {
     const fixture = await makeFixture(t);
     const server = fixture.start();
     const init = await server.handshake();
@@ -238,7 +238,7 @@ describe('startup does no heavy work and side effects', () => {
     const init = await server.handshake();
     assert.equal((init.result as { serverInfo: { name: string } }).serverInfo.name, 'gsd-atlas');
     const tools = await server.listTools();
-    assert.equal(tools.length, 6);
+    assert.equal(tools.length, 7);
     const exit = await server.shutdown();
     assert.equal(exit.exitCode, 0, stderrOf(exit));
     assert.deepEqual(watched.map(listing), before, 'initialize and tools/list created nothing');
@@ -264,7 +264,7 @@ describe('errors stay inside the protocol', () => {
     assert.equal(call.result.isError, true);
     assert.equal(call.envelope.ok, false);
     assert.equal(call.envelope.diagnostics[0]?.code, 'not_a_repo');
-    assert.equal((await server.listTools()).length, 6, 'the server keeps running');
+    assert.equal((await server.listTools()).length, 7, 'the server keeps running');
     const exit = await server.shutdown();
     assert.equal(exit.exitCode, 0, stderrOf(exit));
   });
