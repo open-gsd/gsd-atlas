@@ -158,6 +158,12 @@ jobs:
         run: node scripts/size-gate.ts
       - name: Freshness gate (pull request ceiling)
         run: node scripts/freshness-gate.ts --saves 30 --max-ms 3000
+      # The precise tier budgets (plan 03-30, ROADMAP criterion 2) at the approved pull request ceilings: the pinned corpus is
+      # fetched, nothing is installed (the bundled compiler), and the median of 5 one-file updates and the p95 of 10 warm
+      # queries are judged, so one slow sample on a hosted runner does not fail a pull request. The roadmap figures run
+      # nightly (nightly.yml). The ceilings are constants of the script, not flags.
+      - name: Precise tier gate (pull request ceilings)
+        run: node scripts/precise-gate.ts --pr --corpus gsd-core
       # Diagnostic only (plan 02-46, .planning/debug/windows-freshness.md). The three steps below run on the hosted Windows
       # job alone, after every normal gate, and cannot fail the job: they run the freshness gate once more with the opt-in
       # spawn trace (the gate's own bound, unchanged) so the next hosted Windows run shows the per-spawn cost, the event

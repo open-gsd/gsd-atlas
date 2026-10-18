@@ -379,3 +379,80 @@ test('ci.yml points temporary files at the fast runner disk on hosted Windows on
     assert.ok(!body.some((l) => /Set-MpPreference|Add-MpPreference/.test(l)), `${name}: Defender is not touched`);
   }
 });
+
+// The precise tier gate (plan 03-30, D-10, TSM-06). The pull request job runs the loose approved ceilings on every OS; the
+// nightly job runs the roadmap figures and the gsd-pi no-break trace. The ceilings live in scripts/precise-gate.ts (and are
+// compared with 03-CONSTANTS.md by its own test); a workflow can only choose the tier, never a number.
+
+/** The text of the step named `name` in a job's lines, comment lines left out; undefined when there is none. */
+function namedStep(body: string[], name: string): string | undefined {
+  const at = body.findIndex((l) => new RegExp(`^\\s+-\\s+name:\\s*${name.replace(/[()]/g, '\\$&')}\\s*$`).test(l));
+  return at < 0 ? undefined : textOf(stepAround(body, at));
+}
+
+test('ci.yml: precise gate step in the gates job', () => {
+  const body = jobs(readLines('ci.yml')).get('gates') ?? [];
+  const step = namedStep(body, 'Precise tier gate (pull request ceilings)');
+  assert.ok(step !== undefined, 'the step "Precise tier gate (pull request ceilings)" is missing from the gates job');
+  assert.match(step, /^\s+run:\s*node scripts\/precise-gate\.ts --pr --corpus gsd-core\s*$/m);
+  // It judges: it cannot be made optional, conditional or tolerant of failure.
+  assert.doesNotMatch(step, /continue-on-error|\bif:/);
+  // After the install, the build and every other normal gate; the freshness gate's diagnostic steps come after it.
+  const text = body.join('\n');
+  const at = text.indexOf('scripts/precise-gate.ts --pr');
+  for (const needle of ['npm ci --ignore-scripts', 'npm run build', 'scripts/recall.ts', 'scripts/corpus-gates.ts', 'scripts/size-gate.ts', 'run: node scripts/freshness-gate.ts --saves 30 --max-ms 3000']) {
+    assert.ok(text.indexOf(needle) >= 0 && text.indexOf(needle) < at, `${needle} runs before the precise gate`);
+  }
+  assert.ok(at < text.indexOf(TRACE_COMMAND), 'the precise gate runs before the Windows diagnostic');
+  // The pull request job takes no strict figure and does not clone gsd-pi; no dependency is installed for the gate.
+  assert.doesNotMatch(readLines('ci.yml').join('\n'), /precise-gate\.ts[^\n]*--(?:strict|nobreak)|gsd-pi/);
+  assert.doesNotMatch(text, /--prepared|--dir\b/, 'the gate uses the bundled compiler: no install, no prepared checkout');
+  for (const { text: line, i } of codeLines(body)) {
+    if (/\bnpm\s+ci\b/.test(line)) assert.match(line, /--ignore-scripts/, `line ${i + 1}: npm ci without --ignore-scripts`);
+  }
+});
+
+test('ci.yml: all three operating systems run the precise gate', () => {
+  const body = (jobs(readLines('ci.yml')).get('gates') ?? []).join('\n');
+  assert.match(body, /os:\s*\[\s*ubuntu-latest\s*,\s*macos-latest\s*,\s*windows-latest\s*\]/);
+  assert.match(body, /runs-on:\s*\$\{\{\s*matrix\.os\s*\}\}/);
+  assert.match(body, /fail-fast:\s*false/);
+  // Every precise-gate command of any workflow is one of three exact lines: a tier, a corpus and nothing that moves a bound.
+  const allowed = [
+    /^node scripts\/precise-gate\.ts --pr --corpus gsd-core$/,
+    /^node scripts\/precise-gate\.ts --strict --corpus gsd-core$/,
+    /^node scripts\/precise-gate\.ts --nobreak --corpus gsd-pi$/,
+  ];
+  for (const file of files) {
+    for (const { text: line, i } of codeLines(readLines(file))) {
+      const command = /run:\s*(node scripts\/precise-gate\.ts.*)$/.exec(line)?.[1]?.trim();
+      if (command !== undefined) assert.ok(allowed.some((pattern) => pattern.test(command)), `${file} line ${i + 1}: unexpected precise gate command: ${command}`);
+    }
+  }
+});
+
+test('nightly.yml: strict and no-break steps in nightly', () => {
+  const lines = readLines('nightly.yml');
+  const strictJob = jobs(lines).get('strict') ?? [];
+  const strict = namedStep(strictJob, 'Precise tier gate (strict)');
+  assert.ok(strict !== undefined, 'the step "Precise tier gate (strict)" is missing from the strict job');
+  assert.match(strict, /^\s+run:\s*node scripts\/precise-gate\.ts --strict --corpus gsd-core\s*$/m);
+  const noBreak = namedStep(strictJob, 'gsd-pi no-break trace');
+  assert.ok(noBreak !== undefined, 'the step "gsd-pi no-break trace" is missing from the strict job');
+  assert.match(noBreak, /^\s+run:\s*node scripts\/precise-gate\.ts --nobreak --corpus gsd-pi\s*$/m);
+  for (const step of [strict, noBreak]) assert.doesNotMatch(step, /continue-on-error|\bif:/);
+  const text = strictJob.join('\n');
+  for (const needle of ['npm ci --ignore-scripts', 'npm run build']) assert.ok(text.indexOf(needle) < text.indexOf('precise-gate.ts'), `${needle} runs first`);
+  assert.match(text, /os:\s*\[\s*ubuntu-latest\s*,\s*macos-latest\s*,\s*windows-latest\s*\]/);
+  assert.doesNotMatch(text, /--prepared/);
+});
+
+test('nightly.yml: the strict job points temporary files at the fast runner disk on hosted Windows only, before the install', () => {
+  const body = jobs(readLines('nightly.yml')).get('strict') ?? [];
+  const at = body.findIndex((l) => l.includes('name: Use the fast runner disk for temporary files (Windows only)'));
+  assert.ok(at >= 0, 'the temporary-files step exists in the strict job');
+  const step = stepAround(body, at).join('\n');
+  assert.match(step, /if: runner\.os == 'Windows'/);
+  for (const variable of ['TEMP', 'TMP', 'TMPDIR']) assert.match(step, new RegExp(`echo "${variable}=\\$RUNNER_TEMP" >> "\\$GITHUB_ENV"`));
+  assert.ok(at < body.findIndex((l) => /npm ci --ignore-scripts/.test(l)), 'the step runs before npm ci');
+});
