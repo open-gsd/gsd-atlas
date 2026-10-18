@@ -428,6 +428,13 @@ describe('arms', () => {
     assert.deepEqual(checkInit('atlas', ATLAS_INIT({ tools: ['Bash', 'Read', 'mcp__gsd-atlas__code_find'] })), []);
   });
 
+  it('checkInit accepts the StructuredOutput tool that --json-schema adds, in both arms, and still names other extras', () => {
+    assert.deepEqual(checkInit('grep', GREP_INIT({ tools: ['Bash', 'Read', 'StructuredOutput'] })), []);
+    assert.deepEqual(checkInit('atlas', ATLAS_INIT({ tools: [...ATLAS_INIT().tools, 'StructuredOutput'] })), []);
+    assert.ok(checkInit('grep', GREP_INIT({ tools: ['Bash', 'Read', 'StructuredOutput', 'WebSearch'] })).includes('extra tool: WebSearch'));
+    assert.ok(checkInit('grep', GREP_INIT({ tools: ['Bash', 'StructuredOutput'] })).includes('missing tool: Read'));
+  });
+
   it('checkInit names every difference', () => {
     assert.deepEqual(checkInit('grep', null), ['init event absent']);
     assert.ok(checkInit('grep', GREP_INIT({ tools: ['Bash', 'Read', 'WebSearch'] })).includes('extra tool: WebSearch'));

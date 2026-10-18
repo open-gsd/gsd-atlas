@@ -59,6 +59,12 @@ export const ATLAS_TOOL_NAMES: readonly string[] = [
   'mcp__gsd-atlas__lang_list',
 ];
 
+/**
+ * The tool Claude Code adds to the session when `--json-schema` is given: the model delivers its final
+ * answer through it. Both arms pass the schema, so both lists carry it; it is not an arm tool.
+ */
+export const STRUCTURED_OUTPUT_TOOL = 'StructuredOutput';
+
 /** The built-in tools of both arms: a shell restricted to the patterns below, and the file reader. */
 export const BUILTIN_TOOLS: readonly string[] = ['Bash', 'Read'];
 
@@ -183,7 +189,9 @@ export function checkInit(arm: ArmId, init: InitEvent | null): string[] {
   const allowedMcp = new Set(ARMS[arm].atlasToolNames);
   const mcpTools = init.tools.filter((tool) => tool.startsWith('mcp__'));
   const allowedPresent = mcpTools.filter((tool) => allowedMcp.has(tool));
-  const diffs = assertToolSet(init, { tools: [...expected.tools, ...allowedPresent], mcpServers: expected.mcpServers });
+  // `--json-schema` makes Claude Code add its own `StructuredOutput` tool, in both arms (pilot finding, plan 03-14).
+  const structured = init.tools.includes(STRUCTURED_OUTPUT_TOOL) ? [STRUCTURED_OUTPUT_TOOL] : [];
+  const diffs = assertToolSet(init, { tools: [...expected.tools, ...structured, ...allowedPresent], mcpServers: expected.mcpServers });
   if (arm === 'atlas') {
     if (allowedPresent.length === 0) diffs.push('no atlas tool in the init event');
     if (!init.skills.some(isAtlasSkill)) diffs.push(`skill absent: ${PLUGIN_NAME}:${SKILL_NAME}`);
