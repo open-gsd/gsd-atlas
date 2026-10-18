@@ -169,7 +169,71 @@ Plans:
   4. The `gsd-atlas` skill routes agents to atlas tools and `gsd-atlas-module-author` guides module writing; a user can rate a session, feature or last answer up, meh or down; diagnostics are off by default, approved per data type and previewed before manual submission; and `gsd-atlas bug` captures a flight recorder, versions, config, store health and the failing answer with hashed names and paths by default.
   5. The free-alternatives evaluation (LSP-wrapping MCP servers, agent repo-maps, colbymchenry/codegraph, Claude Code LSP, Memtrace) is recorded before the eval, the eval design is pre-registered (at least 50 questions per corpus including abstain cases, at least 3 runs per configuration, independent oracle, paired pooled analysis, accuracy non-inferiority margin, tool-call rate logged), and on gsd-core agents using atlas consume fewer tokens than the grep-only baseline at non-inferior accuracy with verifiable file:line citations at least 80% of the time.
 
-**Plans:** TBD
+**Plans:** 35 plans
+
+Plans:
+**Wave 1**
+- [ ] 03-01-PLAN.md — Decision register (nine assumptions) and ratification of the diagnostics ADR (SKL-03)
+- [ ] 03-02-PLAN.md — Approve Phase 3 constants and the three package installs (TSM-05, TSM-06, TSM-07, EVL-02)
+- [ ] 03-03-PLAN.md — Headless `claude -p` session runner with isolation, bounds and usage accounting (EVL-02, EVL-03)
+- [ ] 03-04-PLAN.md — Independent compiler-derived oracle and question schema (EVL-02)
+- [ ] 03-05-PLAN.md — Paired cluster bootstrap, analysis and the pre-registration verifier (EVL-02, EVL-03)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+- [ ] 03-06-PLAN.md — Free-alternatives evaluation with live runs (EVL-01)
+- [ ] 03-07-PLAN.md — Answer schema, scorer with citation verification, corpus preparation (EVL-02, EVL-03)
+- [ ] 03-08-PLAN.md — Dated ADR amendments for the Phase 3 seams (TSM-01, TSM-03, TSM-04, TSM-05, TSM-07, QRY-07, SKL-02, SEC-02)
+- [ ] 03-11-PLAN.md — v0 routing skill and packaging (SKL-01)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+- [ ] 03-09-PLAN.md — Seeded question census, 50 scored and 5 pilot questions with oracle keys (EVL-02)
+- [ ] 03-10-PLAN.md — Eval harness: arms, isolation, balanced schedule, failure rules (EVL-02, EVL-03)
+- [ ] 03-12-PLAN.md — Kernel additions (degraded codes, answer id) and diagnostics module boundary (SEC-02, SKL-02)
+- [ ] 03-13-PLAN.md — Exact-argv approvals by command hash and the SEC-01 hostile-repository test (SEC-01, SEC-02)
+
+**Wave 4** *(blocked on Wave 3 completion)*
+- [ ] 03-14-PLAN.md — Ten-session pilot, cost and power projection, choice of N (EVL-02, EVL-03)
+- [ ] 03-15-PLAN.md — `gsd-atlas allow`, MCP origin without permissions, `--allow-build`, providers switch (SEC-02, SEC-01)
+
+**Wave 5** *(blocked on Wave 4 completion)*
+- [ ] 03-16-PLAN.md — Question approval and pre-registration freeze, Stage A (EVL-02)
+- [ ] 03-17-PLAN.md — Answer ids, flight recorder and `gsd-atlas rate` (SKL-02)
+
+**Wave 6** *(blocked on Wave 5 completion)*
+- [ ] 03-18-PLAN.md — Compiler-free ProjectModel, owners, context and TypeScript 7.x detection (TSM-07, TSM-02)
+- [ ] 03-19-PLAN.md — CommandRunner exact-shape built-in for the compiler worker (TSM-05)
+- [ ] 03-20-PLAN.md — Resolver seam: scope, symbol lookup with spans, per-overlay context, negative marker (TSM-01)
+- [ ] 03-21-PLAN.md — Diagnostics: catalog, per-type consent, preview, local save (SKL-03)
+
+**Wave 7** *(blocked on Wave 6 completion)*
+- [ ] 03-22-PLAN.md — Emit mapping end to end: `.cjs` requirers linked to `.cts`, outputs get no facts (TSM-03)
+
+**Wave 8** *(blocked on Wave 7 completion)*
+- [ ] 03-23-PLAN.md — Tracer: precise `code_refs` on gsd-core through the compiler worker and the real MCP server (TSM-01, TSM-02, TSM-05, SEC-02)
+- [ ] 03-24-PLAN.md — ADR citations extracted from comments and stored (TSM-04)
+
+**Wave 9** *(blocked on Wave 8 completion)*
+- [ ] 03-25-PLAN.md — `extends`, `implements` and `overrides` relations through `code_refs`, `code_impact`, `code_context` (TSM-01)
+
+**Wave 10** *(blocked on Wave 9 completion)*
+- [ ] 03-26-PLAN.md — `explain` and the seventh tool `code_explain` (QRY-07)
+- [ ] 03-27-PLAN.md — Memory budget, RSS sampler, LRU worker pool, gsd-pi no-break (TSM-05)
+
+**Wave 11** *(blocked on Wave 10 completion)*
+- [ ] 03-29-PLAN.md — Eager resolve in build, incremental update, warm start, gated `precise.command` (TSM-06, SEC-02, SEC-01)
+
+**Wave 12** *(blocked on Wave 11 completion)*
+- [ ] 03-28-PLAN.md — ADR directory resolution, manifest version 2, `kind: adr` surfaces (TSM-04)
+- [ ] 03-30-PLAN.md — Two-tier TSM-06 gates on three operating systems (TSM-06)
+- [ ] 03-31-PLAN.md — Seeded edge-precision sample at least 98 percent on gsd-core (TSM-01, TSM-04)
+
+**Wave 13** *(blocked on Wave 12 completion)*
+- [ ] 03-32-PLAN.md — `gsd-atlas bug` local bundle, hashed by default (SKL-04)
+- [ ] 03-33-PLAN.md — Final skills, human approval and Stage B freeze (SKL-01)
+
+**Wave 14** *(blocked on Wave 13 completion)*
+- [ ] 03-34-PLAN.md — Reference docs, how-to guides and a documentation consistency test (QRY-07, SKL-01, SEC-02)
+- [ ] 03-35-PLAN.md — Scored eval run and the registered analysis, the MVP gate (EVL-03, EVL-02)
 
 ### Phase 4: Host Hardening
 
@@ -294,7 +358,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 |-------|----------------|--------|-----------|
 | 1. Foundations and Walking Skeleton | 20/20 | Complete    | 2026-10-16 |
 | 2. Grammar Tier, Store and stdio Host | 46/46 | Complete    | 2026-10-17 |
-| 3. TypeScript Module and MVP Eval | 0/TBD | Not started | - |
+| 3. TypeScript Module and MVP Eval | 0/35 | Not started | - |
 | 4. Host Hardening | 0/TBD | Not started | - |
 | 5. Swift Module | 0/TBD | Not started | - |
 | 6. Platform SDK Facts | 0/TBD | Not started | - |
