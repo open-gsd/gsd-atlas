@@ -1,0 +1,66 @@
+{
+  "corpusId": "gsd-core",
+  "corpusSha": "10ac3a7a947903ba50f538a907af036744d759d5",
+  "questions": [
+    {
+      "id": "p-001",
+      "category": "references",
+      "text": "Where is `cmdGitBaseBranch` from `src/git-base-branch.cts` used? List each file that contains a use of it other than its declaration (an import, a call, a read or a type reference), including `src/git-base-branch.cts` if it uses the symbol itself. A different symbol with the same name does not count. Give your answer in the required JSON form.",
+      "key": {
+        "kind": "references",
+        "symbol": "cmdGitBaseBranch",
+        "definedIn": "src/git-base-branch.cts",
+        "granularity": "file",
+        "equality": "exact-set"
+      }
+    },
+    {
+      "id": "p-002",
+      "category": "adr",
+      "text": "Which files cite ADR-2629 in a code comment, however the number is written (`ADR-2629`, `ADR 2629` or `ADR #2629`)? Include tests, scripts and JavaScript configuration files; Markdown documents do not count. List each file once. Give your answer in the required JSON form.",
+      "key": {
+        "kind": "adr-citers",
+        "number": 2629,
+        "granularity": "file",
+        "equality": "exact-set"
+      }
+    },
+    {
+      "id": "p-003",
+      "category": "impact",
+      "text": "List the files affected if the signature of `fileRefPrompt` in `src/review-lane-invocation.cts` changed, to depth two: files that call it directly, plus files that call any function exported by a `.cts` file that calls it directly. Include tests and plain JavaScript files; leave out `src/review-lane-invocation.cts` itself. Give your answer in the required JSON form.",
+      "key": {
+        "kind": "impact",
+        "symbol": "fileRefPrompt",
+        "definedIn": "src/review-lane-invocation.cts",
+        "depth": 2,
+        "granularity": "file",
+        "equality": "exact-set"
+      }
+    },
+    {
+      "id": "p-004",
+      "category": "definition",
+      "text": "Give the file and line where `SmartEntryResult` is declared, among the TypeScript (`.cts`) sources under `src/`. Give your answer in the required JSON form.",
+      "key": {
+        "kind": "definition",
+        "symbol": "SmartEntryResult",
+        "granularity": "file+line",
+        "equality": "exact-set"
+      }
+    },
+    {
+      "id": "p-005",
+      "category": "abstain",
+      "text": "Where is the function `locateProjectRoot` defined, and which files call it? If this repository has no such function, say so. Give your answer in the required JSON form.",
+      "key": {
+        "kind": "abstain",
+        "probe": {
+          "symbol": "locateProjectRoot"
+        },
+        "granularity": "file",
+        "equality": "exact-set"
+      }
+    }
+  ]
+}

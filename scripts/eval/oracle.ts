@@ -79,7 +79,7 @@ function isInside(root: string, target: string): boolean {
 }
 
 /** Repository-relative POSIX path, or undefined when `abs` is outside `root`. */
-function relInside(root: string, abs: string): string | undefined {
+export function relInside(root: string, abs: string): string | undefined {
   const resolved = path.resolve(abs);
   if (!isInside(root, resolved)) return undefined;
   return toPosix(path.relative(root, resolved));
@@ -99,7 +99,7 @@ function readText(abs: string): string {
  * Line starts as an editor shows them: a break is `\n` (so `\r\n` is one break) and nothing else.
  * U+2028, U+2029 and a lone `\r` are not breaks; a leading BOM never reaches this function.
  */
-function computeLineStarts(text: string): number[] {
+export function computeLineStarts(text: string): number[] {
   const starts = [0];
   for (let index = 0; index < text.length; index += 1) {
     if (text.charCodeAt(index) === 10) starts.push(index + 1);
@@ -107,7 +107,8 @@ function computeLineStarts(text: string): number[] {
   return starts;
 }
 
-function lineAt(starts: readonly number[], pos: number): number {
+/** The 1-based editor line of a character offset, given the starts from `computeLineStarts`. */
+export function lineAt(starts: readonly number[], pos: number): number {
   let low = 0;
   let high = starts.length - 1;
   while (low < high) {
@@ -154,14 +155,14 @@ function assertGitWorkTree(repoDir: string): void {
   }
 }
 
-interface GrepHit {
+export interface GrepHit {
   file: string;
   line: number;
   text: string;
 }
 
 /** `git grep -nw` for a fixed word over tracked files; paths are relative to `repoDir`. */
-function gitGrepWord(repoDir: string, word: string): GrepHit[] {
+export function gitGrepWord(repoDir: string, word: string): GrepHit[] {
   const out = git(repoDir, ['grep', '-n', '-z', '-w', '-F', '-I', '--no-color', '-e', word, '--'], [0, 1]);
   const hits: GrepHit[] = [];
   for (const record of out.split('\n')) {
@@ -180,8 +181,17 @@ function gitGrepWord(repoDir: string, word: string): GrepHit[] {
 
 // ---------------------------------------------------------------------------------------------
 // Program state
+//
+// Every `export` in the sections below that is not a key kind (`computeAnswerKey`, `verifyCitation`,
+// `main`) exists so that later plans reuse the compiler-walking code instead of copying it: the
+// question census (03-09, `draft-census.ts`) and the edge-sample and sweep tools of 03-24, 03-25 and
+// 03-31. This file is a registered file once plan 03-16 freezes it, so those plans import these
+// helpers and never edit this file. Program creation: `stateOf`. Comment scanning: `commentRanges`,
+// `commentCitations`, `citationsIn`. Emit-aware specifier resolution: `resolveRequireSpec`,
+// `requireCallsTo`. Editor line numbering: `computeLineStarts`, `lineAt`, `lineOfNode`. Declaration
+// lookup by name and file: `declarationsNamed`, `resolveTarget`, `exportedTargets`.
 
-interface Unit {
+export interface Unit {
   rel: string;
   sf: ts.SourceFile;
   lineStarts: number[];
@@ -190,12 +200,12 @@ interface Unit {
   main: boolean;
 }
 
-interface RequireCall {
+export interface RequireCall {
   call: ts.CallExpression;
   spec: string;
 }
 
-interface State {
+export interface State {
   repoDir: string;
   parsed: ts.ParsedCommandLine;
   program: ts.Program;
@@ -211,6 +221,8 @@ interface State {
   adrDirs: readonly string[];
   adrFilesCache?: Map<number, string[]>;
   requireCache: Map<Unit, RequireCall[]>;
+  /** `requireCallsTo` answers by source file; the scan is the same for every symbol of that file. */
+  requireToCache: Map<string, { unit: Unit; call: ts.CallExpression }[]>;
   idCache: Map<Unit, Map<string, ts.Identifier[]>>;
 }
 
@@ -349,11 +361,12 @@ function buildState(ctx: OracleContext): State {
     parseOnly: new Map(),
     adrDirs: ctx.adrDirs ?? ['docs/adr'],
     requireCache: new Map(),
+    requireToCache: new Map(),
     idCache: new Map(),
   };
 }
 
-function stateOf(ctx: OracleContext): State {
+export function stateOf(ctx: OracleContext): State {
   let state = stateCache.get(ctx);
   if (state === undefined) {
     state = buildState(ctx);
@@ -362,7 +375,7 @@ function stateOf(ctx: OracleContext): State {
   return state;
 }
 
-function trackedFiles(state: State): string[] {
+export function trackedFiles(state: State): string[] {
   if (state.tracked === undefined) {
     state.tracked = git(state.repoDir, ['ls-files', '-z'])
       .split('\0')
@@ -412,12 +425,12 @@ function jsUnitsOf(state: State): Map<string, Unit> {
   return units;
 }
 
-function allUnits(state: State): Unit[] {
+export function allUnits(state: State): Unit[] {
   return [...state.units.values(), ...jsUnitsOf(state).values()];
 }
 
 /** Any tracked code file as a unit; files outside both programs are parsed without a checker. */
-function quickUnit(state: State, rel: string): Unit | undefined {
+export function quickUnit(state: State, rel: string): Unit | undefined {
   const known = state.units.get(rel) ?? state.jsUnits?.get(rel) ?? state.parseOnly.get(rel);
   if (known !== undefined) return known;
   if (!CODE_EXT.has(path.extname(rel).toLowerCase())) return undefined;
@@ -432,12 +445,12 @@ function quickUnit(state: State, rel: string): Unit | undefined {
 // ---------------------------------------------------------------------------------------------
 // Syntax helpers
 
-function walk(node: ts.Node, visit: (node: ts.Node) => void): void {
+export function walk(node: ts.Node, visit: (node: ts.Node) => void): void {
   visit(node);
   ts.forEachChild(node, (child) => walk(child, visit));
 }
 
-function idsOf(state: State, unit: Unit): Map<string, ts.Identifier[]> {
+export function idsOf(state: State, unit: Unit): Map<string, ts.Identifier[]> {
   let ids = state.idCache.get(unit);
   if (ids === undefined) {
     ids = new Map();
@@ -454,12 +467,12 @@ function idsOf(state: State, unit: Unit): Map<string, ts.Identifier[]> {
   return ids;
 }
 
-function lineOfNode(unit: Unit, node: ts.Node): number {
+export function lineOfNode(unit: Unit, node: ts.Node): number {
   return lineAt(unit.lineStarts, node.getStart(unit.sf));
 }
 
 /** The identifier that names a declaration node, for the declaration kinds the oracle tracks. */
-function declName(node: ts.Node): ts.Identifier | undefined {
+export function declName(node: ts.Node): ts.Identifier | undefined {
   if (
     ts.isFunctionDeclaration(node) ||
     ts.isClassDeclaration(node) ||
@@ -482,7 +495,7 @@ function declName(node: ts.Node): ts.Identifier | undefined {
 }
 
 /** A declaration at file or namespace level, or a member of a class or interface; never a local. */
-function isTopOrMember(node: ts.Node): boolean {
+export function isTopOrMember(node: ts.Node): boolean {
   let parent: ts.Node = node.parent;
   if (ts.isVariableDeclaration(node)) {
     if (!ts.isVariableDeclarationList(parent) || !ts.isVariableStatement(parent.parent)) return false;
@@ -537,7 +550,7 @@ function enclosingName(node: ts.Node): string {
   return '<module>';
 }
 
-function symbolAt(checker: ts.TypeChecker, id: ts.Identifier): ts.Symbol | undefined {
+export function symbolAt(checker: ts.TypeChecker, id: ts.Identifier): ts.Symbol | undefined {
   const parent = id.parent;
   if (ts.isShorthandPropertyAssignment(parent) && parent.name === id) {
     return checker.getShorthandAssignmentValueSymbol(parent) ?? checker.getSymbolAtLocation(id);
@@ -546,7 +559,7 @@ function symbolAt(checker: ts.TypeChecker, id: ts.Identifier): ts.Symbol | undef
 }
 
 /** Follows an import alias to its target and an exported local to its export symbol. */
-function canon(checker: ts.TypeChecker, symbol: ts.Symbol): ts.Symbol {
+export function canon(checker: ts.TypeChecker, symbol: ts.Symbol): ts.Symbol {
   let resolved = symbol;
   if ((resolved.flags & ts.SymbolFlags.Alias) !== 0) resolved = checker.getAliasedSymbol(resolved);
   return checker.getExportSymbolOfSymbol(resolved);
@@ -560,7 +573,7 @@ const COMMENT_CACHE = new WeakMap<ts.SourceFile, ts.CommentRange[]>();
  * or regular expression from being mistaken for a comment. Kinds are SingleLineCommentTrivia and
  * MultiLineCommentTrivia only.
  */
-function commentRanges(sf: ts.SourceFile): ts.CommentRange[] {
+export function commentRanges(sf: ts.SourceFile): ts.CommentRange[] {
   const cached = COMMENT_CACHE.get(sf);
   if (cached !== undefined) return cached;
   const seen = new Set<number>();
@@ -635,16 +648,16 @@ interface Computed {
   notes?: Record<string, number | string>;
 }
 
-function uniqueSorted(values: Iterable<string>): string[] {
+export function uniqueSorted(values: Iterable<string>): string[] {
   return [...new Set(values)].sort((a, b) => a.localeCompare(b, 'en'));
 }
 
 // ---------------------------------------------------------------------------------------------
 // Target symbol and references
 
-type RefKind = 'definition' | 'import' | 'export' | 'call' | 'read' | 'binding';
+export type RefKind = 'definition' | 'import' | 'export' | 'call' | 'read' | 'binding';
 
-interface RefSite {
+export interface RefSite {
   unit: Unit;
   node: ts.Node;
   kind: RefKind;
@@ -658,7 +671,7 @@ function refKindOf(id: ts.Identifier): RefKind {
   return isCallee(id) ? 'call' : 'read';
 }
 
-function declarationsNamed(state: State, unit: Unit, name: string, container?: string): { node: ts.Node; id: ts.Identifier }[] {
+export function declarationsNamed(state: State, unit: Unit, name: string, container?: string): { node: ts.Node; id: ts.Identifier }[] {
   const found: { node: ts.Node; id: ts.Identifier }[] = [];
   for (const id of idsOf(state, unit).get(name) ?? []) {
     const parent = id.parent;
@@ -674,14 +687,14 @@ function declarationsNamed(state: State, unit: Unit, name: string, container?: s
   return found;
 }
 
-interface Target {
+export interface Target {
   unit: Unit;
   symbol: ts.Symbol;
   name: string;
   decls: { node: ts.Node; id: ts.Identifier }[];
 }
 
-function resolveTarget(state: State, definedIn: string, name: string, container?: string): Target {
+export function resolveTarget(state: State, definedIn: string, name: string, container?: string): Target {
   const unit = state.units.get(definedIn);
   if (unit === undefined || unit.checker === undefined) {
     throw new OracleError('FILE_NOT_IN_PROGRAM', `${definedIn} is not a source file of the program`);
@@ -764,7 +777,7 @@ const EXT_SUBSTITUTIONS: Readonly<Record<string, readonly string[]>> = {
  * `.mjs` specifier maps to the `.cts`, `.ts` or `.mts` source beside it, and an extensionless
  * specifier is tried with the CommonJS extensions. Anything else is not a reference to the program.
  */
-function resolveRequireSpec(state: State, fromRel: string, spec: string): string | undefined {
+export function resolveRequireSpec(state: State, fromRel: string, spec: string): string | undefined {
   if (!spec.startsWith('./') && !spec.startsWith('../')) return undefined;
   const joined = norm(path.resolve(state.repoDir, path.posix.dirname(fromRel), spec));
   const candidates = path.extname(joined) === '' ? [joined, `${joined}.cjs`, `${joined}.js`, `${joined}/index.js`] : [joined];
@@ -783,13 +796,16 @@ function resolveRequireSpec(state: State, fromRel: string, spec: string): string
 }
 
 /** Every `require(<specifier>)` call, in any tracked JS or program file, that resolves to `sourceRel`. */
-function requireCallsTo(state: State, sourceRel: string): { unit: Unit; call: ts.CallExpression }[] {
+export function requireCallsTo(state: State, sourceRel: string): { unit: Unit; call: ts.CallExpression }[] {
+  const cached = state.requireToCache.get(sourceRel);
+  if (cached !== undefined) return cached;
   const found: { unit: Unit; call: ts.CallExpression }[] = [];
   for (const unit of allUnits(state)) {
     for (const entry of requireCallsOf(state, unit)) {
       if (resolveRequireSpec(state, unit.rel, entry.spec) === sourceRel) found.push({ unit, call: entry.call });
     }
   }
+  state.requireToCache.set(sourceRel, found);
   return found;
 }
 
@@ -895,13 +911,13 @@ function cjsRefs(state: State, sourceRel: string, name: string): CjsResult {
   return { sites, positions, aliases };
 }
 
-interface Analysis {
+export interface Analysis {
   sites: RefSite[];
   positions: Map<string, Set<number>>;
   aliases: Set<string>;
 }
 
-function analyze(state: State, target: Target): Analysis {
+export function analyze(state: State, target: Target): Analysis {
   const aliases = new Set<string>();
   const typed = typedRefs(state, target.symbol, target.name, aliases);
   const cjs = cjsRefs(state, target.unit.rel, target.name);
@@ -993,13 +1009,13 @@ function classifyId(
 /** `ADR-<n>`, `ADR <n>`, `ADR #<n>`, case-insensitive, with an optional `§<section>` detail. */
 const ADR_PATTERN = /\badr(?:[-\s]\s*#?|#)\s*(\d+)(?:\s*§\s*(\d+(?:\.\d+)*))?/gi;
 
-interface Citation {
+export interface Citation {
   number: number;
   detail?: string;
   pos: number;
 }
 
-function citationsIn(text: string, basePos: number): Citation[] {
+export function citationsIn(text: string, basePos: number): Citation[] {
   const found: Citation[] = [];
   for (const match of text.matchAll(ADR_PATTERN)) {
     const citation: Citation = { number: Number(match[1]), pos: basePos + (match.index ?? 0) };
@@ -1009,7 +1025,7 @@ function citationsIn(text: string, basePos: number): Citation[] {
   return found;
 }
 
-function commentCitations(unit: Unit): Citation[] {
+export function commentCitations(unit: Unit): Citation[] {
   const found: Citation[] = [];
   for (const range of commentRanges(unit.sf)) {
     found.push(...citationsIn(unit.sf.text.slice(range.pos, range.end), range.pos));
@@ -1033,7 +1049,7 @@ function stringCitationCount(unit: Unit, number: number): number {
   return count;
 }
 
-function adrFilesOf(state: State): Map<number, string[]> {
+export function adrFilesOf(state: State): Map<number, string[]> {
   if (state.adrFilesCache !== undefined) return state.adrFilesCache;
   const files = new Map<number, string[]>();
   const listed = git(state.repoDir, ['ls-files', '-z', '--', ...state.adrDirs])
@@ -1053,7 +1069,7 @@ function adrFilesOf(state: State): Map<number, string[]> {
   return files;
 }
 
-function trackedCodeUnits(state: State): Unit[] {
+export function trackedCodeUnits(state: State): Unit[] {
   const units: Unit[] = [];
   for (const rel of trackedFiles(state)) {
     if (!CODE_EXT.has(path.extname(rel).toLowerCase())) continue;
@@ -1107,24 +1123,26 @@ function definitionKey(state: State, key: KeyOf<'definition'>): Computed {
   return { items, needles: [key.symbol] };
 }
 
-function isLibraryFile(state: State, sf: ts.SourceFile): boolean {
+export function isLibraryFile(state: State, sf: ts.SourceFile): boolean {
   return state.program.isSourceFileDefaultLibrary(sf) || /[\\/]typescript[\\/]lib[\\/]lib\.[^\\/]*\.d\.ts$/.test(sf.fileName);
 }
 
-function heritageTypes(node: ts.ClassDeclaration | ts.InterfaceDeclaration): ts.ExpressionWithTypeArguments[] {
+export function heritageTypes(node: ts.ClassDeclaration | ts.InterfaceDeclaration): ts.ExpressionWithTypeArguments[] {
   return (node.heritageClauses ?? []).flatMap((clause) => [...clause.types]);
+}
+
+/** The canonical symbol a heritage clause (`extends X`, `implements ns.X`) names, if the checker resolves it. */
+export function resolveHeritageSymbol(state: State, type: ts.ExpressionWithTypeArguments): ts.Symbol | undefined {
+  const expression = type.expression;
+  const id = ts.isPropertyAccessExpression(expression) ? expression.name : expression;
+  if (!ts.isIdentifier(id)) return undefined;
+  const raw = symbolAt(state.checker, id);
+  return raw === undefined ? undefined : canon(state.checker, raw);
 }
 
 function heritageKey(state: State, key: KeyOf<'heritage'>): Computed {
   const items: AnswerItem[] = [];
-  const checker = state.checker;
-  const resolveClause = (type: ts.ExpressionWithTypeArguments): ts.Symbol | undefined => {
-    const expression = type.expression;
-    const id = ts.isPropertyAccessExpression(expression) ? expression.name : expression;
-    if (!ts.isIdentifier(id)) return undefined;
-    const raw = symbolAt(checker, id);
-    return raw === undefined ? undefined : canon(checker, raw);
-  };
+  const resolveClause = (type: ts.ExpressionWithTypeArguments): ts.Symbol | undefined => resolveHeritageSymbol(state, type);
   const needles = new Set<string>([key.symbol]);
   const notes: Record<string, number | string> = {};
 
@@ -1216,7 +1234,7 @@ function adrCitersKey(state: State, key: KeyOf<'adr-citers'>): Computed {
 }
 
 /** Comments that belong to a declaration: its leading comments and every comment inside it. */
-function declarationComments(unit: Unit, node: ts.Node): ts.CommentRange[] {
+export function declarationComments(unit: Unit, node: ts.Node): ts.CommentRange[] {
   const anchor =
     ts.isVariableDeclaration(node) && ts.isVariableDeclarationList(node.parent) && ts.isVariableStatement(node.parent.parent)
       ? node.parent.parent
@@ -1254,7 +1272,21 @@ function adrOfKey(state: State, key: KeyOf<'adr-of'>): Computed {
   return { items, needles: ['ADR'] };
 }
 
-function exportedFunctions(state: State, unit: Unit): Target[] {
+/** True for a function declaration or a variable bound to an arrow function or function expression. */
+export function isFunctionLikeDeclaration(declaration: ts.Node): boolean {
+  return (
+    ts.isFunctionDeclaration(declaration) ||
+    (ts.isVariableDeclaration(declaration) &&
+      declaration.initializer !== undefined &&
+      (ts.isArrowFunction(declaration.initializer) || ts.isFunctionExpression(declaration.initializer)))
+  );
+}
+
+/**
+ * The symbols a program file exports whose declarations in that same file satisfy `accept`, each as a
+ * `Target` carrying only the accepted declarations. `exportedFunctions` is this with the function rule.
+ */
+export function exportedTargets(state: State, unit: Unit, accept: (declaration: ts.Declaration) => boolean): Target[] {
   const checker = unit.checker;
   if (checker === undefined) return [];
   const moduleSymbol = checker.getSymbolAtLocation(unit.sf);
@@ -1263,25 +1295,23 @@ function exportedFunctions(state: State, unit: Unit): Target[] {
   for (const exported of checker.getExportsOfModule(moduleSymbol)) {
     const symbol = canon(checker, exported);
     const decls = (symbol.declarations ?? []).filter((declaration) => declaration.getSourceFile() === unit.sf);
-    const functions = decls.filter(
-      (declaration) =>
-        ts.isFunctionDeclaration(declaration) ||
-        (ts.isVariableDeclaration(declaration) &&
-          declaration.initializer !== undefined &&
-          (ts.isArrowFunction(declaration.initializer) || ts.isFunctionExpression(declaration.initializer))),
-    );
-    if (functions.length === 0) continue;
+    const accepted = decls.filter(accept);
+    if (accepted.length === 0) continue;
     targets.push({
       unit,
       symbol,
       name: symbol.name,
-      decls: functions.flatMap((declaration) => {
+      decls: accepted.flatMap((declaration) => {
         const id = declName(declaration);
         return id === undefined ? [] : [{ node: declaration, id }];
       }),
     });
   }
   return targets;
+}
+
+export function exportedFunctions(state: State, unit: Unit): Target[] {
+  return exportedTargets(state, unit, isFunctionLikeDeclaration);
 }
 
 function impactKey(state: State, key: KeyOf<'impact'>): Computed {

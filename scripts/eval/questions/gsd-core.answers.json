@@ -1,0 +1,2517 @@
+{
+  "oracleVersion": "03-04.1",
+  "repoSha": "10ac3a7a947903ba50f538a907af036744d759d5",
+  "preparedRecord": {
+    "corpusId": "gsd-core",
+    "sha": "10ac3a7a947903ba50f538a907af036744d759d5",
+    "npmCi": true,
+    "typescriptVersion": "6.0.3",
+    "lockSha256": "dccc7f1cc3cd7ee9b8d071a03def1e7a4a535cc68a1828df2b797c6aecb357fb"
+  },
+  "answers": [
+    {
+      "questionId": "q-001",
+      "kind": "callers",
+      "abstain": false,
+      "items": [
+        {
+          "file": "bin/install.js",
+          "line": 5409,
+          "symbol": "sectionHasStaleCommand"
+        },
+        {
+          "file": "bin/install.js",
+          "line": 9228,
+          "symbol": "uninstall"
+        },
+        {
+          "file": "bin/install.js",
+          "line": 13393,
+          "symbol": "install"
+        },
+        {
+          "file": "bin/install.js",
+          "line": 13398,
+          "symbol": "install"
+        },
+        {
+          "file": "bin/install.js",
+          "line": 13421,
+          "symbol": "install"
+        },
+        {
+          "file": "bin/install.js",
+          "line": 13450,
+          "symbol": "install"
+        },
+        {
+          "file": "src/installer-migrations/002-codex-legacy-hooks-json.cts",
+          "line": 67,
+          "symbol": "isManagedCodexHookCommand"
+        },
+        {
+          "file": "tests/portable-node-runner.install.test.cjs",
+          "line": 522,
+          "symbol": "<module>"
+        }
+      ],
+      "granularity": "file",
+      "equality": "exact-set",
+      "needles": [
+        "isManagedHookCommand"
+      ],
+      "unexplained": [],
+      "notes": {},
+      "oracleVersion": "03-04.1"
+    },
+    {
+      "questionId": "q-002",
+      "kind": "callers",
+      "abstain": false,
+      "items": [
+        {
+          "file": "src/gate-verify-command-paths.cts",
+          "line": 48,
+          "symbol": "evaluateVerifyCommandPaths"
+        },
+        {
+          "file": "src/gate-verify-command-paths.cts",
+          "line": 58,
+          "symbol": "evaluateVerifyCommandPaths"
+        },
+        {
+          "file": "src/gate-verify-command-paths.cts",
+          "line": 64,
+          "symbol": "evaluateVerifyCommandPaths"
+        },
+        {
+          "file": "src/gate-verify-command-paths.cts",
+          "line": 70,
+          "symbol": "evaluateVerifyCommandPaths"
+        },
+        {
+          "file": "src/gate-verify-failure-directions.cts",
+          "line": 26,
+          "symbol": "evaluateVerifyFailureDirections"
+        },
+        {
+          "file": "src/gate-verify-failure-directions.cts",
+          "line": 31,
+          "symbol": "evaluateVerifyFailureDirections"
+        },
+        {
+          "file": "src/gate-verify-failure-directions.cts",
+          "line": 34,
+          "symbol": "evaluateVerifyFailureDirections"
+        }
+      ],
+      "granularity": "file",
+      "equality": "exact-set",
+      "needles": [
+        "unresolvable",
+        "unresolvableProbeVerdict"
+      ],
+      "unexplained": [],
+      "notes": {},
+      "oracleVersion": "03-04.1"
+    },
+    {
+      "questionId": "q-003",
+      "kind": "callers",
+      "abstain": false,
+      "items": [
+        {
+          "file": "src/check-command-router.cts",
+          "line": 66,
+          "symbol": "emitGateResult"
+        },
+        {
+          "file": "src/phase.cts",
+          "line": 5111,
+          "symbol": "cmdPhaseUatPassed"
+        },
+        {
+          "file": "src/verify.cts",
+          "line": 1271,
+          "symbol": "emitVerbVerdict"
+        },
+        {
+          "file": "tests/gate-exit.test.cjs",
+          "line": 87,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/gate-exit.test.cjs",
+          "line": 93,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/gate-exit.test.cjs",
+          "line": 96,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/gate-exit.test.cjs",
+          "line": 101,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/gate-exit.test.cjs",
+          "line": 104,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/gate-exit.test.cjs",
+          "line": 110,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/gate-exit.test.cjs",
+          "line": 117,
+          "symbol": "<module>"
+        }
+      ],
+      "granularity": "file",
+      "equality": "exact-set",
+      "needles": [
+        "declareGateExit"
+      ],
+      "unexplained": [],
+      "notes": {},
+      "oracleVersion": "03-04.1"
+    },
+    {
+      "questionId": "q-004",
+      "kind": "callers",
+      "abstain": false,
+      "items": [
+        {
+          "file": "src/init.cts",
+          "line": 3101,
+          "symbol": "cmdInitManager"
+        },
+        {
+          "file": "src/roadmap.cts",
+          "line": 601,
+          "symbol": "collectAnalyzePhases"
+        },
+        {
+          "file": "src/roadmap.cts",
+          "line": 691,
+          "symbol": "collectAnalyzePhases"
+        },
+        {
+          "file": "src/roadmap.cts",
+          "line": 890,
+          "symbol": "cmdRoadmapAnalyze"
+        },
+        {
+          "file": "tests/phase-status.test.cjs",
+          "line": 78,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/phase-status.test.cjs",
+          "line": 150,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/phase-status.test.cjs",
+          "line": 286,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/phase-status.test.cjs",
+          "line": 287,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/phase-status.test.cjs",
+          "line": 288,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/phase-status.test.cjs",
+          "line": 289,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/phase-status.test.cjs",
+          "line": 290,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/phase-status.test.cjs",
+          "line": 291,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/phase-status.test.cjs",
+          "line": 292,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/phase-status.test.cjs",
+          "line": 293,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/phase-status.test.cjs",
+          "line": 321,
+          "symbol": "<module>"
+        }
+      ],
+      "granularity": "file",
+      "equality": "exact-set",
+      "needles": [
+        "toDiskStatus"
+      ],
+      "unexplained": [],
+      "notes": {},
+      "oracleVersion": "03-04.1"
+    },
+    {
+      "questionId": "q-005",
+      "kind": "callers",
+      "abstain": false,
+      "items": [
+        {
+          "file": "src/estimate-cli.cts",
+          "line": 169,
+          "symbol": "cmdEstimateCheck"
+        },
+        {
+          "file": "src/estimate-cli.cts",
+          "line": 325,
+          "symbol": "cmdEstimateCalibrate"
+        },
+        {
+          "file": "src/estimate-cli.cts",
+          "line": 369,
+          "symbol": "cmdEstimateCalibration"
+        },
+        {
+          "file": "tests/estimate-calibrate.test.cjs",
+          "line": 233,
+          "symbol": "simulate"
+        },
+        {
+          "file": "tests/estimate-calibrate.test.cjs",
+          "line": 241,
+          "symbol": "simulate"
+        },
+        {
+          "file": "tests/estimate-calibrate.test.cjs",
+          "line": 415,
+          "symbol": "calibrationResultFor"
+        },
+        {
+          "file": "tests/phase-estimation.test.cjs",
+          "line": 147,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/phase-estimation.test.cjs",
+          "line": 153,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/phase-estimation.test.cjs",
+          "line": 161,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/phase-estimation.test.cjs",
+          "line": 173,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/phase-estimation.test.cjs",
+          "line": 184,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/phase-estimation.test.cjs",
+          "line": 193,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/phase-estimation.test.cjs",
+          "line": 199,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/phase-estimation.test.cjs",
+          "line": 204,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/phase-estimation.test.cjs",
+          "line": 209,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/phase-estimation.test.cjs",
+          "line": 225,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/phase-estimation.test.cjs",
+          "line": 233,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/phase-estimation.test.cjs",
+          "line": 246,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/phase-estimation.test.cjs",
+          "line": 257,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/phase-estimation.test.cjs",
+          "line": 694,
+          "symbol": "<module>"
+        }
+      ],
+      "granularity": "file",
+      "equality": "exact-set",
+      "needles": [
+        "computeCalibration"
+      ],
+      "unexplained": [],
+      "notes": {},
+      "oracleVersion": "03-04.1"
+    },
+    {
+      "questionId": "q-006",
+      "kind": "callers",
+      "abstain": false,
+      "items": [
+        {
+          "file": "bin/install.js",
+          "line": 13650,
+          "symbol": "install"
+        },
+        {
+          "file": "src/worktree-base-ref.cts",
+          "line": 276,
+          "symbol": "parseBaseRef"
+        }
+      ],
+      "granularity": "file",
+      "equality": "exact-set",
+      "needles": [
+        "readBaseRefFromSettings"
+      ],
+      "unexplained": [],
+      "notes": {},
+      "oracleVersion": "03-04.1"
+    },
+    {
+      "questionId": "q-007",
+      "kind": "callers",
+      "abstain": false,
+      "items": [
+        {
+          "file": "src/refactor-trigger-command-router.cts",
+          "line": 731,
+          "symbol": "handleEvaluate"
+        },
+        {
+          "file": "tests/refactor-trigger-cli.test.cjs",
+          "line": 211,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/refactor-trigger-cli.test.cjs",
+          "line": 257,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/refactor-trigger-cli.test.cjs",
+          "line": 270,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/refactor-trigger-cli.test.cjs",
+          "line": 285,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/refactor-trigger-cli.test.cjs",
+          "line": 297,
+          "symbol": "<module>"
+        }
+      ],
+      "granularity": "file",
+      "equality": "exact-set",
+      "needles": [
+        "changedFilesSince"
+      ],
+      "unexplained": [],
+      "notes": {},
+      "oracleVersion": "03-04.1"
+    },
+    {
+      "questionId": "q-008",
+      "kind": "callers",
+      "abstain": false,
+      "items": [
+        {
+          "file": "bin/install.js",
+          "line": 1175,
+          "symbol": "getGlobalDir"
+        },
+        {
+          "file": "bin/install.js",
+          "line": 1578,
+          "symbol": "getCommitAttribution"
+        },
+        {
+          "file": "bin/install.js",
+          "line": 1582,
+          "symbol": "getCommitAttribution"
+        },
+        {
+          "file": "bin/install.js",
+          "line": 8461,
+          "symbol": "uninstall"
+        },
+        {
+          "file": "bin/install.js",
+          "line": 9586,
+          "symbol": "configureOpencodePermissions"
+        },
+        {
+          "file": "bin/install.js",
+          "line": 9691,
+          "symbol": "configureKiloPermissions"
+        },
+        {
+          "file": "bin/install.js",
+          "line": 9816,
+          "symbol": "configureAntigravityPermissions"
+        },
+        {
+          "file": "bin/install.js",
+          "line": 9889,
+          "symbol": "configureAntigravityMcpConfig"
+        },
+        {
+          "file": "bin/install.js",
+          "line": 10891,
+          "symbol": "install"
+        },
+        {
+          "file": "bin/install.js",
+          "line": 14248,
+          "symbol": "promptLocation"
+        },
+        {
+          "file": "bin/install.js",
+          "line": 15046,
+          "symbol": "<module>"
+        },
+        {
+          "file": "hooks/gsd-cursor-subagent-start.js",
+          "line": 178,
+          "symbol": "resolveIsolationEvidence"
+        },
+        {
+          "file": "src/agent-install-check.cts",
+          "line": 157,
+          "symbol": "getAgentsDir"
+        },
+        {
+          "file": "src/agent-install-check.cts",
+          "line": 174,
+          "symbol": "getAgentsDir"
+        },
+        {
+          "file": "src/agent-install-check.cts",
+          "line": 186,
+          "symbol": "getAgentsDir"
+        },
+        {
+          "file": "src/agent-install-check.cts",
+          "line": 596,
+          "symbol": "resolveAgentHint"
+        },
+        {
+          "file": "src/init.cts",
+          "line": 4653,
+          "symbol": "buildSkillManifest"
+        },
+        {
+          "file": "src/profile-output.cts",
+          "line": 762,
+          "symbol": "cmdWriteProfile"
+        },
+        {
+          "file": "src/profile-output.cts",
+          "line": 1065,
+          "symbol": "cmdGenerateClaudeProfile"
+        },
+        {
+          "file": "src/runtime-homes.cts",
+          "line": 684,
+          "symbol": "getGlobalSkillsBase"
+        },
+        {
+          "file": "src/worktree-base-ref.cts",
+          "line": 409,
+          "symbol": "cmdWorktreeBaseCheck"
+        },
+        {
+          "file": "tests/capability-state.test.cjs",
+          "line": 2132,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/capability-state.test.cjs",
+          "line": 2133,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/capability-state.test.cjs",
+          "line": 2155,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/capability-state.test.cjs",
+          "line": 2172,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/capability-state.test.cjs",
+          "line": 2246,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/cline-install.test.cjs",
+          "line": 64,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/cline-install.test.cjs",
+          "line": 90,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/cline-install.test.cjs",
+          "line": 95,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/cline-install.test.cjs",
+          "line": 101,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/cline-install.test.cjs",
+          "line": 107,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/cline-install.test.cjs",
+          "line": 112,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/cline-install.test.cjs",
+          "line": 113,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/codebuddy-install.test.cjs",
+          "line": 42,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/codebuddy-install.test.cjs",
+          "line": 68,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/codebuddy-install.test.cjs",
+          "line": 73,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/codebuddy-install.test.cjs",
+          "line": 79,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/codebuddy-install.test.cjs",
+          "line": 85,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/codebuddy-install.test.cjs",
+          "line": 90,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/codebuddy-install.test.cjs",
+          "line": 91,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/copilot-install.test.cjs",
+          "line": 108,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/copilot-install.test.cjs",
+          "line": 113,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/copilot-install.test.cjs",
+          "line": 119,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/copilot-install.test.cjs",
+          "line": 125,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/copilot-install.test.cjs",
+          "line": 132,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/copilot-install.test.cjs",
+          "line": 139,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/copilot-install.test.cjs",
+          "line": 146,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/copilot-install.test.cjs",
+          "line": 153,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/copilot-install.test.cjs",
+          "line": 158,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/copilot-install.test.cjs",
+          "line": 159,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/install.test.cjs",
+          "line": 138,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/install.test.cjs",
+          "line": 167,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/install.test.cjs",
+          "line": 186,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/install.test.cjs",
+          "line": 213,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/install.test.cjs",
+          "line": 232,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/install.test.cjs",
+          "line": 244,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/install.test.cjs",
+          "line": 255,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/install.test.cjs",
+          "line": 273,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/install.test.cjs",
+          "line": 298,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/install.test.cjs",
+          "line": 303,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/install.test.cjs",
+          "line": 308,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/install.test.cjs",
+          "line": 314,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/windsurf-install.test.cjs",
+          "line": 27,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/windsurf-install.test.cjs",
+          "line": 32,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/windsurf-install.test.cjs",
+          "line": 38,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/windsurf-install.test.cjs",
+          "line": 44,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/windsurf-install.test.cjs",
+          "line": 49,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/windsurf-install.test.cjs",
+          "line": 50,
+          "symbol": "<module>"
+        }
+      ],
+      "granularity": "file",
+      "equality": "exact-set",
+      "needles": [
+        "getGlobalConfigDir"
+      ],
+      "unexplained": [],
+      "notes": {},
+      "oracleVersion": "03-04.1"
+    },
+    {
+      "questionId": "q-009",
+      "kind": "callers",
+      "abstain": false,
+      "items": [
+        {
+          "file": "src/installer-migrations.cts",
+          "line": 788,
+          "symbol": "renderRewrittenJson"
+        },
+        {
+          "file": "tests/jsonc-edit.test.cjs",
+          "line": 36,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/jsonc-edit.test.cjs",
+          "line": 43,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/jsonc-edit.test.cjs",
+          "line": 50,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/jsonc-edit.test.cjs",
+          "line": 56,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/jsonc-edit.test.cjs",
+          "line": 58,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/jsonc-edit.test.cjs",
+          "line": 63,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/jsonc-edit.test.cjs",
+          "line": 64,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/jsonc-edit.test.cjs",
+          "line": 70,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/jsonc-edit.test.cjs",
+          "line": 76,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/jsonc-edit.test.cjs",
+          "line": 111,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/jsonc-edit.test.cjs",
+          "line": 117,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/jsonc-edit.test.cjs",
+          "line": 118,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/jsonc-edit.test.cjs",
+          "line": 135,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/jsonc-edit.test.cjs",
+          "line": 171,
+          "symbol": "<module>"
+        }
+      ],
+      "granularity": "file",
+      "equality": "exact-set",
+      "needles": [
+        "setJsoncValue"
+      ],
+      "unexplained": [],
+      "notes": {},
+      "oracleVersion": "03-04.1"
+    },
+    {
+      "questionId": "q-010",
+      "kind": "callers",
+      "abstain": false,
+      "items": [
+        {
+          "file": "src/api-coverage.cts",
+          "line": 447,
+          "symbol": "detectApiIntegration"
+        },
+        {
+          "file": "src/api-coverage.cts",
+          "line": 745,
+          "symbol": "parseCoverageMatrix"
+        },
+        {
+          "file": "src/assumption-delta.cts",
+          "line": 183,
+          "symbol": "detectAssumptionDelta"
+        },
+        {
+          "file": "src/decision-coverage-support.cts",
+          "line": 139,
+          "symbol": "stripCommentsAndFences"
+        },
+        {
+          "file": "src/decisions.cts",
+          "line": 627,
+          "symbol": "extractDecisions"
+        },
+        {
+          "file": "src/markdown-sectionizer.cts",
+          "line": 628,
+          "symbol": "collectSection"
+        },
+        {
+          "file": "src/planning-snapshot.cts",
+          "line": 473,
+          "symbol": "buildStateFields"
+        },
+        {
+          "file": "src/roadmap-parser.cts",
+          "line": 721,
+          "symbol": "hasPhaseEntries"
+        },
+        {
+          "file": "src/roadmap-parser.cts",
+          "line": 741,
+          "symbol": "collectTablePhaseRows"
+        },
+        {
+          "file": "src/roadmap-parser.cts",
+          "line": 782,
+          "symbol": "hasPhaseListingTableHeader"
+        },
+        {
+          "file": "src/roadmap-parser.cts",
+          "line": 840,
+          "symbol": "scanMilestonePhaseIdSets"
+        },
+        {
+          "file": "src/state.cts",
+          "line": 2669,
+          "symbol": "extractRetiredPhaseNumbers"
+        },
+        {
+          "file": "tests/markdown-sectionizer.test.cjs",
+          "line": 116,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/markdown-sectionizer.test.cjs",
+          "line": 124,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/markdown-sectionizer.test.cjs",
+          "line": 132,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/markdown-sectionizer.test.cjs",
+          "line": 145,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/markdown-sectionizer.test.cjs",
+          "line": 158,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/markdown-sectionizer.test.cjs",
+          "line": 165,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/markdown-sectionizer.test.cjs",
+          "line": 174,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/markdown-sectionizer.test.cjs",
+          "line": 187,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/markdown-sectionizer.test.cjs",
+          "line": 200,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/markdown-sectionizer.test.cjs",
+          "line": 214,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/markdown-sectionizer.test.cjs",
+          "line": 228,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/markdown-sectionizer.test.cjs",
+          "line": 245,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/markdown-sectionizer.test.cjs",
+          "line": 1172,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/markdown-sectionizer.test.cjs",
+          "line": 1185,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/markdown-sectionizer.test.cjs",
+          "line": 1203,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/markdown-sectionizer.test.cjs",
+          "line": 1204,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/markdown-sectionizer.test.cjs",
+          "line": 1228,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/markdown-sectionizer.test.cjs",
+          "line": 1569,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/plan-checker-coupling.test.cjs",
+          "line": 108,
+          "symbol": "stripFences"
+        },
+        {
+          "file": "tests/ship-notes-wedged-pr.test.cjs",
+          "line": 127,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/workflow-step-tag-balance.test.cjs",
+          "line": 35,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/workflow-step-tag-balance.test.cjs",
+          "line": 46,
+          "symbol": "<module>"
+        }
+      ],
+      "granularity": "file",
+      "equality": "exact-set",
+      "needles": [
+        "stripFencedCode"
+      ],
+      "unexplained": [],
+      "notes": {},
+      "oracleVersion": "03-04.1"
+    },
+    {
+      "questionId": "q-011",
+      "kind": "callers",
+      "abstain": false,
+      "items": [
+        {
+          "file": "src/phase.cts",
+          "line": 2441,
+          "symbol": "updateRoadmapAfterPhaseRemoval"
+        },
+        {
+          "file": "src/phase.cts",
+          "line": 4008,
+          "symbol": "writePlansField"
+        },
+        {
+          "file": "src/planning-document.cts",
+          "line": 845,
+          "symbol": "replaceProse"
+        },
+        {
+          "file": "src/roadmap-upgrade.cts",
+          "line": 2226,
+          "symbol": "substituteCrossRefs"
+        },
+        {
+          "file": "src/roadmap.cts",
+          "line": 1453,
+          "symbol": "cmdRoadmapUpdatePlanProgress"
+        },
+        {
+          "file": "src/state-document.cts",
+          "line": 657,
+          "symbol": "stateReplaceField"
+        },
+        {
+          "file": "tests/frontmatter-fence.test.cjs",
+          "line": 197,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/frontmatter-fence.test.cjs",
+          "line": 207,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/frontmatter-fence.test.cjs",
+          "line": 218,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/frontmatter-fence.test.cjs",
+          "line": 233,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/frontmatter-fence.test.cjs",
+          "line": 256,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/frontmatter-fence.test.cjs",
+          "line": 322,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/phase.test.cjs",
+          "line": 12301,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/roadmap.test.cjs",
+          "line": 5983,
+          "symbol": "<module>"
+        }
+      ],
+      "granularity": "file",
+      "equality": "exact-set",
+      "needles": [
+        "parsePlanningDoc"
+      ],
+      "unexplained": [],
+      "notes": {},
+      "oracleVersion": "03-04.1"
+    },
+    {
+      "questionId": "q-012",
+      "kind": "references",
+      "abstain": false,
+      "items": [
+        {
+          "file": "src/command-aliases.cts",
+          "line": 980,
+          "symbol": "<module>"
+        }
+      ],
+      "granularity": "file",
+      "equality": "exact-set",
+      "needles": [
+        "PHASE_COMMAND_ALIASES"
+      ],
+      "unexplained": [],
+      "notes": {},
+      "oracleVersion": "03-04.1"
+    },
+    {
+      "questionId": "q-013",
+      "kind": "references",
+      "abstain": false,
+      "items": [
+        {
+          "file": "src/state-transition.cts",
+          "line": 1092,
+          "symbol": "applyStatePreservation"
+        },
+        {
+          "file": "src/state-transition.cts",
+          "line": 1354,
+          "symbol": "beginPhaseCore"
+        },
+        {
+          "file": "src/state-transition.cts",
+          "line": 2204,
+          "symbol": "completePhaseCore"
+        },
+        {
+          "file": "src/state-transition.cts",
+          "line": 2427,
+          "symbol": "plannedPhaseCore"
+        },
+        {
+          "file": "src/state-transition.cts",
+          "line": 2707,
+          "symbol": "milestoneCompleteCore"
+        },
+        {
+          "file": "src/state-transition.cts",
+          "line": 2873,
+          "symbol": "patchCore"
+        },
+        {
+          "file": "src/state.cts",
+          "line": 3837,
+          "symbol": "syncStateFrontmatter"
+        },
+        {
+          "file": "src/state.cts",
+          "line": 4721,
+          "symbol": "bodyLabelFor"
+        },
+        {
+          "file": "src/state.cts",
+          "line": 5638,
+          "symbol": "cmdStateJson"
+        },
+        {
+          "file": "tests/state-transition.test.cjs",
+          "line": 21,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/state-transition.test.cjs",
+          "line": 59,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/state-transition.test.cjs",
+          "line": 65,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/state-transition.test.cjs",
+          "line": 77,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/state-transition.test.cjs",
+          "line": 106,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/state-transition.test.cjs",
+          "line": 114,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/state-transition.test.cjs",
+          "line": 115,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/state-transition.test.cjs",
+          "line": 116,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/state-transition.test.cjs",
+          "line": 117,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/state-transition.test.cjs",
+          "line": 118,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/state-transition.test.cjs",
+          "line": 218,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/state-transition.test.cjs",
+          "line": 221,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/state-transition.test.cjs",
+          "line": 599,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/state-transition.test.cjs",
+          "line": 2758,
+          "symbol": "honored"
+        },
+        {
+          "file": "tests/state-transition.test.cjs",
+          "line": 3239,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/state-transition.test.cjs",
+          "line": 3558,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/state.test.cjs",
+          "line": 8800,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/state.test.cjs",
+          "line": 8873,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/state.test.cjs",
+          "line": 8920,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/state.test.cjs",
+          "line": 8922,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/state.test.cjs",
+          "line": 8924,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/state.test.cjs",
+          "line": 8927,
+          "symbol": "getFieldClassification"
+        },
+        {
+          "file": "tests/state.test.cjs",
+          "line": 20617,
+          "symbol": "<module>"
+        },
+        {
+          "file": "tests/state.test.cjs",
+          "line": 20620,
+          "symbol": "<module>"
+        }
+      ],
+      "granularity": "file",
+      "equality": "exact-set",
+      "needles": [
+        "getFieldClassification",
+        "original"
+      ],
+      "unexplained": [],
+      "notes": {},
+      "oracleVersion": "03-04.1"
+    },
+    {
+      "questionId": "q-014",
+      "kind": "references",
+      "abstain": false,
+      "items": [
+        {
+          "file": "gsd-core/bin/gsd-tools.cjs",
+          "line": 4714,
+          "symbol": "resolveSpawnBinary"
+        },
+        {
+          "file": "gsd-core/bin/gsd-tools.cjs",
+          "line": 4715,
+          "symbol": "resolveSpawnBinary"
+        },
+        {
+          "file": "src/fallow-runner.cts",
+          "line": 21,
+          "symbol": "<module>"
+        },
+        {
+          "file": "src/fallow-runner.cts",
+          "line": 29,
+          "symbol": "resolveFallowBinary"
+        },
+        {
+          "file": "src/shell-command-projection.cts",
+          "line": 928,
+          "symbol": "projectSpawnInvocation"
+        }
+      ],
+      "granularity": "file",
+      "equality": "exact-set",
+      "needles": [
+        "resolveExecutableBinary"
+      ],
+      "unexplained": [],
+      "notes": {},
+      "oracleVersion": "03-04.1"
+    },
+    {
+      "questionId": "q-015",
+      "kind": "references",
+      "abstain": false,
+      "items": [
+        {
+          "file": "src/hook-bus.cts",
+          "line": 47,
+          "symbol": "createHookBus"
+        }
+      ],
+      "granularity": "file",
+      "equality": "exact-set",
+      "needles": [
+        "CreateHookBusOptions"
+      ],
+      "unexplained": [],
+      "notes": {},
+      "oracleVersion": "03-04.1"
+    },
+    {
+      "questionId": "q-016",
+      "kind": "references",
+      "abstain": false,
+      "items": [
+        {
+          "file": "src/tdd-red-evidence.cts",
+          "line": 93,
+          "symbol": "classifyRedEvidence"
+        },
+        {
+          "file": "src/tdd-red-evidence.cts",
+          "line": 145,
+          "symbol": "buildRedEvidenceRecord"
+        }
+      ],
+      "granularity": "file",
+      "equality": "exact-set",
+      "needles": [
+        "RedEvidenceResult"
+      ],
+      "unexplained": [],
+      "notes": {},
+      "oracleVersion": "03-04.1"
+    },
+    {
+      "questionId": "q-017",
+      "kind": "heritage",
+      "abstain": false,
+      "items": [
+        {
+          "file": "src/runtime-config-adapter-registry.cts",
+          "line": 79,
+          "symbol": "InstallPlan"
+        }
+      ],
+      "granularity": "file+symbol",
+      "equality": "exact-set",
+      "needles": [
+        "InstallPlan",
+        "RuntimeConfigIntent"
+      ],
+      "unexplained": [],
+      "notes": {},
+      "oracleVersion": "03-04.1"
+    },
+    {
+      "questionId": "q-018",
+      "kind": "heritage",
+      "abstain": false,
+      "items": [
+        {
+          "file": "src/review-lane-descriptor.cts",
+          "line": 263,
+          "symbol": "SpawnLane"
+        },
+        {
+          "file": "src/review-lane-descriptor.cts",
+          "line": 268,
+          "symbol": "HttpLane"
+        }
+      ],
+      "granularity": "file+symbol",
+      "equality": "exact-set",
+      "needles": [
+        "HttpLane",
+        "ReviewerLaneCommon",
+        "SpawnLane"
+      ],
+      "unexplained": [],
+      "notes": {},
+      "oracleVersion": "03-04.1"
+    },
+    {
+      "questionId": "q-019",
+      "kind": "heritage",
+      "abstain": false,
+      "items": [
+        {
+          "file": "src/runtime-homes.cts",
+          "line": 92,
+          "symbol": "ResolveKimiHooksTomlOpts"
+        }
+      ],
+      "granularity": "file+symbol",
+      "equality": "exact-set",
+      "needles": [
+        "ResolveKimiHooksTomlOpts",
+        "ResolveKimiOpts"
+      ],
+      "unexplained": [],
+      "notes": {},
+      "oracleVersion": "03-04.1"
+    },
+    {
+      "questionId": "q-020",
+      "kind": "heritage",
+      "abstain": false,
+      "items": [
+        {
+          "file": "src/verify-command-grounding.cts",
+          "line": 230,
+          "symbol": "FailingDirectionEntry"
+        }
+      ],
+      "granularity": "file+symbol",
+      "equality": "exact-set",
+      "needles": [
+        "FailingDirectionEntry",
+        "ResolvedFailingDirection"
+      ],
+      "unexplained": [],
+      "notes": {},
+      "oracleVersion": "03-04.1"
+    },
+    {
+      "questionId": "q-021",
+      "kind": "heritage",
+      "abstain": false,
+      "items": [
+        {
+          "file": "src/adapter-imperative.cts",
+          "line": 35,
+          "symbol": "ImperativeAdapter"
+        }
+      ],
+      "granularity": "file+symbol",
+      "equality": "exact-set",
+      "needles": [
+        "HostIntegrationInterface",
+        "ImperativeAdapter"
+      ],
+      "unexplained": [],
+      "notes": {},
+      "oracleVersion": "03-04.1"
+    },
+    {
+      "questionId": "q-022",
+      "kind": "emit-consumers",
+      "abstain": false,
+      "items": [
+        {
+          "file": "gsd-core/bin/verify-reapply-patches.cjs",
+          "line": 403
+        },
+        {
+          "file": "src/capability-writer.cts",
+          "line": 366
+        },
+        {
+          "file": "tests/advertised-command-parity.test.cjs",
+          "line": 16
+        },
+        {
+          "file": "tests/executed-plan.test.cjs",
+          "line": 43
+        },
+        {
+          "file": "tests/golden-parity-single-source.test.cjs",
+          "line": 134
+        },
+        {
+          "file": "tests/helpers/install-shared.cjs",
+          "line": 26
+        },
+        {
+          "file": "tests/install-fs-adapter-seam.test.cjs",
+          "line": 43
+        },
+        {
+          "file": "tests/install-nested-layout.test.cjs",
+          "line": 23
+        },
+        {
+          "file": "tests/install-runtime-artifacts.test.cjs",
+          "line": 77
+        },
+        {
+          "file": "tests/install-runtime-artifacts.test.cjs",
+          "line": 2022
+        },
+        {
+          "file": "tests/install-runtime-artifacts.test.cjs",
+          "line": 2642
+        },
+        {
+          "file": "tests/install-runtime-artifacts.test.cjs",
+          "line": 2649
+        },
+        {
+          "file": "tests/install-runtime-artifacts.test.cjs",
+          "line": 2731
+        },
+        {
+          "file": "tests/install-runtime-artifacts.test.cjs",
+          "line": 5505
+        },
+        {
+          "file": "tests/install-runtime-artifacts.test.cjs",
+          "line": 5903
+        },
+        {
+          "file": "tests/install-runtime-artifacts.test.cjs",
+          "line": 6566
+        },
+        {
+          "file": "tests/install-write-confinement.test.cjs",
+          "line": 3218
+        },
+        {
+          "file": "tests/install-write-confinement.test.cjs",
+          "line": 4463
+        },
+        {
+          "file": "tests/installed-surface-resolver.test.cjs",
+          "line": 44
+        },
+        {
+          "file": "tests/opencode-command-dir-plural.test.cjs",
+          "line": 49
+        },
+        {
+          "file": "tests/runtime-artifact-layout-install-profiles.test.cjs",
+          "line": 59
+        },
+        {
+          "file": "tests/runtime-artifact-layout-install-profiles.test.cjs",
+          "line": 739
+        },
+        {
+          "file": "tests/runtime-artifact-layout-surface.test.cjs",
+          "line": 17
+        },
+        {
+          "file": "tests/runtime-artifact-layout-surface.test.cjs",
+          "line": 1554
+        },
+        {
+          "file": "tests/runtime-artifact-layout-trigger-surface.test.cjs",
+          "line": 59
+        },
+        {
+          "file": "tests/runtime-artifact-layout.test.cjs",
+          "line": 26
+        },
+        {
+          "file": "tests/runtime-artifact-layout.test.cjs",
+          "line": 1515
+        },
+        {
+          "file": "tests/runtime-converters.test.cjs",
+          "line": 2582
+        }
+      ],
+      "granularity": "file",
+      "equality": "exact-set",
+      "needles": [
+        "require",
+        "runtime-artifact-layout.cjs"
+      ],
+      "unexplained": [],
+      "notes": {},
+      "oracleVersion": "03-04.1"
+    },
+    {
+      "questionId": "q-023",
+      "kind": "emit",
+      "abstain": false,
+      "items": [
+        {
+          "file": "gsd-core/bin/lib/capability-activation.cjs"
+        }
+      ],
+      "granularity": "file",
+      "equality": "exact-set",
+      "needles": [
+        "capability-activation.cjs"
+      ],
+      "unexplained": [],
+      "notes": {},
+      "oracleVersion": "03-04.1"
+    },
+    {
+      "questionId": "q-024",
+      "kind": "emit-consumers",
+      "abstain": false,
+      "items": [
+        {
+          "file": "tests/cjs-command-router-adapter.test.cjs",
+          "line": 6
+        },
+        {
+          "file": "tests/cjs-command-router-adapter.test.cjs",
+          "line": 662
+        },
+        {
+          "file": "tests/cjs-command-router-adapter.test.cjs",
+          "line": 715
+        }
+      ],
+      "granularity": "file",
+      "equality": "exact-set",
+      "needles": [
+        "cjs-command-router-adapter.cjs",
+        "require"
+      ],
+      "unexplained": [],
+      "notes": {},
+      "oracleVersion": "03-04.1"
+    },
+    {
+      "questionId": "q-025",
+      "kind": "emit",
+      "abstain": false,
+      "items": [
+        {
+          "file": "gsd-core/bin/lib/workstream.cjs"
+        }
+      ],
+      "granularity": "file",
+      "equality": "exact-set",
+      "needles": [
+        "workstream.cjs"
+      ],
+      "unexplained": [],
+      "notes": {},
+      "oracleVersion": "03-04.1"
+    },
+    {
+      "questionId": "q-026",
+      "kind": "emit",
+      "abstain": false,
+      "items": [
+        {
+          "file": "gsd-core/bin/lib/estimate-cli.cjs"
+        }
+      ],
+      "granularity": "file",
+      "equality": "exact-set",
+      "needles": [
+        "estimate-cli.cjs"
+      ],
+      "unexplained": [],
+      "notes": {},
+      "oracleVersion": "03-04.1"
+    },
+    {
+      "questionId": "q-027",
+      "kind": "emit-consumers",
+      "abstain": false,
+      "items": [
+        {
+          "file": "tests/installer-migration-opencode-mcp-no-prompts.test.cjs",
+          "line": 20
+        }
+      ],
+      "granularity": "file",
+      "equality": "exact-set",
+      "needles": [
+        "011-opencode-mcp-no-prompts.cjs",
+        "require"
+      ],
+      "unexplained": [],
+      "notes": {},
+      "oracleVersion": "03-04.1"
+    },
+    {
+      "questionId": "q-028",
+      "kind": "emit-consumers",
+      "abstain": false,
+      "items": [
+        {
+          "file": "tests/executed-plan.test.cjs",
+          "line": 45
+        },
+        {
+          "file": "tests/install-fs-adapter-seam.test.cjs",
+          "line": 39
+        },
+        {
+          "file": "tests/runtime-artifact-layout.test.cjs",
+          "line": 29
+        },
+        {
+          "file": "tests/user-artifact-staging.test.cjs",
+          "line": 43
+        }
+      ],
+      "granularity": "file",
+      "equality": "exact-set",
+      "needles": [
+        "install-fs-adapter.cjs",
+        "require"
+      ],
+      "unexplained": [],
+      "notes": {},
+      "oracleVersion": "03-04.1"
+    },
+    {
+      "questionId": "q-029",
+      "kind": "adr-of",
+      "abstain": false,
+      "items": [
+        {
+          "file": "docs/adr/5057-one-owner-per-workflow-verdict.md",
+          "adr": 5057,
+          "resolved": true
+        }
+      ],
+      "granularity": "file",
+      "equality": "exact-set",
+      "needles": [
+        "ADR"
+      ],
+      "unexplained": [],
+      "notes": {},
+      "oracleVersion": "03-04.1"
+    },
+    {
+      "questionId": "q-030",
+      "kind": "adr-of",
+      "abstain": false,
+      "items": [
+        {
+          "file": "docs/adr/3408-state-write-path-preservation.md",
+          "adr": 3408,
+          "resolved": true,
+          "detail": "§8.3"
+        },
+        {
+          "file": "docs/adr/3473-enforcement-by-construction.md",
+          "adr": 3473,
+          "resolved": true,
+          "detail": "§8.6"
+        }
+      ],
+      "granularity": "file",
+      "equality": "exact-set",
+      "needles": [
+        "ADR"
+      ],
+      "unexplained": [],
+      "notes": {},
+      "oracleVersion": "03-04.1"
+    },
+    {
+      "questionId": "q-031",
+      "kind": "adr-of",
+      "abstain": false,
+      "items": [
+        {
+          "file": "docs/adr/22-plan-drift-guard.md",
+          "adr": 22,
+          "resolved": true
+        }
+      ],
+      "granularity": "file",
+      "equality": "exact-set",
+      "needles": [
+        "ADR"
+      ],
+      "unexplained": [],
+      "notes": {},
+      "oracleVersion": "03-04.1"
+    },
+    {
+      "questionId": "q-032",
+      "kind": "adr-citers",
+      "abstain": false,
+      "items": [
+        {
+          "file": "src/phase-lifecycle.cts",
+          "line": 8
+        },
+        {
+          "file": "src/phase-lifecycle.cts",
+          "line": 19
+        },
+        {
+          "file": "src/phase.cts",
+          "line": 8
+        },
+        {
+          "file": "src/phase.cts",
+          "line": 15
+        },
+        {
+          "file": "src/validate.cts",
+          "line": 24,
+          "detail": "§4"
+        },
+        {
+          "file": "src/validate.cts",
+          "line": 27
+        },
+        {
+          "file": "tests/health-validation.test.cjs",
+          "line": 496
+        },
+        {
+          "file": "tests/health-validation.test.cjs",
+          "line": 1029
+        },
+        {
+          "file": "tests/phase.test.cjs",
+          "line": 10970
+        },
+        {
+          "file": "tests/phase.test.cjs",
+          "line": 10971
+        }
+      ],
+      "granularity": "file",
+      "equality": "exact-set",
+      "needles": [
+        "ADR"
+      ],
+      "unexplained": [],
+      "notes": {
+        "excludedNonComment": 0
+      },
+      "oracleVersion": "03-04.1"
+    },
+    {
+      "questionId": "q-033",
+      "kind": "adr-citers",
+      "abstain": false,
+      "items": [
+        {
+          "file": "src/observability/logger.cts",
+          "line": 196
+        }
+      ],
+      "granularity": "file",
+      "equality": "exact-set",
+      "needles": [
+        "ADR"
+      ],
+      "unexplained": [],
+      "notes": {
+        "excludedNonComment": 0
+      },
+      "oracleVersion": "03-04.1"
+    },
+    {
+      "questionId": "q-034",
+      "kind": "adr-citers",
+      "abstain": false,
+      "items": [
+        {
+          "file": "eslint.config.mjs",
+          "line": 403
+        },
+        {
+          "file": "eslint.config.mjs",
+          "line": 475
+        },
+        {
+          "file": "eslint.config.mjs",
+          "line": 644
+        },
+        {
+          "file": "eslint.config.mjs",
+          "line": 876
+        },
+        {
+          "file": "scripts/lint-phase-arg-assignment.cjs",
+          "line": 57
+        },
+        {
+          "file": "src/adr-parser.cts",
+          "line": 289
+        },
+        {
+          "file": "src/decisions.cts",
+          "line": 13
+        },
+        {
+          "file": "src/decisions.cts",
+          "line": 267
+        },
+        {
+          "file": "src/gap-checker.cts",
+          "line": 151
+        },
+        {
+          "file": "src/markdown-sectionizer.cts",
+          "line": 8
+        },
+        {
+          "file": "src/markdown-sectionizer.cts",
+          "line": 372
+        },
+        {
+          "file": "src/state-transition.cts",
+          "line": 1458
+        },
+        {
+          "file": "src/state-transition.cts",
+          "line": 1496
+        },
+        {
+          "file": "src/state-transition.cts",
+          "line": 3012
+        },
+        {
+          "file": "src/state.cts",
+          "line": 512
+        },
+        {
+          "file": "src/state.cts",
+          "line": 1619
+        },
+        {
+          "file": "src/state.cts",
+          "line": 1687
+        },
+        {
+          "file": "src/state.cts",
+          "line": 1786
+        },
+        {
+          "file": "src/state.cts",
+          "line": 1885
+        },
+        {
+          "file": "src/state.cts",
+          "line": 5002
+        },
+        {
+          "file": "src/state.cts",
+          "line": 5180
+        },
+        {
+          "file": "src/state.cts",
+          "line": 7265
+        },
+        {
+          "file": "src/uat-predicate.cts",
+          "line": 172
+        },
+        {
+          "file": "src/uat-predicate.cts",
+          "line": 205
+        },
+        {
+          "file": "src/uat.cts",
+          "line": 850
+        },
+        {
+          "file": "src/uat.cts",
+          "line": 910
+        },
+        {
+          "file": "src/uat.cts",
+          "line": 4259
+        },
+        {
+          "file": "tests/adr-parser.unit.test.cjs",
+          "line": 1402
+        },
+        {
+          "file": "tests/decisions.test.cjs",
+          "line": 1792
+        },
+        {
+          "file": "tests/markdown-sectionizer.test.cjs",
+          "line": 1999
+        },
+        {
+          "file": "tests/state.test.cjs",
+          "line": 11016
+        }
+      ],
+      "granularity": "file",
+      "equality": "exact-set",
+      "needles": [
+        "ADR"
+      ],
+      "unexplained": [],
+      "notes": {
+        "excludedNonComment": 0
+      },
+      "oracleVersion": "03-04.1"
+    },
+    {
+      "questionId": "q-035",
+      "kind": "adr-citers",
+      "abstain": false,
+      "items": [
+        {
+          "file": "gsd-core/bin/lib/capability-registry.cjs",
+          "line": 6,
+          "detail": "§5"
+        },
+        {
+          "file": "gsd-core/bin/lib/capability-validator.cjs",
+          "line": 1799
+        },
+        {
+          "file": "gsd-core/bin/lib/capability-validator.cjs",
+          "line": 3818
+        },
+        {
+          "file": "gsd-core/bin/lib/capability-validator.cjs",
+          "line": 3826,
+          "detail": "§4"
+        },
+        {
+          "file": "gsd-core/bin/lib/loop-host-contract.cjs",
+          "line": 6,
+          "detail": "§3"
+        },
+        {
+          "file": "scripts/gen-capability-registry.cjs",
+          "line": 13
+        },
+        {
+          "file": "scripts/gen-capability-registry.cjs",
+          "line": 31,
+          "detail": "§3"
+        },
+        {
+          "file": "scripts/gen-loop-host-contract.cjs",
+          "line": 13
+        },
+        {
+          "file": "tests/capability-registry.test.cjs",
+          "line": 6
+        },
+        {
+          "file": "tests/loop-host-contract.test.cjs",
+          "line": 6
+        },
+        {
+          "file": "tests/reviewer-lane-declarations.test.cjs",
+          "line": 82
+        },
+        {
+          "file": "tests/ui-interaction-capture.test.cjs",
+          "line": 10
+        },
+        {
+          "file": "tests/ui-interaction-capture.test.cjs",
+          "line": 116
+        }
+      ],
+      "granularity": "file",
+      "equality": "exact-set",
+      "needles": [
+        "ADR"
+      ],
+      "unexplained": [],
+      "notes": {
+        "excludedNonComment": 2
+      },
+      "oracleVersion": "03-04.1"
+    },
+    {
+      "questionId": "q-036",
+      "kind": "impact",
+      "abstain": false,
+      "items": [
+        {
+          "file": "src/commands.cts"
+        },
+        {
+          "file": "src/gsd2-import.cts"
+        },
+        {
+          "file": "src/milestone.cts"
+        },
+        {
+          "file": "src/phase.cts"
+        },
+        {
+          "file": "src/state-transition.cts"
+        },
+        {
+          "file": "src/state.cts"
+        },
+        {
+          "file": "tests/4213-progress-helpers.property.test.cjs"
+        },
+        {
+          "file": "tests/feat-3881-yaml-parser-consequences.test.cjs"
+        },
+        {
+          "file": "tests/m8-writestatemd-scan-after-lock.test.cjs"
+        },
+        {
+          "file": "tests/milestone-lock.test.cjs"
+        },
+        {
+          "file": "tests/phase-lifecycle.test.cjs"
+        },
+        {
+          "file": "tests/state-document.test.cjs"
+        },
+        {
+          "file": "tests/state-prune.test.cjs"
+        },
+        {
+          "file": "tests/state-rebuild.test.cjs"
+        },
+        {
+          "file": "tests/state-transition.test.cjs"
+        },
+        {
+          "file": "tests/state.test.cjs"
+        }
+      ],
+      "granularity": "file",
+      "equality": "exact-set",
+      "needles": [
+        "renderProgressBar"
+      ],
+      "unexplained": [],
+      "notes": {
+        "depth": 2
+      },
+      "oracleVersion": "03-04.1"
+    },
+    {
+      "questionId": "q-037",
+      "kind": "impact",
+      "abstain": false,
+      "items": [
+        {
+          "file": "bin/install.js"
+        }
+      ],
+      "granularity": "file",
+      "equality": "exact-set",
+      "needles": [
+        "buildLocalShellHookCommand"
+      ],
+      "unexplained": [],
+      "notes": {
+        "depth": 2
+      },
+      "oracleVersion": "03-04.1"
+    },
+    {
+      "questionId": "q-038",
+      "kind": "impact",
+      "abstain": false,
+      "items": [
+        {
+          "file": "gsd-core/bin/gsd-tools.cjs"
+        },
+        {
+          "file": "tests/estimate-calibrate.test.cjs"
+        },
+        {
+          "file": "tests/phase-estimation.test.cjs"
+        }
+      ],
+      "granularity": "file",
+      "equality": "exact-set",
+      "needles": [
+        "readCalibrationSamples"
+      ],
+      "unexplained": [],
+      "notes": {
+        "depth": 2
+      },
+      "oracleVersion": "03-04.1"
+    },
+    {
+      "questionId": "q-039",
+      "kind": "impact",
+      "abstain": false,
+      "items": [
+        {
+          "file": "bin/gsd-mcp-server.js"
+        },
+        {
+          "file": "src/mcp-server.cts"
+        },
+        {
+          "file": "tests/gsd-mcp-server.test.cjs"
+        },
+        {
+          "file": "tests/mcp-catalog.property.test.cjs"
+        },
+        {
+          "file": "tests/mcp-catalog.test.cjs"
+        },
+        {
+          "file": "tests/mcp-server-catalog.test.cjs"
+        },
+        {
+          "file": "tests/state.test.cjs"
+        },
+        {
+          "file": "tests/verification-status.test.cjs"
+        }
+      ],
+      "granularity": "file",
+      "equality": "exact-set",
+      "needles": [
+        "listResources"
+      ],
+      "unexplained": [],
+      "notes": {
+        "depth": 2
+      },
+      "oracleVersion": "03-04.1"
+    },
+    {
+      "questionId": "q-040",
+      "kind": "definition",
+      "abstain": false,
+      "items": [
+        {
+          "file": "src/security.cts",
+          "line": 255,
+          "symbol": "assertWithinRoot"
+        }
+      ],
+      "granularity": "file+line",
+      "equality": "exact-set",
+      "needles": [
+        "assertWithinRoot"
+      ],
+      "unexplained": [],
+      "notes": {},
+      "oracleVersion": "03-04.1"
+    },
+    {
+      "questionId": "q-041",
+      "kind": "definition",
+      "abstain": false,
+      "items": [
+        {
+          "file": "src/runtime-homes.cts",
+          "line": 691,
+          "symbol": "getGlobalSkillDir"
+        }
+      ],
+      "granularity": "file+line",
+      "equality": "exact-set",
+      "needles": [
+        "getGlobalSkillDir"
+      ],
+      "unexplained": [],
+      "notes": {},
+      "oracleVersion": "03-04.1"
+    },
+    {
+      "questionId": "q-042",
+      "kind": "definition",
+      "abstain": false,
+      "items": [
+        {
+          "file": "src/opencode-version.cts",
+          "line": 616,
+          "symbol": "OPENCODE_V1_FREEZE_DATE"
+        }
+      ],
+      "granularity": "file+line",
+      "equality": "exact-set",
+      "needles": [
+        "OPENCODE_V1_FREEZE_DATE"
+      ],
+      "unexplained": [],
+      "notes": {},
+      "oracleVersion": "03-04.1"
+    },
+    {
+      "questionId": "q-043",
+      "kind": "definition",
+      "abstain": false,
+      "items": [
+        {
+          "file": "src/phase-estimation.cts",
+          "line": 89,
+          "symbol": "asRawTokens"
+        }
+      ],
+      "granularity": "file+line",
+      "equality": "exact-set",
+      "needles": [
+        "asRawTokens"
+      ],
+      "unexplained": [],
+      "notes": {},
+      "oracleVersion": "03-04.1"
+    },
+    {
+      "questionId": "q-044",
+      "kind": "definition",
+      "abstain": false,
+      "items": [
+        {
+          "file": "src/section-manifest.cts",
+          "line": 217,
+          "symbol": "SectionSelection"
+        }
+      ],
+      "granularity": "file+line",
+      "equality": "exact-set",
+      "needles": [
+        "SectionSelection"
+      ],
+      "unexplained": [],
+      "notes": {},
+      "oracleVersion": "03-04.1"
+    },
+    {
+      "questionId": "q-045",
+      "kind": "abstain",
+      "abstain": true,
+      "items": [],
+      "granularity": "file",
+      "equality": "exact-set",
+      "needles": [],
+      "unexplained": [],
+      "notes": {},
+      "oracleVersion": "03-04.1"
+    },
+    {
+      "questionId": "q-046",
+      "kind": "abstain",
+      "abstain": true,
+      "items": [],
+      "granularity": "file",
+      "equality": "exact-set",
+      "needles": [],
+      "unexplained": [],
+      "notes": {},
+      "oracleVersion": "03-04.1"
+    },
+    {
+      "questionId": "q-047",
+      "kind": "abstain",
+      "abstain": true,
+      "items": [],
+      "granularity": "file",
+      "equality": "exact-set",
+      "needles": [],
+      "unexplained": [],
+      "notes": {},
+      "oracleVersion": "03-04.1"
+    },
+    {
+      "questionId": "q-048",
+      "kind": "abstain",
+      "abstain": true,
+      "items": [],
+      "granularity": "file",
+      "equality": "exact-set",
+      "needles": [],
+      "unexplained": [],
+      "notes": {},
+      "oracleVersion": "03-04.1"
+    },
+    {
+      "questionId": "q-049",
+      "kind": "abstain",
+      "abstain": true,
+      "items": [],
+      "granularity": "file",
+      "equality": "exact-set",
+      "needles": [],
+      "unexplained": [],
+      "notes": {},
+      "oracleVersion": "03-04.1"
+    },
+    {
+      "questionId": "q-050",
+      "kind": "abstain",
+      "abstain": true,
+      "items": [],
+      "granularity": "file",
+      "equality": "exact-set",
+      "needles": [],
+      "unexplained": [],
+      "notes": {},
+      "oracleVersion": "03-04.1"
+    }
+  ]
+}

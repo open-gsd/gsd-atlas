@@ -1,0 +1,207 @@
+{
+  "oracleVersion": "03-04.1",
+  "repoSha": "10ac3a7a947903ba50f538a907af036744d759d5",
+  "preparedRecord": {
+    "corpusId": "gsd-core",
+    "sha": "10ac3a7a947903ba50f538a907af036744d759d5",
+    "npmCi": true,
+    "typescriptVersion": "6.0.3",
+    "lockSha256": "dccc7f1cc3cd7ee9b8d071a03def1e7a4a535cc68a1828df2b797c6aecb357fb"
+  },
+  "answers": [
+    {
+      "questionId": "p-001",
+      "kind": "references",
+      "abstain": false,
+      "items": [
+        {
+          "file": "gsd-core/bin/gsd-tools.cjs",
+          "line": 365,
+          "symbol": "<module>"
+        },
+        {
+          "file": "gsd-core/bin/gsd-tools.cjs",
+          "line": 777,
+          "symbol": "routeGit"
+        }
+      ],
+      "granularity": "file",
+      "equality": "exact-set",
+      "needles": [
+        "cmdGitBaseBranch"
+      ],
+      "unexplained": [],
+      "notes": {},
+      "oracleVersion": "03-04.1"
+    },
+    {
+      "questionId": "p-002",
+      "kind": "adr-citers",
+      "abstain": false,
+      "items": [
+        {
+          "file": "gsd-core/bin/gsd-tools.cjs",
+          "line": 4750
+        },
+        {
+          "file": "src/config.cts",
+          "line": 952
+        },
+        {
+          "file": "src/estimate-cli.cts",
+          "line": 161
+        },
+        {
+          "file": "src/estimate-cli.cts",
+          "line": 175
+        },
+        {
+          "file": "src/phase-estimation.cts",
+          "line": 12
+        },
+        {
+          "file": "src/phase-estimation.cts",
+          "line": 100
+        },
+        {
+          "file": "src/phase-estimation.cts",
+          "line": 103
+        },
+        {
+          "file": "src/phase-estimation.cts",
+          "line": 115
+        },
+        {
+          "file": "src/phase-estimation.cts",
+          "line": 153
+        },
+        {
+          "file": "src/phase-estimation.cts",
+          "line": 238
+        },
+        {
+          "file": "src/phase-estimation.cts",
+          "line": 404
+        },
+        {
+          "file": "tests/fixtures/brand-typing/bad-calibrated-as-sample-basis.cts",
+          "line": 8
+        },
+        {
+          "file": "tests/fixtures/brand-typing/ok-correct-composition.cts",
+          "line": 26
+        },
+        {
+          "file": "tests/phase-estimation.test.cjs",
+          "line": 704
+        },
+        {
+          "file": "tests/summary-commit-verification.test.cjs",
+          "line": 35
+        }
+      ],
+      "granularity": "file",
+      "equality": "exact-set",
+      "needles": [
+        "ADR"
+      ],
+      "unexplained": [],
+      "notes": {
+        "excludedNonComment": 1
+      },
+      "oracleVersion": "03-04.1"
+    },
+    {
+      "questionId": "p-003",
+      "kind": "impact",
+      "abstain": false,
+      "items": [
+        {
+          "file": "gsd-core/bin/gsd-tools.cjs"
+        },
+        {
+          "file": "src/opencode-version.cts"
+        },
+        {
+          "file": "src/review-lane-runner.cts"
+        },
+        {
+          "file": "src/reviewer-step-dispatch.cts"
+        },
+        {
+          "file": "tests/antigravity-repo-grounding.test.cjs"
+        },
+        {
+          "file": "tests/antigravity-reviewer.test.cjs"
+        },
+        {
+          "file": "tests/cursor-reviewer.test.cjs"
+        },
+        {
+          "file": "tests/effort-surface-axis.test.cjs"
+        },
+        {
+          "file": "tests/feat-2483-review-claude-mds-guard.test.cjs"
+        },
+        {
+          "file": "tests/opencode-review-reconstruction.property.test.cjs"
+        },
+        {
+          "file": "tests/plan-review-convergence.test.cjs"
+        },
+        {
+          "file": "tests/review-default-reviewers-workflow.test.cjs"
+        },
+        {
+          "file": "tests/review-lane-invocation.test.cjs"
+        },
+        {
+          "file": "tests/review-lane-runner.test.cjs"
+        }
+      ],
+      "granularity": "file",
+      "equality": "exact-set",
+      "needles": [
+        "fileRefPrompt",
+        "fileRefPromptText"
+      ],
+      "unexplained": [],
+      "notes": {
+        "depth": 2
+      },
+      "oracleVersion": "03-04.1"
+    },
+    {
+      "questionId": "p-004",
+      "kind": "definition",
+      "abstain": false,
+      "items": [
+        {
+          "file": "src/smart-entry.cts",
+          "line": 144,
+          "symbol": "SmartEntryResult"
+        }
+      ],
+      "granularity": "file+line",
+      "equality": "exact-set",
+      "needles": [
+        "SmartEntryResult"
+      ],
+      "unexplained": [],
+      "notes": {},
+      "oracleVersion": "03-04.1"
+    },
+    {
+      "questionId": "p-005",
+      "kind": "abstain",
+      "abstain": true,
+      "items": [],
+      "granularity": "file",
+      "equality": "exact-set",
+      "needles": [],
+      "unexplained": [],
+      "notes": {},
+      "oracleVersion": "03-04.1"
+    }
+  ]
+}
