@@ -200,6 +200,123 @@ export const DUPLICATE_FILES: Readonly<Record<string, string>> = {
   'src/c.cts': 'const note = "ADR-12 is in a string";\n// but ADR-12 is cited here\nexport function twelve(): number {\n  return 12;\n}\n',
 };
 
+// ---------------------------------------------------------------------------------------------
+// Task 5 (amendment of 2026-10-18): the gap diagnostic, citations.filesWithGaps and the build note, across builds
+
+/** A header block over the comment size bound (32,768 units) and a file with 201 mentions: two files whose citations cannot all be stored. */
+const GAP_FILES: Readonly<Record<string, string>> = {
+  'docs/adr/0007-seven.md': '# seven\n',
+  'src/ok.cts': '// see ADR-7\nexport function ok(): number {\n  return 7;\n}\n',
+  'src/header.cts': `/* HEADER-MARKER ${'x'.repeat(33_000)} ADR-7 */\nexport function header(): number {\n  return 1;\n}\n`,
+  'src/many.cts': `${Array.from({ length: 201 }, (_, i) => `// ADR-8 mention ${String(i)}`).join('\n')}\nexport function many(): number {\n  return 8;\n}\n`,
+};
+
+const TWO_FILES_NOTE = '2 files have ADR mentions that are not indexed (a comment over the comment size bound, or more than 200 mentions in one file); citations from them are missing';
+const MAY_BE_MISSING = 'Citations may be missing from this answer: 2 files have ADR mentions that were not indexed (a comment over the comment size bound, or more than 200 mentions in one file).';
+
+const codesOf = (run: Run): string[] => run.envelope.diagnostics.map((d) => d.code);
+const gapDiagnostics = (run: Run): Array<{ code: string; severity: string; message: string; subject?: string }> =>
+  run.envelope.diagnostics.filter((d) => d.code === 'citation_comment_too_long');
+const filesWithGaps = (run: Run): unknown => (run.envelope.data as { citations?: { filesWithGaps?: unknown } }).citations?.filesWithGaps;
+
+describe('the citation gap is visible on ADR answers and in atlas_status, and survives a build that changes nothing', () => {
+  it('no-op build keeps the diagnostic and the count: build, a second build, then an unrelated file added', async () => {
+    await withAdrFixture(GAP_FILES, async (fixture) => {
+      const check = async (step: string): Promise<void> => {
+        const refs = await fixture.cli(['refs', 'ADR-7', '--kind', 'adr', '--repo', fixture.dir]);
+        assert.equal(refs.code, 0, `${step}: ${refs.stderr}`);
+        assert.deepEqual(gapDiagnostics(refs).map((d) => [d.severity, d.message, d.subject]), [['info', MAY_BE_MISSING, undefined]], `${step}: refs`);
+        const find = await fixture.cli(['find', 'ADR-7', '--kind', 'adr', '--repo', fixture.dir]);
+        assert.deepEqual(gapDiagnostics(find).map((d) => d.message), [MAY_BE_MISSING], `${step}: find`);
+        const health = await fixture.cli(['health', '--repo', fixture.dir]);
+        assert.equal(filesWithGaps(health), 2, `${step}: atlas_status`);
+        assert.equal((health.envelope.data as { health: string }).health, 'ok', `${step}: a gap alone is not a health reason`);
+        assert.deepEqual((health.envelope.data as { reasons: string[] }).reasons, []);
+        assert.equal(health.envelope.degraded, undefined);
+      };
+
+      const first = await fixture.cli(['build', '--repo', fixture.dir]);
+      assert.equal(first.code, 0, first.stderr);
+      await check('after the first build');
+
+      const second = await fixture.cli(['build', '--repo', fixture.dir]);
+      assert.equal((second.envelope.data as { parsed: number }).parsed, 0, 'the second build parsed nothing');
+      await check('after a build that changes nothing');
+
+      fixture.repo.write('src/extra.cts', 'export function extra(): number {\n  return 3;\n}\n');
+      const third = await fixture.cli(['build', '--repo', fixture.dir]);
+      assert.equal((third.envelope.data as { parsed: number }).parsed, 1);
+      await check('after an unrelated file was added');
+    });
+  });
+
+  it('no-op build envelope carries the note: the second build says so in diagnostics while its data keys are unchanged', async () => {
+    await withAdrFixture(GAP_FILES, async (fixture) => {
+      const first = await fixture.cli(['build', '--repo', fixture.dir]);
+      const second = await fixture.cli(['build', '--repo', fixture.dir]);
+      for (const run of [first, second]) {
+        assert.deepEqual(gapDiagnostics(run).map((d) => [d.severity, d.message, d.subject]), [['info', TWO_FILES_NOTE, undefined]]);
+      }
+      assert.deepEqual(Object.keys(second.envelope.data as object).sort(), Object.keys(first.envelope.data as object).sort(), 'the documented data keys are unchanged');
+      assert.equal((second.envelope.data as { parsed: number }).parsed, 0);
+      assert.equal((second.envelope.data as { skipped: number }).skipped, (first.envelope.data as { skipped: number }).skipped);
+      assert.ok(codesOf(second).every((code) => ['emit_output_not_indexed', 'citation_comment_too_long', 'resolver_timeout'].includes(code)));
+    });
+  });
+
+  it('gap diagnostic parity CLI and MCP: code_refs, code_find and atlas_status agree on the diagnostic and the count', async () => {
+    await withAdrFixture(GAP_FILES, async (fixture) => {
+      assert.equal((await fixture.cli(['build', '--repo', fixture.dir])).code, 0);
+      const refs = await fixture.cli(['refs', 'ADR-7', '--kind', 'adr', '--repo', fixture.dir]);
+      const find = await fixture.cli(['find', 'ADR-8', '--kind', 'adr', '--repo', fixture.dir]);
+      const health = await fixture.cli(['health', '--repo', fixture.dir]);
+      // ADR 8 has no file and is cited 200 times in the stored part of one file: the answer says it may be incomplete, not "nobody cites it".
+      assert.deepEqual(gapDiagnostics(find).map((d) => d.message), [MAY_BE_MISSING]);
+
+      const server = fixture.mcp();
+      await server.initialize();
+      const viaRefs = await server.callTool('code_refs', { name: 'ADR-7', kind: 'adr', repo: fixture.dir });
+      assert.equal(maskNonce(refs.stdout.trimEnd()), maskNonce(viaRefs.result.content[0]?.text ?? ''), 'code_refs');
+      const viaFind = await server.callTool('code_find', { name: 'ADR-8', kind: 'adr', repo: fixture.dir });
+      assert.equal(maskNonce(find.stdout.trimEnd()), maskNonce(viaFind.result.content[0]?.text ?? ''), 'code_find');
+      const viaStatus = await server.callTool('atlas_status', { repo: fixture.dir });
+      const statusData = viaStatus.envelope.data as { citations: unknown; health: string };
+      assert.deepEqual(statusData.citations, { filesWithGaps: 2 });
+      assert.deepEqual((health.envelope.data as { citations: unknown }).citations, { filesWithGaps: 2 });
+      assert.ok(!(statusData as unknown as { reasons: string[] }).reasons.includes('stale_files'), 'a gap is not a stale file');
+      const exit = await server.close();
+      assert.equal(exit.exitCode, 0, server.stderrText());
+    });
+  });
+
+  it('a repository without a gap has no diagnostic on ADR answers, a zero count in atlas_status and no build note', async () => {
+    await withAdrFixture(ADR_FILES, async (fixture) => {
+      const built = await fixture.cli(['build', '--repo', fixture.dir]);
+      assert.deepEqual(gapDiagnostics(built), []);
+      const refs = await fixture.cli(['refs', 'ADR-1', '--kind', 'adr', '--repo', fixture.dir]);
+      assert.deepEqual(refs.envelope.diagnostics, []);
+      const none = await fixture.cli(['find', 'ADR-404', '--kind', 'adr', '--repo', fixture.dir]);
+      assert.deepEqual(none.envelope.diagnostics, []);
+      assert.equal(filesWithGaps(await fixture.cli(['health', '--repo', fixture.dir])), 0);
+    });
+  });
+
+  it('the envelopes never carry the names of the gap files or the text of the header block', async () => {
+    await withAdrFixture(GAP_FILES, async (fixture) => {
+      const built = await fixture.cli(['build', '--repo', fixture.dir]);
+      const runs = [
+        built,
+        await fixture.cli(['refs', 'ADR-7', '--kind', 'adr', '--repo', fixture.dir]),
+        await fixture.cli(['find', 'ADR-7', '--kind', 'adr', '--repo', fixture.dir]),
+        await fixture.cli(['health', '--repo', fixture.dir]),
+      ];
+      for (const run of runs) {
+        for (const leak of ['header.cts', 'many.cts', 'HEADER-MARKER', 'xxxxxxxx']) assert.equal(run.stdout.includes(leak), false, leak);
+      }
+    });
+  });
+});
+
 interface FindRows {
   readonly number: number;
   readonly status: string;

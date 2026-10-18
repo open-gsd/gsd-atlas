@@ -7,7 +7,7 @@
  */
 import assert from 'node:assert/strict';
 import { afterEach, describe, it } from 'node:test';
-import type { CitationSite, FileFacts, LocalSymbol } from '../facts/index.ts';
+import type { CitationGaps, CitationSite, FileFacts, LocalSymbol } from '../facts/index.ts';
 import { createAdrDirectory } from '../tenant/index.ts';
 import { blobId, createHarness } from './harness.test.ts';
 import type { Harness } from './harness.test.ts';
@@ -30,8 +30,18 @@ const fn = (name: string, from: number, to: number): LocalSymbol => ({
   exported: true,
 });
 
-/** Write a file and store its facts, with the citations given (lines and columns are the store's own, 0-based). */
-async function addCited(h: Harness, rel: string, content: string, symbols: readonly LocalSymbol[], citations: readonly CitationSite[]): Promise<string> {
+/**
+ * Write a file and store its facts, with the citations given (lines and columns are the store's own, 0-based) and, when the
+ * extractor could not keep every mention of the file, its citation gap.
+ */
+async function addCited(
+  h: Harness,
+  rel: string,
+  content: string,
+  symbols: readonly LocalSymbol[],
+  citations: readonly CitationSite[],
+  citationGaps?: CitationGaps,
+): Promise<string> {
   h.repo.write(rel, content);
   const hash = blobId(content);
   const facts: FileFacts = {
@@ -44,6 +54,7 @@ async function addCited(h: Harness, rel: string, content: string, symbols: reado
     imports: [],
     exports: [],
     ...(citations.length === 0 ? {} : { citations }),
+    ...(citationGaps === undefined ? {} : { citationGaps }),
     parse: { errorBytes: 0, totalBytes: content.length },
   };
   const result = await h.writer.commitFile({ worktree: h.dir, path: rel, hash, facts });
@@ -415,6 +426,138 @@ describe('code_context citations: the ADR mentions attached to a symbol', () => 
     } while (more !== undefined && pages < 10);
     assert.deepEqual(numbers, [20, 21, 22, 23, 24, 25], 'every citation once, in position order');
     assert.equal(pages, 3, 'one definition and six citations make seven items: three pages of at most three');
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// Task 5 (amendment of 2026-10-18): an ADR answer says when the index could not store every citation
+
+const GAP_CODE = 'citation_comment_too_long';
+const MAY_BE_MISSING = (files: number): string =>
+  `Citations may be missing from this answer: ${files === 1 ? '1 file has' : `${String(files)} files have`} ADR mentions that were not indexed (a comment over the comment size bound, or more than 200 mentions in one file).`;
+const MAY_EXIST = (files: number): string =>
+  `No citation of this ADR was found, but ${files === 1 ? '1 file has' : `${String(files)} files have`} ADR mentions that were not indexed, so a citation may exist that this answer cannot show.`;
+
+/** The fixture of the plan plus `gapFiles` files whose facts carry a citation gap; a marker in their text that no answer may repeat. */
+async function gapWorld(gapFiles: number): Promise<{ h: Harness; query: Query }> {
+  const { h, query } = await adrWorld();
+  for (let index = 0; index < gapFiles; index += 1) {
+    await addCited(
+      h,
+      `src/gap${String(index + 1)}.cts`,
+      `/* HEADER-MARKER-${String(index + 1)} ADR-99 */\nexport function gapped${String(index + 1)}(): number {\n  return 1;\n}\n`,
+      [fn(`gapped${String(index + 1)}`, 1, 3)],
+      [],
+      index === 0 ? { skippedComments: 1, capped: false } : { skippedComments: 0, capped: true },
+    );
+  }
+  return { h, query };
+}
+
+const gapNotes = (envelope: { readonly diagnostics: ReadonlyArray<{ readonly code: string }> }) => envelope.diagnostics.filter((d) => d.code === GAP_CODE);
+
+describe('the citation gap diagnostic on kind adr answers', () => {
+  it('gap diagnostic on refs: exactly one fixed info diagnostic with the worktree-wide file count, no subject', async () => {
+    const { h, query } = await gapWorld(2);
+    const envelope = await ask(query, h, 'code_refs', 'ADR-1');
+    assert.equal(envelope.ok, true);
+    assert.deepEqual(envelope.diagnostics, [{ code: GAP_CODE, severity: 'info', message: MAY_BE_MISSING(2) }]);
+    assert.equal(envelope.degraded, undefined, 'a diagnostic, not a degraded code');
+    assert.equal((envelope.data as RefsData).results.length, 1, 'the answer itself is unchanged');
+  });
+
+  it('gap diagnostic on refs: every page of a cursor-paged answer carries it', async () => {
+    const { h, query } = await gapWorld(1);
+    // Seven mentions of ADR 5 in one file so the answer pages.
+    const lines = Array.from({ length: 7 }, (_, i) => `// ADR-5 line ${String(i)}`).join('\n');
+    await addCited(h, 'src/many.cts', `${lines}\n`, [], Array.from({ length: 7 }, (_, i) => ({ number: 5, span: span(i, 3, 8) })));
+    let more: string | undefined;
+    let pages = 0;
+    do {
+      const envelope = await ask(query, h, 'code_refs', 'ADR-5', { limit: 3, ...(more === undefined ? {} : { more }) });
+      assert.deepEqual(gapNotes(envelope).length, 1, `page ${String(pages + 1)}`);
+      assert.equal(envelope.diagnostics.find((d) => d.code === GAP_CODE)?.message, MAY_BE_MISSING(1));
+      more = envelope.more;
+      pages += 1;
+    } while (more !== undefined && pages < 10);
+    assert.equal(pages, 3);
+  });
+
+  it('gap diagnostic on find: the ADR file answer carries it too, with the count of the worktree', async () => {
+    const { h, query } = await gapWorld(2);
+    const found = await ask(query, h, 'code_find', 'ADR-1');
+    assert.deepEqual(found.diagnostics, [{ code: GAP_CODE, severity: 'info', message: MAY_BE_MISSING(2) }]);
+    assert.equal((found.data as FindData).status, 'resolved');
+  });
+
+  it('unresolved with gaps says may exist: a number nobody was found to cite never reads as nobody cites it', async () => {
+    const { h, query } = await gapWorld(2);
+    for (const kind of ['code_refs', 'code_find']) {
+      const none = await ask(query, h, kind, 'ADR-404');
+      assert.deepEqual(none.diagnostics, [{ code: GAP_CODE, severity: 'info', message: MAY_EXIST(2) }], kind);
+    }
+    // A resolved ADR that nothing was found to cite says it too (the document exists; the citation may not be shown).
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    h.repo.write('docs/adr/0009-nine.md', '# nine\n');
+    const nine = await ask(query, h, 'code_find', 'ADR-9');
+    assert.equal((nine.data as FindData).status, 'resolved');
+    assert.deepEqual(nine.diagnostics, [{ code: GAP_CODE, severity: 'info', message: MAY_EXIST(2) }]);
+    // An unresolved number whose citations were found is a listing of citations, not an absence.
+    const three = await ask(query, h, 'code_refs', 'ADR-3');
+    assert.deepEqual(three.diagnostics, [{ code: GAP_CODE, severity: 'info', message: MAY_BE_MISSING(2) }]);
+  });
+
+  it('gap diagnostic: one file reads "1 file has"', async () => {
+    const { h, query } = await gapWorld(1);
+    assert.equal(gapNotes(await ask(query, h, 'code_refs', 'ADR-1'))[0] === undefined, false);
+    assert.equal((await ask(query, h, 'code_refs', 'ADR-1')).diagnostics[0]?.message, MAY_BE_MISSING(1));
+    assert.equal((await ask(query, h, 'code_refs', 'ADR-404')).diagnostics[0]?.message, MAY_EXIST(1));
+  });
+
+  it('no gap no diagnostic: a worktree without a gap gives the answers of before, with no diagnostics', async () => {
+    const { h, query } = await adrWorld();
+    for (const [kind, name] of [['code_refs', 'ADR-1'], ['code_find', 'ADR-1'], ['code_refs', 'ADR-404'], ['code_find', 'ADR-404']] as const) {
+      const envelope = await ask(query, h, kind, name);
+      assert.deepEqual(envelope.diagnostics, [], `${kind} ${name}`);
+    }
+    const context = await query.ask({ protocol: 1, kind: 'code_context', args: { name: 'load', repo: h.dir }, worktree: h.dir });
+    assert.deepEqual(context.diagnostics, []);
+  });
+
+  it('context only for its own file: code_context carries the diagnostic when the symbol file holds a gap, and not when only another file does', async () => {
+    const { h, query } = await gapWorld(2);
+    const own = await query.ask({ protocol: 1, kind: 'code_context', args: { name: 'gapped1', repo: h.dir }, worktree: h.dir });
+    assert.deepEqual(own.diagnostics, [{ code: GAP_CODE, severity: 'info', message: MAY_BE_MISSING(1) }]);
+    const other = await query.ask({ protocol: 1, kind: 'code_context', args: { name: 'load', repo: h.dir }, worktree: h.dir });
+    assert.deepEqual(other.diagnostics, [], 'load lives in a file without a gap: another file with one does not touch it');
+    assert.equal(own.degraded, undefined);
+  });
+
+  it('diagnostic holds no path: the full envelopes contain neither the names of the gap files nor the text of their header blocks', async () => {
+    const { h, query } = await gapWorld(2);
+    const envelopes = [
+      await ask(query, h, 'code_refs', 'ADR-1'),
+      await ask(query, h, 'code_find', 'ADR-1'),
+      await ask(query, h, 'code_refs', 'ADR-99'),
+      await ask(query, h, 'code_find', 'ADR-404'),
+      await query.ask({ protocol: 1, kind: 'code_context', args: { name: 'load', repo: h.dir }, worktree: h.dir }),
+    ];
+    for (const envelope of envelopes) {
+      const text = JSON.stringify(envelope);
+      for (const leak of ['gap1', 'gap2', 'gapped1', 'HEADER-MARKER']) {
+        // ADR-99 is cited inside the gap files' header blocks, which are comments the fixture did not store; nothing may name it.
+        assert.equal(text.includes(leak), false, `${leak} leaked into ${envelope.schema}`);
+      }
+    }
+    const note = (await ask(query, h, 'code_refs', 'ADR-1')).diagnostics[0];
+    assert.equal(note?.subject, undefined);
+    assert.ok(!/\d{2,}/.test((note?.message ?? '').replace('200', '')), 'one integer at most: no number from a skipped comment');
+  });
+
+  it('DEGRADED_CODES keeps its fourteen codes: the gap is not a fifteenth', async () => {
+    const { DEGRADED_CODES } = await import('../facts/index.ts');
+    assert.equal(DEGRADED_CODES.length, 14);
+    assert.ok(!(DEGRADED_CODES as readonly string[]).includes(GAP_CODE));
   });
 });
 

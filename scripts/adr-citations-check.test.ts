@@ -224,6 +224,49 @@ describe('adr-citations-check against the oracle fixture repository', () => {
   });
 });
 
+describe('adr-citations-check prints filesWithGaps, read from the store it built (plan 03-28, amendment of 2026-10-18)', () => {
+  const HEADER: Readonly<Record<string, string>> = {
+    'src/header.cts': `/* ${'x'.repeat(33_000)} ADR-1 */\nexport function header(): number {\n  return 1;\n}\n`,
+  };
+  const repos: string[] = [];
+  after(() => {
+    for (const each of repos) removeTree(each);
+  });
+
+  it('is 0 on a repository with no gap, and the line is printed by the citation check and by --resolve', async () => {
+    const dir = tempRepo();
+    repos.push(dir);
+    const lines: string[] = [];
+    const report = await runCheck({ dir, sample: 20, seed: 7, out: (line) => lines.push(line) });
+    assert.equal(report.filesWithGaps, 0);
+    assert.match(lines.join('\n'), /^filesWithGaps 0$/m);
+
+    const resolveLines: string[] = [];
+    const resolved = await runResolveCheck({ dir, sample: 20, seed: 7, out: (line) => resolveLines.push(line) });
+    assert.equal(resolved.filesWithGaps, 0);
+    assert.match(resolveLines.join('\n'), /^filesWithGaps 0$/m);
+  });
+
+  it('counts the files whose citations the index could not store: a header block over the comment size bound is one', async () => {
+    const dir = tempRepo(HEADER);
+    repos.push(dir);
+    const lines: string[] = [];
+    const report = await runCheck({ dir, sample: 20, seed: 7, out: (line) => lines.push(line) });
+    assert.equal(report.filesWithGaps, 1);
+    assert.match(lines.join('\n'), /^filesWithGaps 1$/m);
+    assert.equal(report.ok, false, 'the oracle sees the citation in the header block that the store skipped');
+  });
+
+  it('prints nothing for the count when the store side was injected, because there is no store to read it from', async () => {
+    const dir = tempRepo();
+    repos.push(dir);
+    const lines: string[] = [];
+    const report = await runCheck({ dir, readStoreCitations: async () => [], out: (line) => lines.push(line) });
+    assert.equal(report.filesWithGaps, null);
+    assert.ok(!lines.some((line) => line.startsWith('filesWithGaps')));
+  });
+});
+
 describe('adr-citations-check --resolve: the store-and-directory resolution against the oracle (plan 03-28)', () => {
   const DUPLICATES: Readonly<Record<string, string>> = {
     'docs/adr/0010-b-second.md': '# b\n',
