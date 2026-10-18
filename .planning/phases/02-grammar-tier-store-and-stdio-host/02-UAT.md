@@ -34,7 +34,8 @@ evidence: Tested 2026-10-17 on macOS arm64 against the real CLIs in a scratch HO
 
 ### 3. nightly.yml first remote run
 expected: freshness-gate (100 saves, 1000 ms) and corpus-gates pass on ubuntu, macOS and Windows after the file reaches the default branch
-result: [pending]
+result: pass
+evidence: Run 39082464868 (workflow_dispatch on main at 621425d, 2026-10-18), all three jobs success. Freshness gate, 100 saves, bound 1000 ms: ubuntu p99 258 ms, macOS p99 345 ms, Windows p99 878 ms. Corpus gates passed on all three.
 
 ### 4. ADR editorial repairs and amendments from 02-01
 expected: Reconstructed passages and the dated amendments accepted; lost clause in docs/SDK-PROVIDERS.md supplied or left by choice
@@ -50,9 +51,9 @@ evidence: |
 ## Summary
 
 total: 5
-passed: 4
+passed: 5
 issues: 0
-pending: 1
+pending: 0
 skipped: 0
 blocked: 0
 
