@@ -301,7 +301,7 @@ describe('Host: a store that holds no index is not opened by a read request (WR-
 
   it('a newer-schema store reaches the tenant and answers the ratified schema_too_new error', async (t) => {
     const world = await makeWorld(t);
-    await makeStoreFile(gitStoreDir(world), 2);
+    await makeStoreFile(gitStoreDir(world), 3); // one above the build's schema version 2 (plan 03-24 raised it from 1)
     const reply = await world.ask('code_find', { name: 'helper', repo: world.repo.dir });
     assert.deepEqual(codes(reply), ['schema_too_new']);
   });

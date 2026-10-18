@@ -12,6 +12,12 @@
  * - `name` on the definition's identifier. Required: a match without it is skipped and counted.
  * - `export` (optional) on the exporting statement, in the same match. It marks the symbol
  *   `exported` and also yields an export site for that name.
+ * - `comment` (optional, plan 03-24) on a comment node, alone in its match. A module's query filters it with
+ *   a `#match?` predicate so only comments that mention an ADR cross the engine boundary; the extractor scans
+ *   the text for `ADR-<n>`, `ADR <n>` and `ADR #<n>` (see `scanAdrMentions`) and turns each mention into a
+ *   `CitationSite`. The engine keeps the text of a `comment` up to 65,536 UTF-16 units (`GRAMMAR_LIMITS`); a
+ *   longer one arrives empty and is counted in the info diagnostic `citation_comment_too_long`. A comment
+ *   match is never a "match without a name".
  *
  * Imports query (`queries/imports.scm`): imports and exports, because a manifest has exactly three
  * query files.
@@ -41,11 +47,16 @@
  *   is never a reference. `importPath` is set when a non-member site's name is an import binding.
  * - Definitions, imports and exports are facts the store labels EXTRACTED. Reference sites are
  *   name matches the store labels INFERRED. The extractor carries no confidence and no target.
+ * - Citations come from comment nodes only (never from strings, templates or regular expressions, which
+ *   the grammar does not report as comments). A mention belongs to the innermost symbol containing it, else
+ *   to the symbol a leading doc comment documents, else to none. Only the integer, a short `§` detail and
+ *   the span of the mention are kept; comment text never leaves this module.
  * - It never throws on a malformed match: the match is skipped and counted in an info diagnostic
- *   (`match_missing_name`, `match_missing_path`).
+ *   (`match_missing_name`, `match_missing_path`, `citation_comment_too_long`).
  */
-import { IMPORT_STYLES, REF_KINDS, diagnostic } from '../facts/index.ts';
+import { IMPORT_STYLES, MAX_CITATIONS_PER_FILE, REF_KINDS, diagnostic } from '../facts/index.ts';
 import type {
+  CitationSite,
   Diagnostic,
   ExportSite,
   FileFacts,
@@ -71,7 +82,7 @@ export interface ExtractInput {
 
 export interface ExtractResult {
   readonly facts: FileFacts;
-  /** Info diagnostics `match_missing_name` and `match_missing_path`; never fatal. */
+  /** Info diagnostics `match_missing_name`, `match_missing_path` and `citation_comment_too_long`; never fatal. */
   readonly diagnostics: Diagnostic[];
 }
 
@@ -156,6 +167,251 @@ function unquote(text: string): string {
 }
 
 // ---------------------------------------------------------------------------------------------
+// ADR mentions in comments (tags query capture `comment`)
+
+/** One ADR mention found in the text of a comment: where it starts and ends in that text, its number and detail. */
+export interface AdrMention {
+  readonly index: number;
+  readonly end: number;
+  readonly number: number;
+  readonly detail?: string;
+}
+
+/** A step counter a test passes in to prove the scan is linear: it counts every character the scan looks at. */
+export interface ScanProbe {
+  steps: number;
+}
+
+/** The most characters of a section token kept after the `§` of a mention. */
+const CITATION_TOKEN_MAX = 16;
+
+/** The longest digit string that can still be a safe integer (`9007199254740991` has 16 digits). */
+const SAFE_DIGITS_MAX = 16;
+
+const CHAR_A = 0x61;
+const CHAR_D = 0x64;
+const CHAR_R = 0x72;
+const CHAR_ZERO = 0x30;
+const CHAR_NINE = 0x39;
+const CHAR_SPACE = 0x20;
+const CHAR_HYPHEN = 0x2d;
+const CHAR_HASH = 0x23;
+const CHAR_DOT = 0x2e;
+const CHAR_SECTION = 0xa7;
+
+const isDigitCode = (code: number): boolean => code >= CHAR_ZERO && code <= CHAR_NINE;
+
+/** ASCII letters, digits and underscore: the characters that make `quadr-5` or `ADR_9` not a mention. */
+function isWordCode(code: number): boolean {
+  return (
+    isDigitCode(code) || (code >= 0x41 && code <= 0x5a) || (code >= CHAR_A && code <= 0x7a) || code === 0x5f
+  );
+}
+
+/** A character a section token may hold: an ASCII letter, a digit or a dot. */
+function isTokenCode(code: number): boolean {
+  return isDigitCode(code) || (code >= 0x41 && code <= 0x5a) || (code >= CHAR_A && code <= 0x7a) || code === CHAR_DOT;
+}
+
+/**
+ * Find the ADR mentions in the text of one comment (D-19): `ADR-<n>`, `ADR <n>`, `ADR #<n>` and `ADR#<n>`, in any
+ * letter case, at a word boundary (the start of the text or a character that is not a letter, digit or underscore),
+ * with an optional section suffix, at most one space and a `§` plus up to 16 letters, digits or dots (trailing dots
+ * trimmed, so `ADR-1 §3.` keeps `§3`).
+ *
+ * The number is the digit run after the separator, compared by value: leading zeros are dropped, `0` and anything
+ * beyond the safe integers is no citation, and a letter after the digits does not extend the number (`ADR-1a` is 1).
+ * A malformed mention (`ADR-`, `ADR - 1`) is skipped, never guessed.
+ *
+ * One pass, no backtracking: every position is looked at once, and a digit run is consumed once and then skipped, so
+ * the work is linear in the length of the text whatever its shape (`probe.steps` counts it for the tests).
+ */
+export function scanAdrMentions(text: string, probe?: ScanProbe): AdrMention[] {
+  const found: AdrMention[] = [];
+  const length = text.length;
+  let steps = 0;
+  let at = 0;
+  while (at < length) {
+    steps += 1;
+    // Cheapest test first: `A` or `a` (0x41 | 0x20 and 0x61 are the only code units that give 0x61).
+    if ((text.charCodeAt(at) | 0x20) !== CHAR_A || (at > 0 && isWordCode(text.charCodeAt(at - 1)))) {
+      at += 1;
+      continue;
+    }
+    if ((text.charCodeAt(at + 1) | 0x20) !== CHAR_D || (text.charCodeAt(at + 2) | 0x20) !== CHAR_R) {
+      at += 1;
+      continue;
+    }
+    let cursor = at + 3;
+    const separator = text.charCodeAt(cursor);
+    if (separator === CHAR_HYPHEN || separator === CHAR_HASH) {
+      cursor += 1;
+    } else if (separator === CHAR_SPACE) {
+      cursor += 1;
+      if (text.charCodeAt(cursor) === CHAR_HASH) {
+        cursor += 1;
+      }
+    } else {
+      at += 1;
+      continue;
+    }
+    const digitsStart = cursor;
+    while (cursor < length && isDigitCode(text.charCodeAt(cursor))) {
+      cursor += 1;
+      steps += 1;
+    }
+    if (cursor === digitsStart) {
+      at += 1;
+      continue;
+    }
+    let significant = digitsStart;
+    while (significant < cursor - 1 && text.charCodeAt(significant) === CHAR_ZERO) {
+      significant += 1;
+      steps += 1;
+    }
+    const digits = cursor - significant;
+    const value = digits <= SAFE_DIGITS_MAX ? Number(text.slice(significant, cursor)) : Number.NaN;
+    let end = cursor;
+    let detail: string | undefined;
+    if (Number.isSafeInteger(value) && value > 0) {
+      let section = cursor;
+      if (text.charCodeAt(section) === CHAR_SPACE) {
+        section += 1;
+      }
+      if (text.charCodeAt(section) === CHAR_SECTION) {
+        let tokenEnd = section + 1;
+        const limit = Math.min(length, tokenEnd + CITATION_TOKEN_MAX);
+        while (tokenEnd < limit && isTokenCode(text.charCodeAt(tokenEnd))) {
+          tokenEnd += 1;
+          steps += 1;
+        }
+        while (tokenEnd > section + 1 && text.charCodeAt(tokenEnd - 1) === CHAR_DOT) {
+          tokenEnd -= 1;
+        }
+        if (tokenEnd > section + 1) {
+          detail = text.slice(section, tokenEnd);
+          end = tokenEnd;
+        }
+      }
+      found.push({ index: at, end, number: value, ...(detail === undefined ? {} : { detail }) });
+    }
+    // The digits (and the detail) belong to this mention: nothing inside them can start another.
+    at = end;
+  }
+  if (probe !== undefined) {
+    probe.steps += steps;
+  }
+  return found;
+}
+
+interface CommentDraft {
+  readonly number: number;
+  readonly detail: string | undefined;
+  readonly span: Span;
+}
+
+/**
+ * The mentions of every `comment` capture of the tags query, each with the span of the mention itself. A comment
+ * whose text was dropped by the engine (over the 65,536-unit bound) is counted and yields nothing. Only the number,
+ * the detail and the span leave this function; the comment text is read here and never kept.
+ */
+function collectCitationDrafts(captures: readonly Capture[]): {
+  drafts: CommentDraft[];
+  comments: Span[];
+  tooLong: number;
+} {
+  const drafts: CommentDraft[] = [];
+  const comments: Span[] = [];
+  let tooLong = 0;
+  for (const capture of captures) {
+    if (capture.query !== 'tags' || capture.name !== 'comment') {
+      continue;
+    }
+    if (capture.text === '') {
+      tooLong += 1;
+      continue;
+    }
+    comments.push(capture.span);
+    // Lines and columns of each mention come from the capture's start and the text before it: rows count LF only,
+    // columns count UTF-16 units from the last LF (or from the capture's own column on its first line).
+    let line = capture.span.startLine;
+    let lineStart = -capture.span.startColumn;
+    let nextLf = capture.text.indexOf('\n');
+    for (const mention of scanAdrMentions(capture.text)) {
+      while (nextLf !== -1 && nextLf < mention.index) {
+        line += 1;
+        lineStart = nextLf + 1;
+        nextLf = capture.text.indexOf('\n', lineStart);
+      }
+      drafts.push({
+        number: mention.number,
+        detail: mention.detail,
+        span: {
+          startLine: line,
+          startColumn: mention.index - lineStart,
+          endLine: line,
+          endColumn: mention.end - lineStart,
+        },
+      });
+    }
+  }
+  return { drafts, comments, tooLong };
+}
+
+/**
+ * Attach each mention to a symbol and order the citations by position. A mention belongs to the innermost symbol
+ * that contains it; failing that, to the symbol a leading doc comment documents (the first symbol that starts at
+ * or after the comment's end, on the comment's last line or the next one, unless the comment trails a symbol on
+ * its own line); failing that, to none (a file-level mention). The cap keeps the first
+ * `MAX_CITATIONS_PER_FILE` in position order.
+ */
+function attachCitations(
+  drafts: readonly CommentDraft[],
+  comments: readonly Span[],
+  symbols: readonly LocalSymbol[],
+): CitationSite[] {
+  const ordered = [...drafts].sort(
+    (a, b) => compareStart(a.span, b.span) || compareEndAscending(a.span, b.span) || a.number - b.number,
+  );
+  const enclosingOf = enclosingFinder(symbols);
+  return ordered.slice(0, MAX_CITATIONS_PER_FILE).map((draft): CitationSite => {
+    let enclosing = enclosingOf(draft.span);
+    if (enclosing === undefined) {
+      const comment = comments.find((span) => contains(span, draft.span));
+      if (comment !== undefined) {
+        enclosing = documentedSymbol(symbols, comment);
+      }
+    }
+    return {
+      number: draft.number,
+      ...(draft.detail === undefined ? {} : { detail: draft.detail }),
+      span: draft.span,
+      ...(enclosing === undefined ? {} : { enclosing }),
+    };
+  });
+}
+
+/** The index of the symbol a comment documents, or undefined; see `attachCitations`. */
+function documentedSymbol(symbols: readonly LocalSymbol[], comment: Span): number | undefined {
+  const trails = symbols.some(
+    (symbol) =>
+      symbol.span.endLine === comment.startLine &&
+      symbol.span.endColumn <= comment.startColumn &&
+      compareStart(symbol.span, comment) < 0,
+  );
+  if (trails) {
+    return undefined;
+  }
+  const index = symbols.findIndex(
+    (symbol) =>
+      (symbol.span.startLine > comment.endLine ||
+        (symbol.span.startLine === comment.endLine && symbol.span.startColumn >= comment.endColumn)) &&
+      symbol.span.startLine <= comment.endLine + 1,
+  );
+  return index >= 0 ? index : undefined;
+}
+
+// ---------------------------------------------------------------------------------------------
 // Definitions (tags query)
 
 interface SymbolDraft {
@@ -180,6 +436,9 @@ function collectDefinitions(captures: readonly Capture[]): { drafts: SymbolDraft
       (capture) => capture.name.startsWith(DEFINITION_PREFIX) && capture.name.length > DEFINITION_PREFIX.length,
     );
     const name = firstNamed(group, 'name');
+    if (definition === undefined && name === undefined && firstNamed(group, 'comment') !== undefined) {
+      continue; // the ADR mention filter of the tags query: a comment, not a definition (read by the citation pass)
+    }
     if (definition === undefined || name === undefined || name.text === '') {
       skipped += 1;
       continue;
@@ -531,6 +790,9 @@ export function extractFileFacts(input: ExtractInput): ExtractResult {
     declarationSpans: new Set(drafts.map((draft) => spanKey(draft.nameSpan))),
   });
 
+  const cited = collectCitationDrafts(run.captures);
+  const citations = attachCitations(cited.drafts, cited.comments, symbols);
+
   const nameSkipped = defined.skipped + exported.skipped;
   if (nameSkipped > 0) {
     diagnostics.push(
@@ -553,6 +815,17 @@ export function extractFileFacts(input: ExtractInput): ExtractResult {
     );
   }
 
+  if (cited.tooLong > 0) {
+    diagnostics.push(
+      diagnostic(
+        'citation_comment_too_long',
+        'info',
+        countMessage(cited.tooLong, 'comments that mention an ADR but are over the comment size bound'),
+        input.path,
+      ),
+    );
+  }
+
   const facts: FileFacts = {
     path: input.path,
     contentHash: input.contentHash,
@@ -562,6 +835,7 @@ export function extractFileFacts(input: ExtractInput): ExtractResult {
     refSites,
     imports,
     exports: exported.sites,
+    ...(citations.length === 0 ? {} : { citations }),
     parse: { errorBytes: run.errorBytes, totalBytes: run.totalBytes },
   };
   return { facts, diagnostics };

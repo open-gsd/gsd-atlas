@@ -14,7 +14,8 @@ function bool(value: boolean | undefined): number | null {
 
 /** Number of fact rows `facts` would write. */
 function rowCount(facts: FileFacts): number {
-  let total = facts.symbols.length + facts.refSites.length + facts.imports.length + (facts.exports?.length ?? 0);
+  let total =
+    facts.symbols.length + facts.refSites.length + facts.imports.length + (facts.exports?.length ?? 0) + (facts.citations?.length ?? 0);
   for (const site of facts.imports) total += site.bindings?.length ?? 0;
   return total;
 }
@@ -143,6 +144,24 @@ function writeFactRows(db: Db, fileId: number, facts: FileFacts, trigram: boolea
       site.span.endColumn,
     );
   });
+
+  // ADR citations (plan 03-24): the number, the short detail and the span; `enclosing` is a symbol ord.
+  const insertCitation = db.prepare(
+    'INSERT INTO citations (file_id, ord, number, detail, start_line, start_col, end_line, end_col, enclosing) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+  );
+  facts.citations?.forEach((site, ord) => {
+    insertCitation.run(
+      fileId,
+      ord,
+      site.number,
+      site.detail ?? null,
+      site.span.startLine,
+      site.span.startColumn,
+      site.span.endLine,
+      site.span.endColumn,
+      site.enclosing ?? null,
+    );
+  });
 }
 
 /** Insert a new `files` row (state live) and all of its fact rows; returns the new file id. */
@@ -177,6 +196,7 @@ function rewriteFile(db: Db, fileId: number, facts: FileFacts, now: number, trig
   db.prepare('DELETE FROM imports WHERE file_id = ?').run(fileId);
   db.prepare('DELETE FROM import_bindings WHERE file_id = ?').run(fileId);
   db.prepare('DELETE FROM exports WHERE file_id = ?').run(fileId);
+  db.prepare('DELETE FROM citations WHERE file_id = ?').run(fileId);
   db.prepare(
     "UPDATE files SET module = ?, grammar_version = ?, nsym = ?, nref = ?, error_bytes = ?, total_bytes = ?, state = 'live', stale = 0, retired_at = NULL, last_seen = ? WHERE id = ?",
   ).run(

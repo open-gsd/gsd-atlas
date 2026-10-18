@@ -9,8 +9,9 @@ export { diagnostic } from './diagnostic.ts';
 export type { Diagnostic, Severity } from './diagnostic.ts';
 export { systemClock } from './clock.ts';
 export type { Clock } from './clock.ts';
-export { FACT_PREDICATES, IMPORT_STYLES, REF_KINDS, validateFileFacts } from './file-facts.ts';
+export { FACT_PREDICATES, IMPORT_STYLES, MAX_CITATIONS_PER_FILE, REF_KINDS, validateFileFacts } from './file-facts.ts';
 export type {
+  CitationSite,
   Confidence,
   ExportSite,
   FactPredicate,

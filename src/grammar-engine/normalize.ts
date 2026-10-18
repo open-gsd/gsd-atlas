@@ -1,4 +1,4 @@
-import { GRAMMAR_LIMITS } from './limits.ts';
+import { captureTextLimit } from './limits.ts';
 import type { Capture, QueryKind } from './types.ts';
 
 const BOM = '﻿';
@@ -32,9 +32,9 @@ export function toCapture(
   source: string,
   match: number,
 ): Capture {
-  // Text is bounded (research Pitfall 9): a whole function body must not be copied per capture.
-  const text =
-    node.endIndex - node.startIndex > GRAMMAR_LIMITS.captureTextChars ? '' : source.slice(node.startIndex, node.endIndex);
+  // Text is bounded (research Pitfall 9): a whole function body must not be copied per capture. A capture named
+  // `comment` gets the larger bound of `captureTextLimit`, because a comment that mentions an ADR is prose.
+  const text = node.endIndex - node.startIndex > captureTextLimit(name) ? '' : source.slice(node.startIndex, node.endIndex);
   return {
     query,
     name,
