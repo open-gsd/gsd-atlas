@@ -23,6 +23,10 @@ jobs:
     name: Strict gates (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
+    # Decision 2026-10-18 (Decision 2): Windows is postponed past the initial alpha. The Windows leg still runs so its
+    # results stay visible, but it cannot fail the workflow; Ubuntu and macOS stay blocking. Windows work is tracked in
+    # .planning/todos/pending/windows-support-post-alpha.md; remove this line when it is done.
+    continue-on-error: ${{ matrix.os == 'windows-latest' }}
     strategy:
       fail-fast: false
       matrix:

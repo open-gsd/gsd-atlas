@@ -42,7 +42,14 @@ jobs:
   test:
     name: Test (${{ matrix.os }}, Node ${{ matrix.node }})
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 30
+    # Windows is capped at 20 minutes so that a hang (src/bin/compose.test.ts held run 1 of ci/phase3-precise to the 30 minute
+    # limit) ends 10 minutes sooner and frees the runner; the Windows suite has not yet completed on a hosted runner, so 20 is
+    # a cap on a hang, not a measured run time. Ubuntu and macOS keep 30.
+    timeout-minutes: ${{ matrix.os == 'windows-latest' && 20 || 30 }}
+    # Decision 2026-10-18 (Decision 2): Windows is postponed past the initial alpha. The Windows leg still runs so its
+    # results stay visible, but it cannot fail the workflow; Ubuntu and macOS stay blocking. Windows work is tracked in
+    # .planning/todos/pending/windows-support-post-alpha.md; remove this line when it is done.
+    continue-on-error: ${{ matrix.os == 'windows-latest' }}
     strategy:
       fail-fast: false
       matrix:
@@ -81,6 +88,10 @@ jobs:
     name: Grammar rebuild (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
+    # Decision 2026-10-18 (Decision 2): Windows is postponed past the initial alpha. The Windows leg still runs so its
+    # results stay visible, but it cannot fail the workflow; Ubuntu and macOS stay blocking. Windows work is tracked in
+    # .planning/todos/pending/windows-support-post-alpha.md; remove this line when it is done.
+    continue-on-error: ${{ matrix.os == 'windows-latest' }}
     strategy:
       fail-fast: false
       matrix:
@@ -125,6 +136,10 @@ jobs:
     name: Gates (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
+    # Decision 2026-10-18 (Decision 2): Windows is postponed past the initial alpha. The Windows leg still runs so its
+    # results stay visible, but it cannot fail the workflow; Ubuntu and macOS stay blocking. Windows work is tracked in
+    # .planning/todos/pending/windows-support-post-alpha.md; remove this line when it is done.
+    continue-on-error: ${{ matrix.os == 'windows-latest' }}
     strategy:
       fail-fast: false
       matrix:
