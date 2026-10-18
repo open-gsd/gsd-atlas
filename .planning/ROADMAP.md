@@ -169,7 +169,7 @@ Plans:
   4. The `gsd-atlas` skill routes agents to atlas tools and `gsd-atlas-module-author` guides module writing; a user can rate a session, feature or last answer up, meh or down; diagnostics are off by default, approved per data type and previewed before manual submission; and `gsd-atlas bug` captures a flight recorder, versions, config, store health and the failing answer with hashed names and paths by default.
   5. The free-alternatives evaluation (LSP-wrapping MCP servers, agent repo-maps, colbymchenry/codegraph, Claude Code LSP, Memtrace) is recorded before the eval, the eval design is pre-registered (at least 50 questions per corpus including abstain cases, at least 3 runs per configuration, independent oracle, paired pooled analysis, accuracy non-inferiority margin, tool-call rate logged), and on gsd-core agents using atlas consume fewer tokens than the grep-only baseline at non-inferior accuracy with verifiable file:line citations at least 80% of the time.
 
-**Plans:** 33/37 plans executed
+**Plans:** 33/38 plans executed
 
 Plans:
 **Wave 1**
@@ -229,16 +229,19 @@ Plans:
 
 **Wave 13** *(blocked on Wave 12 completion)*
 - [x] 03-32-PLAN.md — `gsd-atlas bug` local bundle, hashed by default (SKL-04)
-- [x] 03-33-PLAN.md — Final skills, human approval and Stage B freeze (SKL-01)
+- [x] 03-33-PLAN.md — Final skills and the Stage B freezer; the smoke run and the Stage B freeze moved to 03-38 after the user reopened Stage A (SKL-01)
 
 **Wave 14** *(blocked on Wave 13 completion)*
-- [ ] 03-34-PLAN.md — User documentation for the shipped surface written with the Diataxis skill: references, explain and ADR guides, approval and skills guides, tutorial, and a documentation consistency test (QRY-07, SKL-01, SKL-02, SKL-03, SKL-04, SEC-02, TSM-01, TSM-03, TSM-04)
-- [ ] 03-35-PLAN.md — Scored eval run and the registered analysis, the MVP gate (EVL-03, EVL-02)
+- [ ] 03-38-PLAN.md — Reopen Stage A so the scored atlas arm carries the Skill tool (the skill becomes visible to the model): live visibility probes and an unscored smoke run, the atlas-commit check in the scored gate, Revision 1 of the pre-registration with the user's re-approval, the Stage A re-freeze and the Stage B freeze (EVL-02, EVL-03, SKL-01)
 
 **Wave 15** *(blocked on Wave 14 completion)*
-- [ ] 03-36-PLAN.md — Alpha-readiness documentation pass with the Diataxis skill: README front door, alpha limitations with the evaluation status from the registered analysis, feedback and privacy pages, final audit (SKL-02, SKL-03, SKL-04, EVL-03, TSM-02)
+- [ ] 03-34-PLAN.md — User documentation for the shipped surface written with the Diataxis skill: references, explain and ADR guides, approval and skills guides, tutorial, and a documentation consistency test (QRY-07, SKL-01, SKL-02, SKL-03, SKL-04, SEC-02, TSM-01, TSM-03, TSM-04)
+- [ ] 03-35-PLAN.md — Scored eval run (atlas tools plus the visible skill against the grep-only baseline) and the registered analysis, the MVP gate (EVL-03, EVL-02)
 
 **Wave 16** *(blocked on Wave 15 completion)*
+- [ ] 03-36-PLAN.md — Alpha-readiness documentation pass with the Diataxis skill: README front door, alpha limitations with the evaluation status from the registered analysis, feedback and privacy pages, final audit (SKL-02, SKL-03, SKL-04, EVL-03, TSM-02)
+
+**Wave 17** *(blocked on Wave 16 completion)*
 - [ ] 03-37-PLAN.md — Number and ratify every remaining draft ADR at the MVP gate: one issue per draft, rename through one pull request, merge, close the issues, then the documents and tests state the final truth (SKL-03)
 
 ### Phase 4: Host Hardening
@@ -366,7 +369,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 |-------|----------------|--------|-----------|
 | 1. Foundations and Walking Skeleton | 20/20 | Complete    | 2026-10-16 |
 | 2. Grammar Tier, Store and stdio Host | 46/46 | Complete    | 2026-10-17 |
-| 3. TypeScript Module and MVP Eval | 33/37 | In Progress | - |
+| 3. TypeScript Module and MVP Eval | 33/38 | In Progress | - |
 | 4. Host Hardening | 0/TBD | Not started | - |
 | 5. Swift Module | 0/TBD | Not started | - |
 | 6. Platform SDK Facts | 0/TBD | Not started | - |
