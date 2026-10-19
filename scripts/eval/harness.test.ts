@@ -1,13 +1,24 @@
 import assert from 'node:assert/strict';
-import { spawn } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { after, describe, it } from 'node:test';
 
-import { ALLOWED_SHELL, ARMS, ATLAS_TOOL_NAMES, allowedToolsFor, buildPluginDir, checkInit, expectedToolSet } from './arms.ts';
+import {
+  ALLOWED_SHELL,
+  ARMS,
+  ATLAS_SETTINGS,
+  ATLAS_TOOL_NAMES,
+  PLUGIN_NAME,
+  SKILL_NAME,
+  allowedToolsFor,
+  buildPluginDir,
+  checkInit,
+  expectedToolSet,
+} from './arms.ts';
 import type { InitEvent } from './claude-session.ts';
-import { buildPrompt, isInfrastructureFailure, runAll, runCell, runCli, runningCostUsd } from './harness.ts';
+import { ATLAS_BUILD_INPUTS, buildPrompt, checkAtlasBuild, isInfrastructureFailure, runAll, runCell, runCli, runningCostUsd } from './harness.ts';
 import type { CellDeps, Io } from './harness.ts';
 import { STAGE_A_FILES, hashFile } from './prereg.ts';
 import { ResultsStore } from './results.ts';
@@ -265,6 +276,39 @@ describe('runCell tracer', () => {
     assert.equal(row.arm, 'grep');
   });
 
+  it('Skill tool tracer (atlas): the argv carries the Skill tool and its one allow rule, the init event lists it, a Skill call lands in the row', async () => {
+    const env = makeEnv({ FAKE_TOOL_NAMES: JSON.stringify(['Skill', 'mcp__gsd-atlas__code_find', 'Bash']) }, { keepSessions: true });
+    const cell = { questionId: 'q-1', arm: 'atlas', run: 1 } as const;
+    const result = await runCell(cell, env.deps);
+    assert.equal(result.outcome, 'done', `checkInit must be clean: ${(result.diffs ?? []).join('; ')}`);
+    const argv = resultEventOf(env, cellId(cell))['fake_argv'] as string[];
+    assert.equal(argv[argv.indexOf('--tools') + 1], 'Bash,Read,Skill');
+    const allowed = (argv[argv.indexOf('--allowedTools') + 1] ?? '').split(',');
+    assert.deepEqual(allowed.filter((t) => t.startsWith('Skill')), ['Skill(gsd-atlas-eval:gsd-atlas)']);
+    assert.equal(argv[argv.indexOf('--settings') + 1], ATLAS_SETTINGS, 'the atlas session carries the bundled-skill settings');
+    assert.equal(argv.filter((a) => a === '--settings').length, 1);
+    const init = metaOf(env).find((m) => m.kind === 'session' && m.cellId === cellId(cell))?.['init'] as { tools: string[]; skills: string[] };
+    assert.ok(init.tools.includes('Skill'));
+    assert.ok(init.skills.includes('gsd-atlas-eval:gsd-atlas'));
+    const row = ResultRowSchema.parse(readLines(path.join(env.out, 'results.jsonl'))[0]);
+    assert.equal(row.toolCallsByName['Skill'], 1);
+    assert.equal(row.atlasToolCalls, 1);
+    assert.equal(row.toolCalls, 3);
+  });
+
+  it('Skill tool tracer (grep): no Skill token anywhere in the argv, and a Skill tool in the init event is contamination', async () => {
+    const env = makeEnv({}, { keepSessions: true });
+    const cell = { questionId: 'q-1', arm: 'grep', run: 1 } as const;
+    assert.equal((await runCell(cell, env.deps)).outcome, 'done');
+    const argv = resultEventOf(env, cellId(cell))['fake_argv'] as string[];
+    assert.ok(!argv.some((a) => a.includes('Skill')), 'no Skill token in the grep argv');
+    assert.ok(!argv.includes('--settings'), 'the grep session carries no settings');
+    const dirty = makeEnv({ FAKE_INIT_EXTRA_TOOLS: JSON.stringify(['Skill']) });
+    const contaminated = await runCell({ questionId: 'q-1', arm: 'grep', run: 1 }, dirty.deps);
+    assert.equal(contaminated.outcome, 'contaminated');
+    assert.ok((contaminated.diffs ?? []).includes('extra tool: Skill'));
+  });
+
   it('separate stores per cell: each cell has its own store and an empty user directory inside its session directory', async () => {
     const env = makeEnv({}, { keepSessions: true });
     const first = { questionId: 'q-1', arm: 'atlas', run: 1 } as const;
@@ -381,9 +425,9 @@ describe('schedule', () => {
 // Task 2: the arms
 
 const ATLAS_INIT = (over: Partial<InitEvent> = {}): InitEvent => ({
-  tools: ['Bash', 'Read', 'mcp__gsd-atlas__code_find', 'mcp__gsd-atlas__code_refs'],
+  tools: ['Bash', 'Read', 'Skill', 'mcp__gsd-atlas__code_find', 'mcp__gsd-atlas__code_refs'],
   mcpServers: [{ name: 'gsd-atlas', status: 'connected' }],
-  skills: ['update-config', 'gsd-atlas-eval:gsd-atlas'],
+  skills: ['gsd-atlas-eval:gsd-atlas'],
   plugins: [],
   agents: [],
   model: 'm',
@@ -413,19 +457,83 @@ describe('arms', () => {
     }
     assert.deepEqual(allowedToolsFor('grep').filter((t) => t.startsWith('mcp__')), []);
     assert.deepEqual(allowedToolsFor('atlas').filter((t) => t.startsWith('mcp__')), [...ATLAS_TOOL_NAMES]);
-    // The two arms differ in exactly the atlas tools.
-    assert.deepEqual(allowedToolsFor('atlas').filter((t) => !t.startsWith('mcp__')), allowedToolsFor('grep'));
+    // The two arms differ in exactly the atlas tools and the one Skill rule (plan 03-38, Revision 1).
+    assert.deepEqual(
+      allowedToolsFor('atlas').filter((t) => !t.startsWith('mcp__') && !t.startsWith('Skill(')),
+      allowedToolsFor('grep'),
+    );
   });
 
-  it('expectedToolSet: Bash and Read exactly, a server only for the atlas arm', () => {
+  // The grep arm is pinned against literal copies of its pre-revision values (plan 03-38): any change
+  // to it fails here, whatever the code under change says.
+  it('the grep arm is byte for byte what it was before Revision 1', () => {
+    assert.deepEqual([...ARMS.grep.builtinTools], ['Bash', 'Read']);
+    assert.deepEqual(allowedToolsFor('grep'), [
+      'Bash(rg:*)',
+      'Bash(git grep:*)',
+      'Bash(git ls-files:*)',
+      'Bash(grep:*)',
+      'Bash(cat:*)',
+      'Bash(head:*)',
+      'Bash(tail:*)',
+      'Bash(wc:*)',
+      'Bash(ls:*)',
+      'Bash(find:*)',
+      'Bash(sort:*)',
+      'Bash(uniq:*)',
+      'Read',
+    ]);
+    assert.deepEqual([...ARMS.grep.atlasToolNames], []);
     assert.deepEqual(expectedToolSet('grep'), { tools: ['Bash', 'Read'], mcpServers: [] });
-    assert.deepEqual(expectedToolSet('atlas'), { tools: ['Bash', 'Read'], mcpServers: ['gsd-atlas'] });
+    assert.ok(!allowedToolsFor('grep').some((t) => t.includes('Skill')), 'the grep arm has no Skill rule');
+  });
+
+  it('the atlas arm adds the Skill built-in and exactly one Skill rule, built from the plugin and skill names', () => {
+    assert.deepEqual([...ARMS.atlas.builtinTools], ['Bash', 'Read', 'Skill']);
+    const rules = allowedToolsFor('atlas').filter((t) => t === 'Skill' || t.startsWith('Skill('));
+    assert.deepEqual(rules, [`Skill(${PLUGIN_NAME}:${SKILL_NAME})`]);
+    assert.deepEqual(rules, ['Skill(gsd-atlas-eval:gsd-atlas)']);
+    assert.deepEqual(allowedToolsFor('atlas').slice(0, 13), allowedToolsFor('grep'), 'the shell patterns and Read come first, unchanged');
+    assert.deepEqual(allowedToolsFor('atlas').slice(13), ['Skill(gsd-atlas-eval:gsd-atlas)', ...ATLAS_TOOL_NAMES]);
+  });
+
+  // The ladder outcome (docs/eval/skill-visibility.md): rung one, through --settings. Deny rules by name
+  // did not hide a skill from the model's list; `disableBundledSkills` hid all but three, which
+  // `skillOverrides` "off" hides; the model then sees the registered skill and nothing else.
+  it('the atlas arm designs the bundled skills out of the model view through --settings; the grep arm gets no settings', () => {
+    assert.equal(
+      ATLAS_SETTINGS,
+      '{"disableBundledSkills":true,"skillOverrides":{"plugin-authoring":"off","design":"off","doctor":"off"}}',
+    );
+    assert.equal(ARMS.atlas.settings, ATLAS_SETTINGS);
+    assert.equal(ARMS.grep.settings, undefined);
+    assert.ok(!allowedToolsFor('atlas').includes('Skill'), 'no bare Skill allow rule: only the registered skill is open');
+  });
+
+  it('expectedToolSet: Bash and Read (and Skill for the atlas arm) exactly, a server only for the atlas arm', () => {
+    assert.deepEqual(expectedToolSet('grep'), { tools: ['Bash', 'Read'], mcpServers: [] });
+    assert.deepEqual(expectedToolSet('atlas'), { tools: ['Bash', 'Read', 'Skill'], mcpServers: ['gsd-atlas'] });
   });
 
   it('checkInit accepts the registered environments, including a subset of the atlas tools', () => {
     assert.deepEqual(checkInit('grep', GREP_INIT()), []);
     assert.deepEqual(checkInit('atlas', ATLAS_INIT()), []);
-    assert.deepEqual(checkInit('atlas', ATLAS_INIT({ tools: ['Bash', 'Read', 'mcp__gsd-atlas__code_find'] })), []);
+    assert.deepEqual(checkInit('atlas', ATLAS_INIT({ tools: ['Bash', 'Read', 'Skill', 'mcp__gsd-atlas__code_find'] })), []);
+  });
+
+  it('checkInit requires the Skill tool and the skill in the atlas arm only', () => {
+    assert.deepEqual(checkInit('atlas', ATLAS_INIT({ tools: [...ATLAS_INIT().tools, 'StructuredOutput'] })), []);
+    assert.ok(checkInit('atlas', ATLAS_INIT({ tools: ['Bash', 'Read', 'mcp__gsd-atlas__code_find'] })).includes('missing tool: Skill'));
+    assert.ok(checkInit('atlas', ATLAS_INIT({ skills: ['update-config'] })).includes('skill absent: gsd-atlas-eval:gsd-atlas'));
+    assert.ok(checkInit('grep', GREP_INIT({ tools: ['Bash', 'Read', 'Skill'] })).includes('extra tool: Skill'));
+    assert.ok(checkInit('grep', GREP_INIT({ skills: ['gsd-atlas-eval:gsd-atlas'] })).includes('unexpected skill: gsd-atlas'));
+    assert.deepEqual(checkInit('grep', GREP_INIT()), [], 'the registered grep environment is still accepted');
+  });
+
+  it('checkInit names every other skill in the atlas arm: only the registered skill may be listed', () => {
+    const diffs = checkInit('atlas', ATLAS_INIT({ skills: ['gsd-atlas-eval:gsd-atlas', 'update-config', 'plugin-authoring'] }));
+    assert.deepEqual(diffs, ['unexpected skill: update-config', 'unexpected skill: plugin-authoring']);
+    assert.deepEqual(checkInit('atlas', ATLAS_INIT({ skills: ['gsd-atlas'] })), [], 'the bare skill name counts as the registered skill');
   });
 
   it('checkInit accepts the StructuredOutput tool that --json-schema adds, in both arms, and still names other extras', () => {
@@ -734,7 +842,7 @@ interface Registered {
 }
 
 /** A repository root with every Stage A file, a skill and a Frozen Stage B registration of them. */
-function makeRegistered(options: { status?: 'Draft' | 'Frozen'; stage?: 'A' | 'B'; model?: string } = {}): Registered {
+function makeRegistered(options: { status?: 'Draft' | 'Frozen'; stage?: 'A' | 'B'; model?: string; atlasCommit?: string } = {}): Registered {
   const root = fs.mkdtempSync(path.join(fs.realpathSync.native(os.tmpdir()), 'harness-reg-'));
   roots.push(root);
   for (const rel of STAGE_A_FILES) {
@@ -770,7 +878,7 @@ function makeRegistered(options: { status?: 'Draft' | 'Frozen'; stage?: 'A' | 'B
     },
     files,
     questionSet: { count: 2, byCategory: { definition: 2 } },
-    ...(stage === 'B' ? { stageB: { skillSha256: hashFile(skill), atlasCommit: 'b'.repeat(40) } } : {}),
+    ...(stage === 'B' ? { stageB: { skillSha256: hashFile(skill), atlasCommit: options.atlasCommit ?? 'b'.repeat(40) } } : {}),
   };
   const prereg = path.join(root, 'docs', 'eval', 'preregistration.md');
   fs.mkdirSync(path.dirname(prereg), { recursive: true });
@@ -815,6 +923,7 @@ describe('command line', () => {
     assert.match(text, /seed: 20261017/);
     assert.match(text, /concurrency: 2/);
     assert.match(text, /no session started/);
+    assert.match(text, /tools: .*Bash,Read.*atlas arm adds .*Skill tool/s, 'the plan says the atlas arm adds the Skill tool');
     assert.equal(fs.existsSync(env.eventsFile), false);
     assert.equal(fs.existsSync(env.out) && fs.readdirSync(env.out).length > 0, false, 'plan writes no results');
   });
@@ -868,6 +977,8 @@ describe('scored gate', () => {
     env: { ...(env.deps.env ?? {}), PATH: path.join(env.root, 'no-bin') },
     claudeVersion: () => Promise.resolve('2.1.302 (Claude Code)'),
     readPrepared: () => ({ sha: SHA, npmCi: true }),
+    // These cases use a fake atlas binary that is in no checkout of its own; the atlas build gate has its own cases below.
+    atlasBuildCheck: (): string[] => [],
     ...over,
   });
   const refuses = async (env: Env, reg: Registered, extra: string[] = [], over: Record<string, unknown> = {}): Promise<string> => {
@@ -979,6 +1090,208 @@ function writeRows(dir: string, rows: readonly ResultRow[]): void {
   fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(path.join(dir, 'results.jsonl'), rows.map((r) => `${JSON.stringify(r)}\n`).join(''));
 }
+
+// ---------------------------------------------------------------------------------------------
+// Plan 03-38: the atlas build under test is the build that Stage B registered (T-03-334)
+
+describe('atlas build gate (T-03-334)', () => {
+  interface AtlasRepo {
+    dir: string;
+    bin: string;
+    git: (...args: string[]) => string;
+    head: () => string;
+    write: (rel: string, text: string) => void;
+    commit: (message: string) => string;
+  }
+
+  /** A repository holding every build input, a docs file and a built (ignored) `dist/bin/gsd-atlas.js` newer than the sources. */
+  function makeAtlasRepo(): AtlasRepo {
+    const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'atlas-build-')));
+    roots.push(dir);
+    const env: NodeJS.ProcessEnv = { ...process.env, GIT_CONFIG_GLOBAL: os.devNull, GIT_CONFIG_NOSYSTEM: '1' };
+    for (const key of ['GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE']) delete env[key];
+    const git = (...args: string[]): string =>
+      execFileSync('git', ['-c', 'user.name=Test', '-c', 'user.email=test@example.invalid', '-c', 'commit.gpgsign=false', '-c', 'core.autocrlf=false', ...args], {
+        cwd: dir,
+        env,
+        encoding: 'utf8',
+      });
+    const write = (rel: string, text: string): void => {
+      fs.mkdirSync(path.dirname(path.join(dir, rel)), { recursive: true });
+      fs.writeFileSync(path.join(dir, rel), text);
+    };
+    const commit = (message: string): string => {
+      git('add', '--all');
+      git('commit', '--quiet', '-m', message);
+      return git('rev-parse', 'HEAD').trim();
+    };
+    git('init', '--quiet');
+    write('.gitignore', 'dist/\n');
+    write('src/a.ts', 'export const a = 1;\n');
+    write('modules/m.ts', 'export const m = 1;\n');
+    write('schemas/s.json', '{}\n');
+    write('diagnostics/d.json', '{}\n');
+    write('package.json', '{"name":"x"}\n');
+    write('package-lock.json', '{"lockfileVersion":3}\n');
+    write('tsconfig.json', '{}\n');
+    write('tsconfig.build.json', '{}\n');
+    write('docs/notes.md', 'notes\n');
+    commit('initial');
+    const bin = path.join(dir, 'dist', 'bin', 'gsd-atlas.js');
+    write('dist/bin/gsd-atlas.js', '// built\n');
+    const later = new Date(Date.now() + 60_000);
+    fs.utimesSync(bin, later, later);
+    return { dir, bin, git, head: () => git('rev-parse', 'HEAD').trim(), write, commit };
+  }
+
+  it('the build inputs are exactly the eight the plan names', () => {
+    assert.deepEqual([...ATLAS_BUILD_INPUTS], ['src', 'modules', 'schemas', 'diagnostics', 'package.json', 'package-lock.json', 'tsconfig.json', 'tsconfig.build.json']);
+  });
+
+  it('atlas build matches the Stage B commit: HEAD is that commit, nothing changed, the binary is newer', () => {
+    const repo = makeAtlasRepo();
+    assert.deepEqual(checkAtlasBuild(repo.bin, repo.head()), []);
+  });
+
+  it('atlas build matches the Stage B commit when HEAD is a later commit that changed no build input (the Stage B commit itself)', () => {
+    const repo = makeAtlasRepo();
+    const registered = repo.head();
+    repo.write('docs/notes.md', 'notes after Stage B\n');
+    repo.commit('docs only');
+    assert.notEqual(repo.head(), registered);
+    assert.deepEqual(checkAtlasBuild(repo.bin, registered), []);
+  });
+
+  it('atlas build from another commit: the registered commit is neither HEAD nor an ancestor of it', () => {
+    const repo = makeAtlasRepo();
+    const base = repo.head();
+    repo.git('checkout', '--quiet', '-b', 'other');
+    repo.write('docs/notes.md', 'another line of history\n');
+    const other = repo.commit('other history');
+    repo.git('checkout', '--quiet', base);
+    const problems = checkAtlasBuild(repo.bin, other);
+    assert.equal(problems.length, 1, problems.join('; '));
+    assert.match(problems[0] ?? '', /another commit|not HEAD or an ancestor/);
+  });
+
+  it('the registered commit is not in the checkout at all', () => {
+    const repo = makeAtlasRepo();
+    const problems = checkAtlasBuild(repo.bin, 'd'.repeat(40));
+    assert.equal(problems.length, 1, problems.join('; '));
+    assert.match(problems[0] ?? '', /not in the checkout|does not exist/);
+  });
+
+  it('a binary that is not inside a git checkout is refused with the cause named', () => {
+    const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'atlas-plain-')));
+    roots.push(dir);
+    fs.mkdirSync(path.join(dir, 'dist', 'bin'), { recursive: true });
+    fs.writeFileSync(path.join(dir, 'dist', 'bin', 'gsd-atlas.js'), '// built\n');
+    const problems = checkAtlasBuild(path.join(dir, 'dist', 'bin', 'gsd-atlas.js'), 'a'.repeat(40));
+    assert.equal(problems.length, 1, problems.join('; '));
+    assert.match(problems[0] ?? '', /git checkout/);
+  });
+
+  it('build input changed since the Stage B commit: each input is caught and the message names the first changed path', () => {
+    for (const rel of ['src/a.ts', 'modules/m.ts', 'schemas/s.json', 'diagnostics/d.json', 'package.json', 'package-lock.json', 'tsconfig.json', 'tsconfig.build.json']) {
+      const repo = makeAtlasRepo();
+      const registered = repo.head();
+      repo.write(rel, `${fs.readFileSync(path.join(repo.dir, rel), 'utf8')}\n`);
+      repo.commit(`change ${rel}`);
+      const later = new Date(Date.now() + 120_000);
+      fs.utimesSync(repo.bin, later, later); // the binary is newer than every source: only the commit comparison can catch it
+      const problems = checkAtlasBuild(repo.bin, registered);
+      assert.equal(problems.length, 1, `${rel}: ${problems.join('; ')}`);
+      assert.ok((problems[0] ?? '').includes(rel), `${rel}: ${problems[0] ?? ''}`);
+    }
+  });
+
+  it('build input has an uncommitted change: a modified, a staged and an untracked file all refuse', () => {
+    const modified = makeAtlasRepo();
+    modified.write('src/a.ts', 'export const a = 2;\n');
+    const later = new Date(Date.now() + 120_000);
+    fs.utimesSync(modified.bin, later, later);
+    const m = checkAtlasBuild(modified.bin, modified.head());
+    assert.equal(m.length, 1, m.join('; '));
+    assert.ok((m[0] ?? '').includes('src/a.ts'));
+    const staged = makeAtlasRepo();
+    staged.write('package.json', '{"name":"y"}\n');
+    staged.git('add', 'package.json');
+    fs.utimesSync(staged.bin, later, later);
+    assert.ok((checkAtlasBuild(staged.bin, staged.head())[0] ?? '').includes('package.json'));
+    const untracked = makeAtlasRepo();
+    untracked.write('modules/new.ts', 'export const n = 1;\n');
+    fs.utimesSync(untracked.bin, later, later);
+    assert.ok((checkAtlasBuild(untracked.bin, untracked.head())[0] ?? '').includes('modules/new.ts'));
+  });
+
+  it('a change outside the build inputs is not a problem', () => {
+    const repo = makeAtlasRepo();
+    repo.write('docs/notes.md', 'uncommitted note\n');
+    repo.write('scripts/other.ts', 'export {};\n');
+    assert.deepEqual(checkAtlasBuild(repo.bin, repo.head()), []);
+  });
+
+  it('atlas binary older than a build input: the build is stale', () => {
+    const repo = makeAtlasRepo();
+    const old = new Date(Date.now() - 3_600_000);
+    fs.utimesSync(repo.bin, old, old);
+    const problems = checkAtlasBuild(repo.bin, repo.head());
+    assert.equal(problems.length, 1, problems.join('; '));
+    assert.match(problems[0] ?? '', /older than/);
+  });
+
+  describe('in the scored gate', () => {
+    const baseArgs = (env: Env, reg: Registered, bin: string): string[] => {
+      const files = writeQuestionFiles(env.root);
+      return [
+        'run', '--scored', '--dry-run', '--questions', files.questions, '--answers', files.answers, '--corpus-dir', CORPUS,
+        '--out-dir', path.join(env.root, 'scored-out'), '--atlas-bin', bin, '--skill', reg.skill,
+        '--prereg', reg.prereg, '--scratch-dir', env.scratch,
+      ];
+    };
+    const depsFor = (env: Env, reg: Registered) => ({
+      repoRoot: reg.root,
+      env: { ...(env.deps.env ?? {}), PATH: path.join(env.root, 'no-bin') },
+      claudeVersion: () => Promise.resolve('2.1.302 (Claude Code)'),
+      readPrepared: () => ({ sha: SHA, npmCi: true }),
+    });
+
+    it('passes and says so when the build matches the Stage B commit', async () => {
+      const env = makeEnv();
+      const repo = makeAtlasRepo();
+      const reg = makeRegistered({ atlasCommit: repo.head() });
+      const c = capture();
+      const code = await runCli(baseArgs(env, reg, repo.bin), c.io, depsFor(env, reg));
+      assert.equal(code, 0, c.err());
+      assert.match(c.out(), /gate: ok/);
+      assert.match(c.out(), /atlas build matches the Stage B commit/);
+    });
+
+    it('refuses with the cause when a build input changed since the Stage B commit, and starts nothing', async () => {
+      const env = makeEnv();
+      const repo = makeAtlasRepo();
+      const reg = makeRegistered({ atlasCommit: repo.head() });
+      repo.write('src/a.ts', 'export const a = 3;\n');
+      repo.commit('a later change to src');
+      const later = new Date(Date.now() + 120_000);
+      fs.utimesSync(repo.bin, later, later);
+      const c = capture();
+      assert.equal(await runCli(baseArgs(env, reg, repo.bin), c.io, depsFor(env, reg)), 2);
+      assert.match(c.err(), /scored gate: .*src\/a\.ts/);
+      assert.equal(fs.existsSync(env.eventsFile), false, 'no session started');
+      assert.equal(fs.existsSync(path.join(env.root, 'scored-out')), false);
+    });
+
+    it('a Stage A registration is refused before the build is looked at', async () => {
+      const env = makeEnv();
+      const repo = makeAtlasRepo();
+      const reg = makeRegistered({ stage: 'A', atlasCommit: repo.head() });
+      const c = capture();
+      assert.equal(await runCli(baseArgs(env, reg, repo.bin), c.io, depsFor(env, reg)), 2);
+      assert.match(c.err(), /Stage B/);
+    });
+  });
+});
 
 describe('summary', () => {
   it('summary per arm: sessions, statuses, tokens, cache reads, tool calls, wall time, cost and disagreement', async () => {

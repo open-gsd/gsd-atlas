@@ -1,6 +1,10 @@
 /**
  * node scripts/eval/freeze-prereg.ts --stage A --by <name> [--prereg <path>] [--constants <path>]
  * node scripts/eval/freeze-prereg.ts --stage B --by <name> [--prereg <path>]
+ * node scripts/eval/freeze-prereg.ts --reopen --revision <n> --by <name> --reason <text> [--prereg <path>]
+ *
+ * Plan 03-38 adds the safe supersession of a frozen Stage A record (`reopenPrereg`, then `--stage A` in revision mode);
+ * their refusals are documented at `reopenPrereg` and `freezeRevision` below.
  *
  * The mechanical half of the freeze (D-01, D-04, D-08, EVL-02). Given a Draft pre-registration it checks everything
  * a person must have settled, computes the sha256 of the sixteen Stage A files (CRLF read as LF), writes them into
@@ -39,7 +43,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { parseArgs } from 'node:util';
-import { DEFAULT_PREREG_PATH, hashFile, readPrereg, replacePreregBlock, SKILL_PATH, STAGE_A_FILES } from './prereg.ts';
+import { DEFAULT_PREREG_PATH, hashBytes, hashFile, readPrereg, replacePreregBlock, SKILL_PATH, STAGE_A_FILES } from './prereg.ts';
 import type { Prereg } from './prereg.ts';
 import { verifyPrereg } from './verify-prereg.ts';
 
@@ -104,7 +108,19 @@ export type RefusalReason =
   | 'skill_missing'
   | 'skill_dirty'
   | 'tree_dirty'
-  | 'build_failed';
+  | 'build_failed'
+  | 'reopen_not_frozen_a'
+  | 'reopen_stage_b_recorded'
+  | 'reopen_results_present'
+  | 'reopen_tree_dirty'
+  | 'reopen_already_open'
+  | 'reopen_record_unverified'
+  | 'revision_oq4_unconfirmed'
+  | 'revision_params_changed'
+  | 'revision_immutable_file_changed'
+  | 'revision_changes_undeclared'
+  | 'revision_text_rewritten'
+  | 'revision_sections_missing';
 
 export type FreezeResult =
   | {
@@ -351,6 +367,8 @@ export function freezePrereg(options: FreezeOptions): FreezeResult {
   } catch (error) {
     return refuse('invalid_document', error instanceof Error ? error.message : String(error));
   }
+  // A Draft that a reopen left (plan 03-38) is frozen as a revision: more checks, a different status line.
+  if (prereg.revision !== undefined && prereg.status === 'Draft') return freezeRevision(options, approved, approvedBy, file, original, prereg);
   if (prereg.status === 'Frozen' || /^Status:\s*Frozen\b/m.test(original)) return refuse('already_frozen', `${options.path} is already Frozen`);
   const statusLines = original.split(/\r?\n/).filter((line) => /^Status:/.test(line));
   if (prereg.stage !== 'A' || statusLines.length !== 1 || !/^Status:\s*Draft\s*$/.test(statusLines[0] as string)) {
@@ -522,6 +540,393 @@ function freezeStageB(options: FreezeOptions): FreezeResult {
 }
 
 // ---------------------------------------------------------------------------------------------
+// Reopen and revision (plan 03-38)
+
+/**
+ * The files a revision of a frozen Stage A record may change (D-04, D-08): the four that carry the run
+ * configuration. The questions, the keys, the oracle, the scorer, the statistics, the analysis, the row schema and the
+ * answer schema are immutable across a revision.
+ */
+export const RUN_CONFIGURATION_FILES: readonly string[] = [
+  'scripts/eval/arms.ts',
+  'scripts/eval/claude-session.ts',
+  'scripts/eval/harness.ts',
+  'scripts/eval/prereg.ts',
+];
+
+/** What a reopen writes under a Revision heading that a person still has to write. Revision mode refuses it. */
+export const REVISION_PLACEHOLDER = '(not written yet)';
+
+/** A results file means a scored session has run: the record can no longer be reopened. */
+const SCORED_RESULTS_PATH = 'docs/eval/results/results.jsonl';
+
+const OQ4_ORIGINAL_PREFIX = OQ4_PREFIX;
+
+const oq4RevisionPrefix = (revision: number): string => `OQ4 re-confirmed by the user at Revision ${String(revision)}:`;
+
+/** The sub-headings of a `## Revision N (<date>)` section, in order. */
+function revisionHeadings(revision: number): string[] {
+  return ['What changed', 'Why', 'What did not change', 'No scored data', 'Superseded records', `Approvals (Revision ${String(revision)})`];
+}
+
+const posixRelative = (root: string, file: string): string => path.relative(root, file).split(path.sep).join('/');
+
+/** Bytes of a git object (a blob at a commit), unlike `runGit`, which decodes text. */
+function gitBlob(root: string, commit: string, rel: string): { ok: true; bytes: Buffer } | { ok: false; error: string } {
+  const result = spawnSync('git', ['show', `${commit}:${rel}`], { cwd: root, env: cleanGitEnv(), windowsHide: true, maxBuffer: 256 * 1024 * 1024 });
+  if (result.error !== undefined || result.status !== 0) {
+    return { ok: false, error: result.error?.message ?? result.stderr.toString('utf8').trim() };
+  }
+  return { ok: true, bytes: result.stdout };
+}
+
+export interface ReopenOptions {
+  readonly root: string;
+  readonly path: string;
+  /** The revision to open: 1 for the first. It must be the record's current revision plus one. */
+  readonly revision: number;
+  readonly approvedBy: string;
+  /** One line: why the record is reopened. */
+  readonly reason: string;
+  readonly now: Date;
+}
+
+/** The text of the appended section: the headings with placeholders, the table of the superseded record. */
+function revisionSection(revision: number, date: string, by: string, reason: string, entry: NonNullable<Prereg['supersedes']>[number]): string {
+  const headings = revisionHeadings(revision);
+  const table = [
+    '| Record | Value |',
+    '| --- | --- |',
+    `| Superseded status line | \`${entry.status}\` |`,
+    `| Superseded at commit | \`${entry.frozenAtCommit}\` |`,
+    ...Object.keys(entry.files).map((rel) => `| \`${rel}\` | \`${entry.files[rel] as string}\` |`),
+  ];
+  const parts: string[] = [`## Revision ${String(revision)} (${date})`, '', `Opened on ${date} by ${by}. Reason: ${reason}`, ''];
+  for (const heading of headings) {
+    parts.push(`### ${heading}`, '');
+    if (heading === 'Superseded records') parts.push(...table, '');
+    else if (!heading.startsWith('Approvals')) parts.push(REVISION_PLACEHOLDER, '');
+  }
+  return `${parts.join('\n')}\n`.replace(/\n+$/, '\n');
+}
+
+/**
+ * Reopens a Frozen Stage A record as a CI-safe Draft (plan 03-38). The old record is verified against the git blobs
+ * at the commit that froze it, then kept inside the block's `supersedes` chain and in a `Superseded records` table of
+ * an appended `## Revision N (<date>)` section; the status line becomes `Status: Draft` and the block loses its
+ * hashes. Nothing else in the document changes. Refusals (the document is left byte for byte as it was):
+ * - `reopen_not_frozen_a`: no document, a Draft, or a document that is not a Frozen Stage A record.
+ * - `reopen_stage_b_recorded`: a Stage B record exists; a change after it is a new registered run.
+ * - `reopen_results_present`: `docs/eval/results/results.jsonl` exists, so scored data may exist.
+ * - `reopen_tree_dirty`: any file is modified or untracked (apart from `node_modules`).
+ * - `reopen_already_open`: a revision is already open, or `revision` is not the record's next revision number.
+ * - `reopen_record_unverified`: no commit holds the document, or a recorded hash is not that of the blob at it.
+ */
+export function reopenPrereg(options: ReopenOptions): FreezeResult {
+  const approvedBy = options.approvedBy.trim();
+  if (approvedBy === '' || /[\r\n()]/.test(approvedBy)) {
+    return refuse('invalid_reviewer', 'the reviewer name must be non-empty and contain no line break or parenthesis');
+  }
+  const reason = options.reason.trim();
+  if (reason === '' || /[\r\n]/.test(reason)) return refuse('invalid_document', 'the reason must be one non-empty line');
+  const file = path.resolve(options.root, options.path);
+  if (!fs.existsSync(file)) return refuse('reopen_not_frozen_a', `${options.path} does not exist`);
+  let original: string;
+  let prereg: Prereg;
+  try {
+    original = fs.readFileSync(file, 'utf8');
+    prereg = readPrereg(file);
+  } catch (error) {
+    return refuse('invalid_document', error instanceof Error ? error.message : String(error));
+  }
+  const statusLines = original.split(/\r?\n/).filter((line) => /^Status:/.test(line));
+  if (prereg.stage === 'B' || prereg.stageB !== undefined || statusLines.some((line) => /\(Stage B,/.test(line))) {
+    return refuse('reopen_stage_b_recorded', `${options.path} holds a Stage B record; a change after it is a new registered run`);
+  }
+  if (prereg.status === 'Draft') {
+    return prereg.revision !== undefined
+      ? refuse('reopen_already_open', `revision ${String(prereg.revision)} is already open in ${options.path}`)
+      : refuse('reopen_not_frozen_a', `${options.path} is a Draft; there is no frozen record to reopen`);
+  }
+  if (statusLines.length !== 1 || !STAGE_A_STATUS_LINE.test(statusLines[0] as string)) {
+    return refuse('reopen_not_frozen_a', 'expected a Frozen Stage A block and exactly one line "Status: Frozen (Stage A, <date>, by <name>)"');
+  }
+  const next = (prereg.revision ?? 0) + 1;
+  if (options.revision !== next) {
+    return refuse('reopen_already_open', `the next revision of ${options.path} is ${String(next)}, not ${String(options.revision)}`);
+  }
+  if (fs.existsSync(path.join(options.root, ...SCORED_RESULTS_PATH.split('/')))) {
+    return refuse('reopen_results_present', `${SCORED_RESULTS_PATH} exists: a scored session may have run`);
+  }
+  const tree = dirtyTree(options.root);
+  if (!tree.ok) return refuse('git_unavailable', tree.error);
+  if (tree.dirty.length > 0) return refuse('reopen_tree_dirty', ...tree.dirty);
+
+  // The old record, checked against history and not against the text that is about to be replaced.
+  const rel = posixRelative(options.root, file);
+  const log = runGit(options.root, ['log', '-1', '--format=%H', '--', rel]);
+  const frozenAtCommit = log.stdout.trim();
+  if (!log.ok || !/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/.test(frozenAtCommit)) {
+    return refuse('reopen_record_unverified', `no commit holds ${rel}, so the commit that froze the record cannot be found`);
+  }
+  const problems: string[] = [];
+  // The commit has to hold the document itself: a commit that removed it froze nothing.
+  const atCommit = gitBlob(options.root, frozenAtCommit, rel);
+  if (!atCommit.ok) return refuse('reopen_record_unverified', `${rel} is not in commit ${frozenAtCommit.slice(0, 12)}, the last commit that touched it`);
+  const blobHashes: Record<string, string> = {};
+  for (const registered of Object.keys(prereg.files)) {
+    const blob = gitBlob(options.root, frozenAtCommit, registered);
+    if (!blob.ok) {
+      problems.push(`${registered}: not in commit ${frozenAtCommit.slice(0, 12)} (${blob.error})`);
+      continue;
+    }
+    blobHashes[registered] = hashBytes(blob.bytes);
+    if (blobHashes[registered] !== prereg.files[registered]) {
+      problems.push(`${registered}: recorded ${(prereg.files[registered] as string).slice(0, 12)}, the blob at ${frozenAtCommit.slice(0, 12)} is ${blobHashes[registered].slice(0, 12)}`);
+    }
+  }
+  for (const registered of STAGE_A_FILES) if (prereg.files[registered] === undefined) problems.push(`${registered}: the record has no hash for it`);
+  if (problems.length > 0) return refuse('reopen_record_unverified', ...problems);
+
+  const entry: NonNullable<Prereg['supersedes']>[number] = {
+    revision: next - 1,
+    status: statusLines[0] as string,
+    frozenAtCommit,
+    params: prereg.params,
+    files: blobHashes,
+    questionSet: prereg.questionSet,
+  };
+  const date = options.now.toISOString().slice(0, 10);
+  let text: string;
+  try {
+    text = replacePreregBlock(original, { ...prereg, status: 'Draft', revision: next, files: {}, supersedes: [...(prereg.supersedes ?? []), entry] });
+  } catch (error) {
+    return refuse('invalid_document', error instanceof Error ? error.message : String(error));
+  }
+  text = text.replace(/^Status:[^\r\n]*/m, () => 'Status: Draft');
+  const eol = original.includes('\r\n') ? '\r\n' : '\n';
+  const section = revisionSection(next, date, approvedBy, reason, entry).replace(/\n/g, eol);
+  text = `${text}${text.endsWith('\n') ? '' : eol}${eol}${section}`;
+
+  const temp = `${file}.freeze-tmp`;
+  fs.writeFileSync(temp, text);
+  fs.renameSync(temp, file);
+  const verified = verifyPrereg(file, options.root, { draft: true });
+  if (!verified.ok) {
+    fs.writeFileSync(file, original);
+    return refuse('verification_failed', ...verified.problems);
+  }
+  return { ok: true, status: 'Draft', files: {} };
+}
+
+interface RevisionSections {
+  readonly problems: string[];
+  /** The body lines of each sub-heading of the section. */
+  readonly bodies: Map<string, string[]>;
+  /** Every line of the section. */
+  readonly lines: string[];
+}
+
+/** Splits the `## Revision N (...)` section into its sub-sections; reports a missing or doubled heading and an empty body. */
+function readRevisionSections(text: string, revision: number): RevisionSections {
+  const problems: string[] = [];
+  const lines = text.split(/\r?\n/);
+  const starts = lines.flatMap((line, index) => (line.startsWith(`## Revision ${String(revision)} (`) ? [index] : []));
+  if (starts.length !== 1) {
+    problems.push(`expected exactly one "## Revision ${String(revision)} (<date>)" section, found ${String(starts.length)}`);
+    return { problems, bodies: new Map(), lines: [] };
+  }
+  let end = lines.length;
+  for (let i = (starts[0] as number) + 1; i < lines.length; i += 1) {
+    if (/^##\s/.test(lines[i] as string)) {
+      end = i;
+      break;
+    }
+  }
+  const section = lines.slice(starts[0] as number, end);
+  const bodies = new Map<string, string[]>();
+  let current: string[] | null = null;
+  const seen = new Map<string, number>();
+  for (const line of section) {
+    const heading = /^###\s+(.+?)\s*$/.exec(line);
+    if (heading !== null) {
+      const title = heading[1] as string;
+      seen.set(title, (seen.get(title) ?? 0) + 1);
+      current = [];
+      bodies.set(title, current);
+    } else if (current !== null) {
+      current.push(line);
+    }
+  }
+  for (const title of revisionHeadings(revision)) {
+    const count = seen.get(title) ?? 0;
+    if (count !== 1) {
+      problems.push(`the heading "### ${title}" is ${count === 0 ? 'missing' : 'repeated'} in the Revision ${String(revision)} section`);
+      continue;
+    }
+    if (title.startsWith('Approvals')) continue;
+    const body = (bodies.get(title) as string[]).join('\n').trim();
+    if (body === '') problems.push(`"### ${title}" is empty`);
+    else if (body === REVISION_PLACEHOLDER) problems.push(`"### ${title}" still holds the placeholder ${REVISION_PLACEHOLDER}`);
+  }
+  return { problems, bodies, lines: section };
+}
+
+/** The same text with the status line and the block's content neutralised, so only the prose is compared. */
+function proseOf(text: string): string {
+  return text
+    .replace(/\r\n/g, '\n')
+    .replace(/^Status:[^\n]*$/m, 'Status: <status>')
+    .replace(/^(```prereg-json[ \t]*\n)[\s\S]*?(^```[ \t]*$)/m, '$1<block>\n$2');
+}
+
+/** The files named on the line `Changed registered files: <path>, <path>`; null when the line is absent or repeated. */
+function declaredChanges(lines: readonly string[]): { paths: string[] } | { problem: string } {
+  const prefix = 'Changed registered files:';
+  const found = lines.filter((line) => line.startsWith(prefix));
+  if (found.length !== 1) return { problem: `expected exactly one line "${prefix} <path>, <path>", found ${String(found.length)}` };
+  const paths = (found[0] as string)
+    .slice(prefix.length)
+    .split(',')
+    .map((part) => part.trim().replace(/^`|`$/g, '').replace(/\.$/, '').trim())
+    .filter((part) => part !== '');
+  return { paths };
+}
+
+/**
+ * Freezes the Draft that a reopen left, as a revision of the superseded record (plan 03-38). On top of every Stage A
+ * refusal (dirty or missing registered files, the approved constants, the tests) it refuses, leaving the document
+ * unchanged:
+ * - `revision_params_changed`: the parameters or the question set differ from the superseded record.
+ * - `revision_immutable_file_changed`: a registered file other than the four run-configuration files differs from the
+ *   superseded record.
+ * - `revision_sections_missing`: the Revision section lacks a heading or one of its sections is empty or still the
+ *   placeholder.
+ * - `revision_changes_undeclared`: the files named on the `Changed registered files:` line are not exactly the files
+ *   whose hash changed.
+ * - `revision_text_rewritten`: the document, apart from the status line, the block and the appended section, is not
+ *   the document at the commit that froze the superseded record.
+ * - `revision_oq4_unconfirmed`: the Approvals of the revision do not hold exactly one line
+ *   `OQ4 re-confirmed by the user at Revision N: <value>` equal to `params.citationJudgedOn`.
+ */
+function freezeRevision(
+  options: FreezeOptions,
+  approved: ApprovedConstants,
+  approvedBy: string,
+  file: string,
+  original: string,
+  prereg: Prereg,
+): FreezeResult {
+  const revision = prereg.revision as number;
+  const superseded = prereg.supersedes?.[revision - 1];
+  if (superseded === undefined) return refuse('invalid_document', 'a revision needs its superseded record');
+  const statusLines = original.split(/\r?\n/).filter((line) => /^Status:/.test(line));
+  if (prereg.stage !== 'A' || statusLines.length !== 1 || !/^Status:\s*Draft\s*$/.test(statusLines[0] as string)) {
+    return refuse('invalid_document', 'expected a Stage A block and exactly one line "Status: Draft"');
+  }
+
+  const missing = STAGE_A_FILES.filter((rel) => {
+    try {
+      return !fs.statSync(path.join(options.root, ...rel.split('/'))).isFile();
+    } catch {
+      return true;
+    }
+  });
+  if (missing.length > 0) return refuse('missing_file', ...missing);
+  const dirty = dirtyPaths(options.root);
+  if (!dirty.ok) return refuse('git_unavailable', dirty.error);
+  if (dirty.dirty.length > 0) return refuse('dirty_registered_file', ...dirty.dirty);
+
+  // The parameters and the question set are exactly the superseded record's.
+  const paramProblems: string[] = [];
+  const same = (name: string, now: unknown, was: unknown): void => {
+    if (JSON.stringify(now) !== JSON.stringify(was)) paramProblems.push(`${name}: now ${JSON.stringify(now)}, superseded ${JSON.stringify(was)}`);
+  };
+  for (const key of Object.keys(superseded.params) as Array<keyof Prereg['params']>) same(`params.${key}`, prereg.params[key], superseded.params[key]);
+  for (const key of Object.keys(prereg.params)) if (!(key in superseded.params)) paramProblems.push(`params.${key}: not in the superseded record`);
+  same('questionSet', prereg.questionSet, superseded.questionSet);
+  if (paramProblems.length > 0) return refuse('revision_params_changed', ...paramProblems);
+  const mismatches = [...checkParams(prereg, approved), ...checkQuestionFiles(options.root, prereg)];
+  if (mismatches.length > 0) return refuse('parameter_mismatch', ...mismatches);
+
+  // Only the run configuration may differ from the superseded hashes.
+  const files: Record<string, string> = {};
+  for (const rel of STAGE_A_FILES) files[rel] = hashFile(path.join(options.root, ...rel.split('/')));
+  const immutable = STAGE_A_FILES.filter((rel) => !RUN_CONFIGURATION_FILES.includes(rel) && files[rel] !== superseded.files[rel]);
+  if (immutable.length > 0) {
+    return refuse('revision_immutable_file_changed', ...immutable.map((rel) => `${rel}: superseded ${String(superseded.files[rel]).slice(0, 12)}, now ${(files[rel] as string).slice(0, 12)}; a revision may change only ${RUN_CONFIGURATION_FILES.join(', ')}`));
+  }
+
+  const sections = readRevisionSections(original, revision);
+  if (sections.problems.length > 0) return refuse('revision_sections_missing', ...sections.problems);
+
+  const changed = RUN_CONFIGURATION_FILES.filter((rel) => files[rel] !== superseded.files[rel]);
+  const declared = declaredChanges(sections.lines);
+  if ('problem' in declared) return refuse('revision_changes_undeclared', declared.problem);
+  const undeclared = changed.filter((rel) => !declared.paths.includes(rel)).map((rel) => `${rel} changed and is not named`);
+  const unchanged = declared.paths.filter((rel) => !changed.includes(rel)).map((rel) => `${rel} is named and did not change (or is not a run-configuration file)`);
+  if (undeclared.length + unchanged.length > 0) return refuse('revision_changes_undeclared', ...undeclared, ...unchanged);
+
+  // The text of the earlier registration is intact: the document is the one at the freezing commit, plus the appended section.
+  const rel = posixRelative(options.root, file);
+  const base = gitBlob(options.root, superseded.frozenAtCommit, rel);
+  if (!base.ok) return refuse('git_unavailable', `cannot read ${rel} at the commit ${superseded.frozenAtCommit.slice(0, 12)} that froze the superseded record: ${base.error}`);
+  const wasText = proseOf(base.bytes.toString('utf8'));
+  const nowText = proseOf(original);
+  if (!nowText.startsWith(wasText)) {
+    const at = [...wasText].findIndex((ch, i) => nowText[i] !== ch);
+    const line = wasText.slice(0, Math.max(at, 0)).split('\n').length;
+    return refuse('revision_text_rewritten', `the text differs from the document at ${superseded.frozenAtCommit.slice(0, 12)} near line ${String(line)}; Revision ${String(revision)} is appended, the earlier text is not rewritten`);
+  }
+
+  // The user's explicit re-confirmation, in the Approvals of the revision, and nowhere else.
+  const approvalHeading = `Approvals (Revision ${String(revision)})`;
+  const approvalLines = sections.bodies.get(approvalHeading) ?? [];
+  const prefix = oq4RevisionPrefix(revision);
+  const oq4Problems: string[] = [];
+  const confirmed = approvalLines.filter((line) => line.startsWith(prefix));
+  const elsewhere = sections.lines.filter((line) => line.startsWith(prefix)).length - confirmed.length;
+  if (confirmed.length !== 1) oq4Problems.push(`expected exactly one line "${prefix} <value>" under "### ${approvalHeading}", found ${String(confirmed.length)}`);
+  if (elsewhere > 0) oq4Problems.push(`${String(elsewhere)} "${prefix}" line(s) outside "### ${approvalHeading}"`);
+  const value = (confirmed[0] ?? '').slice(prefix.length).trim();
+  if (confirmed.length === 1 && !OQ4_VALUES.includes(value)) oq4Problems.push(`"${prefix}" names neither point_estimate nor wilson_lower_bound: "${value}"`);
+  if (confirmed.length === 1 && OQ4_VALUES.includes(value) && value !== prereg.params.citationJudgedOn) {
+    oq4Problems.push(`the Revision line names ${value} but params.citationJudgedOn is ${prereg.params.citationJudgedOn}`);
+  }
+  if (approvalLines.some((line) => line.startsWith(OQ4_ORIGINAL_PREFIX))) {
+    oq4Problems.push(`a line "${OQ4_ORIGINAL_PREFIX}" under "### ${approvalHeading}" is not the Revision ${String(revision)} confirmation`);
+  }
+  oq4Problems.push(...oq4Confirmation(original).problems);
+  if (oq4Problems.length > 0) return refuse('revision_oq4_unconfirmed', ...oq4Problems);
+
+  const tests = options.testCommand ?? defaultTestCommand(options.root);
+  const ran = spawnSync(tests.command, [...tests.args], { cwd: options.root, env: cleanGitEnv(), encoding: 'utf8', windowsHide: true });
+  if (ran.error !== undefined || ran.status !== 0) {
+    const tail = `${ran.stdout ?? ''}${ran.stderr ?? ''}`.trim().split(/\r?\n/).slice(-15);
+    return refuse('tests_failed', `exit ${String(ran.error?.message ?? ran.status ?? ran.signal)}`, ...tail);
+  }
+
+  const status = `Frozen (Stage A, revision ${String(revision)}, ${options.now.toISOString().slice(0, 10)}, by ${approvedBy})`;
+  let next: string;
+  try {
+    next = replacePreregBlock(original, { ...prereg, status: 'Frozen', files });
+  } catch (error) {
+    return refuse('invalid_document', error instanceof Error ? error.message : String(error));
+  }
+  next = next.replace(/^Status:[ \t]*Draft[ \t]*$/m, () => `Status: ${status}`);
+
+  const temp = `${file}.freeze-tmp`;
+  fs.writeFileSync(temp, next);
+  fs.renameSync(temp, file);
+  const verified = verifyPrereg(file, options.root);
+  if (!verified.ok) {
+    fs.writeFileSync(file, original);
+    return refuse('verification_failed', ...verified.problems);
+  }
+  return { ok: true, status, files };
+}
+
+// ---------------------------------------------------------------------------------------------
 // Command
 
 export interface Io {
@@ -539,20 +944,71 @@ export interface CliDeps {
 
 const USAGE =
   'usage: node scripts/eval/freeze-prereg.ts --stage A --by <name> [--prereg <path>] [--constants <path>]\n' +
-  '       node scripts/eval/freeze-prereg.ts --stage B --by <name> [--prereg <path>]\n';
+  '       node scripts/eval/freeze-prereg.ts --stage B --by <name> [--prereg <path>]\n' +
+  '       node scripts/eval/freeze-prereg.ts --reopen --revision <n> --by <name> --reason <text> [--prereg <path>]\n';
 
 /** The command body. Returns the exit code. */
 export function runCli(argv: string[], io: Io, root: string, deps: CliDeps = {}): number {
-  let values: { stage?: string | undefined; by?: string | undefined; prereg?: string | undefined; constants?: string | undefined };
+  let values: {
+    stage?: string | undefined;
+    by?: string | undefined;
+    prereg?: string | undefined;
+    constants?: string | undefined;
+    reopen?: boolean | undefined;
+    revision?: string | undefined;
+    reason?: string | undefined;
+  };
   try {
     values = parseArgs({
       args: argv,
-      options: { stage: { type: 'string' }, by: { type: 'string' }, prereg: { type: 'string' }, constants: { type: 'string' } },
+      options: {
+        stage: { type: 'string' },
+        by: { type: 'string' },
+        prereg: { type: 'string' },
+        constants: { type: 'string' },
+        reopen: { type: 'boolean' },
+        revision: { type: 'string' },
+        reason: { type: 'string' },
+      },
       strict: true,
       allowPositionals: false,
     }).values;
   } catch (error) {
     io.err(`freeze-prereg: ${error instanceof Error ? error.message : String(error)}\n${USAGE}`);
+    return 2;
+  }
+  if (values.reopen === true) {
+    const revision = Number(values.revision);
+    if (values.stage !== undefined || values.constants !== undefined) {
+      io.err(`freeze-prereg: --reopen takes no --stage and no --constants\n${USAGE}`);
+      return 2;
+    }
+    if (values.revision === undefined || !Number.isInteger(revision) || revision < 1) {
+      io.err(`freeze-prereg: --reopen needs --revision <n>, a whole number of at least 1\n${USAGE}`);
+      return 2;
+    }
+    if (values.by === undefined || values.by.trim() === '' || values.reason === undefined || values.reason.trim() === '') {
+      io.err(`freeze-prereg: --reopen needs --by <name> and --reason <text>\n${USAGE}`);
+      return 2;
+    }
+    const reopened = reopenPrereg({
+      root,
+      path: values.prereg ?? DEFAULT_PREREG_PATH,
+      revision,
+      approvedBy: values.by,
+      reason: values.reason,
+      now: deps.now ?? new Date(),
+    });
+    if (!reopened.ok) {
+      io.err(`freeze-prereg: refused: ${reopened.reason}\n`);
+      for (const line of reopened.details) io.err(`  ${line}\n`);
+      return 1;
+    }
+    io.out(`freeze-prereg: reopened as ${reopened.status}, revision ${String(revision)}; the superseded record is kept in the block and in the Revision ${String(revision)} section\n`);
+    return 0;
+  }
+  if (values.revision !== undefined || values.reason !== undefined) {
+    io.err(`freeze-prereg: --revision and --reason belong to --reopen\n${USAGE}`);
     return 2;
   }
   if (values.stage !== 'A' && values.stage !== 'B') {

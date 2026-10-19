@@ -94,6 +94,17 @@ describe('buildClaudeArgs', () => {
     assert.equal(args[at + 1], '');
   });
 
+  it('emits --settings with the given inline JSON after the plugin directories and before --tools, and only when it is given', () => {
+    const json = '{"disableBundledSkills":true}';
+    const args = buildClaudeArgs(baseSpec({ tools: ['Bash'], pluginDirs: ['/p/one'], settings: json }));
+    const at = args.indexOf('--settings');
+    assert.ok(at > args.indexOf('--plugin-dir'));
+    assert.ok(at < args.indexOf('--tools'));
+    assert.equal(args[at + 1], json);
+    assert.equal(args.filter((a) => a === '--settings').length, 1);
+    assert.ok(!buildClaudeArgs(baseSpec()).includes('--settings'), 'no --settings unless a session asks for it');
+  });
+
   it('never carries the prompt in argv', () => {
     const args = buildClaudeArgs(baseSpec({ prompt: 'SECRET-PROMPT-MARKER' }));
     assert.ok(!args.some((a) => a.includes('SECRET-PROMPT-MARKER')));
