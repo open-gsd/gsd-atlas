@@ -64,7 +64,7 @@ The decision records under [docs/adr](../adr/README.md) are drafts for this alph
 
 Older records still carry an Accepted status line, an issue number and a numbered file name from before that rule. Read them as drafts for this alpha, not as ratified. The legend in [docs/adr/README.md](../adr/README.md#pre-release-legend) explains each.
 
-The diagnostics design is a draft: [the user-controlled diagnostics record](../adr/draft-user-controlled-diagnostics.md) and the design document [docs/DIAGNOSTICS.md](../DIAGNOSTICS.md). Their submission and automatic-intake parts do not exist in this release.
+The diagnostics design is a draft: [the user-controlled diagnostics record](../adr/15-user-controlled-diagnostics.md) and the design document [docs/DIAGNOSTICS.md](../DIAGNOSTICS.md). Their submission and automatic-intake parts do not exist in this release.
 
 ## Evaluation status
 
