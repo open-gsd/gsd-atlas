@@ -36,7 +36,7 @@ npm run build
 The install ends with a line like `found 0 vulnerabilities`. The build prints only npm's two banner lines and then returns to the prompt:
 
 ```
-> @opengsd/gsd-atlas@0.0.0 build
+> @opengsd/gsd-atlas@0.1.0-alpha.0 build
 > tsc -p tsconfig.build.json
 ```
 
@@ -49,7 +49,7 @@ node dist/bin/gsd-atlas.js --version
 The output should be:
 
 ```
-gsd-atlas 0.0.0
+gsd-atlas 0.1.0-alpha.0
 ```
 
 ## Step 3: create a repository to index

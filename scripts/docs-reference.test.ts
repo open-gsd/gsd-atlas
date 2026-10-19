@@ -675,3 +675,98 @@ test('readme names the supported platforms', () => {
   }
   assert.deepEqual(problems, []);
 });
+
+// ---------------------------------------------------------------- install and release statements (quick task 261018)
+//
+// Until the first alpha was published the documentation promised no registry release. The alpha is published on the npm
+// `alpha` channel, so the pages now say how to install it. These cases pin the exact statements that are allowed and keep
+// every other install command, version promise and release date out of the user documentation.
+
+const ALPHA_INSTALL = 'npm install -g @opengsd/gsd-atlas@alpha';
+
+/** Every `npm install ...` command in the code spans and shell fences of a page. */
+function npmInstallCommands(text: string): string[] {
+  const out: string[] = [];
+  let fence: string | undefined;
+  for (const line of text.split('\n')) {
+    const open = /^\s*(```|~~~)\s*([A-Za-z0-9_-]*)\s*$/.exec(line);
+    if (open !== null) {
+      fence = fence === undefined ? (open[2] ?? '') : undefined;
+      continue;
+    }
+    const candidates = fence !== undefined ? (SHELL_FENCES.has(fence) ? [line.trim()] : []) : [...line.matchAll(/`([^`\n]+)`/g)].map((span) => span[1] ?? '');
+    for (const candidate of candidates) if (/\bnpm\s+(?:install|i)\b/.test(candidate)) out.push(candidate.trim());
+  }
+  return out;
+}
+
+/** The npm install commands each page may hold. A page that is not listed holds none. */
+const ALLOWED_INSTALL_COMMANDS: Readonly<Record<string, readonly string[]>> = {
+  'README.md': [ALPHA_INSTALL],
+  [LIMITATIONS]: [ALPHA_INSTALL],
+  'docs/reference/release-channels.md': [ALPHA_INSTALL, 'npm install -g @opengsd/gsd-atlas@next', 'npm install -g @opengsd/gsd-atlas'],
+  'docs/how-to/release-an-alpha.md': [ALPHA_INSTALL, 'npm install @opengsd/gsd-atlas@alpha'],
+};
+
+test('install commands: only the npm commands for the published channels, and only where they are allowed', () => {
+  const problems: string[] = [];
+  for (const file of userFiles()) {
+    const allowed = ALLOWED_INSTALL_COMMANDS[file] ?? [];
+    for (const command of npmInstallCommands(read(file))) {
+      if (!allowed.includes(command)) problems.push(`${file}: an npm install command that is not allowed here: ${command}`);
+    }
+  }
+  assert.deepEqual(problems, []);
+});
+
+test('readme and limitations state how to install the alpha, with no date for a stable release', () => {
+  const readme = read('README.md');
+  const problems: string[] = [];
+  const sentence = 'To install the alpha from npm, run `npm install -g @opengsd/gsd-atlas@alpha`, then `gsd-atlas --version`.';
+  if (!readme.includes(sentence)) problems.push(`README.md: missing "${sentence}"`);
+  if (!readme.includes('No date for a stable release is promised.')) problems.push('README.md: missing "No date for a stable release is promised."');
+  if (!readme.includes('](docs/reference/release-channels.md)')) problems.push('README.md: no link to the release channels reference');
+  if (!readme.includes('To build from a clone instead, use `npm ci --ignore-scripts` and `npm run build`')) problems.push('README.md: the clone-and-build path is gone');
+
+  const limitations = read(LIMITATIONS);
+  const status = sectionOf(limitations, 'Status') ?? '';
+  const bullets = status.split('\n').filter((line) => line.startsWith('- '));
+  if (!bullets.some((line) => line.startsWith('- This release is an alpha. It is published on the `alpha` channel of npm as `@opengsd/gsd-atlas` and is installed with `npm install -g @opengsd/gsd-atlas@alpha`; building from a clone also works'))) {
+    problems.push(`${LIMITATIONS}: the first Status bullet does not state the alpha channel and the install command`);
+  }
+  if (!bullets.includes('- No compatibility between builds, no release date and no stable release are promised.')) {
+    problems.push(`${LIMITATIONS}: the Status section does not say "No compatibility between builds, no release date and no stable release are promised."`);
+  }
+  if (/package version is/i.test(limitations) || /registry release/i.test(limitations)) problems.push(`${LIMITATIONS}: still states a package version or a registry release`);
+  assert.deepEqual(problems, []);
+});
+
+test('no page promises a date or a stable release, and a version shown as output is the package version', () => {
+  const problems: string[] = [];
+  const version = (JSON.parse(read('package.json')) as { version: string }).version;
+  for (const file of userFiles()) {
+    const text = read(file);
+    for (const sentence of sentencesOf(withoutFences(text))) {
+      if (/\b(?:coming soon|will be released|will ship|expected (?:in|by|on)|planned for (?:Q[1-4]|20\d\d))\b/i.test(sentence)) problems.push(`${file}: a release promise: ${sentence}`);
+      if (/\b(?:stable release|release date)\b/i.test(sentence) && !/\b(?:no|not|never|nothing|without)\b/i.test(sentence)) problems.push(`${file}: a stable release or release date without a negation: ${sentence}`);
+    }
+  }
+  const tutorial = read('docs/tutorials/index-and-ask.md');
+  if (!tutorial.includes(`\ngsd-atlas ${version}\n`)) problems.push(`docs/tutorials/index-and-ask.md: the --version output is not "gsd-atlas ${version}"`);
+  if (!tutorial.includes(`> @opengsd/gsd-atlas@${version} build`)) problems.push(`docs/tutorials/index-and-ask.md: the build banner does not name version ${version}`);
+  assert.deepEqual(problems, []);
+});
+
+test('release pages: the channels in the reference are the ones the checker and the workflow know', () => {
+  const page = read('docs/reference/release-channels.md');
+  const problems: string[] = [];
+  for (const row of ['| `alpha` | `X.Y.Z-alpha.N` | `alpha` |', '| `next` | `X.Y.Z-next.N` or `X.Y.Z-rc.N` | `next` |', '| `latest` | `X.Y.Z`, no prerelease part | `latest` |']) {
+    if (!page.includes(row)) problems.push(`docs/reference/release-channels.md: missing the row ${row}`);
+  }
+  const workflow = readFileSync(path.join(root, '.github', 'workflows', 'release.yml'), 'utf8');
+  if (!/^ {4}environment:\s*npm-publish\s*$/m.test(workflow)) problems.push('release.yml no longer uses the npm-publish environment');
+  for (const file of ['docs/reference/release-channels.md', 'docs/how-to/release-an-alpha.md']) {
+    if (!read(file).includes('npm-publish')) problems.push(`${file}: does not name the npm-publish environment`);
+  }
+  assert.deepEqual(problems, []);
+});

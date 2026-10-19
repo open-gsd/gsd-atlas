@@ -110,6 +110,7 @@ test('package.json identity, license, module type, engines floor, bins and files
   assert.ok(pkg.files?.includes('schemas'), 'files must include schemas');
   assert.ok(pkg.files?.includes('skills'), 'files must include skills (SKL-01, OQ6)');
   assert.ok(pkg.files?.includes('diagnostics'), 'files must include diagnostics (the shipped catalog, SKL-03)');
+  assert.ok(pkg.files?.includes('CHANGELOG.md'), 'files must include CHANGELOG.md (npm does not add it on its own)');
 });
 
 test('every dependency is an exact pin, no gsd-core or gsd-graph dependency, better-sqlite3 peer optional', () => {
@@ -175,7 +176,7 @@ test('built dist/bin/gsd-atlas.js starts with a shebang and prints the same vers
   assert.equal(fromSource.status, 0, fromSource.stderr);
   assert.equal(fromDist.status, 0, fromDist.stderr);
   assert.equal(fromSource.stdout, fromDist.stdout);
-  assert.match(fromDist.stdout, /^gsd-atlas \d+\.\d+\.\d+\n$/);
+  assert.match(fromDist.stdout, /^gsd-atlas \d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?\n$/);
 });
 
 test('gsd-atlas-mcp run from source with stdin closed exits 0 and prints nothing on stdout', () => {
@@ -359,7 +360,7 @@ test('pack contents', async () => {
     assert.ok(!file.split('/').includes('test-kit'), `tarball must not contain test-kit output: ${file}`);
     // Strict whitelist: what the files list names plus what npm adds on its own.
     assert.ok(
-      /^(dist|schemas|modules|skills|diagnostics)\//.test(file) || ['package.json', 'README.md', 'LICENSE'].includes(file),
+      /^(dist|schemas|modules|skills|diagnostics)\//.test(file) || ['package.json', 'README.md', 'LICENSE', 'CHANGELOG.md'].includes(file),
       `unexpected path in tarball: ${file}`,
     );
   }

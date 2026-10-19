@@ -1,0 +1,172 @@
+name: Release
+
+# Publishes @opengsd/gsd-atlas to npm. Started by hand and by nothing else (workflow_dispatch).
+#
+# channel   alpha | next | latest. The channel is also the npm dist-tag. scripts/release-check.ts refuses a version that does
+#           not fit the channel (alpha takes X.Y.Z-alpha.N, next takes X.Y.Z-next.N or X.Y.Z-rc.N, latest takes X.Y.Z), and
+#           refuses any prerelease on latest.
+# dry_run   true (the default) runs every step, including npm publish with --dry-run, and publishes nothing. A real release
+#           needs dry_run unticked, the main branch and a public repository; both jobs refuse otherwise.
+# auth      oidc (the default) publishes with npm trusted publishing and needs no stored secret. token publishes with the
+#           repository secret NPM_TOKEN (a granular access token); it is the way to make the first publish of a package that
+#           does not exist yet, because a trusted publisher can only be configured on an existing package.
+#
+# Maintainer steps (repository visibility, npm trusted publisher or token, the npm-publish environment) are in
+# docs/how-to/release-an-alpha.md. The publish job runs in the npm-publish environment, where required reviewers can be set.
+
+on:
+  workflow_dispatch:
+    inputs:
+      channel:
+        description: "Release channel and npm dist-tag"
+        type: choice
+        default: alpha
+        options:
+          - alpha
+          - next
+          - latest
+      dry_run:
+        description: "Dry run: run every step but publish nothing"
+        type: boolean
+        default: true
+      auth:
+        description: "How to authenticate to npm"
+        type: choice
+        default: oidc
+        options:
+          - oidc
+          - token
+
+permissions:
+  contents: read
+
+# A release is never cancelled half way; a second run waits for the first.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  # Everything that can be checked without publishing: the guard, the full gate and the tarball that will be published.
+  verify:
+    name: Verify and pack
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Refuse a real release unless the ref is main and the repository is public
+        if: ${{ !inputs.dry_run }}
+        env:
+          REF: ${{ github.ref }}
+          REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ "$REF" != "refs/heads/main" ]; then
+            echo "A real release runs from main only; this run is on $REF. Run it from main, or tick dry_run." >&2
+            exit 1
+          fi
+          private=$(gh api "repos/$REPO" --jq .private)
+          if [ "$private" != "false" ]; then
+            echo "A real release needs a public repository (npm provenance is not generated for a private one); $REPO reports private=$private." >&2
+            exit 1
+          fi
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24.16.0"
+          package-manager-cache: false
+      - run: npm ci --ignore-scripts
+      - name: Check the toolchain for npm trusted publishing
+        run: node scripts/release-check.ts --tool-versions
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm run build
+      - run: npm run schema:check
+      - run: npm test
+      - name: Pre-registration (frozen hashes)
+        run: node scripts/eval/verify-prereg.ts
+      - name: Release check (version, changelog, manifest and tarball contents)
+        env:
+          CHANNEL: ${{ inputs.channel }}
+        run: node scripts/release-check.ts --channel "$CHANNEL"
+      - name: Pack the tarball
+        run: |
+          mkdir -p "$RUNNER_TEMP/pack"
+          npm pack --ignore-scripts --pack-destination "$RUNNER_TEMP/pack"
+          sha256sum "$RUNNER_TEMP"/pack/*.tgz | tee -a "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: package-tarball
+          path: ${{ runner.temp }}/pack/*.tgz
+          if-no-files-found: error
+
+  # Publishes the tarball that verify checked and uploaded. The only job that is given the OIDC token.
+  publish:
+    name: Publish to npm
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: npm-publish
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Refuse a real release unless the ref is main and the repository is public
+        if: ${{ !inputs.dry_run }}
+        env:
+          REF: ${{ github.ref }}
+          REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ "$REF" != "refs/heads/main" ]; then
+            echo "A real release runs from main only; this run is on $REF. Run it from main, or tick dry_run." >&2
+            exit 1
+          fi
+          private=$(gh api "repos/$REPO" --jq .private)
+          if [ "$private" != "false" ]; then
+            echo "A real release needs a public repository (npm provenance is not generated for a private one); $REPO reports private=$private." >&2
+            exit 1
+          fi
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24.16.0"
+          registry-url: "https://registry.npmjs.org"
+          package-manager-cache: false
+      - name: Check the toolchain for npm trusted publishing
+        run: node scripts/release-check.ts --tool-versions
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: package-tarball
+          path: ${{ runner.temp }}/pack
+      - name: Publish with trusted publishing (OIDC)
+        if: ${{ inputs.auth == 'oidc' }}
+        env:
+          CHANNEL: ${{ inputs.channel }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          tarball=$(ls "$RUNNER_TEMP"/pack/*.tgz)
+          if [ "$DRY_RUN" = "true" ]; then
+            npm publish "$tarball" --provenance --access public --tag "$CHANNEL" --dry-run
+          else
+            npm publish "$tarball" --provenance --access public --tag "$CHANNEL"
+          fi
+      - name: Publish with an npm token (fallback)
+        if: ${{ inputs.auth == 'token' }}
+        env:
+          CHANNEL: ${{ inputs.channel }}
+          DRY_RUN: ${{ inputs.dry_run }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          tarball=$(ls "$RUNNER_TEMP"/pack/*.tgz)
+          if [ "$DRY_RUN" = "true" ]; then
+            npm publish "$tarball" --provenance --access public --tag "$CHANNEL" --dry-run
+          else
+            npm publish "$tarball" --provenance --access public --tag "$CHANNEL"
+          fi
