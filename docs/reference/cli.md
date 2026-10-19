@@ -555,7 +555,7 @@ The store moves to `<cache root>/gsd-atlas/<store id>` when the git common direc
 - [How to approve a precise command for one repository](../how-to/approve-a-precise-command.md)
 - [How to install the gsd-atlas skills](../how-to/install-the-skills.md)
 - [How to rate an answer, a feature or a session](../how-to/rate-an-answer.md)
-- [How to report a bug](../how-to/write-a-bug-bundle.md)
+- [How to report a bug](../how-to/report-a-bug.md)
 - [How to turn diagnostics on and off](../how-to/turn-diagnostics-on-and-off.md)
 - [gsd-atlas MCP reference](mcp.md)
 - [gsd-atlas TypeScript support reference](typescript-support.md)

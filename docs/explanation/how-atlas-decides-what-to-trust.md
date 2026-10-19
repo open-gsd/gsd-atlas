@@ -43,6 +43,6 @@ Ratings and reports are statements about what a person experienced. The recorded
 - [gsd-atlas alpha limitations reference](../reference/alpha-limitations.md)
 - [How to approve a precise command for one repository](../how-to/approve-a-precise-command.md)
 - [How to rate an answer, a feature or a session](../how-to/rate-an-answer.md)
-- [How to report a bug](../how-to/write-a-bug-bundle.md)
+- [How to report a bug](../how-to/report-a-bug.md)
 - [How to turn diagnostics on and off](../how-to/turn-diagnostics-on-and-off.md)
 - [About how the precise TypeScript tier works](how-the-precise-tier-works.md)

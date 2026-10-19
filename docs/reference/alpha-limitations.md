@@ -32,7 +32,7 @@ The precise tier asks the TypeScript compiler. It is on by default for the `type
 
 ### Feedback
 
-`gsd-atlas rate`, `gsd-atlas bug` and `gsd-atlas diagnostics` work on this machine and send nothing. See [how to rate an answer, a feature or a session](../how-to/rate-an-answer.md), [how to report a bug](../how-to/write-a-bug-bundle.md) and [how to turn diagnostics on and off](../how-to/turn-diagnostics-on-and-off.md).
+`gsd-atlas rate`, `gsd-atlas bug` and `gsd-atlas diagnostics` work on this machine and send nothing. See [how to rate an answer, a feature or a session](../how-to/rate-an-answer.md), [how to report a bug](../how-to/report-a-bug.md) and [how to turn diagnostics on and off](../how-to/turn-diagnostics-on-and-off.md).
 
 ### Approved commands
 
