@@ -25,15 +25,15 @@ Step 1: every page under `docs/tutorials`, `docs/how-to`, `docs/reference`, `doc
 | `docs/tutorials/index-and-ask.md` | tutorial | action | study | Can you teach me to index a repository and ask it questions? | existing, update | 03-34 tasks 1 and 3 | f33128c, 681e52e |
 | `docs/how-to/contribute-a-change.md` | how-to | action | work | How do I check a change before I propose it? | existing, update (one sentence) | 03-34 task 1 | a26fe40 |
 | `docs/how-to/answer-a-question-about-an-older-commit.md` | how-to | action | work | How do I ask about an older commit? | existing, unchanged | none | n/a |
-| `docs/how-to/keep-the-store-healthy.md` | how-to | action | work | How do I keep the store healthy? | existing, update (one fork) | 03-36 task 3 | see audit |
+| `docs/how-to/keep-the-store-healthy.md` | how-to | action | work | How do I keep the store healthy? | existing, update (one fork) | 03-36 task 3 | e68211f |
 | `docs/how-to/run-the-measured-gates-locally.md` | how-to | action | work | How do I run the measured gates myself? | existing, unchanged | none | n/a |
 | `docs/explanation/how-freshness-and-the-writer-lease-work.md` | explanation | cognition | study | Why does the index stay current, and why may only one process write? | existing, unchanged | none | n/a |
-| `docs/reference/alpha-limitations.md` | reference | cognition | work | What does this alpha do and not do, and what is its status? | new | 03-36 task 1 | see audit |
-| `docs/explanation/how-atlas-decides-what-to-trust.md` | explanation | cognition | study | Why does atlas trust only the user, and why does it send nothing? | new | 03-36 task 2 | see audit |
-| `docs/how-to/rate-an-answer.md` | how-to | action | work | How do I tell the project an answer was good or bad? | new | 03-36 task 2 | see audit |
-| `docs/how-to/report-a-bug.md` | how-to | action | work | How do I report a bug without leaking my code? | new | 03-36 task 2 | see audit |
-| `docs/how-to/turn-diagnostics-on-and-off.md` | how-to | action | work | How do I turn diagnostics on, read a report and turn them off? | new | 03-36 task 2 | see audit |
-| `README.md` | front door (links by reader goal) | n/a | n/a | What is this, what state is it in, where do I go? | existing, rewrite | 03-36 tasks 1 (one sentence) and 3 | see audit |
+| `docs/reference/alpha-limitations.md` | reference | cognition | work | What does this alpha do and not do, and what is its status? | new | 03-36 task 1 | 37b5182, b9aa30b |
+| `docs/explanation/how-atlas-decides-what-to-trust.md` | explanation | cognition | study | Why does atlas trust only the user, and why does it send nothing? | new | 03-36 task 2 | b9aa30b |
+| `docs/how-to/rate-an-answer.md` | how-to | action | work | How do I tell the project an answer was good or bad? | new | 03-36 task 2 | b9aa30b |
+| `docs/how-to/write-a-bug-bundle.md` (planned name `report-a-bug.md`, refused by the Write tool) | how-to | action | work | How do I report a bug without leaking my code? | new | 03-36 task 2 | b9aa30b |
+| `docs/how-to/turn-diagnostics-on-and-off.md` | how-to | action | work | How do I turn diagnostics on, read a report and turn them off? | new | 03-36 task 2 | b9aa30b |
+| `README.md` | front door (links by reader goal) | n/a | n/a | What is this, what state is it in, where do I go? | existing, rewrite | 03-36 tasks 1 (one sentence) and 3 | 37b5182, 50c6ab4 |
 
 ## Mixed pages and unmet needs
 
@@ -230,6 +230,59 @@ Per page, from the skill's publishing checklist: exactly one quadrant; title fit
 | `docs/how-to/write-a-bug-bundle.md` | yes: how-to; five steps, then forks; the modes are one fork, not a table | yes: "How to report a bug" (the file name is `write-a-bug-bundle.md` because the Write tool refused the planned name `report-a-bug.md`; see the plan summary) | yes: options and data types link to the CLI reference | yes: `bug` lines pass the test | no json fence | pass (plan 03-36 task 2) |
 | `docs/how-to/turn-diagnostics-on-and-off.md` | yes: how-to; five steps, then forks | yes: "How to turn diagnostics on and off" | yes: the data-type table and fields link to the CLI reference | yes: `diagnostics enable|preview|history|disable|types` lines pass the test | no json fence | pass (plan 03-36 task 2) |
 | `docs/how-to/approve-a-precise-command.md` | unchanged: one sentence and a link added to the "what is never possible" block | unchanged | yes: reasons link to the explanation instead of repeating them | unchanged | unchanged | pass (plan 03-36 task 2) |
+
+## Final audit (2026-10-19, plan 03-36 task 3)
+
+The skill's workflow was run again over the whole set: step 1 (every page and its quadrant, by the compass), step 2 (mixed pages and unmet needs), step 4 (single type, language and title fit the type, links replace repeated explanation), and the publishing checklist. Step 5 (what changed, what remains, ranked) is in `03-36-SUMMARY.md`.
+
+### Step 1: every page, by quadrant
+
+| Page | Quadrant | Final Checklist row (one type, title fits, links not repeats, commands real) |
+|------|----------|---|
+| `README.md` | front door: pitch, status, links by reader goal (learn, do, look up, understand, give feedback), the pinned Developer quickstart; 57 lines | pass: not a page of one quadrant; it links every page below (test `every page is linked from the readme`) |
+| `docs/tutorials/index-and-ask.md` | tutorial | pass: states what will be built, one path, replayed from a fresh clone at `b234f2e` (marker updated) |
+| `docs/how-to/answer-a-question-about-an-older-commit.md` | how-to | pass (unchanged, headings checked: steps then forks) |
+| `docs/how-to/approve-a-precise-command.md` | how-to | pass |
+| `docs/how-to/contribute-a-change.md` | how-to | pass |
+| `docs/how-to/find-the-code-that-cites-an-adr.md` | how-to | pass |
+| `docs/how-to/install-the-skills.md` | how-to | pass (a catalog table inside a how-to, the skill's own layout) |
+| `docs/how-to/keep-the-store-healthy.md` | how-to | pass: one fork added, `If the index was built by an earlier development build` |
+| `docs/how-to/rate-an-answer.md` | how-to | pass |
+| `docs/how-to/register-the-mcp-server.md` | how-to | pass |
+| `docs/how-to/run-the-measured-gates-locally.md` | how-to | pass (unchanged, headings checked) |
+| `docs/how-to/see-why-atlas-gave-an-answer.md` | how-to | pass |
+| `docs/how-to/turn-diagnostics-on-and-off.md` | how-to | pass |
+| `docs/how-to/write-a-bug-bundle.md` | how-to | pass (title `How to report a bug`; the file name differs from the planned one, see the summary) |
+| `docs/reference/adr-citations.md` | reference | pass |
+| `docs/reference/alpha-limitations.md` | reference | pass |
+| `docs/reference/cli.md` | reference | pass: See also gained the new pages |
+| `docs/reference/mcp.md` | reference | pass: See also gained the new pages |
+| `docs/reference/typescript-support.md` | reference | pass |
+| `docs/explanation/how-atlas-decides-what-to-trust.md` | explanation | pass |
+| `docs/explanation/how-freshness-and-the-writer-lease-work.md` | explanation | pass (unchanged, headings are why-questions) |
+| `docs/explanation/how-the-precise-tier-works.md` | explanation | pass |
+
+### Step 2: mixed pages and unmet needs after the pass
+
+- No page found mixing quadrants beyond what the earlier steps recorded: `install-the-skills.md` holds the skill catalog table (kept, per the skill's layout); `cli.md` holds interactive prompt text next to option tables (reference facts about the machinery, not instruction).
+- Unmet needs, ranked: (1) a second tutorial or a short getting-started for the feedback loop is not needed: three how-tos cover it; (2) the explain `stale` finding and the `rate` message finding below are code defects visible to readers, not documentation gaps; (3) there is no page for contributors who write a language module beyond the skill `gsd-atlas-module-author` (not an alpha need). No empty page was created for a missing quadrant.
+
+### Step 4 and the publishing checklist
+
+- Exactly one quadrant per page: pass (table above). How-to titles start `How to`, explanation titles `About`, the tutorial states what will be built, reference titles are plain: enforced by the test `page shape follows its quadrant`.
+- Tutorial replayed start to finish from a fresh clone of commit `b234f2e` (clone of the worktree into a scratch area, `npm ci --ignore-scripts` ending `found 0 vulnerabilities`, `npm run build`, `node dist/bin/gsd-atlas.js --version` printing `gsd-atlas 0.0.0`, redirected `HOME`, `XDG_CACHE_HOME`, `XDG_STATE_HOME`, `GSD_ATLAS_USER_DIR` and `GSD_ATLAS_STORE_DIR`, nothing from earlier probes). Steps 4 to 8 gave the page's outputs: the same `debug` hashes, the same `seq` values (3, then 4 after the new file), `precise_unavailable` on `refs`, `context` and `impact`, the same `explain` facts and `tiers` with the reason `no TypeScript project configuration was found in this repository`. Only the ids and nonces differ, as the page says. No correction to the page was needed.
+- Commands are copy-pasteable and use placeholder paths: the test `how-to commands are real` and the `no machine paths or secrets` case pass over every guide.
+- Cross-links replace repeated explanation: the trust explanation links the precise-tier explanation instead of repeating it; the guides link the CLI reference for options and exit codes.
+- The skill catalog matches the skill files: test `skill catalog matches the skill files` passes. `skills/gsd-atlas/SKILL.md` was not touched.
+- No empty placeholder page: none created.
+
+### Platform search
+
+`grep -i -E "windows|powershell|three systems"` over `README.md` and the four documentation directories (2026-10-19) finds six files: `README.md:7`, `docs/tutorials/index-and-ask.md:11`, `docs/how-to/contribute-a-change.md:63`, `docs/reference/alpha-limitations.md:15` and `:43`, `docs/reference/cli.md:3`. Every hit says Windows is not supported, postponed, does not block, is allowed to fail or is planned after the alpha (the tests `platform wording follows the alpha decision`, `limitations page states the platforms` and `readme names the supported platforms` enforce it). No PowerShell or system-count hit.
+
+### Historical and design documents
+
+`git diff --stat` from the base of this plan (`9abd0da`) shows no change to `docs/PRD.md`, `docs/DESIGN.md`, `docs/DESIGN-REVIEW.md`, `docs/DIAGNOSTICS.md`, any file under `docs/adr/`, `docs/eval/`, `scripts/eval/`, `skills/gsd-atlas/SKILL.md`, `.planning/REQUIREMENTS.md`, `ROADMAP.md` or `STATE.md`. `node scripts/eval/verify-prereg.ts` prints `verify-prereg: ok` (exit 0).
 
 ## Findings outside the scope of this plan
 

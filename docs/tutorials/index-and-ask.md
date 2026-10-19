@@ -1,4 +1,4 @@
-<!-- replayed: 2026-10-18 at a26fe40 -->
+<!-- replayed: 2026-10-19 at b234f2e -->
 
 # Index a repository and ask it questions
 
