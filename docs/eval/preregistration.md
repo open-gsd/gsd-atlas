@@ -280,3 +280,11 @@ The direction of the change is against the atlas arm on cost and for it on routi
 | `scripts/eval/prepare-corpus.ts` | `cee98c9221f18e0cff4905e60970684cef3a9b6a520cfb668b73397e39ba3dba` |
 
 ### Approvals (Revision 1)
+
+The user answered the Task 4 blocking-human checkpoint of plan 03-38 on 2026-10-18. The reply is recorded verbatim:
+
+> approve oq4=point_estimate
+
+The reply is read as `approve` with one explicit `oq4=` token whose value is `point_estimate`, the registered value. It approves Revision 1 as written (the atlas arm gains the Skill tool and the skill, the grep arm and every other registered item are unchanged) together with the skill text as shown at the checkpoint. The token criterion (`upper-bound`, the 95th percentile of the paired bootstrap difference below zero) and every other registered parameter are unchanged and are not reopened by this reply. The line below is taken from the reply's `oq4=` token alone; it is not copied from the block or inferred.
+
+OQ4 re-confirmed by the user at Revision 1: point_estimate

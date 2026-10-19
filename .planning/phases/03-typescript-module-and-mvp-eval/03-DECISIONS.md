@@ -49,3 +49,11 @@ Both replies accept all nine defaults OQ1 to OQ9; they differ only in the OQ4 va
 ## Later reply: OQ4 re-asked at the pre-registration freeze (plan 03-16)
 
 The OQ4 line above (`Gate OQ4 (EVL-03 citation criterion): Confirmed wilson_lower_bound`) and the replies above are kept as they were. Plan 03-16 re-asks OQ4 at its blocking checkpoint because the freezer needs an explicit `OQ4 confirmed by the user:` line. The user answered on 2026-10-18 (verbatim): `point_estimate, stricter point estimate, approve pre-registration`; asked whether the replies conflicted, the user answered (verbatim): `both unless they conflict and you didn't tell me`. The replies do not conflict. The newest reply therefore sets OQ4 to `point_estimate`, which supersedes `wilson_lower_bound` for the frozen pre-registration (`docs/eval/preregistration.md`, `params.citationJudgedOn`). The Register row for OQ4 is not rewritten; this section is the later entry.
+
+## Later reply: Stage A reopened (plan 03-38)
+
+Dated 2026-10-18. Earlier lines above are not rewritten; this section is the later entry.
+
+At the blocking-human checkpoint of plan 03-33 the user instructed (verbatim): `re-open stage a and run with the skill now that it's built`. Plan 03-38 reopened Stage A as Revision 1 of `docs/eval/preregistration.md`: the atlas arm gains the Skill tool and the registered skill; only the four run-configuration files (`scripts/eval/arms.ts`, `claude-session.ts`, `harness.ts`, `prereg.ts`) change; every parameter, question, key, the oracle, the scorer, the statistics and the grep arm are unchanged.
+
+At the Task 4 blocking-human checkpoint of plan 03-38 the user replied (verbatim): `approve oq4=point_estimate`. OQ4 stays `point_estimate` (`params.citationJudgedOn`); the reply contains exactly one `oq4=` token and it matches the registered value, so no registered parameter changes. The line `OQ4 re-confirmed by the user at Revision 1: point_estimate` is recorded in the document under `Approvals (Revision 1)`.
