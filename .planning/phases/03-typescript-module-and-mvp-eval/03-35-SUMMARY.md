@@ -59,6 +59,17 @@ PATH="<scratch>/claude-2.1.302-bin:$PATH" node scripts/eval/harness.ts run --sco
 
 The atlas arm is the atlas tools together with a visible, loadable `gsd-atlas` skill (Revision 1 of the pre-registration); its description tokens, and the body's whenever a session loads it, are billable to the atlas arm and never subtracted. A result is a result for `tools plus visible skill` and is not split between the two. The committed rows show how often atlas-arm sessions loaded the skill (`toolCallsByName.Skill`).
 
-## Task 2 (checkpoint)
+## Task 2 (checkpoint) decision record (2026-10-18)
 
-Reply: not yet given.
+The human's replies at the blocking-human cost checkpoint, verbatim, in order:
+
+1. (a) "is there a way to do this in my existing plan without me having to dump money"
+2. (b) "i need a cost free way to do this, can we use a local model to just get the measurements."
+3. (c) "if you can get the info and extrapolate the costs that is fine to use usage I do not want to pay api costs"
+4. (d) "again i do not want to spend any moeny, you can run and get the toekn numbers and extrapolate the cost from those i will not pay for active usage of the api"
+
+The reply is not the literal word "start". The orchestrator's reading, adopted here: the user authorises `start` on their claude.ai Max subscription (no API key; `authMethod` claude.ai, `subscriptionType` max, `ANTHROPIC_API_KEY` unset), run in CHUNKS, with no paid API usage. The dollar figures the harness prints are Claude Code's notional API-equivalent costs, used as a guard and as the unit of the extrapolation; the user does not want any real charge. A local model was not used: the registered design fixes the model (`claude-sonnet-5-5`) and no local model can be measured in its place without a new registration. The user was told that the "extra usage" (pay beyond the plan limit) setting cannot be verified from here and was asked to check that it is off; they did not confirm. Chunk 1 is therefore deliberately small (stop line 5 USD notional against the 37.5 USD registered-run stop), so it cannot approach a Max usage limit. Each chunk ends at the harness cost stop and the next chunk needs a new go-ahead.
+
+Nothing registered changes: `--stop-at-cost-usd` is a harness-side flag of the run, not a registered parameter (the registered 3 USD per-session budget and 900000 ms wall clock are unchanged). The results directory is shared by the chunks, so the cells are the registered seeded order's prefix and the cost stop counts what is already on disk.
+
+Environment check before chunk 1 (names only, no values printed): `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_BASE_URL`, `CLAUDE_CODE_USE_BEDROCK`, `CLAUDE_CODE_USE_VERTEX`, `CLAUDE_CODE_USE_FOUNDRY`, `AWS_BEARER_TOKEN_BEDROCK`, `ANTHROPIC_BEDROCK_BASE_URL`, `ANTHROPIC_VERTEX_PROJECT_ID` all unset; `claude --version` 2.1.302 from the scratch symlink; `claude auth status`: loggedIn, authMethod claude.ai, apiProvider firstParty, subscriptionType max. This worktree: `npm ci --ignore-scripts && npm run build` done, `verify-prereg: ok`, `plan --scored` prints `gate: ok`, 450 cells.
