@@ -52,4 +52,5 @@ It does not resolve for TypeScript 7.x; it does not sandbox the compiler beyond 
 
 - [gsd-atlas TypeScript support reference](../reference/typescript-support.md)
 - [gsd-atlas MCP reference](../reference/mcp.md)
+- [How to see why atlas gave an answer](../how-to/see-why-atlas-gave-an-answer.md)
 - [About how freshness and the writer lease work](how-freshness-and-the-writer-lease-work.md)
