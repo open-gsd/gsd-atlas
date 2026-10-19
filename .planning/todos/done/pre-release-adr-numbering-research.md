@@ -96,3 +96,5 @@ it to the MVP gate.
 
 Confidence/limits: facts about Nygard, MADR, adr-tools, PEP 1, Rust RFC 0002, GDS and joelparkerhenderson come from
 fetched pages summarised by a small model; Log4brains "draft" status and adr-tools merge handling were not confirmed.
+
+Closed 2026-10-18 by plan 03-37. Option A was applied (see pre-release-adr-numbering-model.md in this folder): the earlier records keep their numbers, the remaining two drafts were numbered at the MVP gate in one logged pass (issues 16 and 15, pull request open-gsd/gsd-atlas#17), records are append-only from here on, and the phase-gated `RATIFIED_SLUGS` coupling was replaced by the explicit `--gate mvp` gate (the 13-entry history is kept and pinned by a test). Not done: no `Provisional` status value, and no change to the existing numbered records' header lines.

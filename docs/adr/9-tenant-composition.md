@@ -4,10 +4,10 @@
 - **Issue:** [#9](https://github.com/open-gsd/gsd-atlas/issues/9)
 - **Ratified:** 2026-10-15
 - **DESIGN.md:** A4, A5, A19, A20, A21, A22, A24, A25, A26, A28, A40, A43, A47, A49, A59–A62
-- **Refines:** [draft-host-process-model](draft-host-process-model.md), [11-worktree-lifecycle](11-worktree-lifecycle.md)
+- **Refines:** [16-host-process-model](16-host-process-model.md), [11-worktree-lifecycle](11-worktree-lifecycle.md)
 - **Review findings addressed:** design-it-twice review, findings 3 and 4
 
-> Pre-release note: this record is not yet ratified; ratification is planned for the end of Phase 3, and every ADR will have a number by the MVP release; its Accepted status and issue number do not mean it is ratified (see docs/adr/README.md).
+> Ratification note: ratified together on 2026-10-18 with every other record in this folder (see docs/adr/README.md).
 
 ## Context
 Three groups of behaviour had no owner:

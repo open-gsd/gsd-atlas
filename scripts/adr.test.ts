@@ -630,6 +630,8 @@ describe('issueIsAdrsOwn (SKL-03)', () => {
       'Draft: docs/adr/draft-fact-model.md\n\nSummary.',
       'ADR: docs/adr/draft-fact-model.md',
       'See docs/adr/6-fact-model.md',
+      // The body that issuePayload writes names the file with the placeholder, because the number is not known yet.
+      'Decision summary.\n\nThis issue gives the record its number at the MVP gate. The file is renamed to `<issue number>-fact-model.md` in the pull request that links this issue.',
     ]) {
       const verdict = issueIsAdrsOwn({ title: 'ADR: fact model', body }, slug);
       assert.equal(verdict.own, true, `${body}: ${verdict.reason}`);
@@ -1556,5 +1558,105 @@ describe('ADR amendments (FND-10, D-16, D-17)', () => {
       }
     }
     assert.ok(checked > 0, 'no amendment was found to check against the README log');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// End state of the MVP gate pass (SKL-03): every record is numbered and Accepted, and the documents say so.
+// The pass ran on PASS_DATE; these cases fail while a draft remains or while any document still calls a record
+// unratified.
+// ---------------------------------------------------------------------------
+
+const PASS_DATE = '2026-10-18';
+const ALL_KNOWN: readonly string[] = [...RATIFIED, ...KNOWN_AT_GATE];
+
+// Source files whose first comment names the user-controlled diagnostics record.
+const DIAGNOSTICS_COMMENT_FILES: readonly string[] = [
+  'src/diagnostics/catalog.ts',
+  'src/diagnostics/consent.ts',
+  'src/diagnostics/diagnostics.test.ts',
+  'src/diagnostics/index.ts',
+  'src/host/bug.ts',
+  'src/host/diagnostics.ts',
+];
+
+describe('every decision record is numbered and Accepted (SKL-03)', () => {
+  const readme = fs.readFileSync(path.join(ADR_DIR, 'README.md'), 'utf8');
+
+  it('every ADR file has a number', () => {
+    assert.deepEqual(unnumberedAdrFiles(ADR_DIR), []);
+    assert.deepEqual(mvpGateSlugs(ADR_DIR), []);
+    assert.deepEqual(
+      fs.readdirSync(ADR_DIR).filter((name) => name.startsWith('draft-')),
+      [],
+    );
+  });
+
+  it('every record is Accepted with an Issue line that matches its number and a Ratified date', () => {
+    for (const slug of ALL_KNOWN) {
+      const file = findAdrFile(ADR_DIR, slug);
+      const n = /^(\d+)-/.exec(file ?? '')?.[1];
+      assert.ok(file !== null && n !== undefined, `${slug} is not a numbered file`);
+      const body = fs.readFileSync(path.join(ADR_DIR, file), 'utf8');
+      assert.match(body, /^- \*\*Status:\*\* Accepted$/m, file);
+      assert.ok(body.includes(`- **Issue:** [#${n}](${REPO_URL}/issues/${n})`), `${file}: the Issue line does not name #${n}`);
+      assert.match(body, /^- \*\*Ratified:\*\* \d{4}-\d{2}-\d{2}$/m, file);
+    }
+  });
+
+  it('README lists every record as Accepted and in the Ratification log', () => {
+    const afterLog = readme.split(/^## Ratification log$/m)[1] ?? '';
+    const logBlock = afterLog.split(/^## /m)[0] ?? '';
+    for (const slug of ALL_KNOWN) {
+      const file = findAdrFile(ADR_DIR, slug);
+      const row = readme.split('\n').find((l) => l.includes(`](${file})`) && /\| (Proposed|Accepted) \|\s*$/.test(l));
+      assert.ok(row?.trimEnd().endsWith('| Accepted |'), `README row for ${slug} is not Accepted`);
+      assert.ok(logBlock.includes(`| ${slug} |`), `the Ratification log has no row for ${slug}`);
+    }
+    assert.equal(readme.split('\n').filter((l) => /\|\s*Proposed\s*\|\s*$/.test(l)).length, 0);
+  });
+
+  it('README states no unratified record', () => {
+    assert.doesNotMatch(readme, /^## Pre-release legend\s*$/m);
+    assert.doesNotMatch(readme, /^## Ratification schedule\s*$/m);
+    assert.match(readme, /^## Ratification status\s*$/m);
+    assert.doesNotMatch(readme, /\bdrafts?\b/i);
+    assert.doesNotMatch(readme, /not (?:yet )?ratified|none of these records is ratified|no record is ratified|remain Proposed|stay Proposed|stays? open/i);
+    assert.match(readme, /every issue in the log is closed/i);
+    assert.ok(readme.includes(`ratified together on ${PASS_DATE}`) || readme.includes(PASS_DATE), 'the README names the pass date');
+  });
+
+  it('no numbered record carries a pre-release note and each of the pre-gate records carries one ratification note', () => {
+    const note = `> Ratification note: ratified together on ${PASS_DATE} with every other record in this folder (see docs/adr/README.md).`;
+    for (const slug of ALL_KNOWN) {
+      const file = findAdrFile(ADR_DIR, slug);
+      assert.ok(file !== null, slug);
+      const body = fs.readFileSync(path.join(ADR_DIR, file), 'utf8');
+      assert.doesNotMatch(body, /^> Pre-release note:/m, `${file} still carries a pre-release note`);
+      const notes = body.split('\n').filter((l) => l.startsWith('> Ratification note:'));
+      if (RATIFIED.includes(slug)) assert.deepEqual(notes, [note], `${file} carries exactly the ratification note`);
+      else assert.deepEqual(notes, [], `${file} was numbered by the pass and carries no note`);
+    }
+  });
+
+  it('no scoped file mentions a draft name of a known record', () => {
+    const files = [...collectLinkFiles(ROOT), ...DIAGNOSTICS_COMMENT_FILES];
+    for (const rel of files) {
+      const text = fs.readFileSync(path.join(ROOT, rel), 'utf8');
+      for (const slug of ALL_KNOWN) {
+        assert.equal(text.includes(`draft-${slug}`), false, `${rel} still mentions draft-${slug}`);
+        assert.equal(new RegExp(`draft ${slug}\\b`, 'i').test(text), false, `${rel} calls ${slug} a draft`);
+      }
+    }
+  });
+
+  it('the diagnostics source comments name the accepted record by its file name', () => {
+    const file = findAdrFile(ADR_DIR, 'user-controlled-diagnostics');
+    assert.ok(file !== null && /^\d+-/.test(file));
+    for (const rel of DIAGNOSTICS_COMMENT_FILES) {
+      const head = fs.readFileSync(path.join(ROOT, rel), 'utf8').split('\n').slice(0, 8).join('\n');
+      assert.ok(head.includes(`docs/adr/${file}`), `${rel}: the first comment does not name docs/adr/${file}`);
+      assert.doesNotMatch(head, /\bdraft\b/i, `${rel}: the first comment still calls the record a draft`);
+    }
   });
 });

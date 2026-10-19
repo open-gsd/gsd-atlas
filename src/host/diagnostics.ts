@@ -1,5 +1,5 @@
 /**
- * `diagnostics` (SKL-03; docs/DIAGNOSTICS.md; the draft user-controlled-diagnostics ADR): the Host's one request kind for
+ * `diagnostics` (SKL-03; docs/DIAGNOSTICS.md; docs/adr/15-user-controlled-diagnostics.md): the Host's one request kind for
  * user-controlled diagnostics. The CLI only sends requests; the Host assembles the data sources and calls
  * `src/diagnostics`, which holds the catalog, the per-type consent and the report layout.
  *

@@ -57,3 +57,17 @@ Dated 2026-10-18. Earlier lines above are not rewritten; this section is the lat
 At the blocking-human checkpoint of plan 03-33 the user instructed (verbatim): `re-open stage a and run with the skill now that it's built`. Plan 03-38 reopened Stage A as Revision 1 of `docs/eval/preregistration.md`: the atlas arm gains the Skill tool and the registered skill; only the four run-configuration files (`scripts/eval/arms.ts`, `claude-session.ts`, `harness.ts`, `prereg.ts`) change; every parameter, question, key, the oracle, the scorer, the statistics and the grep arm are unchanged.
 
 At the Task 4 blocking-human checkpoint of plan 03-38 the user replied (verbatim): `approve oq4=point_estimate`. OQ4 stays `point_estimate` (`params.citationJudgedOn`); the reply contains exactly one `oq4=` token and it matches the registered value, so no registered parameter changes. The line `OQ4 re-confirmed by the user at Revision 1: point_estimate` is recorded in the document under `Approvals (Revision 1)`.
+
+## Later reply: ratification at the end of Phase 3 (plan 03-37)
+
+Dated 2026-10-18. Earlier lines above are not rewritten; this section is the later entry.
+
+The user instructed (verbatim): "any ADR at the end of phase 3 must be assigned a number. when we release the MVP every adr needs that number. if that is option a, then get it done. if you need to submit an issue to get that number, do so and then renumber the ADR file with a pr and close it."
+
+Replies that settled the plan (verbatim): "push main first." / "ok on reopen." / "meant reopen" (issue #15 is reopened, not replaced) / "ok on one pr." / "ok on task 4." / "why leave issues open if they're being used for adrs. they should have been closed with the adr update." / "yes we aren't released yet the end result is important not a short step." The issues named by the earlier records (#2 to #9 and #11 to #14) are therefore closed by this pass.
+
+Reply to the blocking checkpoint of plan 03-37 Task 2 (verbatim, 2026-10-18): `approve ack-verdict`. The checkpoint printed `VERDICT: NOT MET OR NOT FINAL` (docs/eval/analysis.md: `OVERALL: MVP not met`), so the reply needed `ack-verdict`; it contains both tokens and satisfies the reply grammar.
+
+Result of the pass (2026-10-18): host-process-model got issue #16 (created), user-controlled-diagnostics reused issue #15 (reopened, per 'meant reopen'); both were renamed to `16-host-process-model.md` and `15-user-controlled-diagnostics.md` in pull request #17 (https://github.com/open-gsd/gsd-atlas/pull/17, merge commit `015ff886115342c2b05dfeff962d621003f3f88b`). After the merge the issues of every record (#2 to #9 and #11 to #16) were closed as completed and each reads CLOSED/COMPLETED. Details and deviations: `03-37-PROGRESS.md`.
+
+End-state edits done (plan 03-37 Task 4, 2026-10-18): the ratification status section replaced the pre-release legend and the schedule in `docs/adr/README.md`, the twelve earlier records carry the ratification note, README.md, the limitations page and the trust explanation state the final truth, the six source comments name the accepted diagnostics record, and the two numbering todos are in `.planning/todos/done/`. These commits are on the integration branch and not pushed.

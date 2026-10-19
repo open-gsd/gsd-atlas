@@ -1,7 +1,8 @@
 # ADR: Host process model — one host per user, repos as tenants
 
-- **Status:** Proposed
-- **Issue:** to be opened (rename to `<issue#>-host-process-model.md`)
+- **Status:** Accepted
+- **Issue:** [#16](https://github.com/open-gsd/gsd-atlas/issues/16)
+- **Ratified:** 2026-10-18
 - **DESIGN.md:** A22–A28, A39–A43, A46, A49
 - **Review findings addressed:** H‑1, H‑2, H‑3, H‑4, H‑5, S‑2, SDK‑3, L‑4
 

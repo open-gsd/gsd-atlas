@@ -7,7 +7,7 @@
 - **Refines:** [13-mcp-contract](13-mcp-contract.md), `AGENT-INTEGRATION.md`
 - **Review findings addressed:** design-it-twice review, finding 1
 
-> Pre-release note: this record is not yet ratified; ratification is planned for the end of Phase 3, and every ADR will have a number by the MVP release; its Accepted status and issue number do not mean it is ratified (see docs/adr/README.md).
+> Ratification note: ratified together on 2026-10-18 with every other record in this folder (see docs/adr/README.md).
 
 ## Context
 Ranking, the token budget, citations, fencing, the watermark and `degraded` flag, `fresh` handling and `explain` are described in A26, A32, A44, A51 and the MCP-contract ADR, but no module owns them. MCP tools, the CLI and hooks are meant to return identical JSON (A12), so they are three adapters over one thing. Hook gating (A33–A37) is a second concern that was entangled with answering: it needs a memory of what each agent did, and a decision per event.

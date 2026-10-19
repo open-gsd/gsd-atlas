@@ -6,7 +6,7 @@
 - **DESIGN.md:** A1, A13, A14, A16
 - **Review findings addressed:** P‑1, P‑2, P‑3, O‑1
 
-> Pre-release note: this record is not yet ratified; ratification is planned for the end of Phase 3, and every ADR will have a number by the MVP release; its Accepted status and issue number do not mean it is ratified (see docs/adr/README.md).
+> Ratification note: ratified together on 2026-10-18 with every other record in this folder (see docs/adr/README.md).
 
 ## Context
 Live code indexing and platform SDK facts were first drafted as a gsd‑graph feature (gsd‑graph PRD 0.2.0). Absorbing them would have overridden about half a dozen of gsd‑graph's frozen decisions: K1 (product), K4 (JSON store), K13 (no DB), the v1 non‑goal "full code AST/symbol graph", and others. gsd‑graph is the knowledge graph for docs, planning and decisions; code intelligence has a different engine (live index, compilers, grammars, SDK extraction), install footprint and contributor base.

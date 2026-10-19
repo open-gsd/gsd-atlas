@@ -1,5 +1,5 @@
 /**
- * The diagnostics catalog (docs/DIAGNOSTICS.md section 3; the draft user-controlled-diagnostics ADR, decision 2): the
+ * The diagnostics catalog (docs/DIAGNOSTICS.md section 3; docs/adr/15-user-controlled-diagnostics.md, decision 2): the
  * published list of data types a report can hold. It ships with the package as `diagnostics/catalog.v1.json`, and
  * the CLI and the later intake bot both validate against it. A type lists its fields with an example, how it helps
  * the project and what it cannot reveal; the user approves a type as a whole.

@@ -2,14 +2,14 @@
 
 Each ADR records one decision: what was decided, why, and what follows. ADRs are append‑only; later changes are dated amendment sections, never rewrites. Conventions follow open‑gsd/gsd‑core `docs/adr/README.md`.
 
-## Pre-release legend
-Before the first release none of these records is ratified. Ratification is planned for the end of Phase 3 (the end-of-Phase-3 ratification step), and every ADR will have a number by the MVP release; drafts are numbered at that step. The `Accepted` status, the issue numbers and the numbered file names in older records, and the `Accepted` and `Ratified` wording in the tables and logs below, come from an earlier process step and do not mean a record is ratified. Until that step no file is renamed and no record is promoted.
+## Ratification status
+Every record in this folder has a number and the status Accepted. The twelve records numbered before the MVP gate (their Ratified dates are in the Ratification log) were ratified together with the last two in one pass on 2026-10-18; the log lists the issues and describes the pass. From now on a record is changed only by a dated amendment section appended to it, or replaced by a new record that supersedes it. New records are named `<issue#>-<kebab-slug>.md` from the start.
 
 ## Naming
-New ADRs are named `<issue#>-<kebab-slug>.md`, with the number of the GitHub issue that proposes them. The repo has no issues yet, so the founding set below is named `draft-<slug>.md`. When the repo is created, open one issue per ADR and rename each file to `<issue#>-<slug>.md` in the same PR that lands it. The eight Phase 1 ADRs were ratified on 2026-10-15 (issue opened, file renamed, Status Accepted); the Ratification log below lists the issues. The four Phase 2 ADRs were ratified on 2026-10-16 (issues 11 to 14). The other two ADRs stay `draft-<slug>.md` and Proposed until the phase named in the Ratification schedule.
+ADRs are named `<issue#>-<kebab-slug>.md`, with the number of the GitHub issue that proposes them. The eight Phase 1 ADRs were ratified on 2026-10-15 (issue opened, file renamed, Status Accepted); the Ratification log below lists the issues. The four Phase 2 ADRs were ratified on 2026-10-16 (issues 11 to 14). The last two ADRs were numbered at the MVP gate on 2026-10-18 (issues 15 and 16).
 
 ## Status vocabulary
-`Proposed` (decided in principle, not ratified) · `Accepted` · `Superseded` (must link its successor) · `Retired`.
+`Proposed` (written and under review, not yet accepted) · `Accepted` · `Superseded` (must link its successor) · `Retired`.
 
 ## Pre‑MVP set
 These decisions shape the MVP's code and data, and are expensive to reverse once data exists. **MVP = working with gsd‑core development:** TypeScript (`.cts` → `.cjs`) on gsd‑core, local and resolved facts, the store, a single‑tenant host, the MCP read tools and the skill (PRD milestones M0–M2). All ADRs were revised after the adversarial design review (`../DESIGN-REVIEW.md`).
@@ -20,11 +20,11 @@ These decisions shape the MVP's code and data, and are expensive to reverse once
 | [6-fact-model](6-fact-model.md) | Local facts by blob id, resolved edges by overlay and context; stable symbol identity; provenance, spans, confidence | A2, A8, A19, A45 | Accepted |
 | [8-sqlite-store](8-sqlite-store.md) | SQLite via `node:sqlite` behind the Fact Store, driver internal and conformance‑tested; synced‑folder fallback; lazy rebuilds; real‑corpus budgets | A3, A4, A13, A17, A18, A50 | Accepted |
 | [7-fact-store-interface](7-fact-store-interface.md) | One Fact Store module with a fact‑level seam; `at(worktree)` reader with `Answer<T>`; single writer lease; typed maintenance; SQL driver internal; no fake store | A2, A3, A5, A17, A20, A21, A26, A45, A46 | Accepted |
-| [draft-host-process-model](draft-host-process-model.md) | One host per user and major version; repos as isolated tenants; versioned protocol; secure local transport; fair scheduling; no caps | A22–A28, A39–A43, A46, A49 | Proposed |
+| [16-host-process-model](16-host-process-model.md) | One host per user and major version; repos as isolated tenants; versioned protocol; secure local transport; fair scheduling; no caps | A22–A28, A39–A43, A46, A49 | Accepted |
 | [5-language-modules](5-language-modules.md) | Languages are data; shared Grammar Engine; PreciseResolver seam; three tiers; grammars built from pinned upstream with a parse‑error budget; what counts as source | A6, A7, A9, A25, A47, A48 | Accepted |
 | [11-worktree-lifecycle](11-worktree-lifecycle.md) | Overlays; collect when in git or past grace; history from git; submodules; watch fallback | A5, A20, A21, A43 | Accepted |
 | [13-mcp-contract](13-mcp-contract.md) | MCP tool set, response envelope, ranking, token budgets, freshness and degraded flags, untrusted‑text fencing, CLI parity | A11, A12, A26, A32, A44, A51 | Accepted |
-| [draft-user-controlled-diagnostics](draft-user-controlled-diagnostics.md) | No telemetry; diagnostics off by default, approved per data type, submitted as GitHub issues; ↑ ↔ ↓ ratings; `gsd-atlas bug` defect forensics; automatic intake in the repo | A16, A52, A53 | Proposed |
+| [15-user-controlled-diagnostics](15-user-controlled-diagnostics.md) | No telemetry; diagnostics off by default, approved per data type, submitted as GitHub issues; ↑ ↔ ↓ ratings; `gsd-atlas bug` defect forensics; automatic intake in the repo | A16, A52, A53 | Accepted |
 | [12-query-and-policy](12-query-and-policy.md) | One Query module behind MCP, CLI and hooks; a separate pure Policy module with the session ledger | A11, A12, A26, A32–A37, A44, A51, A58 | Accepted |
 | [9-tenant-composition](9-tenant-composition.md) | Host composes per‑repo Tenants; Source Tree, Indexer and Governor modules; read‑your‑writes via the Indexer | A4, A19, A22, A24–A28, A40, A47, A49, A59–A62 | Accepted |
 | [4-command-runner](4-command-runner.md) | One CommandRunner for every child process; providers declare a CommandSpec, the runner alone decides; sandboxed TypeScript adapter | A9, A44, A54 | Accepted |
@@ -32,7 +32,7 @@ These decisions shape the MVP's code and data, and are expensive to reverse once
 | [3-trust-boundaries](3-trust-boundaries.md) | Permissions only from user config; built‑in providers on by default; endpoint security; untrusted text fenced | A9, A16, A27, A44 | Accepted |
 
 ## Ratification log
-Phase 1 ratification (FND-09): one issue per ADR in open-gsd/gsd-atlas, each draft renamed to `<issue#>-<slug>.md` and moved from Proposed to Accepted. Issues stay open; closing them is a later, separate step.
+Phase 1 ratification (FND-09): one issue per ADR in open-gsd/gsd-atlas, each file renamed to `<issue#>-<slug>.md` and moved from Proposed to Accepted. Every issue in the log is closed: the issues of the earlier records and of the last two were closed as completed on 2026-10-18, after the pull request that numbered the last two.
 
 | Slug | Issue | File | Ratified |
 |------|-------|------|----------|
@@ -48,8 +48,12 @@ Phase 1 ratification (FND-09): one issue per ADR in open-gsd/gsd-atlas, each dra
 | query-and-policy | [#12](https://github.com/open-gsd/gsd-atlas/issues/12) | [12-query-and-policy.md](12-query-and-policy.md) | 2026-10-16 |
 | mcp-contract | [#13](https://github.com/open-gsd/gsd-atlas/issues/13) | [13-mcp-contract.md](13-mcp-contract.md) | 2026-10-16 |
 | value-dashboard | [#14](https://github.com/open-gsd/gsd-atlas/issues/14) | [14-value-dashboard.md](14-value-dashboard.md) | 2026-10-16 |
+| host-process-model | [#16](https://github.com/open-gsd/gsd-atlas/issues/16) | [16-host-process-model.md](16-host-process-model.md) | 2026-10-18 |
+| user-controlled-diagnostics | [#15](https://github.com/open-gsd/gsd-atlas/issues/15) | [15-user-controlled-diagnostics.md](15-user-controlled-diagnostics.md) | 2026-10-18 |
 
 Phase 2 ratification (FND-12): the four ADRs scheduled for Phase 2, same procedure.
+
+MVP gate pass (2026-10-18): host-process-model (issue 16, opened for it) and user-controlled-diagnostics (issue 15, reopened) were numbered in [pull request 17](https://github.com/open-gsd/gsd-atlas/pull/17), which changed only header lines, link targets and the rows above. The issues of all fourteen records were closed as completed the same day.
 
 **Editorial repairs made at ratification (not amendments).** A lost-text token (a backslash and the digit one) had replaced passages in four files. Each was repaired from the project's own sources, `PRD.md` section 4.6 and `DESIGN.md` A9, and is pending human review:
 - `3-trust-boundaries.md` decision 2: restored the heading `Commands.` and its three rules.
@@ -91,14 +95,6 @@ Dated amendment sections appended to Accepted ADRs, one line per amendment. The 
 - Amendment 2026-10-18: command-runner - Compiler worker built-in and exact-argv approvals
 - Amendment 2026-10-18: trust-boundaries - Per-command approvals, MCP origin and compiler trust
 - Amendment 2026-10-18: language-modules - TypeScript project model, adapter ids and manifest version 2
-
-## Ratification schedule
-The two ADRs that remain Proposed, and the phase whose first plan ratifies each (from the ROADMAP schedule). The four Phase 2 ADRs were ratified on 2026-10-16 with their amendments (see the Ratification log). Ratifying means: open the issue, rename `draft-<slug>.md` to `<issue#>-<slug>.md`, move Proposed to Accepted, and apply the listed amendments as dated sections.
-
-| ADR | Ratify before | Amendments applied at that ratification |
-|-----|---------------|------------------------------------------|
-| user-controlled-diagnostics | Phase 3 | None |
-| host-process-model | Phase 4 | None |
 
 ## Before M4 (not needed for the MVP)
 - **SDK facts and providers** (A10, A29–A31): local‑only SDK facts, provider order, language levels, TypeScript 6/7 adapters.

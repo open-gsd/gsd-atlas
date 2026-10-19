@@ -492,13 +492,14 @@ export function adrIssueRefs(adrDir: string): AdrIssueRef[] {
 
 /**
  * Is a GitHub issue the record's own? True only when the title starts with `ADR:` and the body names the
- * record's file (`draft-<slug>.md`, or `<digits>-<slug>.md`), the slug matched as a whole. Real titles are not
- * compared to the ADR heading, because several earlier titles are worded differently.
+ * record's file (`draft-<slug>.md`, `<digits>-<slug>.md`, or `<issue number>-<slug>.md` as issuePayload writes it
+ * before the number exists), the slug matched as a whole. Real titles are not compared to the ADR heading, because
+ * several earlier titles are worded differently.
  */
 export function issueIsAdrsOwn(issue: { title: string; body: string }, slug: string): { own: boolean; reason: string } {
   if (!issue.title.trimStart().startsWith('ADR:')) return { own: false, reason: 'the title does not start with "ADR:"' };
   if ((issue.body ?? '').trim() === '') return { own: false, reason: 'the body is empty' };
-  const file = new RegExp(`(?<![A-Za-z0-9-])(?:draft|\\d+)-${escapeRegExp(slug)}\\.md(?![A-Za-z0-9-])`);
+  const file = new RegExp(`(?<![A-Za-z0-9-])(?:draft|\\d+|<issue number>)-${escapeRegExp(slug)}\\.md(?![A-Za-z0-9-])`);
   if (!file.test(issue.body)) {
     return { own: false, reason: `the body does not name draft-${slug}.md or <number>-${slug}.md` };
   }

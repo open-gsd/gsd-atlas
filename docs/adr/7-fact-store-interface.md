@@ -7,7 +7,7 @@
 - **Edits in place (drafts):** [8-sqlite-store](8-sqlite-store.md) decision 1 and DESIGN.md A3 now point here instead of describing a SQL‑level "driver interface".
 - **Refines:** [11-worktree-lifecycle](11-worktree-lifecycle.md), [6-fact-model](6-fact-model.md)
 
-> Pre-release note: this record is not yet ratified; ratification is planned for the end of Phase 3, and every ADR will have a number by the MVP release; its Accepted status and issue number do not mean it is ratified (see docs/adr/README.md).
+> Ratification note: ratified together on 2026-10-18 with every other record in this folder (see docs/adr/README.md).
 
 ## Context
 The store's behaviour is described across A2, A3, A5, A17, A20, A21, A26 and A45, and by the table list in DESIGN.md. No decision names the module, so each caller (indexer, MCP tools, hooks, daemon maintenance, `history`, CLI) would learn the schema and the lifecycle rules itself. A3's "driver interface" is a SQL-level seam: it would let callers write SQL, which makes the "swap the engine without touching modules, tools or the CLI" escape hatch false.
