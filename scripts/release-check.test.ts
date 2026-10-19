@@ -343,6 +343,22 @@ test('command: latest is refused for a prerelease', () => {
   }
 });
 
+test('command: --channel auto judges the version against the channel it names, and refuses a version that names none', () => {
+  const dir = fixtureRoot(goodManifest(), CHANGELOG);
+  const odd = fixtureRoot({ ...goodManifest(), version: '0.1.0-beta.1' }, CHANGELOG);
+  try {
+    const ok = run(['--channel', 'auto', '--root', dir, '--skip-pack']);
+    assert.equal(ok.status, 0, ok.stderr);
+    assert.match(ok.stdout, /channel alpha/);
+    const refused = run(['--channel', 'auto', '--root', odd, '--skip-pack']);
+    assert.equal(refused.status, 1);
+    assert.match(refused.stderr, /belongs to no channel/);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+    fs.rmSync(odd, { recursive: true, force: true });
+  }
+});
+
 test('command: a usage error exits 2', () => {
   assert.equal(run([]).status, 2);
   assert.equal(run(['--channel', 'stable']).status, 2);

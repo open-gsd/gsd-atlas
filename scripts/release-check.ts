@@ -250,6 +250,35 @@ export function scanText(file: string, text: string): string[] {
 const TEXT_EXTENSIONS: ReadonlySet<string> = new Set(['.js', '.mjs', '.cjs', '.json', '.md', '.ts', '.txt', '.yml', '.yaml', '.svg', '.html', '.css']);
 const isTextFile = (file: string): boolean => TEXT_EXTENSIONS.has(path.extname(file)) || file === 'LICENSE';
 
+// ---------------------------------------------------------------- tool versions
+
+/** Compares dotted numeric versions ("v" prefix and any prerelease part ignored): negative, zero or positive. */
+export function compareVersions(a: string, b: string): number {
+  const parts = (version: string): number[] => (version.replace(/^v/, '').split('-')[0] ?? '').split('.').map((part) => Number(part));
+  const left = parts(a);
+  const right = parts(b);
+  for (let i = 0; i < Math.max(left.length, right.length); i++) {
+    const difference = (left[i] ?? 0) - (right[i] ?? 0);
+    if (difference !== 0) return difference;
+  }
+  return 0;
+}
+
+/** npm trusted publishing (OIDC) needs npm 11.5.1 or newer and Node 22.14.0 or newer (docs.npmjs.com/trusted-publishers). */
+export const MIN_NPM_FOR_TRUSTED_PUBLISHING = '11.5.1';
+export const MIN_NODE_FOR_TRUSTED_PUBLISHING = '22.14.0';
+
+export function checkToolVersions(node: string, npm: string): string[] {
+  const problems: string[] = [];
+  if (compareVersions(node, MIN_NODE_FOR_TRUSTED_PUBLISHING) < 0) {
+    problems.push(`Node ${node} is older than ${MIN_NODE_FOR_TRUSTED_PUBLISHING}, the minimum for npm trusted publishing`);
+  }
+  if (compareVersions(npm, MIN_NPM_FOR_TRUSTED_PUBLISHING) < 0) {
+    problems.push(`npm ${npm} is older than ${MIN_NPM_FOR_TRUSTED_PUBLISHING}, the minimum for npm trusted publishing`);
+  }
+  return problems;
+}
+
 // ---------------------------------------------------------------- the command
 
 function findNpmCli(): string | undefined {
@@ -264,6 +293,15 @@ function findNpmCli(): string | undefined {
   if (found !== undefined) return found;
   const sibling = path.join(nodeDir, 'npm');
   return fs.existsSync(sibling) && fs.realpathSync(sibling).endsWith('npm-cli.js') ? fs.realpathSync(sibling) : undefined;
+}
+
+function npmVersion(): string {
+  const cli = findNpmCli();
+  const result = cli !== undefined
+    ? spawnSync(process.execPath, [cli, '--version'], { encoding: 'utf8' })
+    : spawnSync('npm', ['--version'], { encoding: 'utf8' });
+  if (result.status !== 0) throw new Error(`npm --version failed (exit ${String(result.status)})`);
+  return result.stdout.trim();
 }
 
 function parsePackJson(text: string, source: string): PackInfo {
@@ -287,7 +325,8 @@ function npmPackDryRun(root: string): PackInfo {
 }
 
 export interface CheckOptions {
-  readonly channel: Channel;
+  /** A channel, or "auto" for the channel the package.json version names (the pull request rehearsal). */
+  readonly channel: Channel | 'auto';
   readonly root: string;
   readonly skipPack: boolean;
   readonly packJson?: string;
@@ -307,7 +346,13 @@ export function runChecks(options: CheckOptions): CheckResult {
     return { problems: [`package.json cannot be read: ${error instanceof Error ? error.message : String(error)}`], version: '' };
   }
   const version = pkg.version ?? '';
-  problems.push(...checkVersion(options.channel, version));
+  if (options.channel === 'auto') {
+    const named = channelOf(version);
+    if (named === undefined) problems.push(`version ${version} belongs to no channel (alpha, next or latest)`);
+    else problems.push(...checkVersion(named, version));
+  } else {
+    problems.push(...checkVersion(options.channel, version));
+  }
   problems.push(...checkManifest(pkg));
 
   const changelogFile = path.join(options.root, 'CHANGELOG.md');
@@ -341,14 +386,22 @@ export function runChecks(options: CheckOptions): CheckResult {
   return { problems, version };
 }
 
-const USAGE = 'usage: node scripts/release-check.ts --channel <alpha|next|latest> [--root <dir>] [--skip-pack] [--pack-json <file>]';
+const USAGE =
+  'usage: node scripts/release-check.ts --channel <alpha|next|latest|auto> [--root <dir>] [--skip-pack] [--pack-json <file>]\n' +
+  '       node scripts/release-check.ts --tool-versions';
 
 function main(argv: string[]): number {
   let values;
   try {
     ({ values } = parseArgs({
       args: argv,
-      options: { channel: { type: 'string' }, root: { type: 'string' }, 'skip-pack': { type: 'boolean' }, 'pack-json': { type: 'string' } },
+      options: {
+        channel: { type: 'string' },
+        root: { type: 'string' },
+        'skip-pack': { type: 'boolean' },
+        'pack-json': { type: 'string' },
+        'tool-versions': { type: 'boolean' },
+      },
       strict: true,
     }));
   } catch (error) {
@@ -356,23 +409,43 @@ function main(argv: string[]): number {
     return 2;
   }
   const channel = values.channel;
-  if (channel === undefined || !isChannel(channel)) {
-    process.stderr.write(`release-check: --channel must be one of ${CHANNELS.join(', ')}\n${USAGE}\n`);
+  const toolVersions = values['tool-versions'] === true;
+  if ((channel === undefined && !toolVersions) || (channel !== undefined && channel !== 'auto' && !isChannel(channel))) {
+    process.stderr.write(`release-check: --channel must be one of ${CHANNELS.join(', ')}, or auto\n${USAGE}\n`);
     return 2;
   }
-  const root = path.resolve(values.root ?? path.join(path.dirname(fileURLToPath(import.meta.url)), '..'));
-  const { problems, version } = runChecks({
-    channel,
-    root,
-    skipPack: values['skip-pack'] === true,
-    ...(values['pack-json'] === undefined ? {} : { packJson: path.resolve(values['pack-json']) }),
-  });
-  if (problems.length > 0) {
-    process.stderr.write(`release-check: FAILED (${String(problems.length)} problem${problems.length === 1 ? '' : 's'}) for ${channel}\n`);
-    for (const problem of problems) process.stderr.write(`  - ${problem}\n`);
+
+  const failures: string[] = [];
+  const summary: string[] = [];
+  if (toolVersions) {
+    let npm = '0.0.0';
+    try {
+      npm = npmVersion();
+    } catch (error) {
+      failures.push(error instanceof Error ? error.message : String(error));
+    }
+    failures.push(...checkToolVersions(process.versions.node, npm));
+    summary.push(`node ${process.versions.node}, npm ${npm}`);
+  }
+  if (channel !== undefined) {
+    const root = path.resolve(values.root ?? path.join(path.dirname(fileURLToPath(import.meta.url)), '..'));
+    const requested: Channel | 'auto' = channel === 'auto' ? 'auto' : (channel as Channel);
+    const { problems, version } = runChecks({
+      channel: requested,
+      root,
+      skipPack: values['skip-pack'] === true,
+      ...(values['pack-json'] === undefined ? {} : { packJson: path.resolve(values['pack-json']) }),
+    });
+    failures.push(...problems);
+    const resolved = requested === 'auto' ? channelOf(version) : requested;
+    summary.push(`channel ${resolved ?? 'none'}, version ${version}, tag ${resolved === undefined ? 'none' : distTagFor(resolved)}`);
+  }
+  if (failures.length > 0) {
+    process.stderr.write(`release-check: FAILED (${String(failures.length)} problem${failures.length === 1 ? '' : 's'})\n`);
+    for (const problem of failures) process.stderr.write(`  - ${problem}\n`);
     return 1;
   }
-  process.stdout.write(`release-check: ok (channel ${channel}, version ${version}, tag ${distTagFor(channel)})\n`);
+  process.stdout.write(`release-check: ok (${summary.join('; ')})\n`);
   return 0;
 }
 
