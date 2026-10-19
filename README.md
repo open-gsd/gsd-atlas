@@ -6,6 +6,8 @@ gsd-atlas builds a local index of a code repository and answers cited, fresh, wo
 
 It indexes TypeScript and JavaScript repositories on macOS, Linux and Windows. It requires Node 24.16.0 or newer (24.15.0 truncates TEXT at an embedded NUL in `node:sqlite`), and CI runs Node 24.16.0 and 26 on all three systems. Indexing and answering questions use no network, and gsd-atlas sends no telemetry. The precise (compiler) tier, SDK packs, the Agent Skill, a daemon transport and Swift support arrive in subsequent phases.
 
+The decision records under [docs/adr](docs/adr/README.md) are drafts for this alpha, and none is ratified. [The alpha limitations](docs/reference/alpha-limitations.md) say what else is not done yet.
+
 ## Where to go
 
 - Learn: [Index a repository and ask it questions](docs/tutorials/index-and-ask.md).
