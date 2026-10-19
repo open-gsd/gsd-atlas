@@ -3,7 +3,7 @@ phase: 03-typescript-module-and-mvp-eval
 plan: 35
 subsystem: eval
 status: in-progress
-note: "Task 1 done; Task 2 answered (chunked run on the Max subscription); Task 3 in progress: chunk 1 done (130 of 450 cells), no analysis run, no verdict."
+note: "Task 1 done; Task 2 answered (chunked run on the Max subscription); Task 3 in progress: chunks 1 and 2 done (285 of 450 cells), no analysis run, no verdict."
 tags: [eval, scored-run, projection, checkpoint]
 ---
 
@@ -105,3 +105,22 @@ Subscription note: the run stayed on the claude.ai Max login (no API key in the 
 ## Chunk 2 decision record (2026-10-19)
 
 The human's reply at the chunk 1 boundary, verbatim: "go for chunk 2". Reading: continue the registered run with the harness cost stop raised to 10 USD notional (about cell 260 of 450); same constraints as chunk 1 (claude.ai Max subscription, no API key, no paid API usage). Environment re-checked before launch (names only): the nine API/Bedrock/Vertex/Foundry variables unset; `claude auth status` loggedIn, claude.ai, firstParty, max; 130 cells on disk; `git diff --stat 37b12e3..HEAD` over the build inputs empty; fresh `npm ci --ignore-scripts && npm run build` in this worktree. Rate-limit rule: any `infrastructureFailure` in this chunk stops the work with nothing deleted or edited.
+
+## Task 3 progress: chunk 2 (2026-10-19)
+
+Command: the registered one with `--stop-at-cost-usd 10`, same `--out-dir` (130 cells already on disk, skipped), Claude Code 2.1.302 on PATH, built at this worktree after a fresh `npm ci --ignore-scripts && npm run build`, `verify-prereg: ok`, clean tree, no change to the build inputs since `37b12e3`. No analysis (`analyze.ts`) was run and no verdict exists; the figures are descriptive counts of a partial run.
+
+- Cells: 155 new, 285 of 450 done (atlas 142, grep 143; the stop fell between the two members of the last pair, so one grep cell has no atlas partner yet), 69 distinct questions. Wall time 1,276 s (21.3 min) for the chunk. 0 infrastructure failures, 0 retries (285 attempts for 285 cells, all `status: ok`), 0 contaminated, 0 rate-limit or usage-limit messages. The harness ended with `the cost stop at 10 USD was reached; no further session was started` (exit 1 is that stop); cost on disk 10.0265 USD notional. The harness is waiting for a go-ahead: the same command with a higher `--stop-at-cost-usd` continues at cell 286.
+
+| Per arm | n | correct (key) | input | output | cache write | cache read | billable | notional USD | mean billable / session | mean USD / session |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| atlas, chunk 2 | 77 | 61 | 500 | 44,952 | 496,375 | 2,765,834 | 3,307,661 | 2.7126 | 42,957 | 0.03523 |
+| grep, chunk 2 | 78 | 57 | 508 | 45,155 | 419,261 | 1,591,957 | 2,056,881 | 2.2888 | 26,370 | 0.02934 |
+| atlas, cumulative | 142 | 113 | 960 | 91,051 | 992,893 | 5,435,205 | 6,520,109 | 5.4275 | 45,916 | 0.03822 |
+| grep, cumulative | 143 | 109 | 986 | 91,910 | 838,373 | 3,244,049 | 4,175,318 | 4.5990 | 29,198 | 0.03216 |
+
+Paired (descriptive, not the registered test): chunk 2, 77 pairs, atlas/grep billable 1.62, cost 1.19, atlas fewer in 4 pairs, only atlas correct 5, only grep correct 0, both wrong 16. Cumulative, 142 pairs, billable 1.57, cost 1.19 (1.18 after chunk 1), atlas fewer in 10, only atlas correct 7, only grep correct 2, both wrong 27.
+
+Atlas arm behaviour: an atlas tool was called in 31 of 77 sessions in this chunk (34 calls), 56 of 142 cumulative (61 calls); the `gsd-atlas` skill body was loaded in 0 of 142.
+
+Extrapolation to 450 cells (chunk-mean per session x 225 per arm; 95 percent interval from a question-cluster bootstrap, 4,000 draws, on the 285 cumulative rows): atlas 8.60 USD, grep 7.24, total **15.8 USD** (13.8 to 18.3), 16.9 M billable tokens (14.5 to 19.8 M); category-reweighted to the full question mix 16.3 USD, 17.4 M. The remaining 165 cells cost about 5.3 to 5.8 USD notional and about 23 min of wall time at 8.2 s per cell; one more chunk with a stop line of at least 17 USD (for example 20) finishes the run. The dollar unit is Claude Code's notional cost, not a charge.
