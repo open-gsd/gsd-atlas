@@ -70,4 +70,16 @@ This guide registers the `gsd-atlas-mcp` server in the user-level configuration 
 
 The entry holds absolute paths. Run `init` again from the new location, or with the new Node: it reports `updated` and rewrites the entry.
 
-For every option and the `init` envelope, see [the CLI reference](../reference/cli.md). For the tools the server offers, see [the MCP reference](../reference/mcp.md).
+## If you also want the agent to have the skills
+
+`init` copies no skills. See [How to install the gsd-atlas skills](install-the-skills.md).
+
+## If you have approved a command with `gsd-atlas allow`
+
+`init` registers the server without `--allow-build`, so the server never runs an approved command. See [How to approve a precise command for one repository](approve-a-precise-command.md).
+
+## If you want to know what the agent can now call
+
+The server offers seven tools, all read-only: `code_find`, `code_refs`, `code_context`, `code_impact`, `atlas_status`, `lang_list` and `code_explain`. See [the MCP reference](../reference/mcp.md).
+
+For every option and the `init` envelope, see [the CLI reference](../reference/cli.md).

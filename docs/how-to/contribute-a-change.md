@@ -60,7 +60,7 @@ This guide checks a change before you propose it. It assumes a clone with your e
 
    Each prints one JSON envelope on stdout. `lang test` checks the toy module against its golden files and exits 0 when `ok` is `true`; it exits 1 for an unknown module and 2 for a failed check. `lang list` shows which modules were found and where each came from.
 
-The change has to clear the same checks in continuous integration: Node 24.16.0 and 26 on Linux, macOS and Windows run the build, the tests and the parse-error budget; Node 24.16.0 on Linux runs lint, typecheck and the schema check; the grammar rebuild runs on all three systems; the measured gates run on all three, and you can run them yourself (see [How to run the measured gates locally](run-the-measured-gates-locally.md)).
+The change has to clear the same checks in continuous integration: Node 24.16.0 and 26 on Linux and macOS run the build, the tests and the parse-error budget; the Windows jobs run too but do not block (Windows is postponed past the alpha); Node 24.16.0 on Linux runs lint, typecheck and the schema check; the grammar rebuild and the measured gates block on Linux and macOS and have a Windows leg that does not block, and you can run the gates yourself (see [How to run the measured gates locally](run-the-measured-gates-locally.md)).
 
 ## If `grammar:verify` reports a mismatch
 
