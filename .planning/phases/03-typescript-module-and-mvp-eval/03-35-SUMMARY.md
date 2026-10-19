@@ -2,14 +2,24 @@
 phase: 03-typescript-module-and-mvp-eval
 plan: 35
 subsystem: eval
-status: in-progress
-note: "Task 1 done; Task 2 answered (chunked run on the Max subscription); Task 3 in progress: chunks 1 and 2 done (285 of 450 cells), no analysis run, no verdict."
-tags: [eval, scored-run, projection, checkpoint]
+status: complete
+evaluation-status: MVP not met
+note: "Scored run complete (450 of 450 cells, 0 infrastructure failures, 0 contaminated). Registered analysis: accuracy non-inferior, tokens not fewer, citations below threshold; OVERALL MVP not met. Diagnosis committed; Phase 4 is blocked until a new registered run meets the gate (D-04)."
+tags: [eval, scored-run, projection, checkpoint, verdict, diagnosis]
+key-files:
+  created:
+    - docs/eval/analysis.md
+    - docs/eval/diagnosis.md
+    - docs/eval/results/results.jsonl
+    - docs/eval/results/sessions.meta.jsonl
+    - docs/eval/results/attempts.jsonl
 ---
 
-# Phase 3 Plan 35: Scored Eval Run (in progress, Task 1 recorded)
+# Phase 3 Plan 35: Scored Eval Run (complete; verdict MVP not met)
 
-This file records Task 1 (pre-run integrity checks and the projection). Tasks 2 and 3 are not done: the plan is paused at the blocking-human checkpoint, and no session that reaches the model has been started.
+**Evaluation status: MVP not met.** The pre-registered scored run executed in full and the registered analysis (`docs/eval/analysis.md`, `OVERALL: MVP not met`) found accuracy non-inferior (atlas 0.8000, grep 0.7511, 5th percentile of the paired bootstrap +0.0133 against the -0.05 margin), tokens not fewer (atlas 47,375.1 against grep 29,393.1 billable tokens per session; paired difference +17,982.0, 95th percentile +20,709.4 against a required value below zero), and citations below threshold (atlas 144 of 198 sessions, 72.7 percent, against 80 percent on the registered point estimate). A miss is a result: nothing registered was changed, no cell was rerun and no session was dropped. The diagnosis is in `docs/eval/diagnosis.md`. Phase 4 is blocked until a new registered run meets the gate (D-04). The final section ("Final result") records the run and the analysis; the sections before it are the in-progress record, kept as written.
+
+This file first recorded Task 1 (pre-run integrity checks and the projection) and the chunked Task 3 progress; the final section was added by the continuation that completed the run.
 
 ## Task 1 record (2026-10-18)
 
@@ -124,3 +134,54 @@ Paired (descriptive, not the registered test): chunk 2, 77 pairs, atlas/grep bil
 Atlas arm behaviour: an atlas tool was called in 31 of 77 sessions in this chunk (34 calls), 56 of 142 cumulative (61 calls); the `gsd-atlas` skill body was loaded in 0 of 142.
 
 Extrapolation to 450 cells (chunk-mean per session x 225 per arm; 95 percent interval from a question-cluster bootstrap, 4,000 draws, on the 285 cumulative rows): atlas 8.60 USD, grep 7.24, total **15.8 USD** (13.8 to 18.3), 16.9 M billable tokens (14.5 to 19.8 M); category-reweighted to the full question mix 16.3 USD, 17.4 M. The remaining 165 cells cost about 5.3 to 5.8 USD notional and about 23 min of wall time at 8.2 s per cell; one more chunk with a stop line of at least 17 USD (for example 20) finishes the run. The dollar unit is Claude Code's notional cost, not a charge.
+
+## Chunk 3 decision record (2026-10-19)
+
+The human's replies after chunk 2, verbatim and in order: "go finish" (before the stop); "stop the current chunking run" (the third launch was stopped by the user after 35 cells, 320 of 450 on disk, no process left running); then: "run the full chunk run collecting all data and use GSD_MEMTRACE_GUARD_OFF=1 to block the guard so it'll test atlas instead of be screwed up by the hook".
+
+The orchestrator's reading, adopted here: resume and complete the remaining 130 cells with `--stop-at-cost-usd 20` (cumulative notional cost on disk was about 12 USD; about 5 to 6 USD more expected), then run the registered analysis. Same constraints as before: the claude.ai Max subscription, no API key, no paid API usage.
+
+About `GSD_MEMTRACE_GUARD_OFF=1`: it is a human escape for the user's Memtrace-first PreToolUse hook and has to be exported in the shell that launches Claude Code; it is not self-issuable, and this executor did not set it or work around it (its own Bash and Read calls that touched indexed source were guarded and went through `codegraph` as the guard prescribes). It is also irrelevant to the scored sessions: the harness launches `claude` with `--setting-sources ""` and `--strict-mcp-config` (`scripts/eval/claude-session.ts`), so the user's hooks and MCP servers are not loaded in eval sessions. That claim was checked on all 450 streams (see "Hook-isolation re-check" below); it holds.
+
+Environment check before the final launch (names only, no values printed): `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_BASE_URL`, `CLAUDE_CODE_USE_BEDROCK`, `CLAUDE_CODE_USE_VERTEX`, `CLAUDE_CODE_USE_FOUNDRY`, `AWS_BEARER_TOKEN_BEDROCK`, `ANTHROPIC_BEDROCK_BASE_URL`, `ANTHROPIC_VERTEX_PROJECT_ID` all unset; `claude --version` 2.1.302 (scratch symlink); `claude auth status`: loggedIn, authMethod claude.ai, apiProvider firstParty, subscriptionType max. Worktree: merge of the previous executor's worktree was clean; `git diff --stat 37b12e3..HEAD` over `src modules schemas diagnostics package.json package-lock.json tsconfig.json tsconfig.build.json scripts/eval skills` printed nothing; fresh `npm ci --ignore-scripts && npm run build`; `verify-prereg: ok`; clean tree; `plan --scored` printed `gate: ok`, 450 cells.
+
+## Final result (2026-10-19)
+
+**Run.** The registered command with `--stop-at-cost-usd 20` and the same `--out-dir` finished with exit 0: `done: 130`, `skipped: 320`, `cost so far: 16.1142 USD`. Totals over the whole run: 450 of 450 cells (atlas 225, grep 225, 75 questions x 3 runs), 225 complete pairs, all 450 sessions `status: ok`, 0 failed, 0 contaminated, 0 infrastructure failures (`infrastructureFailure` is false on all 450 attempt records), 0 retries (450 attempts for 450 cells), 0 rate-limit or usage-limit messages in any chunk log. `harness summary`: 450 rows, no duplicate cell, "questions with both arms: 75".
+
+**Resumes and wall time.** Four launches of the same command (first, then three resumes: the chunk 2 go-ahead, the launch the user stopped after 35 cells, and the final one): 130, 155, 35 and 130 cells in 1,093 s, 1,254 s, 285 s and 1,059 s of elapsed time, 3,690 s (61.5 min) in all; summed session wall time 1,779.8 s (atlas, mean 7.91 s) and 1,716.1 s (grep, mean 7.63 s), which at concurrency 2 is consistent with the elapsed time. Two harness cost stops fired (5 and 10 USD) and one run was stopped by the user. The interruption left the results file with complete lines only, and the resumed run skipped finished cells (no cell was run twice: 450 attempts, 450 cells). Planned 1.5 to 3 hours, observed about 1 hour.
+
+**Cost and tokens (Claude Code's notional API-equivalent cost on the Max subscription; no charge, no API key).** Total 16.1142 USD (atlas 8.7419, grep 7.3723), against the planning figure of 30 USD and the extrapolations of 17.4 and 15.8 USD after chunks 1 and 2. Billable tokens (input + output + cache creation + cache read): atlas 10,659,389 (input 1,552; output 148,740; cache creation 1,589,865; cache read 8,919,232), grep 6,613,442 (input 1,560; output 146,847; cache creation 1,347,241; cache read 5,117,794), 17,272,831 in all.
+
+**Registered analysis** (`node scripts/eval/analyze.ts docs/eval/results/results.jsonl --prereg docs/eval/preregistration.md --out docs/eval/analysis.md`, run on the committed rows, parameters read from the frozen block; exit 0):
+
+| Criterion | Value | Result |
+| --- | --- | --- |
+| Accuracy (H1) | atlas 0.8000 (180 of 225), grep 0.7511 (169 of 225); observed difference +0.0489; paired cluster bootstrap 5th percentile +0.0133, 95th percentile +0.0889; rule: 5th percentile above -0.0500 | non-inferior |
+| Tokens (H2, `upper-bound`) | atlas 47,375.1, grep 29,393.1 mean billable per session; paired difference per question +17,982.0, 5th percentile +15,435.1, 95th percentile +20,709.4; rule: 95th percentile below zero | not fewer |
+| Citations (H3, `point_estimate`) | atlas 144 of 198 = 72.7 percent (Wilson 66.1 to 78.5); grep 146 of 198 = 73.7 percent; threshold 80.0 percent (159 sessions needed) | below threshold |
+| Overall | `OVERALL: MVP not met` | MVP not met |
+
+Tool-call rate and wall time (reported, not judged): 3.75 tool calls per atlas session and 3.50 per grep session; atlas tools were 11.0 percent of atlas tool calls; mean wall 7,910 ms and 7,627 ms.
+
+**Diagnosis headline** (`docs/eval/diagnosis.md`; descriptive, separate from the verdict). An atlas tool was called in 86 of 225 atlas sessions (38.2 percent, 93 calls: `code_refs` 49, `code_find` 37, `code_impact` 7; the other four tools 0 times). The `gsd-atlas` skill body was loaded in 0 of 225 sessions. 94 percent of the token gap is cache read (+16,895 of +17,982 per session); the atlas context is about 3,200 tokens heavier per turn (a proxy), and the 139 pairs in which atlas was not called account for 65 percent of the gap, so the fixed cost of the tool definitions, server instructions and skill description outweighs any saving. Atlas was dearer in every category (billable ratio 1.36 to 1.86) and used fewer billable tokens than grep in 15 of 225 pairs. Accuracy was at or above grep's in every category (largest: emit +20.0 points, with no atlas call in any of its 30 sessions). The citation shortfall is the same in both arms and sits in ADR, impact and emit answers (answers with no line: 40 of 198 atlas sessions). 13 questions were wrong in both arms in every run.
+
+**What this means.** The MVP gate of D-04 is not met: the claim "fewer tokens at non-inferior accuracy with at least 80 percent verifiable citations" holds for accuracy only. Phase 4 is blocked until a new registered run meets the gate. The proposals for that run are in `docs/eval/diagnosis.md` (section 9); none is applied here. This is a result for `tools plus visible skill` (Revision 1 of the pre-registration): the atlas arm's description tokens were counted and never subtracted, and the skill body was never loaded.
+
+**Hook-isolation re-check (the Memtrace-first guard and `GSD_MEMTRACE_GUARD_OFF`).** Over all 450 raw streams (450 files, one per attempt): `codegraph` 0 files, `memtrace` 0, `MEMTRACE-FIRST` 0, `GSD_MEMTRACE` 0, `"subtype":"hook` 0, `hook_started` or `hook_response` 0. The system events present are `init` (450), `thinking_tokens` (608) and `permission_denied` (21: 5 atlas, 16 grep, shell commands refused because a variable could not be checked; no session failed because of one). The ten streams containing the string `PreToolUse` contain it only in repository source text printed by a tool (a function name or a documentation path in gsd-core), never as an event. The scored sessions therefore ran without the user's hooks, with or without the environment variable.
+
+**Committed files.** `docs/eval/analysis.md` (the registered report), `docs/eval/diagnosis.md`, and `docs/eval/results/results.jsonl` (450 rows), `sessions.meta.jsonl` (456 lines: 450 session records, 4 run starts, 2 cost stops) and `attempts.jsonl` (450). The meta and attempts files had the scratch and temporary directory paths replaced by `<scratch>` and `<tmp>` (as in the pilot files); the rows are byte-identical to the run directory's. Checked before commit: no home directory path, no `/private` path and no mention of the word that names raw session text in any of the three files; no field of any row holds an answer text. **Raw results location (not committed):** `/private/tmp/claude-501/-Users-trekkie-projects-gsd-atlas/38c0b34a-c419-49e3-bc93-62fb2dc2512b/scratchpad/run` (`results.jsonl`, `attempts.jsonl`, `sessions.meta.jsonl`, `streams/` with 450 raw streams); the registered analysis recomputes from the committed rows alone.
+
+**Prohibitions kept.** No registered file was changed (`verify-prereg: ok` before the run and after the analysis; `git status` showed only the new result files and reports), no parameter, question, skill or flag was changed, no cell was rerun, no failed session existed to drop, and the verdict is the one `analyze.ts` printed. ROADMAP.md, STATE.md and REQUIREMENTS.md were not edited by this executor (the orchestrator owns them).
+
+## Deviations from Plan
+
+None to the registered design. The plan's cost-overrun edge (stop at 125 percent of the projection, ask the human) was replaced by the user's own chunked cost stops (5, 10 and 20 USD notional) at the Task 2 checkpoint; the run finished at 16.11 USD, far below the 37.5 USD line the plan would have used. The plan's step to write the log and poll no more than every ten minutes was followed in effect (the run ran in the background and the executor waited for it).
+
+## Blocking-human checkpoint still open
+
+None in this plan. The consequence belongs to the user: Phase 4 stays blocked (D-04) until a new registered run, which needs its own approvals, meets the gate.
+
+## Self-Check
+
+Committed files exist: `docs/eval/analysis.md` (contains `OVERALL: MVP not met` and the echoed parameters), `docs/eval/diagnosis.md`, `docs/eval/results/results.jsonl` (450 lines, each validated by `harness summary` through `ResultRowSchema`), `sessions.meta.jsonl`, `attempts.jsonl`. `node scripts/eval/verify-prereg.ts`: ok. `harness summary --out-dir docs/eval/results`: 450 rows, 75 questions with both arms, no duplicate cell.
