@@ -95,6 +95,12 @@ Every statement a page makes that could be wrong, with the page it is on and its
 | `code_explain` input schema (`handle`, `answer_id`, `repo`, `cwd`, `budget_tokens`), `readOnlyHint`, "Give exactly one of handle and answer_id." | `mcp.md` | mcp: `tools/list` schema; `tools/call` with both inputs |
 | The degraded codes and their meanings | `mcp.md` | code: `src/facts/degraded.ts:16-31` (comment lines 5-12), `src/tenant/create.ts:90-103` (`precise_unavailable`) |
 | The `answer_id` example is a real `gsd-atlas explain <answer id>` envelope | `mcp.md` | run: `gsd-atlas explain a_b5be4179a434dd9b` |
+| The tutorial was replayed end to end in a fresh clone of the committed tree (commit `a26fe40`), with redirected home, caches, state and store; `npm ci --ignore-scripts` ends with `found 0 vulnerabilities`, `npm run build` prints the two banner lines, `--version` prints `gsd-atlas 0.0.0` | `tutorials/index-and-ask.md` | run: `replay-setup.sh` (clone of the worktree, `npm ci --ignore-scripts`, `npm run build`, `node dist/bin/gsd-atlas.js --version`); Node v26.11.1 on macOS; `package.json` `engines` is `>=24.16.0` |
+| Step 4 to 8 outputs (`build`, `find`, `refs`, `context`, `impact`, `explain`, `find`) are the replay's own output, with only the directory replaced by `/path/to/atlas-demo` | `tutorials/index-and-ask.md` | run: `replay-run.sh` and `replay-run2.sh`; each fence has a `cli:` marker |
+| A demo repository without `tsconfig.json` answers `refs`, `context` and `impact` with `degraded: ["precise_unavailable"]` and an `info` diagnostic of that code; the `refs` edge is `INFERRED` | `tutorials/index-and-ask.md` | run: the replay (`refs.json`, `context.json`, `impact.json`) |
+| `explain <answer id>` for that `impact` answer reports tool `code_impact`, two facts with tier `grammar`, and `tiers.precise` `inactive` with the reason `no TypeScript project configuration was found in this repository` | `tutorials/index-and-ask.md` | run: the replay (`explain.json`) |
+| The tutorial says Windows is not supported in the alpha, Linux and macOS are, before the first `git clone`, and that the commands are for a POSIX shell | `tutorials/index-and-ask.md` | decision: `.planning/PROJECT.md` Decision 2; wording from the todo |
+| The continuous-integration sentence: Linux and macOS block; the Windows legs of the test, grammar and gates jobs carry `continue-on-error`; static checks run on Ubuntu with Node 24.16.0 | `how-to/contribute-a-change.md` | code: `.github/workflows/ci.yml:23-52, 88-94, 136-142` (`continue-on-error: ${{ matrix.os == 'windows-latest' }}`); decision: `.planning/PROJECT.md` Decision 2 |
 
 ## Checklist
 
@@ -104,6 +110,8 @@ Per page, from the skill's publishing checklist: exactly one quadrant; title fit
 |------|----------|------------|-------------------|---------------|----------------|--------|
 | `docs/reference/cli.md` | yes: reference; each command has the same shape (usage, options, result, errors); the opening of the new `allow`, `diagnostics`, `bug` sections is a one-sentence statement, not instruction | yes (unchanged H1) | yes: data shapes of tools and the degraded codes link to the MCP reference | n/a (the reference shows usage lines; the test checks every json fence's `cli:` command) | yes: all json fences | pass |
 | `docs/reference/mcp.md` | yes: reference; the start-up flags table and the degraded-code table follow the shape of the other tables | yes (unchanged H1) | yes: CLI facts link to cli.md | n/a | yes: all json fences | pass |
+| `docs/how-to/contribute-a-change.md` | yes: how-to; one sentence changed | yes (unchanged) | yes | n/a | n/a | pass |
+| `docs/tutorials/index-and-ask.md` | yes: tutorial; one path, no options; the one new step (explain) is a command, its output and a "notice" paragraph; explanation is one clause | yes: states what will be built ("In this tutorial we will build gsd-atlas, index ..., ask ... and ask why") | yes: the reference and the explanation are linked under Next | yes: every command is in the replay | yes: all json fences and the `replayed` marker | pass (the tutorial's `explain` step is the only change in structure) |
 
 ## Findings outside the scope of this plan
 
@@ -111,4 +119,4 @@ Recorded here because `deferred-items.md` is not in this plan's file list; the s
 
 | Finding | Evidence | Why not fixed here |
 |---------|----------|--------------------|
-| (rows are added when found) | | |
+| `explain <handle>` reports every grammar-tier fact as `stale: true` with `currentGrammarVersion: "0.1.0"` while the fact's `grammarVersion` is `"0.23.2"`. The port compares the fact's stored grammar version (the upstream grammar version) with the module manifest's own `version` (`0.1.0`), two different numbers, so the comparison never matches. | run: `gsd-atlas explain 'sym/src%2Fconfig.ts/<hash>/3'` on a freshly built index; code: `src/tenant/create.ts:464` (`grammarVersion` returns the manifest `version`), `modules/typescript/atlas-lang.json` (`"version": "0.1.0"`) | `src/` is out of scope for this plan (R9). The reference states the contract as the code and the ADR give it; the tutorial uses the `answer_id` form of `explain`, which does not show `stale`; the how-to does not tell the reader to act on `stale`. Report to the owner of plan 03-26. |
