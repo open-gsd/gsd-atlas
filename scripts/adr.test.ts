@@ -1596,7 +1596,7 @@ describe('every decision record is numbered and Accepted (SKL-03)', () => {
     for (const slug of ALL_KNOWN) {
       const file = findAdrFile(ADR_DIR, slug);
       const n = /^(\d+)-/.exec(file ?? '')?.[1];
-      assert.ok(file !== undefined && n !== undefined, `${slug} is not a numbered file`);
+      assert.ok(file !== null && n !== undefined, `${slug} is not a numbered file`);
       const body = fs.readFileSync(path.join(ADR_DIR, file), 'utf8');
       assert.match(body, /^- \*\*Status:\*\* Accepted$/m, file);
       assert.ok(body.includes(`- **Issue:** [#${n}](${REPO_URL}/issues/${n})`), `${file}: the Issue line does not name #${n}`);
@@ -1630,7 +1630,7 @@ describe('every decision record is numbered and Accepted (SKL-03)', () => {
     const note = `> Ratification note: ratified together on ${PASS_DATE} with every other record in this folder (see docs/adr/README.md).`;
     for (const slug of ALL_KNOWN) {
       const file = findAdrFile(ADR_DIR, slug);
-      assert.ok(file !== undefined, slug);
+      assert.ok(file !== null, slug);
       const body = fs.readFileSync(path.join(ADR_DIR, file), 'utf8');
       assert.doesNotMatch(body, /^> Pre-release note:/m, `${file} still carries a pre-release note`);
       const notes = body.split('\n').filter((l) => l.startsWith('> Ratification note:'));
@@ -1652,7 +1652,7 @@ describe('every decision record is numbered and Accepted (SKL-03)', () => {
 
   it('the diagnostics source comments name the accepted record by its file name', () => {
     const file = findAdrFile(ADR_DIR, 'user-controlled-diagnostics');
-    assert.ok(file !== undefined && /^\d+-/.test(file));
+    assert.ok(file !== null && /^\d+-/.test(file));
     for (const rel of DIAGNOSTICS_COMMENT_FILES) {
       const head = fs.readFileSync(path.join(ROOT, rel), 'utf8').split('\n').slice(0, 8).join('\n');
       assert.ok(head.includes(`docs/adr/${file}`), `${rel}: the first comment does not name docs/adr/${file}`);
