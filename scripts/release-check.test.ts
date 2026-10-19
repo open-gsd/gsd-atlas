@@ -13,6 +13,7 @@ import {
   checkChangelog,
   checkManifest,
   checkPack,
+  checkShebang,
   checkVersion,
   distTagFor,
   scanText,
@@ -192,6 +193,7 @@ test('checkPack: source maps, TypeScript sources and test output do not ship', (
     assert.ok(problems.some((problem) => problem.includes(stray)), `${stray}: ${problems.join('; ')}`);
   }
   assert.deepEqual(checkPack(withFiles([{ path: 'dist/cli/other.d.ts', size: 1, mode: 420 }]), goodManifest()), [], 'declaration files are fine');
+  assert.deepEqual(checkPack(withFiles([{ path: 'modules/typescript/fixtures/basic.ts', size: 1, mode: 420 }]), goodManifest()), [], 'module fixtures are shipped on purpose');
 });
 
 test('checkPack: both grammar .wasm files must be present and non-empty', () => {
@@ -208,11 +210,16 @@ test('checkPack: README, LICENSE, CHANGELOG and package.json are required', () =
   }
 });
 
-test('checkPack: each bin target is packed and executable', () => {
+test('checkPack: each bin target is packed', () => {
   assert.ok(checkPack(without('dist/bin/gsd-atlas.js'), goodManifest()).some((problem) => problem.includes('dist/bin/gsd-atlas.js')));
-  const notExecutable: PackInfo = { ...goodPack(), files: goodPack().files.map((file) => (file.path === 'dist/bin/gsd-atlas-mcp.js' ? { ...file, mode: 420 } : file)) };
-  const problems = checkPack(notExecutable, goodManifest());
-  assert.ok(problems.some((problem) => problem.includes('dist/bin/gsd-atlas-mcp.js') && /executable/.test(problem)), problems.join('; '));
+  assert.ok(checkPack(without('dist/bin/gsd-atlas-mcp.js'), goodManifest()).some((problem) => problem.includes('dist/bin/gsd-atlas-mcp.js')));
+});
+
+test('checkShebang: a bin must start with a node shebang (npm makes it executable on install; the tarball keeps mode 644)', () => {
+  assert.deepEqual(checkShebang('dist/bin/gsd-atlas.js', '#!/usr/bin/env node\nimport "x";\n'), []);
+  assert.notDeepEqual(checkShebang('dist/bin/gsd-atlas.js', 'import "x";\n'), []);
+  assert.notDeepEqual(checkShebang('dist/bin/gsd-atlas.js', '#!/bin/sh\n'), []);
+  assert.ok(checkShebang('dist/bin/gsd-atlas.js', '').some((problem) => problem.includes('dist/bin/gsd-atlas.js')));
 });
 
 test('checkPack: the packed size cap is 5 MB', () => {
@@ -233,6 +240,7 @@ test('scanText: absolute home paths are reported', () => {
   assert.ok(scanText('dist/a.js', 'at /home/bob/src/x.ts:1').length > 0);
   assert.ok(scanText('dist/a.js', 'C:\\Users\\carol\\x').length > 0);
   assert.deepEqual(scanText('dist/a.js', 'const home = os.homedir(); join(home, ".cache")'), []);
+  assert.deepEqual(scanText('dist/a.js', '// a drive-letter path (`C:/Users/x`) and /home/user/ are placeholders'), []);
 });
 
 test('scanText: secret-looking strings are reported without echoing them', () => {
