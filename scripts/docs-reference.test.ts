@@ -425,3 +425,31 @@ test('platform wording follows the alpha decision', () => {
 
   assert.deepEqual(problems, []);
 });
+
+/** The `description` of a skill's front matter: a double-quoted YAML string is a JSON string, anything else is taken as written. */
+function skillDescription(text: string): string {
+  const match = /^---\n([\s\S]*?)\n---/.exec(text);
+  const line = (match?.[1] ?? '').split('\n').find((candidate) => candidate.startsWith('description:'));
+  const value = (line ?? '').slice('description:'.length).trim();
+  if (value.startsWith('"')) return JSON.parse(value) as string;
+  return value;
+}
+
+test('skill catalog matches the skill files', () => {
+  const folders = readdirSync(path.join(root, 'skills'), { withFileTypes: true })
+    .filter((entry) => entry.isDirectory() && existsSync(path.join(root, 'skills', entry.name, 'SKILL.md')))
+    .map((entry) => entry.name)
+    .sort();
+  assert.ok(folders.length > 0, 'the package ships at least one skill');
+  const page = read('docs/how-to/install-the-skills.md');
+  const problems: string[] = [];
+  for (const folder of folders) {
+    const description = skillDescription(read(`skills/${folder}/SKILL.md`));
+    const first = description.split(/(?<=[.!?])\s+/)[0] ?? '';
+    if (first === '') problems.push(`skills/${folder}/SKILL.md has no description`);
+    else if (!page.includes(first)) problems.push(`docs/how-to/install-the-skills.md does not hold the first sentence of the ${folder} description: ${first}`);
+    if (!page.includes(`\`${folder}\``)) problems.push(`docs/how-to/install-the-skills.md does not name the skill \`${folder}\``);
+  }
+  if (!page.includes('gsd-atlas-eval:gsd-atlas')) problems.push('docs/how-to/install-the-skills.md does not name gsd-atlas-eval:gsd-atlas');
+  assert.deepEqual(problems, []);
+});
