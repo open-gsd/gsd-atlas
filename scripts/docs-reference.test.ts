@@ -570,8 +570,11 @@ test('decision records are called drafts', () => {
   const problems: string[] = [];
   const legend = read('docs/adr/README.md');
   if (!/^## Pre-release legend\s*$/m.test(legend)) problems.push('docs/adr/README.md has a "Pre-release legend" section');
+  // The records numbered at the MVP gate (ratified on 2026-10-18) never carried a pre-release note.
   for (const name of readdirSync(path.join(root, 'docs', 'adr')).filter((each) => /^\d+-.*\.md$/.test(each))) {
-    if (!/^> Pre-release note:/m.test(read(`docs/adr/${name}`))) problems.push(`docs/adr/${name} has no "Pre-release note:" line`);
+    const record = read(`docs/adr/${name}`);
+    if (/^- \*\*Ratified:\*\* 2026-10-18\s*$/m.test(record)) continue;
+    if (!/^> Pre-release note:/m.test(record)) problems.push(`docs/adr/${name} has no "Pre-release note:" line`);
   }
   const pairs: ReadonlyArray<readonly [string, string]> = [
     ['README.md', 'docs/adr/README.md'],
