@@ -14,6 +14,8 @@ export interface SessionSpec {
   allowedTools: string[];
   mcpConfigPath: string;
   pluginDirs: string[];
+  /** Inline settings JSON for `--settings` (added to the session only; `--setting-sources` stays empty). Absent: no flag. */
+  settings?: string;
   jsonSchema?: string;
   model?: string;
   maxBudgetUsd: number;
@@ -118,6 +120,7 @@ export function buildClaudeArgs(spec: SessionSpec): string[] {
     spec.mcpConfigPath,
   ];
   for (const dir of spec.pluginDirs) args.push('--plugin-dir', dir);
+  if (spec.settings !== undefined) args.push('--settings', spec.settings);
   args.push('--tools', spec.tools.join(','));
   if (spec.allowedTools.length > 0) args.push('--allowedTools', spec.allowedTools.join(','));
   args.push('--max-budget-usd', String(spec.maxBudgetUsd));

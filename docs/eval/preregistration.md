@@ -1,6 +1,6 @@
 # Pre-registration of the MVP eval (plan 03-16)
 
-Status: Frozen (Stage A, 2026-10-18, by Tom Boucher)
+Status: Draft
 
 This document records the design of the eval that decides whether the gsd-atlas MVP meets its claim. It describes the design only. It reports no scored result and hints at none. Once the status line above reads `Frozen`, `node scripts/eval/verify-prereg.ts` (run by the static CI job) fails when any of the sixteen registered files changes, and a changed registered value is a new registered run (see Deviations policy).
 
@@ -103,7 +103,8 @@ OQ4 confirmed by the user: point_estimate
 ```prereg-json
 {
   "stage": "A",
-  "status": "Frozen",
+  "status": "Draft",
+  "revision": 1,
   "params": {
     "marginPoints": 5,
     "intervalLevel": 0.95,
@@ -123,24 +124,7 @@ OQ4 confirmed by the user: point_estimate
     "corpusSha": "10ac3a7a947903ba50f538a907af036744d759d5",
     "npmCiRan": true
   },
-  "files": {
-    "scripts/eval/questions/gsd-core.questions.json": "841b2bdb202f286c3da5ac3a2c6b01ec4a1520e4a6d343089697e1f8f326700f",
-    "scripts/eval/questions/gsd-core.answers.json": "e9e43d565bfbacc1c2ce045debdae4ee11e32510471c85465ad1e1f50d92413a",
-    "scripts/eval/questions.ts": "425623eda7487496bf2a0ef959ef0ee079e8ccf4d0f41fca324ae01cee03dc64",
-    "scripts/eval/oracle.ts": "8d83f5d8197f12e2234b7d83c831951022d658c1306304887bf1650364f53fdc",
-    "scripts/eval/score.ts": "27cae3d4e1bf257d0bdd68ba0e393df7465b10afa8ef06dcd41208379fc1775e",
-    "scripts/eval/answer-schema.json": "6da389ecb51825629b7770a562b88db67e245d775f7ec903475df97f6c03b72a",
-    "scripts/eval/stats.ts": "e6f50d1f08ab1d53f6b9101e0bc890ca6f8b462a3acb671e5fd50e9dd829b851",
-    "scripts/eval/rows.ts": "c2a24b17cf8b0f2508a7ae0ce8f5419bfea6f90056f929a699893e424f3222de",
-    "scripts/eval/analyze.ts": "8328e47c7a21c34e2ffec617f2646cb3b290f6fb3f79fb58f0497eb516c015d0",
-    "scripts/eval/prereg.ts": "2e6d86fe1ccc20171a9e8c41b9f1b827f5207113bbb5de62429cfe2f7bfbcc25",
-    "scripts/eval/claude-session.ts": "e967fc6549ed2072160b35be3caf47f3f80e5f6fbcf020fbbb64fc23ca3c0ca6",
-    "scripts/eval/arms.ts": "e33cc7066d5a3384580baef78d54db1433d98c1ca7b03022a92681a795fd4c31",
-    "scripts/eval/harness.ts": "c659db81e9d7cb3e3a61a8df9c13846ba23463990920b797794e6c8e58852870",
-    "scripts/eval/schedule.ts": "ef4cd8c0157b6e836f8470652b658fb022f55ef96df6c1865c85043a42097d9d",
-    "scripts/eval/results.ts": "669e0b0909cb6d3c73ea966e9b5394154ed762eb2ed15cf238c35f0530abc373",
-    "scripts/eval/prepare-corpus.ts": "cee98c9221f18e0cff4905e60970684cef3a9b6a520cfb668b73397e39ba3dba"
-  },
+  "files": {},
   "questionSet": {
     "count": 75,
     "byCategory": {
@@ -153,6 +137,146 @@ OQ4 confirmed by the user: point_estimate
       "definition": 7,
       "abstain": 9
     }
-  }
+  },
+  "supersedes": [
+    {
+      "revision": 0,
+      "status": "Status: Frozen (Stage A, 2026-10-18, by Tom Boucher)",
+      "frozenAtCommit": "8a1da047ad61aa6d2f41b69dae7de9206d654147",
+      "params": {
+        "marginPoints": 5,
+        "intervalLevel": 0.95,
+        "resamples": 10000,
+        "seed": 20261017,
+        "runsPerCell": 3,
+        "citationRate": 0.8,
+        "citationJudgedOn": "point_estimate",
+        "wilsonZ": 1.96,
+        "tokenCriterion": "upper-bound",
+        "failureRule": "incorrect-keep-tokens",
+        "concurrency": 2,
+        "maxBudgetUsdPerSession": 3,
+        "sessionWallClockMs": 900000,
+        "model": "claude-sonnet-5-5",
+        "claudeVersion": "2.1.302",
+        "corpusSha": "10ac3a7a947903ba50f538a907af036744d759d5",
+        "npmCiRan": true
+      },
+      "files": {
+        "scripts/eval/questions/gsd-core.questions.json": "841b2bdb202f286c3da5ac3a2c6b01ec4a1520e4a6d343089697e1f8f326700f",
+        "scripts/eval/questions/gsd-core.answers.json": "e9e43d565bfbacc1c2ce045debdae4ee11e32510471c85465ad1e1f50d92413a",
+        "scripts/eval/questions.ts": "425623eda7487496bf2a0ef959ef0ee079e8ccf4d0f41fca324ae01cee03dc64",
+        "scripts/eval/oracle.ts": "8d83f5d8197f12e2234b7d83c831951022d658c1306304887bf1650364f53fdc",
+        "scripts/eval/score.ts": "27cae3d4e1bf257d0bdd68ba0e393df7465b10afa8ef06dcd41208379fc1775e",
+        "scripts/eval/answer-schema.json": "6da389ecb51825629b7770a562b88db67e245d775f7ec903475df97f6c03b72a",
+        "scripts/eval/stats.ts": "e6f50d1f08ab1d53f6b9101e0bc890ca6f8b462a3acb671e5fd50e9dd829b851",
+        "scripts/eval/rows.ts": "c2a24b17cf8b0f2508a7ae0ce8f5419bfea6f90056f929a699893e424f3222de",
+        "scripts/eval/analyze.ts": "8328e47c7a21c34e2ffec617f2646cb3b290f6fb3f79fb58f0497eb516c015d0",
+        "scripts/eval/prereg.ts": "2e6d86fe1ccc20171a9e8c41b9f1b827f5207113bbb5de62429cfe2f7bfbcc25",
+        "scripts/eval/claude-session.ts": "e967fc6549ed2072160b35be3caf47f3f80e5f6fbcf020fbbb64fc23ca3c0ca6",
+        "scripts/eval/arms.ts": "e33cc7066d5a3384580baef78d54db1433d98c1ca7b03022a92681a795fd4c31",
+        "scripts/eval/harness.ts": "c659db81e9d7cb3e3a61a8df9c13846ba23463990920b797794e6c8e58852870",
+        "scripts/eval/schedule.ts": "ef4cd8c0157b6e836f8470652b658fb022f55ef96df6c1865c85043a42097d9d",
+        "scripts/eval/results.ts": "669e0b0909cb6d3c73ea966e9b5394154ed762eb2ed15cf238c35f0530abc373",
+        "scripts/eval/prepare-corpus.ts": "cee98c9221f18e0cff4905e60970684cef3a9b6a520cfb668b73397e39ba3dba"
+      },
+      "questionSet": {
+        "count": 75,
+        "byCategory": {
+          "callers": 17,
+          "references": 8,
+          "heritage": 8,
+          "emit": 10,
+          "adr": 10,
+          "impact": 6,
+          "definition": 7,
+          "abstain": 9
+        }
+      }
+    }
+  ]
 }
 ```
+
+## Revision 1 (2026-10-18)
+
+Opened on 2026-10-18 by Tom Boucher. Reason: Under the registered --tools Bash,Read the atlas model sees no skill (the init event lists it, the model has no Skill tool); the atlas arm gets the Skill tool so the scored run carries the skill, per the user's instruction of 2026-10-18.
+
+### What changed
+
+This section amends three earlier sections of this document: Hypotheses (H2, only as to what the atlas arm is), Design (the Atlas arm bullet and the Isolation flags bullet) and Stages (where Stage B is recorded). Where Revision 1 differs from an earlier section, Revision 1 governs and the earlier text stays in place as history. The text of the first registration, frozen at commit `8a1da04`, is not rewritten; the freezer compares the document with its version at that commit and refuses a revision that changed it.
+
+**Hypotheses, H2, as amended.** H2, atlas uses fewer billable tokens, compares the grep arm with the atlas arm as Revision 1 defines it: the atlas tools together with the skill the model can see. The tokens of that skill are billable tokens of the atlas arm: its description is in the context on every turn of every atlas session, and its body adds its size in every session that loads it. They are counted as any other token (D-06) and never subtracted. H1 and H3 are unchanged.
+
+**Design, the Atlas arm bullet, as amended.** The same two built-in tools with the same shell limits, plus the built-in `Skill` tool, open to one skill only through the single allow rule `Skill(gsd-atlas-eval:gsd-atlas)`; the `gsd-atlas` MCP server with its seven tools (`code_find`, `code_refs`, `code_context`, `code_impact`, `code_explain`, `atlas_status`, `lang_list`); and the `gsd-atlas` skill, loaded from a plugin directory that holds the registered skill file and nothing else. Claude Code's own skills are designed out of what the model sees by an inline `--settings` argument, so that the registered skill is the only skill in the model's list. The init event of every session is compared with its arm's registered environment: in the atlas arm the built-in tools are exactly `Bash`, `Read` and `Skill`, the registered skill is listed and is the only skill listed; a session that differs is not scored and stops the run. The grep arm bullet is unchanged.
+
+**Design, the Isolation flags bullet, as amended for the atlas arm.** Each atlas session runs `claude -p --output-format stream-json --verbose --setting-sources "" --strict-mcp-config --mcp-config <per-session file> --plugin-dir <skill plugin> --settings '{"disableBundledSkills":true,"skillOverrides":{"plugin-authoring":"off","design":"off","doctor":"off"}}' --tools Bash,Read,Skill --allowedTools <read-only shell patterns, Read, Skill(gsd-atlas-eval:gsd-atlas), atlas tools> --max-budget-usd <budget> --json-schema <answer schema> --no-session-persistence`. The sentence for the grep arm is as it was: `claude -p --output-format stream-json --verbose --setting-sources "" --strict-mcp-config --mcp-config <per-session file> --tools Bash,Read --allowedTools <read-only shell patterns, Read> --max-budget-usd <budget> --json-schema <answer schema> --no-session-persistence`, with an empty server map, no plugin directory and no `--settings`. Throwaway clone, own atlas store, empty user directory and the index built before the clock are unchanged.
+
+**Bundled skills, and the proof.** Claude Code 2.1.302 lists 19 skills of its own in the init event and, once a `Skill` tool exists, shows the model 14 skills of its own (three of them are not in the init list). Three ways to remove them were tried live, in the order of the plan: deny rules by name (`Skill(<name>)` entries in `--disallowedTools`) did not remove any skill from the model's list; `disableBundledSkills` removed all but `plugin-authoring`; and `disableBundledSkills` together with `skillOverrides` set to `"off"` for the three skills it leaves (`plugin-authoring`, `design`, `doctor`) leaves the init event and the model's list with the registered skill alone. The last is the registered form. The probes and their cost are in `docs/eval/skill-visibility.md`.
+
+**Stages, as amended.** Stage A is this document at Revision 1: it registers the sha256 of the same sixteen files, recomputed after the revision; the four run-configuration files listed below have new hashes and the other twelve have the hashes of the first registration. Stage B is recorded by plan 03-38 on top of this revision (the sha256 of `skills/gsd-atlas/SKILL.md` and the atlas commit), and its line goes below the Stage A revision line.
+
+**Scored gate, the atlas build.** The harness now compares the Stage B `atlasCommit` with the checkout that holds the atlas binary under test (T-03-334): the registered commit must be HEAD or an ancestor of it, none of `src`, `modules`, `schemas`, `diagnostics`, `package.json`, `package-lock.json`, `tsconfig.json` and `tsconfig.build.json` may differ between that commit and HEAD or have an uncommitted change, and the binary may not be older than the newest of those files. The check is in the harness, not in `verify-prereg`, so later phases can change `src` without turning the CI static job red.
+
+**The record.** The `prereg-json` block gains two optional fields, `revision` and `supersedes`. A record with `revision` N carries exactly N superseded records, oldest first and numbered from 0, each holding the superseded status line, the full id of the commit that froze it, its parameters, its question set and its sixteen hashes. The hashes of the superseded record were read from the git blobs at that commit, not copied from text. The table under Superseded records below holds the same.
+
+**Consequence for tokens, in plain words.** The skill description is in the context on every turn of every atlas session, and the skill body adds its size each time a session loads it. Both are billable tokens of the atlas arm, counted against it, and never subtracted. Measured on a one-turn probe with the same prompt, the Skill tool and the description add about 980 input tokens per turn (9,268 input and cache tokens with the registered tools, 10,245 with Revision 1); leaving Claude Code's own skills visible would have added about 2,350 more, which the settings above remove. The three wording choices that plan 03-33 left open in the skill were kept as built before the smoke run; each may add a tool call or tokens to atlas sessions, all counted.
+
+Changed registered files: scripts/eval/arms.ts, scripts/eval/claude-session.ts, scripts/eval/harness.ts, scripts/eval/prereg.ts
+
+### Why
+
+The user instructed, on 2026-10-18 at the blocking checkpoint of plan 03-33, in these words:
+
+> re-open stage a and run with the skill now that it's built
+
+D-03 and D-09 say that the atlas arm of the scored comparison uses the skill. The first registration did not deliver that. Under the registered `--tools Bash,Read` the init event of an atlas session lists `gsd-atlas-eval:gsd-atlas`, which is all that `checkInit` read, but the model has no `Skill` tool and sees no skill list. Two live probes of plan 03-33 (0.035 USD) found it: asked to quote the description of the skill, the model answered that it could see no skill and had no Skill tool; with `Skill` added to the tools it saw the full description and could load the body. Plan 03-38 ran the check again on the installed version with the harness's own flags (eight probes, 0.19 USD, in `docs/eval/skill-visibility.md`): with the registered flags the model sees no skill; with the Skill tool it quotes the description and loads the body without a permission error; the grep arm, which has no Skill tool, sees no skill.
+
+The scored comparison as first registered would therefore have measured the atlas tools and the server instructions without the skill, while D-03 and D-09 describe the atlas tools with the skill. Revision 1 makes the registration match the design.
+
+It also corrects two statements of the 03-14 pilot. Finding 5 said that the skill's description is all the model can see, and Finding 6 said that the atlas arm's extra tokens came from carrying the skill description. Under the registered tools the atlas model saw no description, so neither holds for that configuration. `docs/eval/pilot.md` carries a dated correction note.
+
+### What did not change
+
+Every registered parameter keeps its value: margin 5 points on the 5th percentile of the paired cluster bootstrap (`marginPoints` 5, `intervalLevel` 0.95), 10,000 resamples (`resamples`), seed 20261017 (`seed`), 3 runs per cell (`runsPerCell`), the citation rate 0.8 judged on the point estimate (`citationRate` 0.8, `citationJudgedOn` `point_estimate`, `wilsonZ` 1.96), the stricter token criterion `upper-bound`, the failure rule `incorrect-keep-tokens`, concurrency 2, `maxBudgetUsdPerSession` 3, `sessionWallClockMs` 900000, the model `claude-sonnet-5-5`, Claude Code `2.1.302`, the corpus sha `10ac3a7a947903ba50f538a907af036744d759d5` and `npmCiRan` true.
+
+The question set (75 questions: callers 17, references 8, heritage 8, emit 10, adr 10, impact 6, definition 7, abstain 9), the answer keys, the oracle, the scorer, the statistics, the analysis, the row schema and the answer schema are unchanged. So are the files `scripts/eval/schedule.ts`, `results.ts` and `prepare-corpus.ts`. In all, twelve of the sixteen registered files are hash-identical to the first registration; only the four run-configuration files named above differ.
+
+The grep arm is unchanged: built-ins `Bash` and `Read`, the same read-only shell patterns, no MCP server, no skill, no Skill tool and no `--settings`; its arguments are asserted against literal copies of their pre-revision values in `scripts/eval/harness.test.ts`.
+
+These statements are enforced and not only made. The freezer refuses to freeze this revision unless the parameters and the question set equal the superseded record, unless every registered file other than the four run-configuration files hashes to the value of the superseded record, unless the files named on the `Changed registered files:` line are exactly the files whose hash changed, and unless the text of the first registration is intact.
+
+### No scored data
+
+No scored session has run and no scored result exists. The harness refuses `--scored` without a Stage B record and none exists; `docs/eval/results/` holds no results file; and the freezer refuses to reopen or to revise a record that has a Stage B record or a committed results file.
+
+The only sessions seen are the ten pilot sessions of plan 03-14 (the Phase 2 grammar-tier atlas against five pilot questions that are disjoint from the scored set), eight throwaway visibility probes that asked the model what it can see (no repository question), and six unscored smoke sessions on three of the pilot questions (`p-001`, `p-003`, `p-004`, both arms, one run). None of them touched a scored question or key.
+
+This revision is made after the precise-tier code exists, and the document says so plainly. The first registration said that the precise-tier code is written after the freeze (D-08), and it was: the resolver was written after commit `8a1da04`. Revision 1 is the first change to the registration made with that code in the tree. Nothing it changes concerns the questions, the keys, the oracle, the scorer, the statistics or the analysis, and the atlas build that the scored run uses is recorded at Stage B, not here. The skill text was written by plan 03-33 before the smoke run and was not tuned on it or on any probe: the three wording choices left open by plan 03-33 were decided before the smoke run (keep all three as built), and a test checks that no file path of the answer keys appears in the skill.
+
+The direction of the change is against the atlas arm on cost and for it on routing. It adds billable tokens to the atlas arm (the description on every turn, the body when loaded), and it adds a routing channel (a skill the model can see). Both are counted in the comparison, and the registered criteria were chosen before this finding and do not move.
+
+### Superseded records
+
+| Record | Value |
+| --- | --- |
+| Superseded status line | `Status: Frozen (Stage A, 2026-10-18, by Tom Boucher)` |
+| Superseded at commit | `8a1da047ad61aa6d2f41b69dae7de9206d654147` |
+| `scripts/eval/questions/gsd-core.questions.json` | `841b2bdb202f286c3da5ac3a2c6b01ec4a1520e4a6d343089697e1f8f326700f` |
+| `scripts/eval/questions/gsd-core.answers.json` | `e9e43d565bfbacc1c2ce045debdae4ee11e32510471c85465ad1e1f50d92413a` |
+| `scripts/eval/questions.ts` | `425623eda7487496bf2a0ef959ef0ee079e8ccf4d0f41fca324ae01cee03dc64` |
+| `scripts/eval/oracle.ts` | `8d83f5d8197f12e2234b7d83c831951022d658c1306304887bf1650364f53fdc` |
+| `scripts/eval/score.ts` | `27cae3d4e1bf257d0bdd68ba0e393df7465b10afa8ef06dcd41208379fc1775e` |
+| `scripts/eval/answer-schema.json` | `6da389ecb51825629b7770a562b88db67e245d775f7ec903475df97f6c03b72a` |
+| `scripts/eval/stats.ts` | `e6f50d1f08ab1d53f6b9101e0bc890ca6f8b462a3acb671e5fd50e9dd829b851` |
+| `scripts/eval/rows.ts` | `c2a24b17cf8b0f2508a7ae0ce8f5419bfea6f90056f929a699893e424f3222de` |
+| `scripts/eval/analyze.ts` | `8328e47c7a21c34e2ffec617f2646cb3b290f6fb3f79fb58f0497eb516c015d0` |
+| `scripts/eval/prereg.ts` | `2e6d86fe1ccc20171a9e8c41b9f1b827f5207113bbb5de62429cfe2f7bfbcc25` |
+| `scripts/eval/claude-session.ts` | `e967fc6549ed2072160b35be3caf47f3f80e5f6fbcf020fbbb64fc23ca3c0ca6` |
+| `scripts/eval/arms.ts` | `e33cc7066d5a3384580baef78d54db1433d98c1ca7b03022a92681a795fd4c31` |
+| `scripts/eval/harness.ts` | `c659db81e9d7cb3e3a61a8df9c13846ba23463990920b797794e6c8e58852870` |
+| `scripts/eval/schedule.ts` | `ef4cd8c0157b6e836f8470652b658fb022f55ef96df6c1865c85043a42097d9d` |
+| `scripts/eval/results.ts` | `669e0b0909cb6d3c73ea966e9b5394154ed762eb2ed15cf238c35f0530abc373` |
+| `scripts/eval/prepare-corpus.ts` | `cee98c9221f18e0cff4905e60970684cef3a9b6a520cfb668b73397e39ba3dba` |
+
+### Approvals (Revision 1)

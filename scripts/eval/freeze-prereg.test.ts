@@ -6,13 +6,15 @@ import path from 'node:path';
 import { afterEach, beforeEach, describe, test } from 'node:test';
 import {
   APPROVED_CONSTANTS_PATH,
+  REVISION_PLACEHOLDER,
   checkParams,
   freezePrereg,
   oq4Confirmation,
   readApprovedConstants,
+  reopenPrereg,
   runCli,
 } from './freeze-prereg.ts';
-import type { ApprovedConstants, FreezeOptions, FreezeResult } from './freeze-prereg.ts';
+import type { ApprovedConstants, FreezeOptions, FreezeResult, ReopenOptions } from './freeze-prereg.ts';
 import { DEFAULT_PREREG_PATH, hashFile, PREREG_BLOCK_LABEL, readPrereg, replacePreregBlock, SKILL_PATH, STAGE_A_FILES } from './prereg.ts';
 import type { Prereg } from './prereg.ts';
 import { verifyPrereg } from './verify-prereg.ts';
@@ -488,6 +490,419 @@ describe('freezePrereg, Stage B', () => {
     const after = docBytes();
     const strip = (text: string): string => text.replace(/```prereg-json[\s\S]*?```/, '').replace(/^Status: Frozen \(Stage B[^\n]*\n/m, '');
     assert.equal(strip(after), strip(before));
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// Plan 03-38: reopen a frozen Stage A record to a CI-safe Draft, and re-freeze it as a revision
+
+describe('reopen and revise a frozen Stage A record (plan 03-38)', () => {
+  const REOPEN_LINE = 'OQ4 re-confirmed by the user at Revision 1: wilson_lower_bound';
+
+  function reopenOptions(over: Partial<ReopenOptions> = {}): ReopenOptions {
+    return { root, path: DEFAULT_PREREG_PATH, revision: 1, approvedBy: 'Test Reviewer', reason: 'the atlas arm needs the Skill tool', now: NOW, ...over };
+  }
+
+  function commitAll(message: string): void {
+    git('add', '--all');
+    git('commit', '--quiet', '-m', message);
+  }
+
+  /** A repository whose Stage A is frozen and committed; returns the id of the commit that froze it. */
+  function setupFrozenA(): string {
+    setup();
+    assert.equal(freezePrereg(options()).ok, true);
+    commitAll('stage A frozen');
+    return git('rev-parse', 'HEAD').trim();
+  }
+
+  /** setupFrozenA, then the reopen, committed. */
+  function setupReopened(): string {
+    const frozenCommit = setupFrozenA();
+    const result = reopenPrereg(reopenOptions());
+    assert.equal(result.ok, true, JSON.stringify(result));
+    commitAll('reopen');
+    return frozenCommit;
+  }
+
+  interface Fill {
+    /** The `Changed registered files:` line; null: leave the line out. */
+    changed?: string | null;
+    /** Lines of the Approvals (Revision 1) section. */
+    approvals?: string[];
+    /** A heading to remove from the section. */
+    dropHeading?: string;
+    /** A heading whose body stays the reopen's placeholder. */
+    keepPlaceholder?: string;
+  }
+
+  /** Writes the six sections the way Task 3 and Task 5 of the plan do, over the Draft the reopen left. */
+  function fillRevision(fill: Fill = {}): void {
+    let text = docBytes();
+    const changed = fill.changed === undefined ? 'scripts/eval/arms.ts, scripts/eval/harness.ts' : fill.changed;
+    const body = (heading: string): string => {
+      if (heading === 'What changed') return `The atlas arm gains the Skill tool.${changed === null ? '' : `\n\nChanged registered files: ${changed}`}`;
+      if (heading === 'Why') return 'The model could not see the skill under the registered tools.';
+      if (heading === 'What did not change') return 'Every parameter, the question set, the keys, the oracle and the scorer.';
+      return 'No scored session has run.';
+    };
+    for (const heading of ['What changed', 'Why', 'What did not change', 'No scored data']) {
+      if (fill.keepPlaceholder === heading) continue;
+      text = text.replace(`### ${heading}\n\n${REVISION_PLACEHOLDER}\n`, `### ${heading}\n\n${body(heading)}\n`);
+    }
+    const approvals = fill.approvals ?? ['> approve oq4=wilson_lower_bound', '', REOPEN_LINE];
+    text = text.replace(/### Approvals \(Revision 1\)\n*$/, `### Approvals (Revision 1)\n\n${approvals.join('\n')}\n`);
+    if (fill.dropHeading !== undefined) text = text.replace(`### ${fill.dropHeading}\n`, '');
+    fs.writeFileSync(abs(DEFAULT_PREREG_PATH), text);
+  }
+
+  /** A reopened, filled-in Draft whose arms.ts and harness.ts changed after the first freeze, all committed. */
+  function setupRevision(fill: Fill = {}): string {
+    const frozenCommit = setupReopened();
+    fs.appendFileSync(abs('scripts/eval/arms.ts'), '// revision 1\n');
+    fs.appendFileSync(abs('scripts/eval/harness.ts'), '// revision 1\n');
+    fillRevision(fill);
+    commitAll('revision 1 draft');
+    return frozenCommit;
+  }
+
+  const strip = (text: string): string =>
+    text
+      .replace(/```prereg-json[\s\S]*?```/, '')
+      .replace(/^Status:[^\n]*\n/m, '')
+      .replace(/\n+## Revision 1 \([^\n]*\n[\s\S]*$/, '')
+      .trimEnd();
+
+  test('reopen then revise then Stage B', () => {
+    const frozenCommit = setupFrozenA();
+    const frozen = readPrereg(abs(DEFAULT_PREREG_PATH));
+    const before = docBytes();
+
+    // 1. The reopen: a CI-safe Draft that carries the old record.
+    const reopened = reopenPrereg(reopenOptions());
+    assert.equal(reopened.ok, true, JSON.stringify(reopened));
+    const draftText = docBytes();
+    assert.deepEqual(draftText.split('\n').filter((line) => line.startsWith('Status:')), ['Status: Draft']);
+    assert.doesNotMatch(draftText, /^Status: Frozen/m, 'the old status line never starts a line');
+    assert.equal(strip(draftText), strip(before), 'every byte outside the status line, the block and the appended section is unchanged');
+    const draft = readPrereg(abs(DEFAULT_PREREG_PATH));
+    assert.equal(draft.status, 'Draft');
+    assert.equal(draft.stage, 'A');
+    assert.equal(draft.revision, 1);
+    assert.deepEqual(draft.files, {});
+    assert.deepEqual(draft.params, frozen.params);
+    assert.deepEqual(draft.questionSet, frozen.questionSet);
+    assert.equal(draft.supersedes?.length, 1);
+    const old = draft.supersedes?.[0];
+    assert.equal(old?.revision, 0);
+    assert.equal(old?.status, 'Status: Frozen (Stage A, 2026-10-18, by Test Reviewer)');
+    assert.equal(old?.frozenAtCommit, frozenCommit);
+    assert.deepEqual(old?.params, frozen.params);
+    assert.deepEqual(old?.questionSet, frozen.questionSet);
+    assert.deepEqual(old?.files, frozen.files, 'the old hashes are those of the blobs at the freezing commit');
+    assert.match(draftText, /^## Revision 1 \(2026-10-18\)$/m);
+    for (const heading of ['What changed', 'Why', 'What did not change', 'No scored data', 'Superseded records', 'Approvals (Revision 1)']) {
+      assert.match(draftText, new RegExp(`^### ${heading.replace(/[()]/g, '\\$&')}$`, 'm'), heading);
+    }
+    assert.ok(draftText.includes(frozenCommit), 'the table names the freezing commit');
+    for (const rel of STAGE_A_FILES) assert.ok(draftText.includes(frozen.files[rel] as string), `the table holds the old hash of ${rel}`);
+    assert.ok(draftText.includes('Status: Frozen (Stage A, 2026-10-18, by Test Reviewer)'), 'the table holds the old status line');
+    assert.equal(verifyPrereg(abs(DEFAULT_PREREG_PATH), root).ok, true);
+    assert.equal(verifyPrereg(abs(DEFAULT_PREREG_PATH), root, { draft: true }).ok, true);
+    commitAll('reopen');
+
+    // 2. The revision: two run-configuration files change, the sections are written, the user re-confirms OQ4.
+    fs.appendFileSync(abs('scripts/eval/arms.ts'), '// revision 1\n');
+    fs.appendFileSync(abs('scripts/eval/harness.ts'), '// revision 1\n');
+    fillRevision();
+    commitAll('revision 1 draft');
+    const revised = freezePrereg(options());
+    assert.equal(revised.ok, true, JSON.stringify(revised));
+    const text = docBytes();
+    assert.deepEqual(text.split('\n').filter((line) => line.startsWith('Status:')), ['Status: Frozen (Stage A, revision 1, 2026-10-18, by Test Reviewer)']);
+    const record = readPrereg(abs(DEFAULT_PREREG_PATH));
+    assert.equal(record.status, 'Frozen');
+    assert.equal(record.revision, 1);
+    assert.deepEqual(record.supersedes, draft.supersedes, 'the supersedes chain is kept as the reopen wrote it');
+    for (const rel of STAGE_A_FILES) assert.equal(record.files[rel], hashFile(abs(rel)), rel);
+    const changedNow = STAGE_A_FILES.filter((rel) => record.files[rel] !== old?.files[rel]);
+    assert.deepEqual(changedNow, ['scripts/eval/arms.ts', 'scripts/eval/harness.ts'], 'exactly the declared files differ from the superseded record');
+    assert.equal(verifyPrereg(abs(DEFAULT_PREREG_PATH), root).ok, true);
+    assert.match(text, /^OQ4 confirmed by the user: wilson_lower_bound$/m, 'the first approval line is untouched');
+    commitAll('revision 1 frozen');
+
+    // 3. Stage B on top of the revision: its line goes below the revision line.
+    writeFile(SKILL_PATH, '---\nname: gsd-atlas\n---\n\n# stand-in skill\n');
+    commitAll('skill');
+    const stageB = freezePrereg({ root, path: DEFAULT_PREREG_PATH, stage: 'B', approvedBy: 'Test Reviewer', now: new Date('2026-11-02T09:00:00Z'), buildCommand: OK_BUILD });
+    assert.equal(stageB.ok, true, JSON.stringify(stageB));
+    assert.deepEqual(docBytes().split('\n').filter((line) => line.startsWith('Status:')), [
+      'Status: Frozen (Stage A, revision 1, 2026-10-18, by Test Reviewer)',
+      'Status: Frozen (Stage B, 2026-11-02, by Test Reviewer)',
+    ]);
+    const b = readPrereg(abs(DEFAULT_PREREG_PATH));
+    assert.equal(b.stage, 'B');
+    assert.equal(b.revision, 1);
+    assert.deepEqual(b.supersedes, draft.supersedes);
+    assert.equal(verifyPrereg(abs(DEFAULT_PREREG_PATH), root).ok, true);
+  });
+
+  describe('reopen refusals', () => {
+    test('reopen_not_frozen_a: a Draft and an absent document refuse', () => {
+      setup();
+      const before = docBytes();
+      assert.equal(refusal(reopenPrereg(reopenOptions())).reason, 'reopen_not_frozen_a');
+      assert.equal(docBytes(), before);
+      assert.equal(refusal(reopenPrereg(reopenOptions({ path: 'docs/eval/nope.md' }))).reason, 'reopen_not_frozen_a');
+    });
+
+    test('reopen_stage_b_recorded: a Stage B record refuses and is left unchanged', () => {
+      setupFrozenA();
+      writeFile(SKILL_PATH, '# skill\n');
+      commitAll('skill');
+      assert.equal(freezePrereg({ root, path: DEFAULT_PREREG_PATH, stage: 'B', approvedBy: 'Test Reviewer', now: NOW, buildCommand: OK_BUILD }).ok, true);
+      commitAll('stage B');
+      const before = docBytes();
+      assert.equal(refusal(reopenPrereg(reopenOptions())).reason, 'reopen_stage_b_recorded');
+      assert.equal(docBytes(), before);
+    });
+
+    test('reopen_results_present: a committed results file refuses', () => {
+      setupFrozenA();
+      writeFile('docs/eval/results/results.jsonl', '{"questionId":"q-001"}\n');
+      commitAll('a results file');
+      const before = docBytes();
+      assert.equal(refusal(reopenPrereg(reopenOptions())).reason, 'reopen_results_present');
+      assert.equal(docBytes(), before);
+    });
+
+    test('reopen_tree_dirty: an untracked and a modified file refuse, node_modules does not count', () => {
+      setupFrozenA();
+      const before = docBytes();
+      writeFile('src/new-file.ts', 'export const x = 1;\n');
+      const untracked = refusal(reopenPrereg(reopenOptions()));
+      assert.equal(untracked.reason, 'reopen_tree_dirty');
+      assert.ok(untracked.details.some((line) => line.includes('src/new-file.ts')), untracked.details.join('\n'));
+      fs.rmSync(abs('src'), { recursive: true });
+      fs.appendFileSync(abs('scripts/eval/stats.ts'), '// edited\n');
+      assert.equal(refusal(reopenPrereg(reopenOptions())).reason, 'reopen_tree_dirty');
+      assert.equal(docBytes(), before);
+      git('checkout', '--', 'scripts/eval/stats.ts');
+      writeFile('node_modules/pkg/index.js', 'module.exports = 1;\n');
+      assert.equal(reopenPrereg(reopenOptions()).ok, true);
+    });
+
+    test('reopen_already_open: a second reopen of an open revision refuses, and so does a revision number that is not the next one', () => {
+      setupReopened();
+      const before = docBytes();
+      assert.equal(refusal(reopenPrereg(reopenOptions())).reason, 'reopen_already_open');
+      assert.equal(refusal(reopenPrereg(reopenOptions({ revision: 2 }))).reason, 'reopen_already_open');
+      assert.equal(docBytes(), before);
+    });
+
+    test('reopen_already_open: a revision that is already frozen cannot be opened again under the same number', () => {
+      setupRevision();
+      assert.equal(freezePrereg(options()).ok, true);
+      commitAll('revision 1 frozen');
+      const before = docBytes();
+      assert.equal(refusal(reopenPrereg(reopenOptions())).reason, 'reopen_already_open');
+      assert.equal(docBytes(), before);
+    });
+
+    test('reopen_record_unverified: a recorded hash that is not the blob at the freezing commit refuses', () => {
+      setupFrozenA();
+      const prereg = readPrereg(abs(DEFAULT_PREREG_PATH));
+      const forged = replacePreregBlock(docBytes(), { ...prereg, files: { ...prereg.files, 'scripts/eval/stats.ts': 'f'.repeat(64) } });
+      fs.writeFileSync(abs(DEFAULT_PREREG_PATH), forged);
+      commitAll('a record that does not match its blobs');
+      const before = docBytes();
+      const refused = refusal(reopenPrereg(reopenOptions()));
+      assert.equal(refused.reason, 'reopen_record_unverified');
+      assert.ok(refused.details.some((line) => line.includes('scripts/eval/stats.ts')), refused.details.join('\n'));
+      assert.equal(docBytes(), before);
+    });
+
+    test('reopen_record_unverified: a document that no commit holds has no freezing commit and refuses', () => {
+      setupFrozenA();
+      git('rm', '--quiet', '--cached', DEFAULT_PREREG_PATH);
+      writeFile('.gitignore', 'docs/eval/preregistration.md\n');
+      commitAll('the document is not in git');
+      const before = docBytes();
+      assert.equal(refusal(reopenPrereg(reopenOptions())).reason, 'reopen_record_unverified');
+      assert.equal(docBytes(), before);
+    });
+
+    test('an empty reviewer name and a reason with a line break refuse', () => {
+      setupFrozenA();
+      const before = docBytes();
+      assert.equal(refusal(reopenPrereg(reopenOptions({ approvedBy: ' ' }))).reason, 'invalid_reviewer');
+      assert.equal(refusal(reopenPrereg(reopenOptions({ reason: 'line one\nStatus: Frozen' }))).reason, 'invalid_document');
+      assert.equal(docBytes(), before);
+    });
+  });
+
+  describe('revision mode refusals', () => {
+    test('revision_oq4_unconfirmed: no line, two lines, another value and the original line used instead all refuse', () => {
+      const cases: Array<[string, string[]]> = [
+        ['no line', ['> approve']],
+        ['two lines', [REOPEN_LINE, '', REOPEN_LINE]],
+        ['another value', ['OQ4 re-confirmed by the user at Revision 1: point_estimate']],
+        ['an invalid value', ['OQ4 re-confirmed by the user at Revision 1: whichever']],
+        ['the original line instead', ['OQ4 confirmed by the user: wilson_lower_bound']],
+      ];
+      for (const [name, approvals] of cases) {
+        fs.rmSync(root, { recursive: true, force: true });
+        root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'freeze-prereg-')));
+        setupRevision({ approvals });
+        const before = docBytes();
+        const refused = refusal(freezePrereg(options()));
+        assert.equal(refused.reason, 'revision_oq4_unconfirmed', `${name}: ${refused.details.join('; ')}`);
+        assert.equal(docBytes(), before, name);
+      }
+    });
+
+    test('revision_oq4_unconfirmed: a line outside the Approvals (Revision 1) section does not confirm', () => {
+      setupRevision({ approvals: ['> approve'] });
+      const text = docBytes().replace('### Why\n', `### Why\n\n${REOPEN_LINE}\n`);
+      fs.writeFileSync(abs(DEFAULT_PREREG_PATH), text);
+      commitAll('a line in the wrong section');
+      assert.equal(refusal(freezePrereg(options())).reason, 'revision_oq4_unconfirmed');
+    });
+
+    test('revision_params_changed: a registered parameter or the question set that differs from the superseded record refuses', () => {
+      setupRevision();
+      const prereg = readPrereg(abs(DEFAULT_PREREG_PATH));
+      fs.writeFileSync(abs(DEFAULT_PREREG_PATH), replacePreregBlock(docBytes(), { ...prereg, params: { ...prereg.params, model: 'claude-other-model' } }));
+      commitAll('model changed');
+      const before = docBytes();
+      const refused = refusal(freezePrereg(options()));
+      assert.equal(refused.reason, 'revision_params_changed');
+      assert.ok(refused.details.some((line) => line.includes('model')), refused.details.join('\n'));
+      assert.equal(docBytes(), before);
+      fs.writeFileSync(
+        abs(DEFAULT_PREREG_PATH),
+        replacePreregBlock(docBytes(), { ...prereg, questionSet: { count: 4, byCategory: { callers: 1, emit: 2, abstain: 1 } } }),
+      );
+      commitAll('question set changed');
+      assert.equal(refusal(freezePrereg(options())).reason, 'revision_params_changed');
+    });
+
+    test('revision_immutable_file_changed: a changed oracle or answers file refuses and names it, even when it is named as changed', () => {
+      for (const rel of ['scripts/eval/oracle.ts', ANSWERS_PATH]) {
+        fs.rmSync(root, { recursive: true, force: true });
+        root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'freeze-prereg-')));
+        setupRevision({ changed: `scripts/eval/arms.ts, scripts/eval/harness.ts, ${rel}` });
+        fs.appendFileSync(abs(rel), ' ');
+        commitAll(`edit ${rel}`);
+        const before = docBytes();
+        const refused = refusal(freezePrereg(options()));
+        assert.equal(refused.reason, 'revision_immutable_file_changed', rel);
+        assert.ok(refused.details.some((line) => line.includes(rel)), refused.details.join('\n'));
+        assert.equal(docBytes(), before);
+      }
+    });
+
+    test('revision_changes_undeclared: a changed file that is not named, a named file that did not change, and no line at all refuse', () => {
+      const cases: Array<[string, string | null]> = [
+        ['a changed file not named', 'scripts/eval/arms.ts'],
+        ['a named file that did not change', 'scripts/eval/arms.ts, scripts/eval/harness.ts, scripts/eval/claude-session.ts'],
+        ['no line', null],
+      ];
+      for (const [name, changed] of cases) {
+        fs.rmSync(root, { recursive: true, force: true });
+        root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'freeze-prereg-')));
+        setupRevision({ changed });
+        const before = docBytes();
+        const refused = refusal(freezePrereg(options()));
+        assert.equal(refused.reason, 'revision_changes_undeclared', `${name}: ${refused.details.join('; ')}`);
+        assert.equal(docBytes(), before, name);
+      }
+    });
+
+    test('revision_text_rewritten: a sentence of the original text that was edited refuses', () => {
+      setupRevision();
+      fs.writeFileSync(abs(DEFAULT_PREREG_PATH), docBytes().replace('Prose that mentions', 'Prose that now mentions'));
+      commitAll('rewrite the first freeze');
+      const before = docBytes();
+      assert.equal(refusal(freezePrereg(options())).reason, 'revision_text_rewritten');
+      assert.equal(docBytes(), before);
+    });
+
+    test('revision_text_rewritten: text added before the appended section refuses too', () => {
+      setupRevision();
+      fs.writeFileSync(abs(DEFAULT_PREREG_PATH), docBytes().replace('## Approvals\n', '## Approvals\n\nA new paragraph.\n'));
+      commitAll('add to the first freeze');
+      assert.equal(refusal(freezePrereg(options())).reason, 'revision_text_rewritten');
+    });
+
+    test('revision_sections_missing: a removed heading and a section left at the placeholder refuse', () => {
+      for (const fill of [{ dropHeading: 'Why' }, { dropHeading: 'Superseded records' }, { keepPlaceholder: 'What did not change' }, { keepPlaceholder: 'No scored data' }] as Fill[]) {
+        fs.rmSync(root, { recursive: true, force: true });
+        root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'freeze-prereg-')));
+        setupRevision(fill);
+        const before = docBytes();
+        const refused = refusal(freezePrereg(options()));
+        assert.equal(refused.reason, 'revision_sections_missing', `${JSON.stringify(fill)}: ${refused.details.join('; ')}`);
+        assert.equal(docBytes(), before);
+      }
+    });
+
+    test('the Stage A refusals stay in revision mode: dirty_registered_file and tests_failed', () => {
+      setupRevision();
+      fs.appendFileSync(abs('scripts/eval/arms.ts'), '// uncommitted\n');
+      const dirty = refusal(freezePrereg(options()));
+      assert.equal(dirty.reason, 'dirty_registered_file');
+      assert.ok(dirty.details.some((line) => line.includes('scripts/eval/arms.ts')));
+      git('checkout', '--', 'scripts/eval/arms.ts');
+      const before = docBytes();
+      assert.equal(refusal(freezePrereg(options({ testCommand: BAD_TESTS }))).reason, 'tests_failed');
+      assert.equal(docBytes(), before);
+    });
+
+    test('a revision freeze is not repeated: the frozen revision refuses with already_frozen', () => {
+      setupRevision();
+      assert.equal(freezePrereg(options()).ok, true);
+      assert.equal(refusal(freezePrereg(options())).reason, 'already_frozen');
+    });
+  });
+
+  describe('command', () => {
+    function io(): { out: string[]; err: string[]; sinks: { out: (t: string) => void; err: (t: string) => void } } {
+      const out: string[] = [];
+      const err: string[] = [];
+      return { out, err, sinks: { out: (t) => out.push(t), err: (t) => err.push(t) } };
+    }
+
+    test('--reopen --revision 1 --by --reason: exits 0 and prints the Draft and the revision', () => {
+      setupFrozenA();
+      const sink = io();
+      const code = runCli(['--reopen', '--revision', '1', '--by', 'Tester', '--reason', 'the Skill tool'], sink.sinks, root, { now: NOW });
+      assert.equal(code, 0, sink.err.join(''));
+      assert.match(sink.out.join(''), /Draft/);
+      assert.match(sink.out.join(''), /revision 1/);
+    });
+
+    test('--reopen: a refusal exits 1 with its reason; missing or conflicting options exit 2', () => {
+      setup();
+      const refused = io();
+      assert.equal(runCli(['--reopen', '--revision', '1', '--by', 'Tester', '--reason', 'x'], refused.sinks, root, { now: NOW }), 1);
+      assert.match(refused.err.join(''), /reopen_not_frozen_a/);
+      const sink = io();
+      assert.equal(runCli(['--reopen', '--by', 'Tester', '--reason', 'x'], sink.sinks, root, {}), 2);
+      assert.equal(runCli(['--reopen', '--revision', '1', '--by', 'Tester'], sink.sinks, root, {}), 2);
+      assert.equal(runCli(['--reopen', '--revision', 'one', '--by', 'Tester', '--reason', 'x'], sink.sinks, root, {}), 2);
+      assert.equal(runCli(['--reopen', '--revision', '0', '--by', 'Tester', '--reason', 'x'], sink.sinks, root, {}), 2);
+      assert.equal(runCli(['--reopen', '--stage', 'A', '--revision', '1', '--by', 'Tester', '--reason', 'x'], sink.sinks, root, {}), 2);
+      assert.equal(runCli(['--stage', 'A', '--revision', '1', '--by', 'Tester'], sink.sinks, root, {}), 2);
+    });
+
+    test('--stage A on a reopened record freezes it as revision 1', () => {
+      setupRevision();
+      const sink = io();
+      const code = runCli(['--stage', 'A', '--by', 'Tester'], sink.sinks, root, { approved: APPROVED, testCommand: OK_TESTS, now: NOW });
+      assert.equal(code, 0, sink.err.join(''));
+      assert.match(sink.out.join(''), /Frozen \(Stage A, revision 1, 2026-10-18, by Tester\)/);
+    });
   });
 });
 

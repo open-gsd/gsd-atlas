@@ -173,6 +173,100 @@ describe('readPrereg', () => {
   });
 });
 
+describe('PreregSchema revision chain (plan 03-38)', () => {
+  const COMMIT = 'c'.repeat(40);
+
+  /** One superseded record: what a reopen writes for the record it replaces. */
+  function entry(revision: number, over: Record<string, unknown> = {}): Record<string, unknown> {
+    return {
+      revision,
+      status: 'Status: Frozen (Stage A, 2026-10-18, by Test Reviewer)',
+      frozenAtCommit: COMMIT,
+      params: PARAMS,
+      questionSet: { count: 50, byCategory: { callers: 12, abstain: 6, other: 32 } },
+      files: Object.fromEntries(STAGE_A_FILES.map((rel) => [rel, 'e'.repeat(64)])),
+      ...over,
+    };
+  }
+
+  function revised(over: Record<string, unknown> = {}): Record<string, unknown> {
+    return { ...frozenA(), revision: 1, supersedes: [entry(0)], ...over };
+  }
+
+  test('a record with revision and a matching supersedes chain parses, and keeps both fields', () => {
+    const parsed = readPrereg(writePrereg(revised()));
+    assert.equal(parsed.revision, 1);
+    assert.equal(parsed.supersedes?.length, 1);
+    assert.equal(parsed.supersedes?.[0]?.revision, 0);
+    assert.equal(parsed.supersedes?.[0]?.status, 'Status: Frozen (Stage A, 2026-10-18, by Test Reviewer)');
+    assert.equal(parsed.supersedes?.[0]?.frozenAtCommit, COMMIT);
+    assert.equal(Object.keys(parsed.supersedes?.[0]?.files ?? {}).length, STAGE_A_FILES.length);
+  });
+
+  test('a two-revision chain numbered 0 and 1 parses', () => {
+    const parsed = readPrereg(writePrereg(revised({ revision: 2, supersedes: [entry(0), entry(1)] })));
+    assert.equal(parsed.supersedes?.length, 2);
+  });
+
+  test('a record without either field parses exactly as before', () => {
+    const parsed = readPrereg(writePrereg(frozenA()));
+    assert.equal(parsed.revision, undefined);
+    assert.equal(parsed.supersedes, undefined);
+    assert.equal(PreregSchema.safeParse(stageB()).success, true);
+  });
+
+  test('revision without supersedes, and supersedes without revision, are refused and name the field', () => {
+    const { supersedes: _s, ...noChain } = revised();
+    assert.throws(() => readPrereg(writePrereg(noChain)), /supersedes/);
+    const { revision: _r, ...noRevision } = revised();
+    assert.throws(() => readPrereg(writePrereg(noRevision)), /revision/);
+  });
+
+  test('a chain whose length differs from the revision is refused', () => {
+    assert.throws(() => readPrereg(writePrereg(revised({ revision: 2 }))), /supersedes/);
+    assert.throws(() => readPrereg(writePrereg(revised({ supersedes: [entry(0), entry(1)] }))), /supersedes/);
+    assert.throws(() => readPrereg(writePrereg(revised({ supersedes: [] }))), /supersedes/);
+  });
+
+  test('entries must be numbered from 0 in order', () => {
+    assert.throws(() => readPrereg(writePrereg(revised({ supersedes: [entry(1)] }))), /supersedes\.0\.revision/);
+    assert.throws(() => readPrereg(writePrereg(revised({ revision: 2, supersedes: [entry(1), entry(0)] }))), /supersedes\.0\.revision/);
+  });
+
+  test('revision must be a positive integer', () => {
+    assert.throws(() => readPrereg(writePrereg(revised({ revision: 0, supersedes: [] }))), /revision/);
+    assert.throws(() => readPrereg(writePrereg(revised({ revision: 1.5 }))), /revision/);
+  });
+
+  test('a non-hex frozenAtCommit and a malformed hash are refused and name the offending field', () => {
+    assert.throws(() => readPrereg(writePrereg(revised({ supersedes: [entry(0, { frozenAtCommit: 'main' })] }))), /supersedes\.0\.frozenAtCommit/);
+    assert.throws(
+      () => readPrereg(writePrereg(revised({ supersedes: [entry(0, { files: { 'scripts/eval/arms.ts': 'XYZ' } })] }))),
+      /supersedes\.0\.files/,
+    );
+  });
+
+  test('an entry carries the superseded params and question set, which are validated like the live ones', () => {
+    const { citationJudgedOn: _omitted, ...rest } = PARAMS;
+    assert.throws(() => readPrereg(writePrereg(revised({ supersedes: [entry(0, { params: rest })] }))), /supersedes\.0\.params\.citationJudgedOn/);
+    assert.throws(
+      () => readPrereg(writePrereg(revised({ supersedes: [entry(0, { questionSet: { count: 50, byCategory: { callers: 1 } } })] }))),
+      /supersedes\.0\.questionSet/,
+    );
+    assert.throws(() => readPrereg(writePrereg(revised({ supersedes: [entry(0, { status: '' })] }))), /supersedes\.0\.status/);
+  });
+
+  test('verifyPrereg reads a revised Frozen record and a revised Draft like any other record', () => {
+    writeStageAStandIns();
+    assert.deepEqual(verifyPrereg(writePrereg(revised()), root).problems, []);
+    const draft = writePrereg(revised({ status: 'Draft', files: {} }));
+    const result = verifyPrereg(draft, root);
+    assert.equal(result.ok, true);
+    assert.ok(result.notes.length > 0, 'a Draft carries notes');
+    assert.equal(verifyPrereg(draft, root, { draft: true }).ok, true);
+  });
+});
+
 describe('verifyPrereg', () => {
   test('matching hashes: a Frozen Stage A block whose hashes match is ok', () => {
     writeStageAStandIns();

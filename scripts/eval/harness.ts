@@ -21,7 +21,7 @@
  *
  * Eval tooling: it must never import from src/ (D-02). Atlas is only ever run as the built binary.
  */
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -169,6 +169,104 @@ function runProcess(
     child.on('error', (error: Error) => finish(null, null, `${error.message}\n`));
     child.on('close', (code, signal) => finish(code, signal));
   });
+}
+
+// ---------------------------------------------------------------------------------------------
+// The atlas build under test (T-03-334)
+
+/**
+ * The paths whose bytes decide what the atlas binary does. The Stage B record names the commit the scored run
+ * builds; the scored gate compares it with the checkout that holds the binary. The check sits here and not in
+ * `verify-prereg`, so that later phases can change `src` without turning the CI static job red.
+ */
+export const ATLAS_BUILD_INPUTS: readonly string[] = [
+  'src',
+  'modules',
+  'schemas',
+  'diagnostics',
+  'package.json',
+  'package-lock.json',
+  'tsconfig.json',
+  'tsconfig.build.json',
+];
+
+export interface GitOutcome {
+  code: number | null;
+  stdout: string;
+  stderr: string;
+}
+
+/** Runs `git` with an argument array in `cwd` (the seam of `checkAtlasBuild`). */
+export type GitRunner = (cwd: string, args: string[]) => GitOutcome;
+
+const realGit: GitRunner = (cwd, args) => {
+  const env: NodeJS.ProcessEnv = { ...process.env };
+  // A hook or a worktree may export these; the command must look at `cwd` and nothing else.
+  for (const key of ['GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE']) delete env[key];
+  const result = spawnSync('git', args, { cwd, env, encoding: 'utf8', windowsHide: true });
+  return { code: result.error === undefined ? result.status : null, stdout: result.stdout ?? '', stderr: result.error?.message ?? result.stderr ?? '' };
+};
+
+/**
+ * Compares the registered Stage B `atlasCommit` with the checkout that holds the atlas binary under test
+ * (T-03-334). Returns the first problem as a one-element array, or an empty array when the build is the registered
+ * one. The registered commit must be HEAD or an ancestor of it; none of `ATLAS_BUILD_INPUTS` may differ between that
+ * commit and HEAD or have an uncommitted change; and the binary (and the MCP shim next to it) must not be older than
+ * the newest tracked build input. The checkout is the directory two levels above the directory of the binary
+ * (`<root>/dist/bin/gsd-atlas.js`).
+ */
+export function checkAtlasBuild(atlasBin: string, atlasCommit: string, git: GitRunner = realGit): string[] {
+  const bin = path.resolve(atlasBin);
+  const root = path.resolve(path.dirname(bin), '..', '..');
+  const short = atlasCommit.slice(0, 12);
+  const notCheckout = `the atlas binary ${bin} is not inside a git checkout (${root} is not a git checkout root), so its build cannot be compared with the Stage B commit ${short}`;
+
+  const top = git(root, ['rev-parse', '--show-toplevel']);
+  if (top.code !== 0) return [notCheckout];
+  try {
+    if (fs.realpathSync(top.stdout.trim()) !== fs.realpathSync(root)) return [notCheckout];
+  } catch {
+    return [notCheckout];
+  }
+  if (!fs.existsSync(bin)) return [`the atlas binary ${bin} does not exist (it is built with npm run build)`];
+
+  if (git(root, ['cat-file', '-e', `${atlasCommit}^{commit}`]).code !== 0) {
+    return [`the Stage B commit ${atlasCommit} is not in the checkout ${root}, so the atlas build cannot be the registered one`];
+  }
+  const ancestor = git(root, ['merge-base', '--is-ancestor', atlasCommit, 'HEAD']);
+  if (ancestor.code === 1) {
+    return [`atlas build from another commit: the Stage B commit ${short} is neither HEAD nor an ancestor of HEAD in ${root}`];
+  }
+  if (ancestor.code !== 0) return [`cannot compare the Stage B commit ${short} with HEAD: ${ancestor.stderr.trim()}`];
+
+  const changed = git(root, ['diff', '--name-only', '-z', atlasCommit, 'HEAD', '--', ...ATLAS_BUILD_INPUTS]);
+  if (changed.code !== 0) return [`cannot list the build inputs that changed since the Stage B commit ${short}: ${changed.stderr.trim()}`];
+  const first = changed.stdout.split('\0').find((entry) => entry !== '');
+  if (first !== undefined) return [`build input changed since the Stage B commit ${short}: ${first} differs from HEAD`];
+
+  const dirty = git(root, ['status', '--porcelain', '--untracked-files=all', '-z', '--', ...ATLAS_BUILD_INPUTS]);
+  if (dirty.code !== 0) return [`cannot read the status of the build inputs: ${dirty.stderr.trim()}`];
+  const uncommitted = dirty.stdout.split('\0').find((entry) => entry !== '');
+  if (uncommitted !== undefined) return [`build input has an uncommitted change: ${uncommitted.slice(3)} (${uncommitted.slice(0, 2).trim() || 'changed'})`];
+
+  const tracked = git(root, ['ls-files', '-z', '--', ...ATLAS_BUILD_INPUTS]);
+  if (tracked.code !== 0) return [`cannot list the tracked build inputs: ${tracked.stderr.trim()}`];
+  let newest = { rel: '', ms: 0 };
+  for (const rel of tracked.stdout.split('\0').filter((entry) => entry !== '')) {
+    try {
+      const ms = fs.statSync(path.join(root, rel)).mtimeMs;
+      if (ms > newest.ms) newest = { rel, ms };
+    } catch {
+      // A tracked path that is absent from the working tree is reported as an uncommitted change above.
+    }
+  }
+  const shim = path.join(path.dirname(bin), 'gsd-atlas-mcp.js');
+  for (const built of fs.existsSync(shim) ? [bin, shim] : [bin]) {
+    if (fs.statSync(built).mtimeMs < newest.ms) {
+      return [`atlas binary older than a build input: ${built} was built before ${newest.rel} was last written; run npm run build`];
+    }
+  }
+  return [];
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -325,6 +423,7 @@ export async function runCell(cell: Cell, deps: CellDeps): Promise<CellResult> {
     allowedTools: allowedToolsFor(cell.arm),
     mcpConfigPath,
     pluginDirs,
+    ...(ARMS[cell.arm].settings === undefined ? {} : { settings: ARMS[cell.arm].settings }),
     jsonSchema: deps.answerSchema,
     maxBudgetUsd: deps.maxBudgetUsd,
     wallClockMs: deps.wallClockMs,
@@ -526,6 +625,8 @@ export interface CliDeps {
   claudeVersion?: () => Promise<string>;
   /** Replaces reading `.eval-prepared.json`; for tests. */
   readPrepared?: (dir: string) => { sha: string; npmCi: boolean };
+  /** Replaces the comparison of the atlas binary's checkout with the Stage B commit (`checkAtlasBuild`); for tests. */
+  atlasBuildCheck?: (atlasBin: string, atlasCommit: string) => string[];
 }
 
 const USAGE = [
@@ -639,6 +740,9 @@ async function scoredGate(
     else if (hashFile(skillPath) !== prereg.stageB.skillSha256) {
       problems.push(`the skill file ${skillPath} differs from the registered Stage B hash`);
     }
+    // The build the scored run uses must be the one Stage B registered (T-03-334).
+    const atlasBin = path.resolve(values['atlas-bin'] ?? path.join(repoRoot, 'dist', 'bin', 'gsd-atlas.js'));
+    problems.push(...(deps.atlasBuildCheck ?? ((bin: string, commit: string) => checkAtlasBuild(bin, commit)))(atlasBin, prereg.stageB.atlasCommit));
   }
 
   const registeredFlag = (name: string, given: string | undefined, registered: string | number): void => {
@@ -732,7 +836,7 @@ async function resolveContext(command: 'plan' | 'run' | 'pilot', values: Values,
     }
     prereg = gate.prereg;
     claudeVersion = gate.claudeVersion;
-    registered.push('gate: ok (preregistration Frozen, Stage B, registered files and skill unchanged)');
+    registered.push('gate: ok (preregistration Frozen, Stage B, registered files and skill unchanged, atlas build matches the Stage B commit)');
     if (prereg !== undefined) {
       const p = prereg.params;
       registered.push(
@@ -795,7 +899,7 @@ function printPlan(context: RunContext, values: Values, io: Io, header: string):
     `  wall-clock-ms: ${settings.wallClockMs === undefined ? '(unset)' : String(settings.wallClockMs)}`,
     `  stop-at-cost-usd: ${values['stop-at-cost-usd'] ?? '(unset)'}`,
     `  retry: ${String(MAX_INFRASTRUCTURE_RETRIES)} retries after ${values['retry-delay-ms'] ?? String(DEFAULT_RETRY_DELAY_MS)} ms, infrastructure failures only`,
-    `  tools: ${ARMS.grep.builtinTools.join(',')} in both arms; the atlas arm adds the gsd-atlas MCP server and skill`,
+    `  tools: grep arm ${ARMS.grep.builtinTools.join(',')}; atlas arm ${ARMS.atlas.builtinTools.join(',')} (the atlas arm adds the Skill tool, the gsd-atlas MCP server and the skill)`,
     `  results: ${context.outDir ?? '(--out-dir unset)'}`,
     ...settings.registered,
   ];

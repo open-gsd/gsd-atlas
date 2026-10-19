@@ -55,7 +55,10 @@ if (mcpConfigPath !== undefined && existsSync(mcpConfigPath)) {
     }
   }
 }
-const skills = ['update-config', 'debug'];
+// Claude Code's own skills. The `--settings` JSON with `disableBundledSkills` removes them (the atlas arm's settings).
+const settingsJson = flag('--settings');
+const bundledOff = settingsJson !== undefined && JSON.parse(settingsJson).disableBundledSkills === true;
+const skills = bundledOff ? [] : ['update-config', 'debug'];
 for (const dir of flags('--plugin-dir')) {
   const plugin = JSON.parse(readFileSync(join(dir, '.claude-plugin', 'plugin.json'), 'utf8'));
   const skillsDir = join(dir, 'skills');
