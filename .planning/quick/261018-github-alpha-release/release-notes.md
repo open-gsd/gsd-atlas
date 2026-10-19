@@ -1,10 +1,19 @@
-## gsd-atlas 0.1.0-alpha.0: alpha, install it yourself
+## gsd-atlas 0.0.1-alpha: alpha, install it yourself
 
 This is the first alpha of gsd-atlas, a local map of a codebase for coding agents. It indexes a TypeScript or JavaScript repository on your machine and answers "where is this defined, who uses it, what would break" with answers that cite a file and line.
 
 It is a pre-MVP build, published so that people can try it, not because it is ready. You install it yourself, from the tarball attached to this release or from source. It is not on npm yet. Commands, tools and the index format can change between builds, and nothing is promised about compatibility, dates or a stable release.
 
-This release was built from commit `facb447464a4cb9b0207efab7e692321a9ab912d`. The links below point at that commit.
+This release was built from commit `facb447464a4cb9b0207efab7e692321a9ab912d`, tagged `v0.0.1-alpha`. The links below point at that commit.
+
+### Version numbers
+
+Two different numbers are in play, and they are not the same:
+
+- The GitHub release and its git tag are `v0.0.1-alpha`.
+- The tarball attached here was built from a `package.json` whose version is `0.1.0-alpha.0`, so the installed command prints `gsd-atlas 0.1.0-alpha.0`, not `0.0.1-alpha`. The file name, `opengsd-gsd-atlas-0.1.0-alpha.0.tgz`, carries the package version too.
+
+The npm package, when it is published, carries its own version number and is not this release. Nothing here promises an npm version, a date or availability.
 
 ### Requirements
 
@@ -24,22 +33,22 @@ npm install -g ./opengsd-gsd-atlas-0.1.0-alpha.0.tgz
 gsd-atlas --version
 ```
 
-The checksum should be `2cde1571398a1417256cd7fcdb7fc5114e7dd642d925a060443fd705b8b2032d` (830958 bytes; `sha256sum` on Linux). The last command should print `gsd-atlas 0.1.0-alpha.0`. With npm 11 you may see a warning that `@parcel/watcher` has install scripts not covered by `allowScripts`; the install and the checks described here worked without running them.
+The checksum should be `2cde1571398a1417256cd7fcdb7fc5114e7dd642d925a060443fd705b8b2032d` (830958 bytes; `sha256sum` on Linux). The last command should print `gsd-atlas 0.1.0-alpha.0`, the package version (see "Version numbers" above). With npm 11 you may see a warning that `@parcel/watcher` has install scripts not covered by `allowScripts`; the install and the checks described here worked without running them.
 
-**2. `npm install -g @opengsd/gsd-atlas@alpha`.** The package is not published to npm yet, so this command does not work today. When it is published, the tarball npm serves is built separately from the one attached here, and its bytes (and so its checksum) will differ.
+**2. From npm.** The package `@opengsd/gsd-atlas` is not published to npm yet, so `npm install` of it does not work today. When it is published, it carries its own version number, is not this release, and the tarball npm serves is built separately from the one attached here, so its bytes (and its checksum) will differ.
 
 **3. From source.**
 
 ```sh
 git clone https://github.com/open-gsd/gsd-atlas.git
 cd gsd-atlas
-git checkout facb447464a4cb9b0207efab7e692321a9ab912d
+git checkout v0.0.1-alpha
 npm ci --ignore-scripts
 npm run build
 node dist/bin/gsd-atlas.js --version
 ```
 
-The last command should print `gsd-atlas 0.1.0-alpha.0`. The repository is private for now, so the clone needs access to it. With a source build, run `node dist/bin/gsd-atlas.js` where the guides below write `gsd-atlas`.
+The last command should print `gsd-atlas 0.1.0-alpha.0` (the package version, not the tag). The repository is private for now, so the clone needs access to it. With a source build, run `node dist/bin/gsd-atlas.js` where the guides below write `gsd-atlas`.
 
 ### Try it, register it, install the skill
 
