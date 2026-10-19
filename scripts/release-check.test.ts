@@ -14,7 +14,9 @@ import {
   checkManifest,
   checkPack,
   checkShebang,
+  checkToolVersions,
   checkVersion,
+  compareVersions,
   distTagFor,
   scanText,
 } from './release-check.ts';
@@ -260,6 +262,30 @@ test('scanText: secret-looking strings are reported without echoing them', () =>
     for (const problem of problems) assert.ok(!problem.includes(sample), 'the message must not repeat the secret');
   }
   assert.deepEqual(scanText('dist/a.js', 'process.env.NODE_AUTH_TOKEN and npm_config_registry'), []);
+});
+
+// ---------------------------------------------------------------- tool versions (npm trusted publishing)
+
+test('compareVersions orders dotted versions numerically', () => {
+  assert.ok(compareVersions('11.5.1', '11.5.1') === 0);
+  assert.ok(compareVersions('11.13.0', '11.5.1') > 0);
+  assert.ok(compareVersions('10.9.9', '11.5.1') < 0);
+  assert.ok(compareVersions('22.14.0', '22.9.0') > 0);
+  assert.ok(compareVersions('v24.16.0', '22.14.0') > 0, 'a leading v is ignored');
+});
+
+test('checkToolVersions: trusted publishing needs npm 11.5.1 and Node 22.14.0 or newer', () => {
+  assert.deepEqual(checkToolVersions('24.16.0', '11.13.0'), []);
+  assert.deepEqual(checkToolVersions('v22.14.0', '11.5.1'), []);
+  assert.ok(checkToolVersions('24.16.0', '10.9.2').some((problem) => /npm/.test(problem) && /11\.5\.1/.test(problem)));
+  assert.ok(checkToolVersions('20.19.0', '11.13.0').some((problem) => /Node/.test(problem) && /22\.14\.0/.test(problem)));
+  assert.equal(checkToolVersions('20.19.0', '10.0.0').length, 2);
+});
+
+test('command: --tool-versions judges the running Node and npm and needs no channel', () => {
+  const result = run(['--tool-versions']);
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /release-check: ok \(node /);
 });
 
 // ---------------------------------------------------------------- the command

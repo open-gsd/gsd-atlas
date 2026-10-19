@@ -135,10 +135,13 @@ for (const file of files) {
     }
   });
 
-  test(`${file}: concurrency cancels superseded runs`, () => {
+  // A release run is never cancelled half way: a publish that stops after the registry accepted the tarball but before the
+  // job ended would leave the maintainer guessing. release.yml queues instead (cancel-in-progress: false).
+  test(`${file}: concurrency ${file === 'release.yml' ? 'queues release runs' : 'cancels superseded runs'}`, () => {
     const at = topLevelKey(lines, 'concurrency');
     assert.ok(at >= 0, 'no top-level concurrency: block');
-    assert.ok(blockUnder(lines, at).some((l) => /^\s*cancel-in-progress:\s*true\s*$/.test(l)));
+    const wanted = file === 'release.yml' ? 'false' : 'true';
+    assert.ok(blockUnder(lines, at).some((l) => new RegExp(`^\\s*cancel-in-progress:\\s*${wanted}\\s*$`).test(l)));
   });
 
   test(`${file}: defaults.run.shell is bash`, () => {
@@ -507,4 +510,201 @@ test('ci.yml: the test job caps a hung Windows suite at 20 minutes and keeps 30 
   const [windowsMinutes, otherMinutes] = [Number(m[1]), Number(m[2])];
   assert.ok(windowsMinutes >= 15 && windowsMinutes <= 25, 'a hang in src/bin/compose.test.ts must not stall the job for 30 minutes');
   assert.equal(otherMinutes, 30, 'the Ubuntu and macOS limit is unchanged');
+});
+
+// ---------------------------------------------------------------- the release workflow (quick task 261018-npm-release-pipeline)
+//
+// release.yml publishes @opengsd/gsd-atlas to npm from GitHub Actions only. It is started by hand, defaults to a dry run,
+// refuses a real release unless the ref is main and the repository is public, and grants the OIDC token (id-token: write)
+// to the publish job alone. The invariants below are the ones a later edit could silently weaken.
+
+const RELEASE = 'release.yml';
+const releaseLines = (): string[] => readLines(RELEASE);
+const releaseJob = (name: string): string => (jobs(releaseLines()).get(name) ?? []).join('\n');
+
+/** The text of every `run:` value (inline or block) of a workflow, with the line the key is on. */
+function runBlocks(lines: string[]): { text: string; i: number }[] {
+  const out: { text: string; i: number }[] = [];
+  lines.forEach((line, i) => {
+    const m = /^(\s*)(-\s+)?run:\s*(.*)$/.exec(line);
+    if (!m) return;
+    const keyIndent = (m[1] as string).length + (m[2] === undefined ? 0 : 2);
+    const body = [m[3] as string];
+    for (let j = i + 1; j < lines.length; j++) {
+      const next = lines[j] ?? '';
+      if (!isBlank(next) && indentOf(next) <= keyIndent) break;
+      if (!next.trim().startsWith('#')) body.push(next);
+    }
+    out.push({ text: body.join('\n'), i });
+  });
+  return out;
+}
+
+/** The text of the step named `name` in a job (undefined when absent), comment lines left out. */
+const releaseStep = (job: string, name: string): string | undefined => {
+  const body = job.split('\n');
+  const at = body.findIndex((l) => new RegExp(`^\\s+-\\s+name:\\s*${name.replace(/[()]/g, '\\$&')}\\s*$`).test(l));
+  return at < 0 ? undefined : textOf(stepAround(body, at));
+};
+
+test('release.yml: it exists and is the only workflow that publishes', () => {
+  assert.ok(files.includes(RELEASE), 'release.yml is missing');
+  for (const file of files) {
+    const text = readLines(file).join('\n');
+    if (file !== RELEASE) assert.doesNotMatch(text.replace(/npm publish --dry-run[^\n]*/g, ''), /npm publish|id-token|NPM_TOKEN/, `${file} must not publish or take the OIDC token`);
+  }
+});
+
+test('release.yml: workflow_dispatch only, with channel (alpha, next, latest; default alpha), dry_run (boolean; default true) and auth (oidc or token; default oidc)', () => {
+  const lines = releaseLines();
+  const text = lines.join('\n');
+  const on = blockUnder(lines, topLevelKey(lines, 'on')).filter((l) => /^ {2}\S/.test(l));
+  assert.deepEqual(on.map((l) => l.trim()), ['workflow_dispatch:'], 'release.yml is started by hand and by nothing else');
+  const input = (name: string): string[] => {
+    const at = lines.findIndex((l) => new RegExp(`^ {6}${name}:\\s*$`).test(l));
+    assert.ok(at >= 0, `input ${name} is missing`);
+    return blockUnder(lines, at).map((l) => l.trim());
+  };
+  const channel = input('channel');
+  assert.ok(channel.includes('type: choice'));
+  assert.ok(channel.includes('default: alpha'));
+  assert.deepEqual(channel.filter((l) => l.startsWith('- ')), ['- alpha', '- next', '- latest']);
+  const dryRun = input('dry_run');
+  assert.ok(dryRun.includes('type: boolean'));
+  assert.ok(dryRun.includes('default: true'), 'a release run is a dry run unless the maintainer unticks dry_run');
+  const auth = input('auth');
+  assert.ok(auth.includes('type: choice') && auth.includes('default: oidc'));
+  assert.deepEqual(auth.filter((l) => l.startsWith('- ')), ['- oidc', '- token']);
+  assert.doesNotMatch(text, /^ {2}(?:push|pull_request|schedule|release|workflow_call):/m);
+});
+
+test('release.yml: jobs are verify and publish; publish needs verify', () => {
+  const j = jobs(releaseLines());
+  assert.deepEqual([...j.keys()], ['verify', 'publish']);
+  assert.match(releaseJob('publish'), /^ {4}needs:\s*verify\s*$/m);
+  for (const name of ['verify', 'publish']) assert.match(releaseJob(name), /^ {4}runs-on:\s*ubuntu-latest\s*$/m);
+});
+
+test('release.yml: id-token: write is granted to the publish job only; every other scope stays contents: read', () => {
+  const text = releaseLines().join('\n');
+  assert.equal([...text.matchAll(/id-token:/g)].length, 1, 'id-token appears exactly once');
+  assert.doesNotMatch(releaseJob('verify'), /permissions:|id-token/, 'the verify job takes the top-level contents: read and nothing more');
+  const publish = releaseJob('publish').split('\n');
+  const at = publish.findIndex((l) => /^ {4}permissions:\s*$/.test(l));
+  assert.ok(at >= 0, 'the publish job has its own permissions block');
+  assert.deepEqual(blockUnder(publish, at).map((l) => l.trim()), ['contents: read', 'id-token: write']);
+  assert.doesNotMatch(text, /contents:\s*write|packages:\s*write|actions:\s*write/);
+});
+
+test('release.yml: no step is optional (no continue-on-error, no || true) and every job has a timeout', () => {
+  const text = releaseLines().join('\n');
+  assert.doesNotMatch(text, /continue-on-error/);
+  assert.doesNotMatch(text, /\|\|\s*true/);
+  for (const [name, body] of jobs(releaseLines())) assert.ok(body.some((l) => TIMEOUT_LINE.test(l)), `job ${name} has no timeout-minutes`);
+});
+
+test('release.yml: Node is pinned to 24.16.0 like ci.yml, with no package cache in a release build', () => {
+  for (const name of ['verify', 'publish']) {
+    const job = releaseJob(name);
+    assert.match(job, /node-version:\s*"24\.16\.0"/, `${name}: Node 24.16.0`);
+    assert.match(job, /package-manager-cache:\s*false/, `${name}: no cache in a release build`);
+    assert.doesNotMatch(job, /^\s+cache:/m);
+  }
+});
+
+test('release.yml: the verify job runs the whole gate, in order, and uploads the tarball it checked', () => {
+  const verify = releaseJob('verify');
+  const order = [
+    'npm ci --ignore-scripts',
+    'node scripts/release-check.ts --tool-versions',
+    'npm run typecheck',
+    'npm run lint',
+    'npm run build',
+    'npm run schema:check',
+    'npm test',
+    'node scripts/eval/verify-prereg.ts',
+    'node scripts/release-check.ts --channel "$CHANNEL"',
+    'npm pack --ignore-scripts',
+    'actions/upload-artifact@',
+  ];
+  let from = 0;
+  for (const needle of order) {
+    const at = verify.indexOf(needle, from);
+    assert.ok(at >= from, `${needle} is missing from the verify job or out of order`);
+    from = at + needle.length;
+  }
+  assert.doesNotMatch(verify, /\bnpm\s+publish\b/, 'the verify job never publishes');
+});
+
+test('release.yml: a real release is refused unless the ref is main and the repository is public, in both jobs and before anything else', () => {
+  for (const name of ['verify', 'publish']) {
+    const job = releaseJob(name);
+    const guard = releaseStep(job, 'Refuse a real release unless the ref is main and the repository is public');
+    assert.ok(guard !== undefined, `${name}: the guard step is missing`);
+    assert.match(guard, /^\s+if:\s*\$\{\{\s*!inputs\.dry_run\s*\}\}\s*$/m, `${name}: the guard runs for real releases`);
+    assert.match(guard, /refs\/heads\/main/);
+    assert.match(guard, /\.private/);
+    assert.match(guard, /exit 1/);
+    assert.doesNotMatch(guard, /continue-on-error/);
+    // The guard is the first step that does anything: before npm ci in verify and before the publish steps.
+    const first = job.indexOf('Refuse a real release');
+    for (const later of ['npm ci', 'npm publish', 'actions/download-artifact@', 'actions/setup-node@']) {
+      const at = job.indexOf(later);
+      if (at >= 0) assert.ok(first < at, `${name}: the guard comes before ${later}`);
+    }
+  }
+});
+
+test('release.yml: the publish job uses the npm-publish environment and publishes with provenance, public access and the channel as the tag', () => {
+  const publish = releaseJob('publish');
+  assert.match(publish, /^ {4}environment:\s*npm-publish\s*$/m);
+  const publishCommands = publish.split('\n').filter((l) => /\bnpm publish\b/.test(l) && !l.trim().startsWith('#'));
+  assert.equal(publishCommands.length, 4, 'two steps (oidc, token), each with a dry-run and a real command');
+  for (const command of publishCommands) {
+    assert.match(command, /--provenance/);
+    assert.match(command, /--access public/);
+    assert.match(command, /--tag "\$CHANNEL"/, 'the dist-tag is the channel input, never a literal');
+    assert.doesNotMatch(command, /--tag latest|--tag=latest/);
+  }
+  assert.equal(publishCommands.filter((l) => /--dry-run/.test(l)).length, 2, 'half of them are the dry-run form');
+  // The dry-run form is chosen by one test on DRY_RUN and the real form is its else branch.
+  assert.match(publish, /if \[ "\$DRY_RUN" = "true" \]; then/);
+  assert.match(publish, /actions\/download-artifact@/, 'the tarball that was checked is the tarball that is published');
+});
+
+test('release.yml: the OIDC step takes no token and the token step is the only user of NPM_TOKEN', () => {
+  const publish = releaseJob('publish');
+  const oidc = releaseStep(publish, 'Publish with trusted publishing (OIDC)');
+  const token = releaseStep(publish, 'Publish with an npm token (fallback)');
+  assert.ok(oidc !== undefined && token !== undefined, 'both publish steps exist');
+  assert.match(oidc, /^\s+if:\s*\$\{\{\s*inputs\.auth == 'oidc'\s*\}\}\s*$/m);
+  assert.match(token, /^\s+if:\s*\$\{\{\s*inputs\.auth == 'token'\s*\}\}\s*$/m);
+  assert.doesNotMatch(oidc, /NODE_AUTH_TOKEN|secrets\./);
+  assert.match(token, /^\s+NODE_AUTH_TOKEN:\s*\$\{\{\s*secrets\.NPM_TOKEN\s*\}\}\s*$/m);
+  const secretsUsed = [...releaseLines().join('\n').matchAll(/secrets\.([A-Z_]+)/g)].map((m) => m[1]);
+  assert.deepEqual(secretsUsed, ['NPM_TOKEN'], 'NPM_TOKEN is the only secret and it appears once');
+});
+
+test('release.yml: workflow inputs reach shell code through env, never by interpolation into a run block', () => {
+  const blocks = runBlocks(releaseLines());
+  assert.ok(blocks.length > 5, 'the run blocks were found');
+  for (const { text, i } of blocks) {
+    assert.ok(!text.includes('${{'), `line ${i + 1}: an expression inside a run block`);
+  }
+});
+
+test('release.yml: it checks the toolchain that trusted publishing needs, in both jobs', () => {
+  assert.match(releaseJob('publish'), /node scripts\/release-check\.ts --tool-versions/);
+  assert.match(releaseJob('verify'), /node scripts\/release-check\.ts --tool-versions/);
+});
+
+test('ci.yml: the static job rehearses the release on every pull request (release-check and npm publish --dry-run)', () => {
+  const staticJob = (jobs(readLines('ci.yml')).get('static') ?? []).join('\n');
+  const build = staticJob.indexOf('npm run build');
+  const check = staticJob.indexOf('node scripts/release-check.ts --channel auto');
+  const rehearsal = staticJob.indexOf('npm publish --dry-run --ignore-scripts --tag');
+  assert.ok(build >= 0 && check > build, 'release-check runs after the build, on the channel the version names');
+  assert.ok(rehearsal > check, 'npm publish --dry-run follows release-check');
+  assert.doesNotMatch(staticJob, /npm publish(?![^\n]*--dry-run)/, 'ci.yml never publishes for real');
+  assert.doesNotMatch(readLines('ci.yml').join('\n'), /id-token|NPM_TOKEN/);
 });
