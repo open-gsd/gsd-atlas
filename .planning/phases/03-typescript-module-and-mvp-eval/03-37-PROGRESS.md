@@ -67,6 +67,26 @@ Reply to the Task 2 blocking checkpoint, verbatim, 2026-10-18: `approve ack-verd
 - Pull request checks: Static checks, Gates (3 OS), Grammar rebuild (3 OS) and the Ubuntu and macOS test jobs (Node 24.16.0 and 26) passed. The two Windows test jobs (Node 24.16.0 and 26) did not finish (cancelled, then reported as fail); the workflow sets `continue-on-error` for the Windows test jobs by design and earlier runs of main show the same cancelled Windows jobs. The merge state was UNSTABLE for that reason, MERGEABLE, no review required, no review bypassed.
 - All 14 issues (#2 to #9, #11 to #16) were closed after the merge, one `gh issue close` each, with the comment `Numbered and ratified in https://github.com/open-gsd/gsd-atlas/pull/17.`; each reads CLOSED/COMPLETED (table above, checked with `gh issue view`). #1 (merged pull request) and #10 (closed pull request) were not touched.
 
+## Task 4 (after the merge)
+
+- RED `cc1337c` (the end-state cases in `scripts/adr.test.ts` and the replaced case `decision records are numbered and accepted` in `scripts/docs-reference.test.ts`; five cases failed for the right reasons), then GREEN in `18678ca` (docs), `a11e558` (six source comment lines, comment lines only), `15a3b60` (ledger closing rows and decisions), `bf5a9d0` (the two todos moved to `.planning/todos/done/`), `0f6d380` (type narrowing in the new cases).
+- `docs/adr` holds fourteen numbered records and README.md; no `draft-*` file is tracked.
+- Checks: `npm run typecheck`, `npm run lint`, `npm run build` clean; `npm test` 4663 tests, 4661 pass, 0 fail, 2 skipped (as before); `node scripts/eval/verify-prereg.ts` prints ok.
+
+## Not yet on the remote
+
+This plan pushed nothing from the integration branch. The remote default branch (`main`, at the merge commit `015ff88`) holds the numbered, Accepted records and the closed issues, but still carries the earlier legend, notes, README wording and comment lines until the person pushes the integration branch (`worktree-agent-a831d504fe83fd4be`) to `main`. The commits to push (`git log origin/main..HEAD`, before this progress note and the summary were added):
+
+- `837abd4` test(03-37): RED - the own-issue check accepts the body the payload writes
+- `f3cbb60` fix(03-37): the own-issue check accepts the placeholder file name the payload writes
+- `3d3f64a` docs(03-37): record the ratification pass and the closing of the issues of every record
+- `cc1337c` test(03-37): RED - every record is numbered and the documents say so
+- `18678ca` docs(03-37): every decision record is ratified, numbered and Accepted
+- `a11e558` refactor(03-37): comments name the accepted diagnostics record by its file name
+- `15a3b60` docs(03-37): close the changed claims in the documentation ledger and record the end state
+- `bf5a9d0` chore(03-37): move the ADR numbering todos to done
+- `0f6d380` test(03-37): GREEN - the end-state cases narrow findAdrFile on null
+
 ## Deviations during the pass
 
 1. [Rule 1] The wording case `decision records are called drafts` in `scripts/docs-reference.test.ts` demands a pre-release note in every numbered record, so it failed for the two records the pass numbers. Fixed in the pull request (`21c79b5`): it skips records whose Ratified date is 2026-10-18. Task 4 replaces the whole case.
@@ -74,3 +94,5 @@ Reply to the Task 2 blocking checkpoint, verbatim, 2026-10-18: `approve ack-verd
 3. The agent-branch check before committing (HEAD must be an `agent-*` branch) was not applied to the pass branch `adr/mvp-gate-ratification`, which the plan and the instructions require; the protected-branch part of the check held (HEAD was never main).
 4. Closing issues was recorded in one commit for all 14 instead of one commit each; the closes are verified directly against GitHub state.
 5. The first attempt to close four issues in one command was refused by the auto-mode permission classifier (External System Writes); nothing was closed by it. Each issue was then closed with its own plain command, as in the plan.
+6. [Rule 2] The plan lists five source files whose first comment calls the diagnostics record a draft; a sixth, `src/host/bug.ts`, says the same. Its comment line was updated too (comment line only), and the new test covers all six.
+7. The wording case of `scripts/docs-reference.test.ts` and `scripts/adr.test.ts` were extended in the same commits as described under Task 4; the user pages (README.md, the limitations page, the trust explanation) use "ratified" only in the first two, as the existing rule requires. The explanation page needed two word changes that the plan did not name ("draft" to "accepted decision" and "record").
