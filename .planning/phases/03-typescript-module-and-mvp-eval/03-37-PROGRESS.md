@@ -39,6 +39,8 @@ Reply to the Task 2 blocking checkpoint, verbatim, 2026-10-18: `approve ack-verd
 
 | Slug | Issue | How | Issue URL | Pull request | Merge commit | Closed |
 |------|-------|-----|-----------|--------------|--------------|--------|
+| host-process-model | 16 | created | https://github.com/open-gsd/gsd-atlas/issues/16 (OPEN after creation) | | | |
+| user-controlled-diagnostics | 15 | reopened (was CLOSED/NOT_PLANNED; OPEN after reopen, comment as approved) | https://github.com/open-gsd/gsd-atlas/issues/15 | | | |
 
 ## Earlier records
 
