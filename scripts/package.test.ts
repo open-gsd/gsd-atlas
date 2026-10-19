@@ -110,6 +110,7 @@ test('package.json identity, license, module type, engines floor, bins and files
   assert.ok(pkg.files?.includes('schemas'), 'files must include schemas');
   assert.ok(pkg.files?.includes('skills'), 'files must include skills (SKL-01, OQ6)');
   assert.ok(pkg.files?.includes('diagnostics'), 'files must include diagnostics (the shipped catalog, SKL-03)');
+  assert.ok(pkg.files?.includes('CHANGELOG.md'), 'files must include CHANGELOG.md (npm does not add it on its own)');
 });
 
 test('every dependency is an exact pin, no gsd-core or gsd-graph dependency, better-sqlite3 peer optional', () => {
@@ -359,7 +360,7 @@ test('pack contents', async () => {
     assert.ok(!file.split('/').includes('test-kit'), `tarball must not contain test-kit output: ${file}`);
     // Strict whitelist: what the files list names plus what npm adds on its own.
     assert.ok(
-      /^(dist|schemas|modules|skills|diagnostics)\//.test(file) || ['package.json', 'README.md', 'LICENSE'].includes(file),
+      /^(dist|schemas|modules|skills|diagnostics)\//.test(file) || ['package.json', 'README.md', 'LICENSE', 'CHANGELOG.md'].includes(file),
       `unexpected path in tarball: ${file}`,
     );
   }

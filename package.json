@@ -1,7 +1,25 @@
 {
   "name": "@opengsd/gsd-atlas",
-  "version": "0.0.0",
+  "version": "0.1.0-alpha.0",
   "description": "A local map of a codebase and the platform SDKs it targets, built for coding agents.",
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "code-intelligence",
+    "code-index",
+    "tree-sitter",
+    "typescript",
+    "coding-agents",
+    "cli"
+  ],
+  "homepage": "https://github.com/open-gsd/gsd-atlas#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/open-gsd/gsd-atlas.git"
+  },
+  "bugs": {
+    "url": "https://github.com/open-gsd/gsd-atlas/issues"
+  },
   "license": "MIT",
   "type": "module",
   "engines": {
@@ -16,7 +34,8 @@
     "schemas",
     "modules",
     "skills",
-    "diagnostics"
+    "diagnostics",
+    "CHANGELOG.md"
   ],
   "publishConfig": {
     "access": "public",
