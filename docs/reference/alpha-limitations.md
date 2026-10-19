@@ -30,6 +30,10 @@ The command line has `find`, `refs`, `context`, `impact`, `explain`, `history`, 
 
 The precise tier asks the TypeScript compiler. It is on by default for the `typescript` module. It uses the project's own TypeScript when that is a 6.x release, and otherwise the 6.0.3 copy that ships with gsd-atlas. A project with TypeScript 7.x is detected and answered by the shipped 6.0.3 copy, and the answer is `degraded` with `compiler_fallback`. A file that no usable `tsconfig.json` covers is answered by the grammar tier, and the answer carries `precise_unavailable`. See [the TypeScript support reference](typescript-support.md#compiler-selection).
 
+### Feedback
+
+`gsd-atlas rate`, `gsd-atlas bug` and `gsd-atlas diagnostics` work on this machine and send nothing. See [how to rate an answer, a feature or a session](../how-to/rate-an-answer.md), [how to report a bug](../how-to/write-a-bug-bundle.md) and [how to turn diagnostics on and off](../how-to/turn-diagnostics-on-and-off.md).
+
 ### Approved commands
 
 A language module can declare a `precise.command`. It runs only after the user approves that exact command for one repository with `gsd-atlas allow`, and only its exit status, signal, time-out flag and duration are reported, never its output. See [the CLI reference](cli.md#gsd-atlas-allow).
@@ -52,7 +56,7 @@ A language module can declare a `precise.command`. It runs only after the user a
 
 - gsd-atlas opens no network connection when it indexes a repository or answers a question, and it sends no telemetry.
 - Diagnostics are off by default, each data type is approved separately, and a report is a local file. `gsd-atlas bug` writes a bundle on this machine and uploads nothing.
-- Permissions come only from the user's own configuration folder, never from a repository.
+- Permissions come only from the user's own configuration folder, never from a repository. The reasons are in [about how atlas decides what to trust](../explanation/how-atlas-decides-what-to-trust.md).
 
 ## Decision records
 
