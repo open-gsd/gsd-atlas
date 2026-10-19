@@ -37,6 +37,15 @@ jobs:
       - run: npm run schema:check
       - name: Pre-registration (frozen hashes)
         run: node scripts/eval/verify-prereg.ts
+      # The release rehearsal, on every pull request so that the release pipeline cannot rot: the same release-check that
+      # release.yml runs (on the channel the package.json version names), then npm's own dry run of a publish. Nothing is
+      # sent anywhere; the real publish is release.yml, started by hand.
+      - run: npm run build
+      - name: Release dry run (release-check, then npm publish --dry-run)
+        run: |
+          node scripts/release-check.ts --channel auto
+          tag=$(node scripts/release-check.ts --channel auto --print-tag)
+          npm publish --dry-run --ignore-scripts --tag "$tag"
 
   # Node 24.16.0 is the floor (24.15.0 truncates TEXT at NUL in node:sqlite); 26 is the next LTS.
   test:

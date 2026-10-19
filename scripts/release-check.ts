@@ -388,6 +388,7 @@ export function runChecks(options: CheckOptions): CheckResult {
 
 const USAGE =
   'usage: node scripts/release-check.ts --channel <alpha|next|latest|auto> [--root <dir>] [--skip-pack] [--pack-json <file>]\n' +
+  '       node scripts/release-check.ts --channel <alpha|next|latest|auto> --print-tag   (print the dist-tag only)\n' +
   '       node scripts/release-check.ts --tool-versions';
 
 function main(argv: string[]): number {
@@ -401,6 +402,7 @@ function main(argv: string[]): number {
         'skip-pack': { type: 'boolean' },
         'pack-json': { type: 'string' },
         'tool-versions': { type: 'boolean' },
+        'print-tag': { type: 'boolean' },
       },
       strict: true,
     }));
@@ -413,6 +415,25 @@ function main(argv: string[]): number {
   if ((channel === undefined && !toolVersions) || (channel !== undefined && channel !== 'auto' && !isChannel(channel))) {
     process.stderr.write(`release-check: --channel must be one of ${CHANNELS.join(', ')}, or auto\n${USAGE}\n`);
     return 2;
+  }
+
+  if (values['print-tag'] === true && channel !== undefined) {
+    // Only the dist-tag on stdout, for a script to capture; nothing is judged here (the checks are the other modes).
+    const root = path.resolve(values.root ?? path.join(path.dirname(fileURLToPath(import.meta.url)), '..'));
+    let version = '';
+    try {
+      version = (JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8')) as PackageManifest).version ?? '';
+    } catch (error) {
+      process.stderr.write(`release-check: package.json cannot be read: ${error instanceof Error ? error.message : String(error)}\n`);
+      return 1;
+    }
+    const resolved = channel === 'auto' ? channelOf(version) : (channel as Channel);
+    if (resolved === undefined) {
+      process.stderr.write(`release-check: version ${version} belongs to no channel (alpha, next or latest)\n`);
+      return 1;
+    }
+    process.stdout.write(`${distTagFor(resolved)}\n`);
+    return 0;
   }
 
   const failures: string[] = [];

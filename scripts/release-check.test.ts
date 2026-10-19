@@ -359,6 +359,24 @@ test('command: --channel auto judges the version against the channel it names, a
   }
 });
 
+test('command: --print-tag prints only the dist-tag, for the channel or for the one the version names', () => {
+  const dir = fixtureRoot(goodManifest(), CHANGELOG);
+  const odd = fixtureRoot({ ...goodManifest(), version: '0.1.0-beta.1' }, CHANGELOG);
+  try {
+    const auto = run(['--channel', 'auto', '--root', dir, '--print-tag']);
+    assert.equal(auto.status, 0, auto.stderr);
+    assert.equal(auto.stdout, 'alpha\n');
+    const explicit = run(['--channel', 'next', '--root', dir, '--print-tag']);
+    assert.equal(explicit.stdout, 'next\n');
+    const none = run(['--channel', 'auto', '--root', odd, '--print-tag']);
+    assert.equal(none.status, 1);
+    assert.equal(none.stdout, '');
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+    fs.rmSync(odd, { recursive: true, force: true });
+  }
+});
+
 test('command: a usage error exits 2', () => {
   assert.equal(run([]).status, 2);
   assert.equal(run(['--channel', 'stable']).status, 2);
