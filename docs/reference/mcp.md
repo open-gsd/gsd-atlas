@@ -355,6 +355,9 @@ Files in the store directory:
 - [How to see why atlas gave an answer](../how-to/see-why-atlas-gave-an-answer.md)
 - [How to find the code that cites an ADR](../how-to/find-the-code-that-cites-an-adr.md)
 - [How to install the gsd-atlas skills](../how-to/install-the-skills.md)
+- [How to approve a precise command for one repository](../how-to/approve-a-precise-command.md)
+- [gsd-atlas alpha limitations reference](alpha-limitations.md)
 - [About how freshness and the writer lease work](../explanation/how-freshness-and-the-writer-lease-work.md)
 - [About how the precise TypeScript tier works](../explanation/how-the-precise-tier-works.md)
+- [About how atlas decides what to trust and what it never sends](../explanation/how-atlas-decides-what-to-trust.md)
 - [MCP tool contract and CLI parity](../adr/13-mcp-contract.md): the decision record

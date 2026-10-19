@@ -453,3 +453,225 @@ test('skill catalog matches the skill files', () => {
   if (!page.includes('gsd-atlas-eval:gsd-atlas')) problems.push('docs/how-to/install-the-skills.md does not name gsd-atlas-eval:gsd-atlas');
   assert.deepEqual(problems, []);
 });
+
+// ---------------------------------------------------------------- the alpha statements (plan 03-36)
+//
+// The limitations page and the README make claims to the public about the project's own state: what the alpha does and
+// does not do, which platforms it supports, whether the decision records are ratified, and what the registered evaluation
+// found. The cases below check those claims against the files that establish them.
+
+const LIMITATIONS = 'docs/reference/alpha-limitations.md';
+const ANALYSIS = 'docs/eval/analysis.md';
+const DIAGNOSIS = 'docs/eval/diagnosis.md';
+
+/** The body of a level-2 section, heading excluded, up to the next level-2 heading; undefined when there is no such heading. */
+function sectionOf(text: string, heading: string): string | undefined {
+  const lines = text.split('\n');
+  const start = lines.findIndex((line) => line.trim() === `## ${heading}`);
+  if (start === -1) return undefined;
+  const rest = lines.slice(start + 1);
+  const end = rest.findIndex((line) => /^## \S/.test(line));
+  return (end === -1 ? rest : rest.slice(0, end)).join('\n');
+}
+
+/** The body of a level-3 entry of a section, heading excluded, up to the next level-2 or level-3 heading. */
+function entryOf(section: string, heading: string): string | undefined {
+  const lines = section.split('\n');
+  const start = lines.findIndex((line) => line.trim() === `### ${heading}`);
+  if (start === -1) return undefined;
+  const rest = lines.slice(start + 1);
+  const end = rest.findIndex((line) => /^#{2,3} \S/.test(line));
+  return (end === -1 ? rest : rest.slice(0, end)).join('\n');
+}
+
+type Verdict = 'MVP met' | 'MVP not met' | 'INCOMPLETE';
+
+/** The registered verdict: the `OVERALL` line of the committed analysis, `none` when no analysis is committed. */
+function registeredVerdict(): Verdict | 'none' | 'unreadable' {
+  if (!existsSync(path.join(root, ANALYSIS))) return 'none';
+  const line = /^OVERALL:\s*(.+?)\s*$/m.exec(read(ANALYSIS))?.[1];
+  return line === 'MVP met' || line === 'MVP not met' || line === 'INCOMPLETE' ? line : 'unreadable';
+}
+
+const NUMBER = /\d+(?:\.\d+)?%?/g;
+const hasDigit = (text: string): boolean => /\d/.test(text);
+
+/** The text of a markdown page with link targets removed, so file names and anchors do not count as prose. */
+const withoutLinkTargets = (text: string): string => text.replace(/\]\([^)]*\)/g, ']');
+
+test('eval status matches the registered analysis', () => {
+  assert.ok(existsSync(path.join(root, LIMITATIONS)), `${LIMITATIONS} exists`);
+  const section = sectionOf(read(LIMITATIONS), 'Evaluation status');
+  assert.ok(section !== undefined, `${LIMITATIONS} has an "Evaluation status" section`);
+  const prose = withoutLinkTargets(section);
+  const verdict = registeredVerdict();
+  const problems: string[] = [];
+  const sentences = sentencesOf(prose).map((sentence) => sentence.toLowerCase());
+  if (verdict === 'unreadable') problems.push(`${ANALYSIS} is committed but its OVERALL line is not MVP met, MVP not met or INCOMPLETE`);
+  if (verdict === 'MVP met' || verdict === 'MVP not met') {
+    const analysis = read(ANALYSIS);
+    if (!section.includes(`OVERALL: ${verdict}`)) problems.push(`the section does not quote the registered line "OVERALL: ${verdict}"`);
+    if (!section.includes('](../eval/analysis.md)')) problems.push('the section does not link ../eval/analysis.md');
+    if (!section.includes('](../eval/preregistration.md)')) problems.push('the section does not link ../eval/preregistration.md');
+    if (verdict === 'MVP not met' && existsSync(path.join(root, DIAGNOSIS)) && !section.includes('](../eval/diagnosis.md)')) {
+      problems.push('the section does not link ../eval/diagnosis.md');
+    }
+    for (const number of prose.match(NUMBER) ?? []) {
+      if (!analysis.includes(number)) problems.push(`the number ${number} is not in ${ANALYSIS}`);
+    }
+    const measured = sentences.filter(
+      (sentence) => !hasDigit(sentence) && sentence.includes('gsd-atlas tools') && sentence.includes('gsd-atlas skill') && sentence.includes('grep arm') && sentence.includes('neither'),
+    );
+    if (measured.length !== 1) {
+      problems.push('the section holds exactly one sentence without a digit saying the atlas arm had the gsd-atlas tools and the gsd-atlas skill and the grep arm had neither');
+    }
+    if (verdict === 'MVP not met') {
+      const wanted: ReadonlyArray<readonly [string, string, string]> = [
+        ['ACCURACY: non-inferior', 'the accuracy criterion was met', 'accuracy'],
+        ['TOKENS: not fewer', 'the token criterion was not met', 'tokens'],
+        ['CITATIONS: below threshold', 'the citation criterion was not met', 'citations'],
+      ];
+      for (const [line, sentence, name] of wanted) {
+        if (!analysis.includes(line)) problems.push(`${ANALYSIS} no longer says "${line}": update the ${name} sentence and this case together`);
+        else if (!sentences.some((each) => each.includes(sentence))) problems.push(`the section does not say, in those words, that ${sentence}`);
+      }
+    }
+  } else {
+    if (!section.includes('No scored evaluation result is committed')) problems.push('the section says "No scored evaluation result is committed"');
+    if (!section.includes('](../eval/preregistration.md)')) problems.push('the section does not link ../eval/preregistration.md');
+    if (section.includes('analysis.md')) problems.push('the section links an analysis that is not committed');
+    if (hasDigit(prose)) problems.push('the section holds a digit, but no result is committed');
+    if (!sentences.some((sentence) => sentence.includes('registered design') && sentence.includes('gsd-atlas tools') && sentence.includes('gsd-atlas skill'))) {
+      problems.push('the section says only that the registered design gives the atlas arm the gsd-atlas tools and the gsd-atlas skill');
+    }
+  }
+  assert.deepEqual(problems, []);
+});
+
+const EFFICACY_PHRASES = ['fewer tokens', 'fewer billable tokens', 'token savings', 'token reduction', 'non-inferior', 'beats grep', 'faster than grep', 'cheaper than grep'] as const;
+
+test('no efficacy claim outside the eval status', () => {
+  const verdict = registeredVerdict();
+  const problems: string[] = [];
+  for (const file of userFiles()) {
+    let text = read(file);
+    const section = file === LIMITATIONS ? sectionOf(text, 'Evaluation status') : undefined;
+    // Inside the Evaluation status section a claim is allowed only when the registered verdict is MVP met.
+    if (section !== undefined && verdict === 'MVP met') text = text.replace(section, '');
+    const lower = text.toLowerCase();
+    for (const phrase of EFFICACY_PHRASES) {
+      if (lower.includes(phrase)) problems.push(`${file}: an efficacy claim ("${phrase}") that the registered analysis does not license here`);
+    }
+  }
+  assert.deepEqual(problems, []);
+});
+
+test('decision records are called drafts', () => {
+  const problems: string[] = [];
+  const legend = read('docs/adr/README.md');
+  if (!/^## Pre-release legend\s*$/m.test(legend)) problems.push('docs/adr/README.md has a "Pre-release legend" section');
+  for (const name of readdirSync(path.join(root, 'docs', 'adr')).filter((each) => /^\d+-.*\.md$/.test(each))) {
+    if (!/^> Pre-release note:/m.test(read(`docs/adr/${name}`))) problems.push(`docs/adr/${name} has no "Pre-release note:" line`);
+  }
+  const pairs: ReadonlyArray<readonly [string, string]> = [
+    ['README.md', 'docs/adr/README.md'],
+    [LIMITATIONS, '../adr/README.md'],
+  ];
+  for (const [file, link] of pairs) {
+    if (!existsSync(path.join(root, file))) {
+      problems.push(`${file} exists`);
+      continue;
+    }
+    const text = read(file);
+    const sentences = sentencesOf(withoutFences(text));
+    if (!sentences.some((sentence) => /\bdrafts?\b/i.test(sentence) && /decision records/i.test(sentence))) {
+      problems.push(`${file}: no sentence says that the decision records are drafts`);
+    }
+    if (!text.includes(`](${link}`)) problems.push(`${file}: no link to ${link}`);
+    for (const sentence of sentences) {
+      const lower = sentence.toLowerCase();
+      if (lower.includes('ratif') && !/\b(?:not|no|none|nothing|never|neither)\b/.test(lower)) problems.push(`${file}: a ratification sentence without a negation: ${sentence}`);
+      if (sentence.includes('Accepted') && !/older|draft/i.test(sentence)) problems.push(`${file}: "Accepted" without "older" or "draft": ${sentence}`);
+    }
+    for (const phrase of ['now accepted', 'are final', 'is final']) {
+      if (text.toLowerCase().includes(phrase)) problems.push(`${file}: "${phrase}"`);
+    }
+  }
+  assert.deepEqual(problems, []);
+});
+
+const PLATFORM_SENTENCES =
+  'Windows is not supported in the alpha. gsd-atlas is built and tested on macOS and Linux. The Windows CI jobs run but are allowed to fail, and known Windows failures are listed in the project\'s planning notes. Windows support is planned after the alpha.';
+
+test('limitations page states the platforms', () => {
+  assert.ok(existsSync(path.join(root, LIMITATIONS)), `${LIMITATIONS} exists`);
+  const page = read(LIMITATIONS);
+  const problems: string[] = [...platformProblems(LIMITATIONS, page)];
+  const supported = sectionOf(page, 'Supported');
+  const available = sectionOf(page, 'Not available');
+  if (supported === undefined) problems.push('the page has no "Supported" section');
+  if (available === undefined) problems.push('the page has no "Not available" section');
+  if (supported !== undefined) {
+    const first = supported.split('\n').find((line) => line.trim() !== '');
+    if ((first ?? '').trim() !== '### Platforms') problems.push('the "Supported" section begins with a level-3 "Platforms" entry');
+    const entry = entryOf(supported, 'Platforms');
+    if (entry === undefined || entry.replace(/\s+/g, ' ').trim() !== PLATFORM_SENTENCES) {
+      problems.push('the "Platforms" entry holds exactly the four sentences of the alpha decision, word for word');
+    }
+  }
+  if (available !== undefined) {
+    const first = available.split('\n').find((line) => line.trim() !== '') ?? '';
+    if (!first.includes('Windows') || !first.includes('(#platforms)')) problems.push('the "Not available" section names Windows first and points to the Platforms entry');
+  }
+  assert.deepEqual(problems, []);
+});
+
+test('feedback guides state what the commands do', () => {
+  const problems: string[] = [];
+  const holds = (file: string, fragments: readonly string[]): void => {
+    const text = read(file);
+    for (const fragment of fragments) if (!text.includes(fragment)) problems.push(`${file}: missing "${fragment}"`);
+  };
+  holds('docs/how-to/rate-an-answer.md', ['there is no MCP tool for it', 'rate up', '--feature', '--session']);
+  holds('docs/how-to/write-a-bug-bundle.md', ['--confirm-raw', 'bug --clear', 'never uploads', '--include', '--mode']);
+  holds('docs/how-to/turn-diagnostics-on-and-off.md', ['diagnostics preview', 'Nothing is submitted in this release', 'diagnostics disable', 'diagnostics types']);
+  const trust = read('docs/explanation/how-atlas-decides-what-to-trust.md');
+  if (/^\s*\d+\.\s/m.test(withoutFences(trust))) problems.push('the trust explanation has numbered steps');
+  if (!trust.includes('](../reference/alpha-limitations.md')) problems.push('the trust explanation does not link the alpha limitations');
+  // Nothing in a guide or the explanation may describe a submission or an intake as something that exists.
+  for (const file of ['docs/how-to/rate-an-answer.md', 'docs/how-to/write-a-bug-bundle.md', 'docs/how-to/turn-diagnostics-on-and-off.md', 'docs/explanation/how-atlas-decides-what-to-trust.md']) {
+    for (const sentence of sentencesOf(withoutFences(read(file)))) {
+      if (/\b(?:submit|submits|submitted|submission|intake|auto-submit)\b/i.test(sentence) && !/\b(?:not|no|never|nothing|none|cannot|neither)\b|do not exist|does not exist/i.test(sentence)) {
+        problems.push(`${file}: a sentence about submission or intake without a negation: ${sentence}`);
+      }
+    }
+  }
+  assert.deepEqual(problems, []);
+});
+
+test('every page is linked from the readme', () => {
+  const readme = read('README.md');
+  const missing = allPages().filter((page) => !readme.includes(`](${page}`));
+  assert.deepEqual(missing, [], `README.md links no page for: ${missing.join(', ')}`);
+});
+
+test('readme is a front door', () => {
+  const readme = read('README.md');
+  const lines = readme.replace(/\n$/, '').split('\n').length;
+  assert.ok(lines <= 70, `README.md has ${String(lines)} lines; the front door has at most 70`);
+  assert.ok(/^## Developer quickstart\s*$/m.test(readme), 'README.md keeps the "Developer quickstart" heading');
+  assert.ok(readme.includes(`](${LIMITATIONS}`), `README.md links ${LIMITATIONS}`);
+  assert.deepEqual(checkRelativeLinks(root, ['README.md']), []);
+});
+
+test('readme names the supported platforms', () => {
+  const readme = read('README.md');
+  const problems: string[] = [...platformProblems('README.md', readme)];
+  for (const fragment of ['on macOS and Linux (Windows is not supported in the alpha)', 'CI runs Node 24.16.0 and 26 on Linux and macOS']) {
+    if (!readme.includes(fragment)) problems.push(`README.md: missing "${fragment}"`);
+  }
+  for (const fragment of ['macOS, Linux and Windows', 'on all three systems']) {
+    if (readme.includes(fragment)) problems.push(`README.md: still says "${fragment}"`);
+  }
+  assert.deepEqual(problems, []);
+});

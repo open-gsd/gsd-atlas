@@ -8,6 +8,8 @@ What is never possible, whatever you do:
 - The MCP server never runs an approved command unless a person started it with `--allow-build`.
 - An approval is for one repository and one exact command: the executable, its arguments and its working directory. A change to any of them no longer matches.
 
+The reasons for these rules are in [About how atlas decides what to trust](../explanation/how-atlas-decides-what-to-trust.md).
+
 1. See the state of the module's precise tier:
 
    ```sh

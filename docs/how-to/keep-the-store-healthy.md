@@ -56,6 +56,10 @@ The repository, or this worktree, has not been built. Run `gsd-atlas build`, the
 
 `--full` applies only to `maintain compact` and `maintain all`. Any other task gives a usage error and exit 1.
 
+## If the index was built by an earlier development build
+
+Questions about the repository answer `not_indexed`, with the text `This repository has not been indexed yet. Run "gsd-atlas build" in a terminal inside it, then ask again.` The index (`facts.db`) is derived data, so this build deletes the old one when it opens it and creates a new one. Run `gsd-atlas build` once. It prints its usual result, with every file counted under `parsed`, and the repository is indexed again. Only the index is rebuilt from the repository; your files are not touched. See [the MCP reference](../reference/mcp.md#atlas_status), row `store`, for the schema version.
+
 ## If the index was written by a newer gsd-atlas
 
 The answer is `schema_too_new`, and its text says to upgrade gsd-atlas, or remove the index.
