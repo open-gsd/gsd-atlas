@@ -169,7 +169,7 @@ Plans:
   4. The `gsd-atlas` skill routes agents to atlas tools and `gsd-atlas-module-author` guides module writing; a user can rate a session, feature or last answer up, meh or down; diagnostics are off by default, approved per data type and previewed before manual submission; and `gsd-atlas bug` captures a flight recorder, versions, config, store health and the failing answer with hashed names and paths by default.
   5. The free-alternatives evaluation (LSP-wrapping MCP servers, agent repo-maps, colbymchenry/codegraph, Claude Code LSP, Memtrace) is recorded before the eval, the eval design is pre-registered (at least 50 questions per corpus including abstain cases, at least 3 runs per configuration, independent oracle, paired pooled analysis, accuracy non-inferiority margin, tool-call rate logged), and on gsd-core agents using atlas consume fewer tokens than the grep-only baseline at non-inferior accuracy with verifiable file:line citations at least 80% of the time.
 
-**Plans:** 37/39 plans executed
+**Plans:** 38/39 plans executed
 
 Plans:
 **Wave 1**
@@ -243,7 +243,7 @@ Plans:
 - [ ] 03-39-PLAN.md — Clean-room replication of the scored run (supplementary; the registered verdict stands): a reproducible Docker image on the user's Docker host with Claude Code 2.1.302 and no user configuration, the user's own Max login, the registered command in chunks with an infrastructure check between chunks, the registered analysis on the replication, and a side-by-side report under interpretation rules fixed before any data exists (EVL-03, EVL-02). **Pending, user-scheduled (2026-10-18/19):** the plan is written and merged but its execution is deferred until the user confirms the container set-up is right; Tasks 1-2 are offline and may run any time, Task 3 onward needs the user, and the chunks are best run after the Max seven-day window resets (Tue 2026-10-20 19:00 EDT). Phase 3 verification and closure wait for this plan or for the user's explicit decision to close the phase without it
 
 **Wave 17** *(blocked on Wave 16 completion)*
-- [ ] 03-37-PLAN.md — Number and ratify every remaining draft ADR at the MVP gate: one issue per draft, rename through one pull request, merge, close the issues, then the documents and tests state the final truth (SKL-03)
+- [x] 03-37-PLAN.md — Number and ratify every remaining draft ADR at the MVP gate: one issue per draft, rename through one pull request, merge, close the issues, then the documents and tests state the final truth (SKL-03)
 
 ### Phase 4: Host Hardening
 
@@ -370,7 +370,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 |-------|----------------|--------|-----------|
 | 1. Foundations and Walking Skeleton | 20/20 | Complete    | 2026-10-16 |
 | 2. Grammar Tier, Store and stdio Host | 46/46 | Complete    | 2026-10-17 |
-| 3. TypeScript Module and MVP Eval | 37/39 | In Progress | - |
+| 3. TypeScript Module and MVP Eval | 38/39 | In Progress | - |
 | 4. Host Hardening | 0/TBD | Not started | - |
 | 5. Swift Module | 0/TBD | Not started | - |
 | 6. Platform SDK Facts | 0/TBD | Not started | - |
