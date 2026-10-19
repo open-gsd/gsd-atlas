@@ -630,6 +630,8 @@ describe('issueIsAdrsOwn (SKL-03)', () => {
       'Draft: docs/adr/draft-fact-model.md\n\nSummary.',
       'ADR: docs/adr/draft-fact-model.md',
       'See docs/adr/6-fact-model.md',
+      // The body that issuePayload writes names the file with the placeholder, because the number is not known yet.
+      'Decision summary.\n\nThis issue gives the record its number at the MVP gate. The file is renamed to `<issue number>-fact-model.md` in the pull request that links this issue.',
     ]) {
       const verdict = issueIsAdrsOwn({ title: 'ADR: fact model', body }, slug);
       assert.equal(verdict.own, true, `${body}: ${verdict.reason}`);
