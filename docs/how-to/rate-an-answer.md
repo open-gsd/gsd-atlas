@@ -40,7 +40,7 @@ A rating is one row in `metrics.db`, in the store folder of the repository: the 
 
 ## If there is no answer to rate
 
-`rate` stops with `no_recent_answer` and exit 2: the repository has no recorded answer yet. Ask a question, then rate. The message also suggests naming an answer by its answer id, but `rate` takes no such option; use `--feature` or `--session` to rate something else.
+`rate` stops with `no_recent_answer` and exit 2: the repository has no recorded answer yet. The message says to ask a question first. `rate` takes no option that names an answer, so ask a question, then rate; use `--feature` or `--session` to rate something else.
 
 ## If the feature name is not accepted
 
