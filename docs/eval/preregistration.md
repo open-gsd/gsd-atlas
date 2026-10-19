@@ -1,6 +1,7 @@
 # Pre-registration of the MVP eval (plan 03-16)
 
 Status: Frozen (Stage A, revision 1, 2026-10-19, by Tom Boucher)
+Status: Frozen (Stage B, 2026-10-19, by Tom Boucher)
 
 This document records the design of the eval that decides whether the gsd-atlas MVP meets its claim. It describes the design only. It reports no scored result and hints at none. Once the status line above reads `Frozen`, `node scripts/eval/verify-prereg.ts` (run by the static CI job) fails when any of the sixteen registered files changes, and a changed registered value is a new registered run (see Deviations policy).
 
@@ -102,7 +103,7 @@ OQ4 confirmed by the user: point_estimate
 
 ```prereg-json
 {
-  "stage": "A",
+  "stage": "B",
   "status": "Frozen",
   "revision": 1,
   "params": {
@@ -211,7 +212,11 @@ OQ4 confirmed by the user: point_estimate
         }
       }
     }
-  ]
+  ],
+  "stageB": {
+    "skillSha256": "00ce2dc7ab33fe087a5ace67409a161c557c99a658f5c2a4527c7efc60bc48cb",
+    "atlasCommit": "37b12e32bf84f9ca1a4052c7d574ebc1aa0fe207"
+  }
 }
 ```
 
@@ -305,3 +310,13 @@ The user answered the Task 4 blocking-human checkpoint of plan 03-38 on 2026-10-
 The reply is read as `approve` with one explicit `oq4=` token whose value is `point_estimate`, the registered value. It approves Revision 1 as written (the atlas arm gains the Skill tool and the skill, the grep arm and every other registered item are unchanged) together with the skill text as shown at the checkpoint. The token criterion (`upper-bound`, the 95th percentile of the paired bootstrap difference below zero) and every other registered parameter are unchanged and are not reopened by this reply. The line below is taken from the reply's `oq4=` token alone; it is not copied from the block or inferred.
 
 OQ4 re-confirmed by the user at Revision 1: point_estimate
+
+## Stage B approval (plan 03-38)
+
+On 2026-10-18 the user answered the Task 6 blocking-human checkpoint of plan 03-38, which asked whether to record Stage B now (the sha256 of the final skill and the current HEAD as the atlas commit) or to wait. The reply is recorded verbatim:
+
+> freeze-b
+
+The reply is read as the option `freeze-b`: the build and the skill are final, and Stage B is recorded at the HEAD that carries this section. The tree at the time of the reply was clean at `51a7c21a777186e70cc7e28e996dc1f47a67ab2b`, the skill file `skills/gsd-atlas/SKILL.md` had the sha256 `00ce2dc7ab33fe087a5ace67409a161c557c99a658f5c2a4527c7efc60bc48cb` (unchanged since the checkpoint), and plan 03-32 and the build-performance work were in that tree. The commit that adds this section changes only this document; the atlas commit that Stage B records is therefore the HEAD that holds this section, which has the same `src`, `modules`, `schemas`, `diagnostics`, package files and compiler configuration as `51a7c21`.
+
+Nothing else is changed by this approval: every registered parameter, the question set, the keys and the sixteen Stage A hashes are those of Revision 1.
