@@ -8,7 +8,7 @@ This is an alpha. It indexes TypeScript and JavaScript repositories on macOS and
 
 The decision records under [docs/adr](docs/adr/README.md) are drafts for this alpha, and none is ratified. [The alpha limitations](docs/reference/alpha-limitations.md) say what is and is not done yet and hold the [evaluation status](docs/reference/alpha-limitations.md#evaluation-status).
 
-To install, clone the repository and build it with `npm ci --ignore-scripts` and `npm run build`; the tutorial below walks through it.
+To install the alpha from npm, run `npm install -g @opengsd/gsd-atlas@alpha`, then `gsd-atlas --version`. No date for a stable release is promised. [The release channels reference](docs/reference/release-channels.md) lists the channels. To build from a clone instead, use `npm ci --ignore-scripts` and `npm run build`; the tutorial below walks through it.
 
 ## Where to go
 
@@ -23,7 +23,8 @@ To install, clone the repository and build it with `npm ci --ignore-scripts` and
   - [Keep the store healthy](docs/how-to/keep-the-store-healthy.md)
   - [Run the measured gates locally](docs/how-to/run-the-measured-gates-locally.md)
   - [Contribute a change](docs/how-to/contribute-a-change.md)
-- Look up: [the command-line reference](docs/reference/cli.md), [the MCP reference](docs/reference/mcp.md), [TypeScript support](docs/reference/typescript-support.md), [ADR citations](docs/reference/adr-citations.md) and [the alpha limitations](docs/reference/alpha-limitations.md).
+  - [Release an alpha to npm](docs/how-to/release-an-alpha.md) (for maintainers)
+- Look up: [the command-line reference](docs/reference/cli.md), [the MCP reference](docs/reference/mcp.md), [TypeScript support](docs/reference/typescript-support.md), [ADR citations](docs/reference/adr-citations.md), [the release channels](docs/reference/release-channels.md) and [the alpha limitations](docs/reference/alpha-limitations.md).
 - Understand: [freshness and the writer lease](docs/explanation/how-freshness-and-the-writer-lease-work.md), [the precise TypeScript tier](docs/explanation/how-the-precise-tier-works.md) and [what atlas trusts and never sends](docs/explanation/how-atlas-decides-what-to-trust.md).
 - Give feedback: [rate an answer](docs/how-to/rate-an-answer.md), [report a bug](docs/how-to/report-a-bug.md) and [turn diagnostics on and off](docs/how-to/turn-diagnostics-on-and-off.md). All three stay on your machine.
 

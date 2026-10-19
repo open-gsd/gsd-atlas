@@ -4,9 +4,9 @@ What this alpha of gsd-atlas does and does not do, and the status of its decisio
 
 ## Status
 
-- This release is an alpha. The package version is 0.0.0.
+- This release is an alpha. It is published on the `alpha` channel of npm as `@opengsd/gsd-atlas` and is installed with `npm install -g @opengsd/gsd-atlas@alpha`; building from a clone also works (see [the release channels](release-channels.md)).
 - The commands, the MCP tools and the stored index format can change between builds. An index written by an earlier development build is derived data: the build that opens it deletes and recreates it, and the repository reports `not_indexed` until `gsd-atlas build` has run once (see [how to keep the store healthy](../how-to/keep-the-store-healthy.md)).
-- No compatibility between builds, no release date and no registry release are promised.
+- No compatibility between builds, no release date and no stable release are promised.
 
 ## Supported
 
