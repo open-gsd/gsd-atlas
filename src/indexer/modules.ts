@@ -7,7 +7,7 @@
 import type { Diagnostic, FileFacts } from '../facts/index.ts';
 import { extractFileFacts } from '../grammar-engine/index.ts';
 import type { GrammarEngine, GrammarRunResult, LoadedGrammar } from '../grammar-engine/index.ts';
-import { readModuleInputs, resolveModules } from '../lang/index.ts';
+import { grammarVersionOf, readModuleInputs, resolveModules } from '../lang/index.ts';
 import type { ModuleEntry, Roots } from '../lang/index.ts';
 
 export type ExtractOutcome =
@@ -70,10 +70,7 @@ export function createModuleHost(options: ModuleHostOptions): ModuleHost {
     const read = readModuleInputs(entry.dir);
     if (!read.ok) throw new ModuleUnreadable(read.diagnostics.map((d) => d.message).join('; '));
     const grammar = await options.engine.load(read.input);
-    const source = read.lock.source;
-    // The grammar version is the pinned upstream ref without its leading v, or the manifest's own version.
-    const version = source.type === 'upstream' ? source.ref.replace(/^v/, '') : (read.manifest.version ?? 'unversioned');
-    return { grammar, name: read.manifest.name, version };
+    return { grammar, name: read.manifest.name, version: grammarVersionOf(read.lock, read.manifest) };
   }
   function loaded(entry: ModuleEntry): Promise<Loaded> {
     let load = loads.get(entry.name);

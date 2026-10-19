@@ -169,6 +169,32 @@ export function readManifest(moduleDir: string): ReadManifestResult {
 }
 
 /**
+ * The grammar version a module's facts are written with: the pinned upstream ref without its leading v, or the manifest's
+ * own version when the grammar is built locally. The one place that rule lives: the indexer stamps every file's facts with
+ * it and `explain` compares it with what a fact carries, so the two can never disagree.
+ */
+export function grammarVersionOf(lock: GrammarLock, manifest: Manifest): string {
+  const { source } = lock;
+  return source.type === 'upstream' ? source.ref.replace(/^v/, '') : (manifest.version ?? 'unversioned');
+}
+
+/**
+ * The grammar version `moduleDir` would write facts with now, read from its manifest and lock only (no wasm, no queries), or
+ * undefined when either cannot be read. Never throws.
+ */
+export function readGrammarVersion(moduleDir: string): string | undefined {
+  const root = openModuleRoot(moduleDir);
+  if (!root.ok) return undefined;
+  const manifestResult = readManifestConfined(root.rootReal, moduleDir);
+  if (!manifestResult.ok) return undefined;
+  const { manifest } = manifestResult;
+  const lockRead = confinedRead(root.rootReal, moduleDir, manifest.grammar.lock, 'lock');
+  if (!lockRead.ok) return undefined;
+  const parsed = parseGrammarLock(lockRead.bytes.toString('utf8'), manifest.grammar.lock);
+  return parsed.ok ? grammarVersionOf(parsed.lock, manifest) : undefined;
+}
+
+/**
  * Read a module's manifest, lock, wasm and queries into a GrammarInput. Returns diagnostics
  * (codes: manifest_unreadable, manifest_too_large, manifest_invalid, lock_missing, lock_invalid,
  * wasm_missing, wasm_too_large, query_missing, query_too_large, path_escape) instead of throwing.

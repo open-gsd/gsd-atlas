@@ -201,6 +201,28 @@ describe('explain over the real bins (QRY-07): a reference fact at the grammar t
       assert.equal(bad.stderr.includes(marker), false);
     });
   });
+
+  it('a freshly built index explains every grammar-tier fact as not stale, with no current-grammar note (post-eval fix)', async () => {
+    await withFixture(await makeFixture(), async (fixture) => {
+      assert.equal((await fixture.cli(['build', '--repo', fixture.dir])).code, 0);
+      const handles = [
+        await handleIn(fixture, 'scripts/legacy.cjs'),
+        await handleIn(fixture, 'src/user.cts'),
+        ...((await fixture.cli(['find', 'compute', '--repo', fixture.dir])).envelope.citations ?? []).map((citation) => citation.debug),
+      ];
+      assert.ok(handles.length >= 3, 'a reference in each module and a definition');
+      for (const handle of handles) {
+        const explained = await fixture.cli(['explain', handle, '--repo', fixture.dir]);
+        assert.equal(explained.code, 0, explained.stderr);
+        const { fact } = explainedOf(explained.envelope).explanation;
+        // The value the facts were written with is the one `explain` compares against: the module's pinned grammar version,
+        // never the module's own manifest version.
+        assert.equal(fact.stale, false, `${handle} (${fact.module}@${fact.grammarVersion}) is fresh`);
+        assert.equal('currentGrammarVersion' in fact, false, `${handle} names no other grammar version`);
+        assert.notEqual(fact.grammarVersion, '0.1.0', 'the facts carry the grammar pin, not the manifest version');
+      }
+    });
+  });
 });
 
 describe('explain over the real bins (QRY-07): answer ids, injection, read-only and fuzz', () => {

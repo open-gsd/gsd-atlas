@@ -633,13 +633,13 @@ test('feedback guides state what the commands do', () => {
     for (const fragment of fragments) if (!text.includes(fragment)) problems.push(`${file}: missing "${fragment}"`);
   };
   holds('docs/how-to/rate-an-answer.md', ['there is no MCP tool for it', 'rate up', '--feature', '--session']);
-  holds('docs/how-to/write-a-bug-bundle.md', ['--confirm-raw', 'bug --clear', 'never uploads', '--include', '--mode']);
+  holds('docs/how-to/report-a-bug.md',['--confirm-raw', 'bug --clear', 'never uploads', '--include', '--mode']);
   holds('docs/how-to/turn-diagnostics-on-and-off.md', ['diagnostics preview', 'Nothing is submitted in this release', 'diagnostics disable', 'diagnostics types']);
   const trust = read('docs/explanation/how-atlas-decides-what-to-trust.md');
   if (/^\s*\d+\.\s/m.test(withoutFences(trust))) problems.push('the trust explanation has numbered steps');
   if (!trust.includes('](../reference/alpha-limitations.md')) problems.push('the trust explanation does not link the alpha limitations');
   // Nothing in a guide or the explanation may describe a submission or an intake as something that exists.
-  for (const file of ['docs/how-to/rate-an-answer.md', 'docs/how-to/write-a-bug-bundle.md', 'docs/how-to/turn-diagnostics-on-and-off.md', 'docs/explanation/how-atlas-decides-what-to-trust.md']) {
+  for (const file of ['docs/how-to/rate-an-answer.md', 'docs/how-to/report-a-bug.md', 'docs/how-to/turn-diagnostics-on-and-off.md', 'docs/explanation/how-atlas-decides-what-to-trust.md']) {
     for (const sentence of sentencesOf(withoutFences(read(file)))) {
       if (/\b(?:submit|submits|submitted|submission|intake|auto-submit)\b/i.test(sentence) && !/\b(?:not|no|never|nothing|none|cannot|neither)\b|do not exist|does not exist/i.test(sentence)) {
         problems.push(`${file}: a sentence about submission or intake without a negation: ${sentence}`);

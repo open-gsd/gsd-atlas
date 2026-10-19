@@ -63,6 +63,14 @@ describe('Host rate: the newest answer', () => {
     assert.equal(reply.data, null);
   });
 
+  it('no recent answer: the message offers only what `rate` can do, so it does not suggest naming an answer by its id (post-eval fix)', async (t) => {
+    const world = await builtWorld(t);
+    const reply = await world.ask('rate', { repo: world.repo.dir, value: 'up', scope: 'answer' });
+    const message = reply.diagnostics[0]?.message ?? '';
+    assert.match(message, /Ask a question first/);
+    assert.doesNotMatch(message, /answer id|name an answer/i, 'the CLI has no option that names an answer');
+  });
+
   it('no recent answer: a repository with no index says so without creating a store', async (t) => {
     const world = await makeWorld(t);
     const reply = await world.ask('rate', { repo: world.repo.dir, value: 'up', scope: 'answer' });

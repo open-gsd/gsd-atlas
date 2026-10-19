@@ -28,7 +28,7 @@ export interface RateDeps {
   readonly flight: FlightRecorder | null;
 }
 
-const NO_ANSWER = 'There is no recent answer to rate. Ask a question first, or name an answer with its answer id.';
+const NO_ANSWER = 'There is no recent answer to rate. Ask a question first.';
 const NO_SESSION = 'There is no recent session to rate. Ask a question first.';
 
 /** The error for a scope with nothing to rate yet. A feature always has a name, so it never lacks a target. */

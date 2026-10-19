@@ -25,7 +25,7 @@ To install, clone the repository and build it with `npm ci --ignore-scripts` and
   - [Contribute a change](docs/how-to/contribute-a-change.md)
 - Look up: [the command-line reference](docs/reference/cli.md), [the MCP reference](docs/reference/mcp.md), [TypeScript support](docs/reference/typescript-support.md), [ADR citations](docs/reference/adr-citations.md) and [the alpha limitations](docs/reference/alpha-limitations.md).
 - Understand: [freshness and the writer lease](docs/explanation/how-freshness-and-the-writer-lease-work.md), [the precise TypeScript tier](docs/explanation/how-the-precise-tier-works.md) and [what atlas trusts and never sends](docs/explanation/how-atlas-decides-what-to-trust.md).
-- Give feedback: [rate an answer](docs/how-to/rate-an-answer.md), [report a bug](docs/how-to/write-a-bug-bundle.md) and [turn diagnostics on and off](docs/how-to/turn-diagnostics-on-and-off.md). All three stay on your machine.
+- Give feedback: [rate an answer](docs/how-to/rate-an-answer.md), [report a bug](docs/how-to/report-a-bug.md) and [turn diagnostics on and off](docs/how-to/turn-diagnostics-on-and-off.md). All three stay on your machine.
 
 ## Developer quickstart
 
