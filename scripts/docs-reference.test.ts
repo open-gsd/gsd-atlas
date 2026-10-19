@@ -566,15 +566,11 @@ test('no efficacy claim outside the eval status', () => {
   assert.deepEqual(problems, []);
 });
 
-test('decision records are called drafts', () => {
+test('decision records are numbered and accepted', () => {
   const problems: string[] = [];
-  const legend = read('docs/adr/README.md');
-  if (!/^## Pre-release legend\s*$/m.test(legend)) problems.push('docs/adr/README.md has a "Pre-release legend" section');
-  // The records numbered at the MVP gate (ratified on 2026-10-18) never carried a pre-release note.
-  for (const name of readdirSync(path.join(root, 'docs', 'adr')).filter((each) => /^\d+-.*\.md$/.test(each))) {
-    const record = read(`docs/adr/${name}`);
-    if (/^- \*\*Ratified:\*\* 2026-10-18\s*$/m.test(record)) continue;
-    if (!/^> Pre-release note:/m.test(record)) problems.push(`docs/adr/${name} has no "Pre-release note:" line`);
+  // Every record in docs/adr is numbered (the pass at the MVP gate), so no page can call a record a draft.
+  for (const name of readdirSync(path.join(root, 'docs', 'adr')).filter((each) => each !== 'README.md')) {
+    if (!/^\d+-.*\.md$/.test(name)) problems.push(`docs/adr/${name} is not a numbered record`);
   }
   const pairs: ReadonlyArray<readonly [string, string]> = [
     ['README.md', 'docs/adr/README.md'],
@@ -587,17 +583,27 @@ test('decision records are called drafts', () => {
     }
     const text = read(file);
     const sentences = sentencesOf(withoutFences(text));
-    if (!sentences.some((sentence) => /\bdrafts?\b/i.test(sentence) && /decision records/i.test(sentence))) {
-      problems.push(`${file}: no sentence says that the decision records are drafts`);
+    if (!sentences.some((sentence) => /decision records/i.test(sentence) && /\bratified\b/.test(sentence) && /\bnumbered\b/.test(sentence) && /\bAccepted\b/.test(sentence))) {
+      problems.push(`${file}: no sentence says that the decision records are ratified, numbered and Accepted`);
     }
     if (!text.includes(`](${link}`)) problems.push(`${file}: no link to ${link}`);
     for (const sentence of sentences) {
-      const lower = sentence.toLowerCase();
-      if (lower.includes('ratif') && !/\b(?:not|no|none|nothing|never|neither)\b/.test(lower)) problems.push(`${file}: a ratification sentence without a negation: ${sentence}`);
-      if (sentence.includes('Accepted') && !/older|draft/i.test(sentence)) problems.push(`${file}: "Accepted" without "older" or "draft": ${sentence}`);
+      if (/ratif/i.test(sentence) && /\b(?:not|no|none|nothing|never|neither)\b/i.test(sentence)) problems.push(`${file}: a ratification sentence with a negation: ${sentence}`);
     }
-    for (const phrase of ['now accepted', 'are final', 'is final']) {
+    for (const phrase of ['not yet ratified', 'none is ratified', 'nothing is ratified', 'drafts for this alpha', 'pre-release', 'are final', 'is final']) {
       if (text.toLowerCase().includes(phrase)) problems.push(`${file}: "${phrase}"`);
+    }
+    if (/\bdecision records?\b[^.]*\bdrafts?\b/i.test(text)) problems.push(`${file}: a sentence still calls a decision record a draft`);
+  }
+  const limitations = read(LIMITATIONS);
+  const diagnostics = sentencesOf(withoutFences(limitations)).filter((sentence) => /diagnostics record/i.test(sentence));
+  if (!diagnostics.some((sentence) => /submission/i.test(sentence) && /intake/i.test(sentence) && /not built/i.test(sentence))) {
+    problems.push(`${LIMITATIONS}: no sentence says that the submission and intake parts of the diagnostics record are not built`);
+  }
+  for (const file of userFiles()) {
+    const lower = read(file).toLowerCase();
+    for (const phrase of ['design is a draft', 'design draft', 'diagnostics design is a draft']) {
+      if (lower.includes(phrase)) problems.push(`${file}: "${phrase}"`);
     }
   }
   assert.deepEqual(problems, []);
