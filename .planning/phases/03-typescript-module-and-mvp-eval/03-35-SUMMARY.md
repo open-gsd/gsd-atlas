@@ -3,7 +3,7 @@ phase: 03-typescript-module-and-mvp-eval
 plan: 35
 subsystem: eval
 status: in-progress
-note: "Task 1 done; stopped at the Task 2 blocking-human checkpoint. No scored session has started."
+note: "Task 1 done; Task 2 answered (chunked run on the Max subscription); Task 3 in progress: chunk 1 done (130 of 450 cells), no analysis run, no verdict."
 tags: [eval, scored-run, projection, checkpoint]
 ---
 
@@ -73,3 +73,31 @@ The reply is not the literal word "start". The orchestrator's reading, adopted h
 Nothing registered changes: `--stop-at-cost-usd` is a harness-side flag of the run, not a registered parameter (the registered 3 USD per-session budget and 900000 ms wall clock are unchanged). The results directory is shared by the chunks, so the cells are the registered seeded order's prefix and the cost stop counts what is already on disk.
 
 Environment check before chunk 1 (names only, no values printed): `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_BASE_URL`, `CLAUDE_CODE_USE_BEDROCK`, `CLAUDE_CODE_USE_VERTEX`, `CLAUDE_CODE_USE_FOUNDRY`, `AWS_BEARER_TOKEN_BEDROCK`, `ANTHROPIC_BEDROCK_BASE_URL`, `ANTHROPIC_VERTEX_PROJECT_ID` all unset; `claude --version` 2.1.302 from the scratch symlink; `claude auth status`: loggedIn, authMethod claude.ai, apiProvider firstParty, subscriptionType max. This worktree: `npm ci --ignore-scripts && npm run build` done, `verify-prereg: ok`, `plan --scored` prints `gate: ok`, 450 cells.
+
+## Task 3 progress: chunk 1 (2026-10-18/19)
+
+Command: the registered one from the section above, with `--stop-at-cost-usd 5` instead of 37.5 (a harness-side flag, not a registered parameter). Claude Code 2.1.302 on PATH, results in `<scratch>/run` (`results.jsonl`, `attempts.jsonl`, `sessions.meta.jsonl`, `streams/`; 4.3 MB, not committed: a partial run is not a result). Base for the run: tree at `95f9e8f`, built at this commit, `verify-prereg: ok` and `gate: ok` immediately before. No analysis (`analyze.ts`) was run and no verdict exists; the tables below are descriptive counts of a partial run.
+
+- Cells: 130 of 450 done (atlas 65, grep 65), 65 (question, run) groups, every group complete in both arms, 50 distinct questions. Wall time 1,094 s (18.2 min), 0 resumes, 0 contaminated, 0 prep failures, 0 infrastructure failures, 0 retries (130 attempts for 130 cells), 0 rate-limit messages. Harness ended with `cost stop at 5 USD reached; no further session was started` (exit 1 is that stop, not an error); cost on disk 5.0251 USD notional, so the overshoot past the line was 0.0251 (two in-flight cells). The harness is waiting for a go-ahead: the same command with a higher `--stop-at-cost-usd` continues at cell 131.
+- Order and representativeness: `makeSchedule` (`scripts/eval/schedule.ts`) puts the two arms of each (question, run) group adjacent in random order and shuffles the 225 groups with the registered seed; `run` takes cells in that order. This chunk is therefore the first 130 cells of the registered order: a seeded random subset of groups, both arms always paired, not a prefix by question id or category. Category mix of the chunk (cells per arm) against the full set (questions x 3 runs): callers 16 (51), adr 12 (30), references 8 (24), heritage 8 (24), emit 6 (30), impact 6 (18), definition 5 (21), abstain 4 (27). It under-samples abstain and emit, which are cheap-to-medium, so a category-reweighted figure is given as a check.
+
+| Per arm | n | ok | correct (key) | input | output | cache write | cache read | billable (sum of all four) | notional USD | mean billable / session | mean USD / session | mean tool calls | mean wall s |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| atlas | 65 | 65 | 52 | 460 | 46,099 | 496,518 | 2,669,371 | 3,212,448 | 2.7149 | 49,422 | 0.04177 | 3.88 | 8.23 |
+| grep | 65 | 65 | 52 | 478 | 46,755 | 419,112 | 1,652,092 | 2,118,437 | 2.3102 | 32,591 | 0.03554 | 3.75 | 8.18 |
+
+Billable follows the registered definition (input + output + cache creation + cache read, D-06; cache reads are 83 percent of atlas and 78 percent of grep billable tokens). Paired over the 65 groups: atlas billable / grep billable 1.52, atlas cost / grep cost 1.18, atlas used fewer billable tokens in 6 of 65 pairs, the arms disagreed on correctness in 4 groups (2 only atlas correct, 2 only grep correct). Descriptive only, not the registered test.
+
+Atlas arm behaviour (counts, not a verdict): an atlas tool was called in 25 of 65 sessions (27 calls in total); the `gsd-atlas` skill body was loaded (`toolCallsByName.Skill`) in 0 of 65, as in the 03-38 smoke run; the other 40 atlas sessions used only Bash and Read, so they paid for the atlas tool definitions and the skill description on every turn without using them. Per-category means (notional USD per session, atlas / grep): callers 0.0536 / 0.0490, references 0.0319 / 0.0280, heritage 0.0285 / 0.0207, emit 0.0521 / 0.0365, adr 0.0309 / 0.0286, impact 0.0829 / 0.0673, definition 0.0212 / 0.0181, abstain 0.0221 / 0.0196. Atlas was dearer in every category.
+
+Extrapolation to 450 cells (225 sessions per arm; method: chunk mean per session x 225, with a 95 percent interval from a cluster bootstrap that resamples the 50 questions with all their rows, 4,000 draws; the dollar unit is Claude Code's notional API-equivalent cost, not a charge):
+
+| Basis | Atlas | Grep | Total 450 sessions | Billable tokens, total |
+| --- | ---: | ---: | ---: | ---: |
+| Point estimate | 9.40 USD | 8.00 USD | **17.4 USD** | 18.45 M |
+| Category-reweighted to the full set's question mix | 9.20 USD | 7.74 USD | 16.9 USD | 18.1 M (atlas 48,503 / grep 31,762 mean per session) |
+| 95 percent interval (question bootstrap) | 7.95 to 10.95 | 6.77 to 9.39 | 14.8 to 20.2 USD | 15.4 M to 21.9 M |
+
+Reading: expect about 17 USD notional for the whole run (range 15 to 20), against 13 to 58 projected before the run and a 30 USD planning figure; the first chunk is cheaper than the planning figure by 40 percent. The remaining 320 cells would cost about 12.4 USD notional (about 2.5 further chunks of 5 USD) and about 45 min of wall time at the observed 8.4 s per cell with concurrency 2 (the whole run about 63 min, against 1.5 to 3 h projected). The chunk is a random subset of the registered order with every group paired, and the reweighting moves the figure by 3 percent, so the representativeness risk is small; the main remaining uncertainty is the question mix of the unseen 320 cells (abstain and emit are under-sampled) and cache warmth.
+
+Subscription note: the run stayed on the claude.ai Max login (no API key in the environment); no usage-limit or rate-limit message appeared. The notional 5.03 USD is the only measure of usage available; how much of the Max allowance it used is not reported by the harness.
