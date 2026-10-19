@@ -1,6 +1,7 @@
 # Pre-registration of the MVP eval (plan 03-16)
 
 Status: Frozen (Stage A, revision 1, 2026-10-19, by Tom Boucher)
+Status: Frozen (Stage B, 2026-10-19, by Tom Boucher)
 
 This document records the design of the eval that decides whether the gsd-atlas MVP meets its claim. It describes the design only. It reports no scored result and hints at none. Once the status line above reads `Frozen`, `node scripts/eval/verify-prereg.ts` (run by the static CI job) fails when any of the sixteen registered files changes, and a changed registered value is a new registered run (see Deviations policy).
 
@@ -102,7 +103,7 @@ OQ4 confirmed by the user: point_estimate
 
 ```prereg-json
 {
-  "stage": "A",
+  "stage": "B",
   "status": "Frozen",
   "revision": 1,
   "params": {
@@ -211,7 +212,11 @@ OQ4 confirmed by the user: point_estimate
         }
       }
     }
-  ]
+  ],
+  "stageB": {
+    "skillSha256": "00ce2dc7ab33fe087a5ace67409a161c557c99a658f5c2a4527c7efc60bc48cb",
+    "atlasCommit": "37b12e32bf84f9ca1a4052c7d574ebc1aa0fe207"
+  }
 }
 ```
 
