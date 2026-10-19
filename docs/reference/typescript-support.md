@@ -142,6 +142,7 @@ The full table is in [the MCP reference](mcp.md#degraded-codes).
 
 ## See also
 
+- [About how the precise TypeScript tier works](../explanation/how-the-precise-tier-works.md)
 - [gsd-atlas ADR citations reference](adr-citations.md)
 - [gsd-atlas MCP reference](mcp.md)
 - [gsd-atlas command-line reference](cli.md)
