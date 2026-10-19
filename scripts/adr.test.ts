@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
+import type { SpawnSyncReturns } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -10,11 +11,21 @@ import {
   PHASE2_SLUGS,
   PHASE3_SLUGS,
   RATIFIED_SLUGS,
+  MVP_GATE,
+  adrIssueRefs,
+  appendOnlyViolations,
   checkRelativeLinks,
   collectLinkFiles,
   findAdrFile,
+  issueIsAdrsOwn,
+  issuePayload,
+  machineIdentity,
+  mvpGateSlugs,
+  publicTextProblems,
+  ratifyReadme,
   ratifyText,
   rewriteReferences,
+  unnumberedAdrFiles,
 } from './adr.ts';
 
 const ROOT = path.resolve(import.meta.dirname, '..');
@@ -38,12 +49,6 @@ const RATIFIED: readonly string[] = [
   'value-dashboard',
 ];
 
-// The ADRs that stay Proposed, and the phase that must ratify each.
-const REMAINING: Readonly<Record<string, string>> = {
-  'user-controlled-diagnostics': 'Phase 3',
-  'host-process-model': 'Phase 4',
-};
-
 function tmpTree(files: Record<string, string>): string {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'adr-test-'));
   for (const [rel, body] of Object.entries(files)) {
@@ -56,6 +61,167 @@ function tmpTree(files: Record<string, string>): string {
 
 function rmTree(dir: string): void {
   fs.rmSync(dir, { recursive: true, force: true });
+}
+
+// The records that were still drafts when the MVP gate pass was planned. Their state in the real tree depends on
+// whether the pass has run, so tests that need the pre-pass state rebuild it on a temporary copy.
+const KNOWN_AT_GATE: readonly string[] = ['host-process-model', 'user-controlled-diagnostics'];
+
+const SCHEDULE_PHASE: Readonly<Record<string, string>> = {
+  'user-controlled-diagnostics': 'Phase 3',
+  'host-process-model': 'Phase 4',
+};
+
+function copyScripts(dir: string): void {
+  fs.mkdirSync(path.join(dir, 'scripts'), { recursive: true });
+  for (const name of ['adr.ts', 'adr-ratify.ts']) {
+    fs.copyFileSync(path.join(ROOT, 'scripts', name), path.join(dir, 'scripts', name));
+  }
+}
+
+function snapshotTree(dir: string): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const name of fs.readdirSync(dir).sort()) {
+    out[name] = fs.readFileSync(path.join(dir, name), 'utf8');
+  }
+  return out;
+}
+
+function runRatify(dir: string, args: readonly string[], input?: string): SpawnSyncReturns<string> {
+  return spawnSync(process.execPath, [path.join(dir, 'scripts', 'adr-ratify.ts'), ...args], {
+    encoding: 'utf8',
+    ...(input === undefined ? {} : { input }),
+  });
+}
+
+const FIXTURE_README = [
+  '# Fixture ADRs',
+  '',
+  '## Pre-MVP set',
+  '| ADR | Decision | DESIGN.md | Status |',
+  '|-----|----------|-----------|--------|',
+  '| [2-alpha](2-alpha.md) | Alpha is settled | A1 | Accepted |',
+  '| [draft-beta](draft-beta.md) | Beta decides; things stay small | A2 | Proposed |',
+  '| [draft-gamma-ray](draft-gamma-ray.md) | Gamma ray decision | A3 | Proposed |',
+  '',
+  '## Ratification log',
+  'Introduction sentence.',
+  '',
+  '| Slug | Issue | File | Ratified |',
+  '|------|-------|------|----------|',
+  `| alpha | [#2](${REPO_URL}/issues/2) | [2-alpha.md](2-alpha.md) | 2026-10-15 |`,
+  '',
+  'Second paragraph that follows the table.',
+  '',
+  '## Ratification schedule',
+  'The records that remain Proposed.',
+  '',
+  '| ADR | Ratify before | Amendments applied at that ratification |',
+  '|-----|---------------|------------------------------------------|',
+  '| gamma-ray | Phase 3 | None |',
+  '| beta | Phase 4 | None |',
+  '',
+  '## Before M4',
+  'Nothing.',
+  '',
+].join('\n');
+
+function fixtureDraft(slug: string, title: string, extraHeader: readonly string[] = []): string {
+  return [
+    `# ${title}`,
+    '',
+    '- **Status:** Proposed',
+    `- **Issue:** to be opened (rename to \`<issue#>-${slug}.md\`)`,
+    ...extraHeader,
+    '- **DESIGN.md:** A2',
+    '',
+    '## Context',
+    `Context of ${slug}. See [alpha](2-alpha.md).`,
+    '',
+    '## Decision',
+    `1. ${slug} decides. The file is draft-${slug}.md until it is numbered.`,
+    '',
+  ].join('\n');
+}
+
+const FIXTURE_ALPHA = [
+  '# ADR: Alpha',
+  '',
+  '- **Status:** Accepted',
+  `- **Issue:** [#2](${REPO_URL}/issues/2)`,
+  '- **Ratified:** 2026-10-15',
+  '',
+  '## Decision',
+  '1. Alpha stands.',
+  '',
+].join('\n');
+
+/** A small docs/adr tree (one numbered record, two drafts) next to copies of the scripts. */
+function fixtureTree(overrides: Record<string, string> = {}): string {
+  const dir = tmpTree({
+    'docs/adr/README.md': FIXTURE_README,
+    'docs/adr/2-alpha.md': FIXTURE_ALPHA,
+    'docs/adr/draft-beta.md': fixtureDraft('beta', 'ADR: Beta — decides‑things'),
+    'docs/adr/draft-gamma-ray.md': fixtureDraft('gamma-ray', 'ADR: Gamma ray'),
+    ...overrides,
+  });
+  copyScripts(dir);
+  return dir;
+}
+
+/**
+ * Put the named records of a docs/adr folder into the state they had before the MVP gate pass: a draft file with a
+ * Proposed header, a README table row that links the draft and says Proposed, no Ratification log row and a row in
+ * the Ratification schedule. A record that is already a draft is left alone.
+ */
+function dePassRecords(adrDir: string, slugs: readonly string[]): void {
+  const readmePath = path.join(adrDir, 'README.md');
+  let readme = fs.readFileSync(readmePath, 'utf8');
+  for (const slug of slugs) {
+    const file = findAdrFile(adrDir, slug);
+    assert.ok(file, `no ADR file for ${slug} to build the pre-pass fixture from`);
+    const draft = `draft-${slug}.md`;
+    if (file !== draft) {
+      const body = fs
+        .readFileSync(path.join(adrDir, file), 'utf8')
+        .replace(/^- \*\*Status:\*\* Accepted$/m, '- **Status:** Proposed')
+        .replace(/^- \*\*Ratified:\*\*.*\n/m, '')
+        .replace(/^- \*\*Issue:\*\*.*$/m, `- **Issue:** to be opened (rename to \`<issue#>-${slug}.md\`)`);
+      fs.rmSync(path.join(adrDir, file));
+      fs.writeFileSync(path.join(adrDir, draft), body);
+      readme = readme.replace(new RegExp(`(?<![A-Za-z0-9-])\\d+-${slug}(?![A-Za-z0-9-])`, 'g'), `draft-${slug}`);
+      readme = readme
+        .split('\n')
+        .filter((l) => !l.startsWith(`| ${slug} |`))
+        .map((l) => (l.includes(`](${draft})`) && l.trimEnd().endsWith('| Accepted |') ? l.replace(/\| Accepted \|\s*$/, '| Proposed |') : l))
+        .join('\n');
+    }
+    const lines = readme.split('\n');
+    const at = lines.findIndex((l) => l === '## Ratification schedule');
+    const row = `| ${slug} | ${SCHEDULE_PHASE[slug] ?? 'Phase 4'} | None |`;
+    if (at === -1) {
+      readme = `${readme.trimEnd()}\n\n## Ratification schedule\nRecords that remain Proposed.\n\n| ADR | Ratify before | Amendments applied at that ratification |\n|-----|---------------|------------------------------------------|\n${row}\n`;
+    } else {
+      let end = lines.findIndex((l, i) => i > at && l.startsWith('## '));
+      if (end === -1) end = lines.length;
+      if (!lines.slice(at, end).some((l) => l.startsWith(`| ${slug} |`))) {
+        let last = at;
+        for (let i = at; i < end; i++) if ((lines[i] ?? '').startsWith('|')) last = i;
+        lines.splice(last + 1, 0, row);
+        readme = lines.join('\n');
+      }
+    }
+  }
+  fs.writeFileSync(readmePath, readme);
+}
+
+/** Temporary copy of the scripts and of the real docs/adr, rebuilt into the pre-pass state. */
+function prePassTree(): string {
+  const dir = tmpTree({});
+  copyScripts(dir);
+  fs.cpSync(ADR_DIR, path.join(dir, 'docs', 'adr'), { recursive: true });
+  dePassRecords(path.join(dir, 'docs', 'adr'), KNOWN_AT_GATE);
+  return dir;
 }
 
 const SAMPLE = [
@@ -204,6 +370,458 @@ describe('checkRelativeLinks', () => {
   });
 });
 
+describe('MVP gate helpers (SKL-03)', () => {
+  it('mvpGateSlugs lists the slug of every draft file, sorted', () => {
+    const dir = tmpTree({
+      'draft-zeta.md': '',
+      'draft-a-b2.md': '',
+      'draft-zeta-two.md': '',
+      '12-c.md': '',
+      'README.md': '',
+      'draft-Bad.md': '',
+      'draft-a--b.md': '',
+      'draft--lead.md': '',
+      'draft-x.txt': '',
+      'notes-draft-q.md': '',
+    });
+    try {
+      assert.equal(MVP_GATE, 'mvp');
+      assert.deepEqual(mvpGateSlugs(dir), ['a-b2', 'zeta', 'zeta-two']);
+    } finally {
+      rmTree(dir);
+    }
+  });
+
+  it('mvpGateSlugs is empty when no draft is present', () => {
+    const dir = tmpTree({ '2-alpha.md': '', 'README.md': '' });
+    try {
+      assert.deepEqual(mvpGateSlugs(dir), []);
+    } finally {
+      rmTree(dir);
+    }
+  });
+
+  it('unnumberedAdrFiles reports every non-README file without a number', () => {
+    const dir = tmpTree({ 'README.md': '', '3-ok.md': '', 'draft-x.md': '', 'notes.md': '', '12-Bad.md': '', '7-fine-one.md': '' });
+    try {
+      assert.deepEqual(unnumberedAdrFiles(dir), ['12-Bad.md', 'draft-x.md', 'notes.md']);
+    } finally {
+      rmTree(dir);
+    }
+  });
+});
+
+describe('ratifyReadme (SKL-03)', () => {
+  const prepared = rewriteReferences(FIXTURE_README, { beta: 3 });
+  const opts = { slug: 'beta', issue: 3, date: '2026-10-18' };
+
+  it('moves the table row, appends one log row and drops the schedule row', () => {
+    const out = ratifyReadme(prepared, opts);
+    const lines = out.split('\n');
+    const rowAfter = '| [3-beta](3-beta.md) | Beta decides; things stay small | A2 | Accepted |';
+    const logRow = `| beta | [#3](${REPO_URL}/issues/3) | [3-beta.md](3-beta.md) | 2026-10-18 |`;
+    assert.ok(lines.includes(rowAfter));
+    assert.equal(lines.indexOf(logRow), lines.indexOf(`| alpha | [#2](${REPO_URL}/issues/2) | [2-alpha.md](2-alpha.md) | 2026-10-15 |`) + 1);
+    assert.equal(lines.includes('| beta | Phase 4 | None |'), false);
+    assert.ok(lines.includes('| gamma-ray | Phase 3 | None |'));
+    // Nothing else changed: two lines added, two lines removed.
+    const before = new Set(prepared.split('\n'));
+    const after = new Set(lines);
+    assert.deepEqual(lines.filter((l) => !before.has(l)), [rowAfter, logRow]);
+    assert.deepEqual(prepared.split('\n').filter((l) => !after.has(l)), [
+      '| [3-beta](3-beta.md) | Beta decides; things stay small | A2 | Proposed |',
+      '| beta | Phase 4 | None |',
+    ]);
+  });
+
+  it('is idempotent', () => {
+    const once = ratifyReadme(prepared, opts);
+    assert.equal(ratifyReadme(once, opts), once);
+  });
+
+  it('works when the README has no Ratification schedule section', () => {
+    const noSchedule = prepared.replace(/## Ratification schedule[\s\S]*?(?=## Before M4)/, '');
+    assert.equal(noSchedule.includes('Ratification schedule'), false);
+    const out = ratifyReadme(noSchedule, opts);
+    assert.ok(out.includes('| beta | [#3]('));
+  });
+
+  it('throws naming the missing part', () => {
+    assert.throws(() => ratifyReadme(prepared, { slug: 'delta', issue: 5, date: '2026-10-18' }), /5-delta\.md/);
+    assert.throws(
+      () => ratifyReadme(prepared.replace('| Slug | Issue | File | Ratified |', '| Other |'), opts),
+      /Slug \| Issue \| File \| Ratified/,
+    );
+  });
+});
+
+describe('issuePayload (SKL-03)', () => {
+  const draft = fixtureDraft('beta', 'ADR: Beta \u2014 decides\u2011things');
+
+  it('builds the title from the heading and the body from the README row', () => {
+    const { title, body } = issuePayload(draft, FIXTURE_README, 'beta');
+    assert.equal(title, 'ADR: Beta \u2014 decides-things');
+    assert.equal(
+      body,
+      [
+        'ADR: Beta \u2014 decides-things',
+        '',
+        'Decision summary: Beta decides; things stay small',
+        '',
+        'This issue gives the record its number at the MVP gate. The file is renamed to `<issue number>-beta.md` in the pull request that links this issue.',
+      ].join('\n'),
+    );
+  });
+
+  it('finds the README row of a numbered record too', () => {
+    const { body } = issuePayload(FIXTURE_ALPHA, FIXTURE_README, 'alpha');
+    assert.ok(body.includes('Decision summary: Alpha is settled'));
+  });
+
+  it('throws when the heading or the README row is missing', () => {
+    assert.throws(() => issuePayload('no heading here\n', FIXTURE_README, 'beta'), /heading/);
+    assert.throws(() => issuePayload(draft, FIXTURE_README, 'omega'), /omega/);
+  });
+});
+
+describe('publicTextProblems (SKL-03)', () => {
+  const dirty: readonly (readonly [string, string])[] = [
+    ['absolute path', 'see /Users/someone/project/file.ts'],
+    ['absolute path', 'at /home/ci/work'],
+    ['absolute path', 'in /private/tmp/x'],
+    ['absolute path', 'in /var/log/x'],
+    ['absolute path', '(/tmp/scratch)'],
+    ['absolute path', 'read /etc/hosts'],
+    ['absolute path', 'under /opt/tools'],
+    ['absolute path', 'on /mnt/disk'],
+    ['absolute path', 'drive C:\\Users\\someone'],
+    ['agent folder', 'the .claude folder'],
+    ['token', `token ${'ghp_'}${'a'.repeat(36)}`],
+    ['token', `token ${'gho_'}${'b'.repeat(36)}`],
+    ['token', `token ${'ghu_'}${'c'.repeat(36)}`],
+    ['token', `token ${'ghs_'}${'d'.repeat(36)}`],
+    ['token', `token ${'ghr_'}${'e'.repeat(36)}`],
+    ['token', `token ${'github_pat_'}${'A1'.repeat(20)}`],
+    ['token', `key ${'sk-'}${'ab12'.repeat(8)}`],
+    ['token', `id ${'AKIA'}${'ABCDEFGHIJKLMNOP'}`],
+    ['token', `-----BEGIN ${'RSA '}PRIVATE KEY-----`],
+    ['email address', 'write to a.b@example.com'],
+    ['planning vocabulary', 'Phase 3 closes'],
+    ['planning vocabulary', 'see plan 03-37 for it'],
+    ['planning vocabulary', 'decision D-04 says'],
+    ['planning vocabulary', 'requirement SKL-03'],
+  ];
+
+  it('flags paths, tokens, emails and planning vocabulary', () => {
+    for (const [label, text] of dirty) {
+      const problems = publicTextProblems(text);
+      assert.ok(
+        problems.some((p) => p.startsWith(label)),
+        `${JSON.stringify(text)} should be flagged as ${label}, got ${JSON.stringify(problems)}`,
+      );
+    }
+  });
+
+  it('flags the home directory and the user name of the running machine when given', () => {
+    const who = { home: '/srv/people/jo-ann', user: 'jo-ann' };
+    assert.deepEqual(publicTextProblems('nothing to see'), []);
+    assert.ok(publicTextProblems('stored in /srv/people/jo-ann/notes', who).some((p) => p.startsWith('home directory')));
+    assert.ok(publicTextProblems('written by Jo-Ann last week', who).some((p) => p.startsWith('user name')));
+    assert.deepEqual(publicTextProblems('written by Joanna last week', who), []);
+    assert.deepEqual(publicTextProblems('stored in /srv/people/jo-ann/notes'.replace('/srv/people/jo-ann', '/srv/people/other')), []);
+  });
+
+  it('passes clean text, including look-alikes', () => {
+    const clean = [
+      'ADR: Host process model',
+      '',
+      'Decision summary: One host per user; ports like 127.0.0.1:3000; see docs/adr/README.md and docs/tmp/notes.',
+      'Encodings such as UTF-16 and hashes such as SHA-256 are fine; so is https://github.com/open-gsd/gsd-atlas/issues/15 and https://example.com/home/page.',
+    ].join('\n');
+    assert.deepEqual(publicTextProblems(clean), []);
+  });
+
+  it('passes the issue text built from every record', () => {
+    const readme = fs.readFileSync(path.join(ADR_DIR, 'README.md'), 'utf8');
+    const who = machineIdentity();
+    for (const slug of [...RATIFIED, ...KNOWN_AT_GATE]) {
+      const file = findAdrFile(ADR_DIR, slug);
+      assert.ok(file, `no ADR file for ${slug}`);
+      const { title, body } = issuePayload(fs.readFileSync(path.join(ADR_DIR, file), 'utf8'), readme, slug);
+      assert.deepEqual(publicTextProblems(`${title}\n${body}`, who), [], slug);
+    }
+  });
+});
+
+describe('appendOnlyViolations (SKL-03, T-03-372)', () => {
+  const before = fixtureDraft('beta', 'ADR: Beta');
+  const after = ratifyText(rewriteReferences(before, { beta: 3 }), 3, '2026-10-18');
+
+  it('accepts header and link changes only', () => {
+    assert.deepEqual(appendOnlyViolations(before, after, 'beta', 3), []);
+    const other = 'Text before.\nSee [beta](draft-beta.md) and draft-beta.\nText after.\n';
+    assert.deepEqual(appendOnlyViolations(other, rewriteReferences(other, { beta: 3 }), 'beta', 3), []);
+  });
+
+  it('reports a changed decision sentence, including one that also carries the link', () => {
+    const edited = after.replace('beta decides.', 'beta never decides.');
+    const problems = appendOnlyViolations(before, edited, 'beta', 3);
+    assert.ok(problems.length >= 1);
+    assert.ok(problems.some((p) => p.includes('never decides')));
+    const plain = after.replace('Context of beta.', 'Context of something else.');
+    assert.ok(appendOnlyViolations(before, plain, 'beta', 3).length >= 2);
+  });
+
+  it('reports a removed line, an added line and a removed Ratified line', () => {
+    assert.ok(appendOnlyViolations(before, after.replace('## Decision\n', ''), 'beta', 3).length >= 1);
+    assert.ok(appendOnlyViolations(before, `${after}An extra sentence.\n`, 'beta', 3).some((p) => p.includes('extra sentence')));
+    const withRatified = before.replace('- **DESIGN.md:** A2', '- **Ratified:** 2020-01-01\n- **DESIGN.md:** A2');
+    const reratified = ratifyText(rewriteReferences(withRatified, { beta: 3 }), 3, '2026-10-18');
+    assert.ok(appendOnlyViolations(withRatified, reratified, 'beta', 3).some((p) => p.includes('2020-01-01')));
+  });
+});
+
+describe('adrIssueRefs (SKL-03)', () => {
+  function record(n: number, slug: string, issueLine: string): string {
+    return `# ADR: ${slug}\u2011record\n\n- **Status:** Accepted\n${issueLine}\n- **Ratified:** 2026-10-15\n\n## Decision\nText.\n`;
+  }
+
+  it('reads the issue number of each numbered record, sorted by number', () => {
+    const dir = tmpTree({
+      '10-ten.md': record(10, 'ten', `- **Issue:** [#10](${REPO_URL}/issues/10)`),
+      '2-two.md': record(2, 'two', `- **Issue:** [#2](${REPO_URL}/issues/2)`),
+      '3-three.md': record(3, 'three', `- **Issue:** [#3](${REPO_URL}/issues/3)`),
+      'draft-x.md': '# ADR: x\n\n- **Status:** Proposed\n- **Issue:** to be opened\n',
+      'README.md': '# readme',
+    });
+    try {
+      assert.deepEqual(adrIssueRefs(dir), [
+        { file: '2-two.md', number: 2, slug: 'two', title: 'ADR: two-record', issue: 2 },
+        { file: '3-three.md', number: 3, slug: 'three', title: 'ADR: three-record', issue: 3 },
+        { file: '10-ten.md', number: 10, slug: 'ten', title: 'ADR: ten-record', issue: 10 },
+      ]);
+    } finally {
+      rmTree(dir);
+    }
+  });
+
+  it('throws naming the file when the Issue line is missing, has no number or names another number', () => {
+    const missing = tmpTree({ '9-nine.md': '# ADR: nine\n\n- **Status:** Accepted\n\n## Decision\nText.\n' });
+    const noNumber = tmpTree({ '8-eight.md': record(8, 'eight', '- **Issue:** to be opened') });
+    const mismatch = tmpTree({ '7-seven.md': record(7, 'seven', `- **Issue:** [#8](${REPO_URL}/issues/8)`) });
+    try {
+      assert.throws(() => adrIssueRefs(missing), /9-nine\.md/);
+      assert.throws(() => adrIssueRefs(noNumber), /8-eight\.md/);
+      assert.throws(() => adrIssueRefs(mismatch), /7-seven\.md/);
+    } finally {
+      rmTree(missing);
+      rmTree(noNumber);
+      rmTree(mismatch);
+    }
+  });
+});
+
+describe('issueIsAdrsOwn (SKL-03)', () => {
+  const slug = 'fact-model';
+
+  it('accepts the three issue body shapes of the earlier records', () => {
+    for (const body of [
+      'Ratification issue (FND-09) for docs/adr/draft-fact-model.md. Opened to number the record.',
+      'Draft: docs/adr/draft-fact-model.md\n\nSummary.',
+      'ADR: docs/adr/draft-fact-model.md',
+      'See docs/adr/6-fact-model.md',
+    ]) {
+      const verdict = issueIsAdrsOwn({ title: 'ADR: fact model', body }, slug);
+      assert.equal(verdict.own, true, `${body}: ${verdict.reason}`);
+    }
+  });
+
+  it('rejects other issues with a reason', () => {
+    const cases: readonly { title: string; body: string }[] = [
+      { title: 'Fix the parser', body: 'docs/adr/draft-fact-model.md' },
+      { title: 'ADR: sqlite store', body: 'docs/adr/draft-sqlite-store.md' },
+      { title: 'ADR: fact model', body: '' },
+      { title: 'ADR: fact model', body: 'This is about the fact-model decision.' },
+      { title: 'ADR: fact model', body: 'docs/adr/draft-big-fact-model.md' },
+      { title: 'ADR: fact model', body: 'docs/adr/xdraft-fact-model.md' },
+      { title: 'ADR: fact model', body: 'docs/adr/6-fact-model-extra.md' },
+    ];
+    for (const c of cases) {
+      const verdict = issueIsAdrsOwn(c, slug);
+      assert.equal(verdict.own, false, JSON.stringify(c));
+      assert.ok(verdict.reason.length > 0);
+    }
+    assert.equal(issueIsAdrsOwn({ title: 'ADR: model', body: 'docs/adr/draft-fact-model.md' }, 'model').own, false);
+  });
+});
+
+describe('adr-ratify flags (SKL-03)', () => {
+  it('--list-gate prints the drafts, one slug per line', () => {
+    const dir = fixtureTree();
+    try {
+      const run = runRatify(dir, ['--list-gate']);
+      assert.equal(run.status, 0, run.stderr);
+      assert.equal(run.stdout, 'beta\ngamma-ray\n');
+    } finally {
+      rmTree(dir);
+    }
+  });
+
+  it('--list-gate prints nothing when no draft is present', () => {
+    const dir = tmpTree({ 'docs/adr/2-alpha.md': FIXTURE_ALPHA, 'docs/adr/README.md': FIXTURE_README });
+    copyScripts(dir);
+    try {
+      const run = runRatify(dir, ['--list-gate']);
+      assert.equal(run.status, 0, run.stderr);
+      assert.equal(run.stdout, '');
+    } finally {
+      rmTree(dir);
+    }
+  });
+
+  it('--print-issue prints title and body as JSON for a present draft', () => {
+    const dir = fixtureTree();
+    try {
+      const run = runRatify(dir, ['--print-issue', '--slug', 'beta']);
+      assert.equal(run.status, 0, run.stderr);
+      const expected = issuePayload(
+        fs.readFileSync(path.join(dir, 'docs', 'adr', 'draft-beta.md'), 'utf8'),
+        FIXTURE_README,
+        'beta',
+      );
+      assert.deepEqual(JSON.parse(run.stdout), expected);
+      assert.equal(JSON.parse(run.stdout).title, 'ADR: Beta \u2014 decides-things');
+    } finally {
+      rmTree(dir);
+    }
+  });
+
+  it('--print-issue exits 1 with the problems when the text is not public', () => {
+    const dirty = FIXTURE_README.replace('Beta decides; things stay small', 'Beta decides; mail me at someone@example.com');
+    const dir = fixtureTree({ 'docs/adr/README.md': dirty });
+    try {
+      const run = runRatify(dir, ['--print-issue', '--slug', 'beta']);
+      assert.equal(run.status, 1);
+      assert.match(run.stderr, /email address/);
+      assert.equal(run.stdout, '');
+    } finally {
+      rmTree(dir);
+    }
+  });
+
+  it('--print-issue refuses a numbered record and a slug without a file', () => {
+    const dir = fixtureTree();
+    try {
+      const numbered = runRatify(dir, ['--print-issue', '--slug', 'alpha']);
+      assert.equal(numbered.status, 1);
+      assert.match(numbered.stderr, /not a draft/);
+      const none = runRatify(dir, ['--print-issue', '--slug', 'zeta']);
+      assert.equal(none.status, 1);
+      assert.match(none.stderr, /no ADR file for zeta/);
+    } finally {
+      rmTree(dir);
+    }
+  });
+
+  it('--list-issues prints the numbered records, and --numbers only their issue numbers', () => {
+    const dir = fixtureTree();
+    try {
+      const run = runRatify(dir, ['--list-issues']);
+      assert.equal(run.status, 0, run.stderr);
+      assert.deepEqual(JSON.parse(run.stdout), [{ file: '2-alpha.md', number: 2, slug: 'alpha', title: 'ADR: Alpha', issue: 2 }]);
+      const numbers = runRatify(dir, ['--list-issues', '--numbers']);
+      assert.equal(numbers.status, 0, numbers.stderr);
+      assert.equal(numbers.stdout, '2\n');
+    } finally {
+      rmTree(dir);
+    }
+  });
+
+  it('--list-issues exits 1 with the thrown message when an Issue line is wrong', () => {
+    const dir = fixtureTree({ 'docs/adr/2-alpha.md': FIXTURE_ALPHA.replace('issues/2)', 'issues/5)').replace('[#2]', '[#5]') });
+    try {
+      const run = runRatify(dir, ['--list-issues', '--numbers']);
+      assert.equal(run.status, 1);
+      assert.match(run.stderr, /2-alpha\.md/);
+      assert.equal(run.stdout, '');
+    } finally {
+      rmTree(dir);
+    }
+  });
+
+  it('--check-issue accepts or refuses an issue given as JSON on standard input', () => {
+    const dir = fixtureTree();
+    try {
+      const own = runRatify(dir, ['--check-issue', '--slug', 'beta'], JSON.stringify({ title: 'ADR: Beta', body: 'Draft: docs/adr/draft-beta.md' }));
+      assert.equal(own.status, 0, own.stderr);
+      assert.equal(own.stdout.trim(), 'own');
+      const notOwn = runRatify(dir, ['--check-issue', '--slug', 'beta'], JSON.stringify({ title: 'Something else', body: 'Draft: docs/adr/draft-beta.md' }));
+      assert.equal(notOwn.status, 1);
+      assert.match(notOwn.stdout, /^not own: .+/);
+      const numbered = runRatify(dir, ['--check-issue', '--slug', 'alpha'], JSON.stringify({ title: 'ADR: Alpha', body: 'docs/adr/2-alpha.md' }));
+      assert.equal(numbered.status, 0, numbered.stderr);
+      const none = runRatify(dir, ['--check-issue', '--slug', 'zeta'], JSON.stringify({ title: 'ADR: Zeta', body: 'docs/adr/draft-zeta.md' }));
+      assert.equal(none.status, 1);
+      assert.match(none.stderr, /no ADR file for zeta/);
+      const bad = runRatify(dir, ['--check-issue', '--slug', 'beta'], 'not json');
+      assert.equal(bad.status, 1);
+    } finally {
+      rmTree(dir);
+    }
+  });
+
+  it('a real run renames with git, sets the header, updates the README and leaves the other draft alone', () => {
+    const dir = fixtureTree();
+    try {
+      const adrDir = path.join(dir, 'docs', 'adr');
+      const original = fs.readFileSync(path.join(adrDir, 'draft-beta.md'), 'utf8');
+      execFileSync('git', ['init', '-q'], { cwd: dir });
+      execFileSync('git', ['add', 'docs'], { cwd: dir });
+      const run = runRatify(dir, ['--gate', MVP_GATE, '--slug', 'beta', '--issue', '3', '--date', '2026-10-18']);
+      assert.equal(run.status, 0, run.stderr);
+      assert.equal(fs.existsSync(path.join(adrDir, 'draft-beta.md')), false);
+      const renamed = fs.readFileSync(path.join(adrDir, '3-beta.md'), 'utf8');
+      assert.match(renamed, /^- \*\*Status:\*\* Accepted$/m);
+      assert.ok(renamed.includes(`- **Issue:** [#3](${REPO_URL}/issues/3)`));
+      assert.match(renamed, /^- \*\*Ratified:\*\* 2026-10-18$/m);
+      assert.deepEqual(appendOnlyViolations(original, renamed, 'beta', 3), []);
+      const readme = fs.readFileSync(path.join(adrDir, 'README.md'), 'utf8');
+      assert.ok(readme.includes('| [3-beta](3-beta.md) | Beta decides; things stay small | A2 | Accepted |'));
+      assert.ok(readme.includes(`| beta | [#3](${REPO_URL}/issues/3) | [3-beta.md](3-beta.md) | 2026-10-18 |`));
+      assert.equal(readme.includes('| beta | Phase 4 |'), false);
+      assert.ok(run.stdout.includes('changed: docs/adr/3-beta.md'));
+      assert.ok(run.stdout.includes('changed: docs/adr/README.md'));
+      assert.deepEqual(mvpGateSlugs(adrDir), ['gamma-ray']);
+    } finally {
+      rmTree(dir);
+    }
+  });
+
+  it('the append-only self-check fails the run before anything is written', () => {
+    const draft = fixtureDraft('beta', 'ADR: Beta', ['- **Ratified:** 2020-01-01']);
+    const dir = fixtureTree({ 'docs/adr/draft-beta.md': draft });
+    try {
+      const before = snapshotTree(path.join(dir, 'docs', 'adr'));
+      const run = runRatify(dir, ['--gate', MVP_GATE, '--slug', 'beta', '--issue', '3', '--date', '2026-10-18']);
+      assert.equal(run.status, 1);
+      assert.match(run.stderr, /append-only/);
+      assert.deepEqual(snapshotTree(path.join(dir, 'docs', 'adr')), before);
+    } finally {
+      rmTree(dir);
+    }
+  });
+
+  it('refuses two modes at once and --numbers without --list-issues', () => {
+    const dir = fixtureTree();
+    try {
+      assert.equal(runRatify(dir, ['--list-gate', '--list-issues']).status, 1);
+      assert.equal(runRatify(dir, ['--list-gate', '--numbers']).status, 1);
+    } finally {
+      rmTree(dir);
+    }
+  });
+});
+
 describe('adr-ratify slug sets (FND-12, D-18, SKL-03)', () => {
   it('PHASE2_SLUGS is the four Phase 2 ADRs, PHASE3_SLUGS the diagnostics ADR, and RATIFIED_SLUGS is Phase 1, 2, then 3', () => {
     assert.deepEqual(PHASE2_SLUGS, ['worktree-lifecycle', 'query-and-policy', 'mcp-contract', 'value-dashboard']);
@@ -214,65 +832,49 @@ describe('adr-ratify slug sets (FND-12, D-18, SKL-03)', () => {
     assert.equal(PHASE1_SLUGS.length, 8);
   });
 
-  it('adr-ratify refuses a slug outside RATIFIED_SLUGS with a non-zero exit', () => {
+  it('adr-ratify refuses a slug that has no ADR file', () => {
     const run = spawnSync(
       process.execPath,
-      [path.join(ROOT, 'scripts', 'adr-ratify.ts'), '--slug', 'host-process-model', '--issue', '99', '--dry-run'],
+      [path.join(ROOT, 'scripts', 'adr-ratify.ts'), '--gate', 'mvp', '--slug', 'no-such-record', '--issue', '99', '--dry-run'],
       { encoding: 'utf8' },
     );
-    assert.notEqual(run.status, 0);
-    assert.match(run.stderr, /--slug must be one of/);
+    assert.equal(run.status, 1);
+    assert.match(run.stderr, /no ADR file for no-such-record/);
   });
 
-  it('a dry run for user-controlled-diagnostics prints the rename, header lines and repaired files and changes no file', () => {
-    // Drive a temp copy of the scripts and of docs/adr so the real tree is never touched.
-    const dir = tmpTree({});
+  it('adr-ratify refuses to rename without --gate mvp', () => {
+    const dir = fixtureTree();
     try {
-      fs.mkdirSync(path.join(dir, 'scripts'), { recursive: true });
-      for (const name of ['adr.ts', 'adr-ratify.ts']) {
-        fs.copyFileSync(path.join(ROOT, 'scripts', name), path.join(dir, 'scripts', name));
+      const before = snapshotTree(path.join(dir, 'docs', 'adr'));
+      for (const extra of [[], ['--dry-run'], ['--gate', 'later']]) {
+        const run = runRatify(dir, ['--slug', 'beta', '--issue', '3', ...extra]);
+        assert.equal(run.status, 1, run.stdout);
+        assert.match(run.stderr, /numbered only at the MVP gate/);
+        assert.match(run.stderr, /--gate mvp/);
       }
-      fs.cpSync(ADR_DIR, path.join(dir, 'docs', 'adr'), { recursive: true });
-      // The real tree may already have ratified this slug (plan 03-01 Task 3); the dry run needs the draft.
-      const draft = path.join(dir, 'docs', 'adr', 'draft-user-controlled-diagnostics.md');
-      if (!fs.existsSync(draft)) {
-        const numbered = findAdrFile(path.join(dir, 'docs', 'adr'), 'user-controlled-diagnostics');
-        assert.ok(numbered, 'no user-controlled-diagnostics ADR file to build the dry-run fixture from');
-        const body = fs
-          .readFileSync(path.join(dir, 'docs', 'adr', numbered), 'utf8')
-          .replace(/^- \*\*Status:\*\* Accepted$/m, '- **Status:** Proposed')
-          .replace(/^- \*\*Ratified:\*\*.*\n/m, '')
-          .replace(/^- \*\*Issue:\*\*.*$/m, '- **Issue:** to be opened');
-        fs.rmSync(path.join(dir, 'docs', 'adr', numbered));
-        fs.writeFileSync(draft, body);
-        const readmePath = path.join(dir, 'docs', 'adr', 'README.md');
-        fs.writeFileSync(
-          readmePath,
-          fs.readFileSync(readmePath, 'utf8').replaceAll(numbered, 'draft-user-controlled-diagnostics.md'),
-        );
-      }
-      const snapshot = (): Record<string, string> => {
-        const out: Record<string, string> = {};
-        for (const name of fs.readdirSync(path.join(dir, 'docs', 'adr')).sort()) {
-          out[name] = fs.readFileSync(path.join(dir, 'docs', 'adr', name), 'utf8');
-        }
-        return out;
-      };
-      const before = snapshot();
-      const run = spawnSync(
-        process.execPath,
-        [
-          path.join(dir, 'scripts', 'adr-ratify.ts'),
-          '--slug',
-          'user-controlled-diagnostics',
-          '--issue',
-          '15',
-          '--date',
-          '2026-10-18',
-          '--dry-run',
-        ],
-        { encoding: 'utf8' },
-      );
+      assert.deepEqual(snapshotTree(path.join(dir, 'docs', 'adr')), before);
+    } finally {
+      rmTree(dir);
+    }
+  });
+
+  it('a dry run with --gate mvp for user-controlled-diagnostics prints the rename, header lines and repaired files and changes no file', () => {
+    // Drive a temp copy of the scripts and of docs/adr so the real tree is never touched.
+    const dir = prePassTree();
+    try {
+      const adrDir = path.join(dir, 'docs', 'adr');
+      const before = snapshotTree(adrDir);
+      const run = runRatify(dir, [
+        '--gate',
+        MVP_GATE,
+        '--slug',
+        'user-controlled-diagnostics',
+        '--issue',
+        '15',
+        '--date',
+        '2026-10-18',
+        '--dry-run',
+      ]);
       assert.equal(run.status, 0, run.stderr);
       assert.match(
         run.stdout,
@@ -282,8 +884,32 @@ describe('adr-ratify slug sets (FND-12, D-18, SKL-03)', () => {
       assert.ok(run.stdout.includes(`would set: - **Issue:** [#15](${REPO_URL}/issues/15)`));
       assert.match(run.stdout, /would set: - \*\*Ratified:\*\* 2026-10-18/);
       assert.match(run.stdout, /would change: docs\/adr\/README\.md/);
-      assert.deepEqual(snapshot(), before);
-      assert.equal(fs.existsSync(path.join(dir, 'docs', 'adr', '15-user-controlled-diagnostics.md')), false);
+      assert.deepEqual(snapshotTree(adrDir), before);
+      assert.equal(fs.existsSync(path.join(adrDir, '15-user-controlled-diagnostics.md')), false);
+    } finally {
+      rmTree(dir);
+    }
+  });
+
+  it('a dry run with --gate mvp ratifies every present draft on a temporary copy and changes no file', () => {
+    const dir = prePassTree();
+    try {
+      const adrDir = path.join(dir, 'docs', 'adr');
+      const slugs = mvpGateSlugs(adrDir);
+      assert.deepEqual(slugs, [...KNOWN_AT_GATE].sort());
+      const before = snapshotTree(adrDir);
+      let issue = 90;
+      for (const slug of slugs) {
+        issue += 1;
+        const run = runRatify(dir, ['--gate', MVP_GATE, '--slug', slug, '--issue', String(issue), '--date', '2026-10-18', '--dry-run']);
+        assert.equal(run.status, 0, run.stderr);
+        assert.ok(run.stdout.includes(`would rename docs/adr/draft-${slug}.md -> docs/adr/${issue}-${slug}.md`));
+        assert.ok(run.stdout.includes('would set: - **Status:** Accepted'));
+        assert.ok(run.stdout.includes(`would set: - **Issue:** [#${issue}](${REPO_URL}/issues/${issue})`));
+        assert.ok(run.stdout.includes('would set: - **Ratified:** 2026-10-18'));
+        assert.ok(run.stdout.includes('would change: docs/adr/README.md'));
+        assert.deepEqual(snapshotTree(adrDir), before);
+      }
     } finally {
       rmTree(dir);
     }
@@ -365,35 +991,59 @@ describe('Phase 1 ADR set (integration over the real docs/adr)', () => {
     });
   }
 
-  for (const [slug, phase] of Object.entries(REMAINING)) {
-    it(`${slug} stays a Proposed draft and is scheduled for ${phase}`, () => {
-      assert.equal(findAdrFile(ADR_DIR, slug), `draft-${slug}.md`);
-      const body = fs.readFileSync(path.join(ADR_DIR, `draft-${slug}.md`), 'utf8');
-      assert.match(body, /^- \*\*Status:\*\* Proposed$/m);
-      const row = readme.split('\n').find((l) => l.includes(`](draft-${slug}.md)`));
-      assert.ok(row?.trimEnd().endsWith('| Proposed |'), `README row for ${slug} is not Proposed`);
+  // The records of the MVP gate pass are either still drafts (before the pass) or numbered (after it). Each test
+  // derives the state from the files present, so the same file is green before and after the pass.
+  const gateDrafts = KNOWN_AT_GATE.filter((slug) => findAdrFile(ADR_DIR, slug) === `draft-${slug}.md`);
+  const gateNumbered = KNOWN_AT_GATE.filter((slug) => /^\d+-/.test(findAdrFile(ADR_DIR, slug) ?? ''));
+  const numberedKnown = [...RATIFIED, ...gateNumbered];
 
-      const schedule = readme.split(/^## Ratification schedule$/m)[1] ?? '';
-      const sRow = schedule.split('\n').find((l) => l.startsWith('|') && l.includes(`| ${slug} |`));
-      assert.ok(sRow, `schedule has no row for ${slug}`);
-      assert.ok(sRow.includes(`| ${phase} |`), `schedule row for ${slug} does not name ${phase}`);
+  for (const slug of KNOWN_AT_GATE) {
+    it(`${slug} is a Proposed draft with a schedule row, or numbered and Accepted with a log row`, () => {
+      const file = findAdrFile(ADR_DIR, slug);
+      assert.ok(file, `no ADR file found for ${slug}`);
+      const body = fs.readFileSync(path.join(ADR_DIR, file), 'utf8');
+      const row = readme.split('\n').find((l) => l.includes(`](${file})`) && /\| (Proposed|Accepted) \|\s*$/.test(l));
+      assert.ok(row, `README has no table row for ${file}`);
+      if (file === `draft-${slug}.md`) {
+        assert.match(body, /^- \*\*Status:\*\* Proposed$/m);
+        assert.ok(row.trimEnd().endsWith('| Proposed |'), `README row for ${slug} is not Proposed`);
+        const schedule = readme.split(/^## Ratification schedule$/m)[1] ?? '';
+        const sRow = schedule.split('\n').find((l) => l.startsWith('|') && l.includes(`| ${slug} |`));
+        assert.ok(sRow, `schedule has no row for ${slug}`);
+        assert.ok(sRow.includes(`| ${SCHEDULE_PHASE[slug]} |`), `schedule row for ${slug} does not name ${SCHEDULE_PHASE[slug]}`);
+      } else {
+        const n = /^(\d+)-/.exec(file)?.[1];
+        assert.ok(n, `${file} is not named <issue#>-${slug}.md`);
+        assert.match(body, /^- \*\*Status:\*\* Accepted$/m);
+        assert.ok(body.includes(`- **Issue:** [#${n}](${REPO_URL}/issues/${n})`));
+        assert.match(body, /^- \*\*Ratified:\*\* \d{4}-\d{2}-\d{2}$/m);
+        assert.ok(row.trimEnd().endsWith('| Accepted |'), `README row for ${slug} is not Accepted`);
+        assert.equal(readme.includes(`draft-${slug}`), false);
+      }
     });
   }
 
-  it('docs/adr holds one numbered file per ratified ADR and one draft per remaining ADR', () => {
+  it('docs/adr holds exactly the known records and no unknown file', () => {
+    const known = new Set<string>([...RATIFIED, ...KNOWN_AT_GATE]);
     const names = fs.readdirSync(ADR_DIR).filter((n) => n !== 'README.md');
-    assert.equal(names.filter((n) => /^\d+-/.test(n)).length, RATIFIED.length);
-    assert.equal(names.filter((n) => n.startsWith('draft-')).length, Object.keys(REMAINING).length);
+    assert.equal(names.length, known.size, `unexpected files: ${names.join(', ')}`);
+    for (const name of names) {
+      const slug = /^(?:draft|\d+)-([a-z0-9-]+)\.md$/.exec(name)?.[1];
+      assert.ok(slug !== undefined && known.has(slug), `${name} is not a known record`);
+    }
+    assert.equal(names.filter((n) => /^\d+-/.test(n)).length, numberedKnown.length);
+    assert.equal(names.filter((n) => n.startsWith('draft-')).length, gateDrafts.length);
+    assert.deepEqual(mvpGateSlugs(ADR_DIR), [...gateDrafts].sort());
+    assert.deepEqual(unnumberedAdrFiles(ADR_DIR), gateDrafts.map((s) => `draft-${s}.md`).sort());
   });
 
-  it('README has a Ratification log row per ratified ADR and a schedule row per remaining ADR', () => {
+  it('README has a Ratification log row per numbered ADR and a schedule row per remaining draft', () => {
     assert.match(readme, /^## Ratification log$/m);
-    assert.match(readme, /^## Ratification schedule$/m);
     const afterLog = readme.split(/^## Ratification log$/m)[1] ?? '';
     const logBlock = afterLog.split(/^## /m)[0] ?? '';
     const logRows = logBlock.split('\n').filter((l) => /^\| \[?[a-z]/.test(l) && !l.startsWith('| Slug'));
-    assert.equal(logRows.length, RATIFIED.length);
-    for (const slug of RATIFIED) {
+    assert.equal(logRows.length, numberedKnown.length);
+    for (const slug of numberedKnown) {
       const row = logRows.find((l) => l.includes(`| ${slug} |`));
       assert.ok(row, `log has no row for ${slug}`);
       const file = findAdrFile(ADR_DIR, slug);
@@ -404,13 +1054,14 @@ describe('Phase 1 ADR set (integration over the real docs/adr)', () => {
     const afterSchedule = readme.split(/^## Ratification schedule$/m)[1] ?? '';
     const scheduleBlock = afterSchedule.split(/^## /m)[0] ?? '';
     const scheduleRows = scheduleBlock.split('\n').filter((l) => /^\| [a-z]/.test(l) && !l.startsWith('| ADR'));
-    assert.equal(scheduleRows.length, Object.keys(REMAINING).length);
+    assert.equal(scheduleRows.length, gateDrafts.length);
+    if (gateDrafts.length > 0) assert.match(readme, /^## Ratification schedule$/m);
   });
 
   it('no ratified ADR or docs/PRD.md contains a backslash followed by a digit', () => {
     const files = [
       path.join(ROOT, 'docs', 'PRD.md'),
-      ...RATIFIED.map((slug) => path.join(ADR_DIR, findAdrFile(ADR_DIR, slug) ?? `missing-${slug}`)),
+      ...numberedKnown.map((slug) => path.join(ADR_DIR, findAdrFile(ADR_DIR, slug) ?? `missing-${slug}`)),
     ];
     for (const f of files) {
       assert.doesNotMatch(fs.readFileSync(f, 'utf8'), /\\[0-9]/, `${path.relative(ROOT, f)} still has a lost-text token`);
@@ -420,7 +1071,7 @@ describe('Phase 1 ADR set (integration over the real docs/adr)', () => {
   it('no scoped file still links a draft name of a ratified slug', () => {
     for (const rel of collectLinkFiles(ROOT)) {
       const text = fs.readFileSync(path.join(ROOT, rel), 'utf8');
-      for (const slug of RATIFIED) {
+      for (const slug of numberedKnown) {
         assert.equal(text.includes(`draft-${slug}`), false, `${rel} still mentions draft-${slug}`);
       }
     }
