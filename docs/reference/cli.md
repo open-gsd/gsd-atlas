@@ -13,7 +13,7 @@ The command runs the Host inside its own process. It starts no background servic
 
 ## Output contract
 
-- stdout carries exactly one JSON envelope, printed as the Host returned it, followed by a newline. `--version` and `--help` print text instead.
+- stdout carries exactly one JSON envelope, printed as the Host returned it, followed by a newline. `--version` and `--help` print text instead. `allow`, `bug` and `diagnostics` print nothing on stdout when they stop before they ask the Host, or when the person declines a question.
 - stderr carries one line per diagnostic whose severity is `error` or `warning`, in the form `gsd-atlas: <severity> <code>: <message>`. A `busy` answer appends ` (retry after <n> ms)`. Each entry of the envelope's `hints` is written as `gsd-atlas: hint: <sentence>`. An `info` diagnostic gets no stderr line, except the `diagnostics_*` notes of `diagnostics`.
 - A usage error prints `gsd-atlas: <reason>` and the usage text to stderr and nothing to stdout.
 - `init` prints its own envelope, with schema `gsd-atlas.init/1`. Its `data` is always present, even when a host is refused.
@@ -88,7 +88,7 @@ Accepted by `rate`, `allow`, `diagnostics` and `bug`. The rating names and value
 | --- | --- | --- | --- |
 | `--session` | none | `rate` | Rate the session. |
 | `--feature` | rating feature | `rate`, `diagnostics preview`, `bug` | `rate`: rate this feature. `diagnostics preview`: what a `--rating` is about, a rating feature, `last` or `session`; needs `--rating`. `bug`: the feature the report is about. |
-| `--last` | none | `rate` | Rate the newest answer of this process's repository. The default when no scope option is given. |
+| `--last` | none | `rate` | Rate the newest answer of the repository. The default when no scope option is given. |
 | `--workdir` | directory | `allow` | The working directory of the approved command, relative to the repository. Default `.`. It must exist inside the repository. |
 | `--module` | module name | `allow` | Propose the command the named language module declares instead of a command after `--`. |
 | `--note` | text | `diagnostics preview` | A note for the report. Must not be empty. |
@@ -550,5 +550,11 @@ The store moves to `<cache root>/gsd-atlas/<store id>` when the git common direc
 - [How to keep the store healthy](../how-to/keep-the-store-healthy.md)
 - [How to run the measured gates locally](../how-to/run-the-measured-gates-locally.md)
 - [How to contribute a change](../how-to/contribute-a-change.md)
+- [How to see why atlas gave an answer](../how-to/see-why-atlas-gave-an-answer.md)
+- [How to find the code that cites an ADR](../how-to/find-the-code-that-cites-an-adr.md)
+- [How to approve a precise command for one repository](../how-to/approve-a-precise-command.md)
+- [How to install the gsd-atlas skills](../how-to/install-the-skills.md)
 - [gsd-atlas MCP reference](mcp.md)
+- [gsd-atlas TypeScript support reference](typescript-support.md)
+- [gsd-atlas ADR citations reference](adr-citations.md)
 - [About how freshness and the writer lease work](../explanation/how-freshness-and-the-writer-lease-work.md)

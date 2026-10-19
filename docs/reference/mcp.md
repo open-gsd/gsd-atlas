@@ -348,7 +348,13 @@ Files in the store directory:
 ## See also
 
 - [gsd-atlas command-line reference](cli.md)
+- [gsd-atlas TypeScript support reference](typescript-support.md)
+- [gsd-atlas ADR citations reference](adr-citations.md)
 - [How to register the MCP server with Claude Code, Cursor and Codex](../how-to/register-the-mcp-server.md)
 - [How to keep the store healthy](../how-to/keep-the-store-healthy.md)
+- [How to see why atlas gave an answer](../how-to/see-why-atlas-gave-an-answer.md)
+- [How to find the code that cites an ADR](../how-to/find-the-code-that-cites-an-adr.md)
+- [How to install the gsd-atlas skills](../how-to/install-the-skills.md)
 - [About how freshness and the writer lease work](../explanation/how-freshness-and-the-writer-lease-work.md)
+- [About how the precise TypeScript tier works](../explanation/how-the-precise-tier-works.md)
 - [MCP tool contract and CLI parity](../adr/13-mcp-contract.md): the decision record
