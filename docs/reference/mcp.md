@@ -8,6 +8,7 @@
 | Version | The `version` of the package's `package.json`. |
 | Bin | `gsd-atlas-mcp`; in a built clone `dist/bin/gsd-atlas-mcp.js`, launched as `node dist/bin/gsd-atlas-mcp.js`. |
 | Transport | stdio, one JSON-RPC message per line. |
+| Flags | `--allow-build` (see [Start-up flags](#start-up-flags)) and `--help` (`-h`). |
 | Capabilities | `tools` (with `listChanged: true`). |
 | Tools | Seven, all read-only: `code_find`, `code_refs`, `code_context`, `code_impact`, `atlas_status`, `lang_list`, `code_explain`. |
 | State | None kept between calls. There is no session. The repository is chosen on every call by the `repo` or `cwd` argument; without one, the server uses the working directory it was started in. |
@@ -25,7 +26,20 @@ Standard output carries protocol frames only. A direct write to the process's st
 | `gsd-atlas-mcp: error internal_error: <message>` | The server failed to start or stopped on an unexpected error. |
 | `gsd-atlas: warning user_config_ignored: <message>` | The user configuration file was ignored (see [the CLI reference](cli.md#environment-and-user-configuration)). |
 
-Exit codes: 0 when input ends; 2 on a start-up failure; 143 after SIGTERM and 130 after SIGINT, once the Host is closed and the writer lease released. A second signal while shutting down exits at once.
+Exit codes: 0 when input ends; 1 for an argument it does not know; 2 on a start-up failure; 143 after SIGTERM and 130 after SIGINT, once the Host is closed and the writer lease released. A second signal while shutting down exits at once.
+
+### Start-up flags
+
+```
+gsd-atlas-mcp [--allow-build]
+```
+
+| Flag | Meaning |
+| --- | --- |
+| `--allow-build` | The server may run the commands the user approved with [`gsd-atlas allow`](cli.md#gsd-atlas-allow). Without it, the server never runs an approved command, and a tier that needs one answers from the grammar tier and reports `needs_approval`. The built-in TypeScript tier needs no approval and does not depend on this flag. A person starts the server with this flag; an agent is not meant to choose it. |
+| `--help`, `-h` | Prints the usage text on standard error and exits 0. |
+
+Any other argument, or a value after a flag, prints `gsd-atlas-mcp: unknown argument` and the usage text on standard error, leaves standard output empty and exits 1. A server never records an approval: `allow` is a command-line command only, and a Host started for an MCP server refuses it. `gsd-atlas init` registers the server without `--allow-build`.
 
 The server instructions, sent to the client at `initialize`:
 
@@ -65,8 +79,9 @@ Description: `Find where a symbol is defined, by name. Returns ranked definition
 
 Result `data`: `results[]` with `name`, `kind`, `path`, `line`, `col` (1-based), `exported` (when known), `confidence`, `citation` (the id of the citation that carries the debug handle and text reference).
 
-Example (trimmed; the nonce differs on every answer):
+Example (the nonce differs on every answer):
 
+<!-- verified-by: cli: gsd-atlas find parseConfig -->
 ```json
 {"schema":"gsd-atlas.code-find/1","ok":true,"data":{"results":[{"name":"parseConfig","kind":"function","path":"src/config.ts","line":6,"col":8,"exported":true,"confidence":"EXTRACTED","citation":"c1"}]},"diagnostics":[],"citations":[{"id":"c1","path":"src/config.ts","line":6,"col":8,"endLine":9,"endCol":2,"confidence":"EXTRACTED","debug":"sym/src%2Fconfig.ts/857f7ac2756066bca45830ed44fbc76df7e8cc69/3","text_ref":"ut1"}],"watermark":{"seq":4,"stalePaths":[]},"untrusted_text":{"nonce":"d02270f16133503e66f4ee8407d8031d","entries":[{"ref":"ut1","text":"BEGIN-UNTRUSTED-d02270f16133503e66f4ee8407d8031d\nexport function parseConfig(text: string, fallbackName: string): Config {\nEND-UNTRUSTED-d02270f16133503e66f4ee8407d8031d"}]}}
 ```
@@ -163,7 +178,7 @@ Result `data`:
 | --- | --- |
 | `repo` | The repository path the request named, or `null`. |
 | `worktrees[]` | One entry per worktree the index holds: `worktree`, `seq` (its watermark), `staleCount`. |
-| `store` | `schemaVersion` (2 since Phase 3 added the stored ADR citations; it stays 2 when a development store gains the table of citation gaps, which is additive derived data; a store written by version 1 is derived data, deleted and recreated when this build opens it, and reports `not_indexed` until `gsd-atlas build` has run once), `sizeBytes`, `writerLeaseHeld` (this process holds the writer lease), `rebuilt` (a corrupt store was found, moved aside and rebuilt). |
+| `store` | `schemaVersion` (2; a store written by an earlier development build, with version 1, is derived data: this build deletes and recreates it when it opens it, and the repository reports `not_indexed` until `gsd-atlas build` has run once; a version 2 store that lacks the table of citation gaps stays at 2, because that table is additive derived data), `sizeBytes`, `writerLeaseHeld` (this process holds the writer lease), `rebuilt` (a corrupt store was found, moved aside and rebuilt). |
 | `indexer` | `null` when this process runs no indexer; otherwise `watchMode` (`native`, `poll` or `reconcile-only`), `queued`, `running`, `failed` (a count; the paths are not listed), `reconciling`, `lastReconcileAt` and `lastIndexedAt` (milliseconds since the epoch, or `null`). |
 | `governor` | `queued`, `running`, `leases`. |
 | `citations` | `filesWithGaps`: how many files, summed over the listed worktrees, hold ADR mentions the index could not store (a comment over the comment size bound, or more than 200 mentions in one file). A count only, always present (0 when there is none). It adds no health reason and no degraded code, so a repository with a gap stays `ok`. A development store built before the gap table existed reports 0 until it is rebuilt: remove `facts.db` from the store directory and run `gsd-atlas build` again. |
@@ -174,8 +189,9 @@ Result `data`:
 
 The answer carries `degraded` codes for the reasons `follower`, `rebuilding`, `reconciling` (as `reconciling`) and `stale_files` (as `stale`).
 
-Example `data` (trimmed; the path is the directory the server was asked about):
+Example `data` (the path is the directory the server was asked about):
 
+<!-- verified-by: cli: gsd-atlas health -->
 ```json
 {"repo":"/path/to/atlas-demo","worktrees":[{"worktree":"/path/to/atlas-demo","seq":4,"staleCount":0}],"store":{"schemaVersion":2,"sizeBytes":110592,"writerLeaseHeld":true,"rebuilt":false},"indexer":{"watchMode":"native","queued":0,"running":0,"failed":0,"reconciling":false,"lastReconcileAt":1792284788463,"lastIndexedAt":null},"governor":{"queued":0,"running":1,"leases":0},"citations":{"filesWithGaps":0},"tiers":[{"module":"javascript","grammar":true,"precise":false,"platform":false},{"module":"typescript","grammar":true,"precise":false,"platform":false}],"policy":"off","health":"ok","reasons":[]}
 ```
@@ -214,11 +230,41 @@ The answer carries `degraded: ["compiler_fallback"]` when a precise fact was res
 
 Result `data` for an `answer_id`: `answer` (`id`, `tool`, `outcome`, `latency` (a bucket label such as `le50`), `degraded[]`, `results`) and `facts[]` (up to 5 of the answer's handles, each `handle`, `status` `ok`, `stale` or `unknown`, and for `ok` the `kind`, `tier` and `confidence`), plus `tiers`. The recorder keeps only the newest answers of a repository, locally.
 
+Example for an `answer_id` (the answer was a `code_refs` answer that used the bundled compiler; the ids differ on every run):
+
+<!-- verified-by: cli: gsd-atlas explain a_b5be4179a434dd9b -->
+```json
+{"schema":"gsd-atlas.code-explain/1","ok":true,"data":{"answer":{"id":"a_b5be4179a434dd9b","tool":"code_refs","outcome":"ok","latency":"le100","degraded":["compiler_fallback"],"results":1},"facts":[{"handle":"ref/src%2Fmain.ts/be6aca3b1415b80cff189203ef7bab165b7b0237/0","status":"ok","kind":"reference","tier":"precise","confidence":"EXTRACTED"}],"tiers":{"grammar":"active","precise":"active","compiler":{"name":"typescript","version":"6.0.3","source":"bundled","case":"none","reason":"no project compiler"}}},"diagnostics":[],"watermark":{"seq":4,"stalePaths":[]},"answer_id":"a_45ab36bf5b4e5a16"}
+```
+
 `code_explain` is read-only and cheap: it runs no resolver, starts no compiler and writes nothing but the one record of its own answer. A malformed, oversized, unknown or no-longer-current handle gets a fixed error (`invalid_handle`, `stale_handle`) that does not echo it; an answer id the recorder does not hold gets `answer_not_found`; giving both inputs or neither gets `invalid_args`.
 
 ## Tool result
 
-A tool call returns one `text` content item holding the JSON envelope, and `isError` equal to the envelope's `ok` negated. The envelope fields, the degraded code table and the citation shape are in [the CLI reference](cli.md#result-envelope).
+A tool call returns one `text` content item holding the JSON envelope, and `isError` equal to the envelope's `ok` negated. The envelope fields and the citation shape are in [the CLI reference](cli.md#result-envelope); the degraded codes are below.
+
+Every answer of a tool, an error answer included, carries `answer_id`: the string `a_` and 16 hexadecimal digits, new for every answer. `code_explain` takes it as input, and the command line takes it in `gsd-atlas explain` and `gsd-atlas bug --answer`. The flight recorder keeps only the newest answers of a repository, on the machine that answered.
+
+## Degraded codes
+
+`degraded` lists why an answer is weaker than a full, fresh, precise one. A degraded answer still carries its data. The codes below are the whole set, in the order they are reported; a client that meets a code it does not know treats the answer as degraded for an unknown reason.
+
+| Code | Meaning |
+| --- | --- |
+| `resolver_failed` | The reference resolver failed; the answer carries grammar-tier `INFERRED` edges. |
+| `resolver_timeout` | The reference resolver overran its bound (1500 ms); the answer carries grammar-tier `INFERRED` edges. |
+| `fresh_timeout` | The paths named with `fresh` were not all stored within the wait (2000 ms), or no way to index them was available; the answer comes from the store. |
+| `precise_base_commit` | none stated |
+| `precise_unavailable` | The precise tier is switched off while the read had sites to resolve. |
+| `stale` | Some files are marked stale and are served from their still-valid facts, or a citation has no source text because its line could not be trusted. |
+| `follower` | The answer came from a process that does not hold the writer lease. |
+| `cache_unavailable` | A reader without the lease computed its result without the cache. |
+| `reconciling` | The index is catching up with the working tree after start-up. |
+| `rebuilding` | The store is being rebuilt. |
+| `watermark_moved` | The index advanced since the `more` cursor was issued. |
+| `memory_budget` | The compiler worker was stopped, or not started, because of the memory budget; answers come from the grammar tier. |
+| `compiler_fallback` | A compiler other than the project's own did the resolving, for example the bundled 6.0.3 because the project has none or has 7.x. The answer also carries an `info` diagnostic with the same code that names the case. |
+| `needs_approval` | A tier exists but its command is not approved for this repository. A command that was denied at run time also leaves a `warning` diagnostic with the same code. |
 
 When the Host cannot answer, the result is the fixed text `gsd-atlas: the Host could not answer this request. Try again; if it keeps failing, run `gsd-atlas health` in the repository.` with `isError: true`.
 

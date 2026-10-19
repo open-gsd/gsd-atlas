@@ -61,7 +61,40 @@ Every statement a page makes that could be wrong, with the page it is on and its
 
 | Statement | Page | Evidence |
 |-----------|------|----------|
-| (rows are added with each page) | | |
+| The Requirements line names macOS or Linux, and says Windows is not supported in the alpha | `docs/reference/cli.md` | decision: `.planning/PROJECT.md` Decision 2 (2026-10-18); wording from `.planning/todos/pending/windows-support-post-alpha.md`, "User-facing wording" |
+| `rate` takes one of `up`, `meh`, `down`; one scope at most (`--session`, `--feature`, `--last`); no scope rates the newest answer; usage errors `rate needs exactly one of up, meh, down`, `choose one scope: ...`, `--feature must be one of ...` | `cli.md` | code: `src/cli/tool-commands.ts:337-359`; run: `gsd-atlas rate sideways`, `rate up --session --last`, `rate up --feature nothing` (exit 1) |
+| Rating features are `code_find`, `code_refs`, `code_context`, `code_impact`, `atlas_status`, `lang_list`, `code_explain`, `skill`, `build`, `init` | `cli.md` | code: `src/metrics/types.ts:30`; run: stderr of `rate up --feature nothing` |
+| `rate` result `gsd-atlas.rate/1` with `recorded`, `scope`, `value` and `answer_id`, `feature` or `session_id`; stderr `recorded "up" for the last answer` | `cli.md` | run: `gsd-atlas rate up --last`, `rate meh --feature code_find`, `rate down --session` |
+| `rate` with nothing recorded exits 2 with `no_recent_answer` | `cli.md` | run: `gsd-atlas rate up --last` in a repository with no answer |
+| A rating is one row in table `ratings` of `metrics.db` (time, scope, value, answer id, feature, session id) | `cli.md` | run: read-only query of the store's `metrics.db` after the rate probes |
+| The Host refuses `rate` from an MCP server with `rate_forbidden` | `cli.md` | code: `src/host/host.ts:675` |
+| `allow` without a terminal: `gsd-atlas: error allow_needs_terminal: allow needs a terminal`, exit 2 | `cli.md` | run: `gsd-atlas allow -- node scripts/build.js` with stdin not a terminal |
+| `allow` review lines, question, confirmed envelope, stderr lines, repeat message, `permissions.allow` entry shape | `cli.md` | run: `gsd-atlas allow --workdir src -- node -e 1` through a pseudo-terminal (`script`), answer `y`, twice, redirected user directory; `cat` of `config.json` |
+| `allow` declined: `nothing was approved and nothing was written`, exit 1; `--module` without a precise command: `no_precise_command` | `cli.md` | run: pseudo-terminal answer `n`; `gsd-atlas allow --module typescript` |
+| `allow` exit codes, usage errors, `config_invalid` exits 3, hash binds the call, entry written atomically with mode 0600 | `cli.md` | code: `src/cli/allow.ts:47-148`, `src/cli/index.ts:212-238`, `src/host/allow.ts:253-330`, `src/cli/exit.ts:16-37` |
+| An MCP server uses the permission list only with `--allow-build` | `cli.md`, `mcp.md` | code: `src/host/allow.ts:363-365`; run: `code_refs` over MCP without the flag answered `precise` / `EXTRACTED` (the built-in tier is unaffected) |
+| `diagnostics` sub-commands, prompt texts, answers, the opening text, the summary line | `cli.md` | code: `src/cli/diagnostics.ts:61-69, 137-201, 308-341`; run: `gsd-atlas diagnostics enable` through a pseudo-terminal |
+| `preview` while off returns `{"enabled":false}` and `diagnostics_off`; with approved types returns `title`, `labels`, `body`, `json`, `ask_skipped`, `note_ignored`, `path`; arrow for a rating; `--feature` needs `--rating` | `cli.md` | run: `gsd-atlas diagnostics preview`, `preview --rating up --feature code_find --note x`, `--save`, `preview --feature code_find` |
+| `history` data and `disable` data and stderr texts | `cli.md` | run: `gsd-atlas diagnostics history`, `diagnostics disable` |
+| The ten data types, their titles and fields; `header` is required | `cli.md` | `diagnostics/catalog.v1.json`; run: `gsd-atlas diagnostics enable` shows `[n/10]` cards |
+| Consent is in `<user-dir>/diagnostics.json`; reports in `<state dir>/diagnostics/reports/<time>.md`; the state dir is `$XDG_STATE_HOME/gsd-atlas` or `<home>/.local/state/gsd-atlas` | `cli.md` | run: `find` over the redirected directories; code: `src/diagnostics/consent.ts:20`, `src/diagnostics/reports.ts:12-26`, `src/host/diagnostics.ts:464-477` |
+| `bug` flows (interactive, `--include`, no terminal), prompts, `bug_needs_text`, `raw_not_confirmed`, usage errors, `--clear` | `cli.md` | code: `src/cli/bug.ts:47-261`; run: `gsd-atlas bug` (exit 2), `bug --mode raw --what x` (exit 2), `bug --clear`, `bug --include nothing --what x` (exit 1), interactive run through a pseudo-terminal |
+| `bug` writes `bundle.json` and `preview.txt` under `<cache root>/gsd-atlas/bug-reports/<id>` with modes 0700 and 0600; format `gsd-atlas-bug-v1` | `cli.md` | run: `ls -l` of the bundle folder; code: `src/host/bug.ts:62-66` |
+| Hashed names are `<h:xxxxxxxx>`, an HMAC-SHA256 with a fresh random key per bundle | `cli.md` | code: `src/diagnostics/hash.ts:31-38`, `src/host/bug.ts:314` |
+| The five bug data types and their contents; bundle cap 1,048,576 bytes; excerpt 200 events | `cli.md` | code: `src/diagnostics/bundle.ts:28-89`; `03-CONSTANTS.md` rows `bug.excerptEvents`, `bug.bundleMaxBytes` |
+| The reporter's text fields hold at most 10,000 characters | `cli.md` | code: `src/host/bug.ts:69-75` |
+| `answer_id` is on the answers of the code tools, `explain`, `health`, `lang list` and absent on `build`, `maintain`, `status`, `history`, `rate`, `allow`, `bug`, `diagnostics`, `init` | `cli.md`, `mcp.md` | run: the `answer_id` probe over eleven commands |
+| Each hint is written on stderr as `gsd-atlas: hint: <sentence>` | `cli.md` | code: `src/cli/index.ts:112`; run: `gsd-atlas find 99 --kind adr` in the citations probe repository |
+| `explain` takes exactly one argument (usage error otherwise) | `cli.md` | run: `gsd-atlas explain` (exit 1, `explain needs exactly one handle or answer id`) |
+| `init` registers `process.execPath` with the server file as its only argument (no `--allow-build`) and copies no skills | `cli.md`, `mcp.md` | code: `src/bin/gsd-atlas.ts:62`; run: `gsd-atlas init --dry-run` under a redirected home |
+| `permissions.allow[].sha256` and `providers.disabled` are keys of the user configuration | `cli.md` | code: `src/host/config.ts:52-72` |
+| `XDG_STATE_HOME` and `XDG_CACHE_HOME` locations; the store folder holds `flight/flight.jsonl` | `cli.md` | run: `find` over the redirected store directory; code: `src/host/diagnostics.ts:464-477` |
+| New diagnostic codes `invalid_handle`, `stale_handle`, `answer_not_found`, `no_recent_answer`, `allow_needs_terminal`, `diagnostics_needs_terminal`, `bug_needs_text`, `raw_not_confirmed`, `diagnostics_off`, `compiler_fallback` | `cli.md` | run: each reproduced in the probes (texts and exits); `needs_approval` from `src/host/allow.ts:371-383` |
+| `gsd-atlas-mcp` flags: only `--allow-build` and `--help`/`-h`; unknown argument exits 1 with usage on stderr and nothing on stdout | `mcp.md` | run: `node dist/bin/gsd-atlas-mcp.js --help` (exit 0), `--bogus` (exit 1); code: `src/bin/compose.ts:184-206` |
+| The server accepts `--allow-build` and serves seven tools | `mcp.md` | mcp: a scratch script drove `initialize` (2025-06-18), `tools/list` (seven tools), a `code_explain` call, and a second start with `--allow-build` |
+| `code_explain` input schema (`handle`, `answer_id`, `repo`, `cwd`, `budget_tokens`), `readOnlyHint`, "Give exactly one of handle and answer_id." | `mcp.md` | mcp: `tools/list` schema; `tools/call` with both inputs |
+| The degraded codes and their meanings | `mcp.md` | code: `src/facts/degraded.ts:16-31` (comment lines 5-12), `src/tenant/create.ts:90-103` (`precise_unavailable`) |
+| The `answer_id` example is a real `gsd-atlas explain <answer id>` envelope | `mcp.md` | run: `gsd-atlas explain a_b5be4179a434dd9b` |
 
 ## Checklist
 
@@ -69,7 +102,8 @@ Per page, from the skill's publishing checklist: exactly one quadrant; title fit
 
 | Page | One type | Title fits | Links not repeats | Commands real | Marker present | Result |
 |------|----------|------------|-------------------|---------------|----------------|--------|
-| (rows are added with each page) | | | | | | |
+| `docs/reference/cli.md` | yes: reference; each command has the same shape (usage, options, result, errors); the opening of the new `allow`, `diagnostics`, `bug` sections is a one-sentence statement, not instruction | yes (unchanged H1) | yes: data shapes of tools and the degraded codes link to the MCP reference | n/a (the reference shows usage lines; the test checks every json fence's `cli:` command) | yes: all json fences | pass |
+| `docs/reference/mcp.md` | yes: reference; the start-up flags table and the degraded-code table follow the shape of the other tables | yes (unchanged H1) | yes: CLI facts link to cli.md | n/a | yes: all json fences | pass |
 
 ## Findings outside the scope of this plan
 
