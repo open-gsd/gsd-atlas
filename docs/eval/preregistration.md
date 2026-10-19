@@ -1,6 +1,6 @@
 # Pre-registration of the MVP eval (plan 03-16)
 
-Status: Draft
+Status: Frozen (Stage A, revision 1, 2026-10-19, by Tom Boucher)
 
 This document records the design of the eval that decides whether the gsd-atlas MVP meets its claim. It describes the design only. It reports no scored result and hints at none. Once the status line above reads `Frozen`, `node scripts/eval/verify-prereg.ts` (run by the static CI job) fails when any of the sixteen registered files changes, and a changed registered value is a new registered run (see Deviations policy).
 
@@ -103,7 +103,7 @@ OQ4 confirmed by the user: point_estimate
 ```prereg-json
 {
   "stage": "A",
-  "status": "Draft",
+  "status": "Frozen",
   "revision": 1,
   "params": {
     "marginPoints": 5,
@@ -124,7 +124,24 @@ OQ4 confirmed by the user: point_estimate
     "corpusSha": "10ac3a7a947903ba50f538a907af036744d759d5",
     "npmCiRan": true
   },
-  "files": {},
+  "files": {
+    "scripts/eval/questions/gsd-core.questions.json": "841b2bdb202f286c3da5ac3a2c6b01ec4a1520e4a6d343089697e1f8f326700f",
+    "scripts/eval/questions/gsd-core.answers.json": "e9e43d565bfbacc1c2ce045debdae4ee11e32510471c85465ad1e1f50d92413a",
+    "scripts/eval/questions.ts": "425623eda7487496bf2a0ef959ef0ee079e8ccf4d0f41fca324ae01cee03dc64",
+    "scripts/eval/oracle.ts": "8d83f5d8197f12e2234b7d83c831951022d658c1306304887bf1650364f53fdc",
+    "scripts/eval/score.ts": "27cae3d4e1bf257d0bdd68ba0e393df7465b10afa8ef06dcd41208379fc1775e",
+    "scripts/eval/answer-schema.json": "6da389ecb51825629b7770a562b88db67e245d775f7ec903475df97f6c03b72a",
+    "scripts/eval/stats.ts": "e6f50d1f08ab1d53f6b9101e0bc890ca6f8b462a3acb671e5fd50e9dd829b851",
+    "scripts/eval/rows.ts": "c2a24b17cf8b0f2508a7ae0ce8f5419bfea6f90056f929a699893e424f3222de",
+    "scripts/eval/analyze.ts": "8328e47c7a21c34e2ffec617f2646cb3b290f6fb3f79fb58f0497eb516c015d0",
+    "scripts/eval/prereg.ts": "3c56b620a930cac85efc8c192abadc384ffc161b311bb454af8790fb5f124d39",
+    "scripts/eval/claude-session.ts": "5614e97efc8bfea2f792563aa0f0fd91c582122ec2ede2790b994b24fbd1b0a1",
+    "scripts/eval/arms.ts": "012853d454054530013bf02bc35b3417f92ff8bb8593b9901841a6dac108e2ed",
+    "scripts/eval/harness.ts": "ae00063ce1b19d129a175213ebaf15c13a0996a103004894760dd1cf9ee79d4b",
+    "scripts/eval/schedule.ts": "ef4cd8c0157b6e836f8470652b658fb022f55ef96df6c1865c85043a42097d9d",
+    "scripts/eval/results.ts": "669e0b0909cb6d3c73ea966e9b5394154ed762eb2ed15cf238c35f0530abc373",
+    "scripts/eval/prepare-corpus.ts": "cee98c9221f18e0cff4905e60970684cef3a9b6a520cfb668b73397e39ba3dba"
+  },
   "questionSet": {
     "count": 75,
     "byCategory": {
