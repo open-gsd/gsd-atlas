@@ -222,3 +222,4 @@ We have built an index, asked it all four kinds of question, asked why it answer
 - Explain any other answer the same way: [How to see why atlas gave an answer](../how-to/see-why-atlas-gave-an-answer.md).
 - Look up every command and option: [the CLI reference](../reference/cli.md).
 - Find out why the index stays current and why only one process may write to it: [About how freshness and the writer lease work](../explanation/how-freshness-and-the-writer-lease-work.md).
+- See what this alpha does and does not do: [gsd-atlas alpha limitations reference](../reference/alpha-limitations.md).
