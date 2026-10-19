@@ -15,7 +15,7 @@ import { PROTOCOL_VERSION, createAnswerId, createSessionId, okEnvelope } from '.
 import type { DegradedCode, Diagnostic, Envelope, ProjectContextProvider, Request } from '../facts/index.ts';
 import { DEFAULT_INDEXER_CONFIG, IndexerError, createIndexer, createModuleHost } from '../indexer/index.ts';
 import type { BuildResult, Indexer, IndexerNotice, ModuleHost } from '../indexer/index.ts';
-import { resolveModules } from '../lang/index.ts';
+import { readGrammarVersion, resolveModules } from '../lang/index.ts';
 import { createNoopMetrics, openMetrics } from '../metrics/index.ts';
 import type { Metrics } from '../metrics/index.ts';
 import type { PreciseTier } from '../precise-resolver/index.ts';
@@ -461,7 +461,11 @@ export async function createTenant(deps: TenantDeps): Promise<Tenant> {
         handles: found.handles ?? [],
       };
     },
-    grammarVersion: (module) => moduleRegistry().modules.find((entry) => entry.name === module)?.version,
+    // The grammar version the module's facts are written with (its pinned grammar), not the module's own manifest version.
+    grammarVersion: (module) => {
+      const entry = moduleRegistry().modules.find((each) => each.name === module);
+      return entry === undefined ? undefined : readGrammarVersion(entry.dir);
+    },
   };
 
   // Plan 03-28: which ADR file a citation number names, joined at read time against the repository's ADR directory. The directory

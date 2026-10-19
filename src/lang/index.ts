@@ -6,7 +6,7 @@ export { MANIFEST_SCHEMA_VERSION, MAX_ADR_DIRS, SUPPORTED_MANIFEST_VERSIONS, adr
 export type { Manifest, ParseManifestResult } from './manifest.ts';
 export { PLATFORM_KEYS, expectedPlatformSha256, parseGrammarLock, platformKey } from './grammar-lock.ts';
 export type { GrammarLock, GrammarLockResult, PlatformExpectation, PlatformKey } from './grammar-lock.ts';
-export { MANIFEST_FILE, readManifest, readModuleFile, readModuleInputs } from './module-files.ts';
+export { MANIFEST_FILE, grammarVersionOf, readGrammarVersion, readManifest, readModuleFile, readModuleInputs } from './module-files.ts';
 export type { ReadManifestResult, ReadModuleFileResult, ReadModuleInputsResult } from './module-files.ts';
 export { MODULE_ID, MODULE_SOURCES, resolveModule, resolveModules } from './registry.ts';
 export type {

@@ -7,7 +7,7 @@ import type { TestContext } from 'node:test';
 
 import { makeTempDir } from '../test-kit/index.ts';
 import type { TempDir } from '../test-kit/index.ts';
-import { readModuleFile, readModuleInputs } from './module-files.ts';
+import { grammarVersionOf, readGrammarVersion, readModuleFile, readModuleInputs } from './module-files.ts';
 import type { ReadModuleInputsResult } from './module-files.ts';
 
 const toyDir = path.resolve(import.meta.dirname, '..', '..', 'test', 'fixtures', 'modules', 'toy');
@@ -62,6 +62,35 @@ describe('readModuleInputs: the toy module', () => {
     assert.equal(createHash('sha256').update(result.input.wasm).digest('hex'), result.lock.wasm.sha256);
     assert.deepEqual(Object.keys(result.input.queries).sort(), ['imports', 'refs', 'tags']);
     assert.match(result.input.queries.tags ?? '', /definition\.function/);
+  });
+});
+
+describe('readGrammarVersion: the version facts are written with (post-eval fix)', () => {
+  const typescriptDir = path.resolve(import.meta.dirname, '..', '..', 'modules', 'typescript');
+
+  it('is the pinned upstream ref for an upstream grammar, never the manifest version, and equals what the module host uses', () => {
+    const inputs = readModuleInputs(typescriptDir);
+    assert.equal(inputs.ok, true);
+    if (!inputs.ok) throw new Error('unreachable');
+    assert.equal(inputs.manifest.version, '0.1.0', 'the manifest version is the module version');
+    assert.equal(readGrammarVersion(typescriptDir), '0.23.2');
+    assert.equal(readGrammarVersion(typescriptDir), grammarVersionOf(inputs.lock, inputs.manifest));
+  });
+
+  it('falls back to the manifest version for a locally built grammar and strips a leading v from an upstream ref', () => {
+    const inputs = readModuleInputs(toyDir);
+    assert.equal(inputs.ok, true);
+    if (!inputs.ok) throw new Error('unreachable');
+    assert.equal(readGrammarVersion(toyDir), '0.1.0');
+    const upstream = { ...inputs.lock, source: { type: 'upstream', url: 'https://example.invalid/g.tgz', ref: 'v2.3.4', archiveSha256: 'a'.repeat(64) } } as unknown as typeof inputs.lock;
+    assert.equal(grammarVersionOf(upstream, inputs.manifest), '2.3.4');
+  });
+
+  it('is undefined, not a throw, when the module folder or its lock cannot be read', () => {
+    const { moduleDir } = copyToy();
+    assert.equal(readGrammarVersion(path.join(moduleDir, 'nowhere')), undefined);
+    fs.rmSync(path.join(moduleDir, 'grammar.lock'));
+    assert.equal(readGrammarVersion(moduleDir), undefined);
   });
 });
 
