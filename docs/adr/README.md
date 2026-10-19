@@ -20,7 +20,7 @@ These decisions shape the MVP's code and data, and are expensive to reverse once
 | [6-fact-model](6-fact-model.md) | Local facts by blob id, resolved edges by overlay and context; stable symbol identity; provenance, spans, confidence | A2, A8, A19, A45 | Accepted |
 | [8-sqlite-store](8-sqlite-store.md) | SQLite via `node:sqlite` behind the Fact Store, driver internal and conformance‑tested; synced‑folder fallback; lazy rebuilds; real‑corpus budgets | A3, A4, A13, A17, A18, A50 | Accepted |
 | [7-fact-store-interface](7-fact-store-interface.md) | One Fact Store module with a fact‑level seam; `at(worktree)` reader with `Answer<T>`; single writer lease; typed maintenance; SQL driver internal; no fake store | A2, A3, A5, A17, A20, A21, A26, A45, A46 | Accepted |
-| [draft-host-process-model](draft-host-process-model.md) | One host per user and major version; repos as isolated tenants; versioned protocol; secure local transport; fair scheduling; no caps | A22–A28, A39–A43, A46, A49 | Proposed |
+| [16-host-process-model](16-host-process-model.md) | One host per user and major version; repos as isolated tenants; versioned protocol; secure local transport; fair scheduling; no caps | A22–A28, A39–A43, A46, A49 | Accepted |
 | [5-language-modules](5-language-modules.md) | Languages are data; shared Grammar Engine; PreciseResolver seam; three tiers; grammars built from pinned upstream with a parse‑error budget; what counts as source | A6, A7, A9, A25, A47, A48 | Accepted |
 | [11-worktree-lifecycle](11-worktree-lifecycle.md) | Overlays; collect when in git or past grace; history from git; submodules; watch fallback | A5, A20, A21, A43 | Accepted |
 | [13-mcp-contract](13-mcp-contract.md) | MCP tool set, response envelope, ranking, token budgets, freshness and degraded flags, untrusted‑text fencing, CLI parity | A11, A12, A26, A32, A44, A51 | Accepted |
@@ -48,6 +48,7 @@ Phase 1 ratification (FND-09): one issue per ADR in open-gsd/gsd-atlas, each dra
 | query-and-policy | [#12](https://github.com/open-gsd/gsd-atlas/issues/12) | [12-query-and-policy.md](12-query-and-policy.md) | 2026-10-16 |
 | mcp-contract | [#13](https://github.com/open-gsd/gsd-atlas/issues/13) | [13-mcp-contract.md](13-mcp-contract.md) | 2026-10-16 |
 | value-dashboard | [#14](https://github.com/open-gsd/gsd-atlas/issues/14) | [14-value-dashboard.md](14-value-dashboard.md) | 2026-10-16 |
+| host-process-model | [#16](https://github.com/open-gsd/gsd-atlas/issues/16) | [16-host-process-model.md](16-host-process-model.md) | 2026-10-18 |
 
 Phase 2 ratification (FND-12): the four ADRs scheduled for Phase 2, same procedure.
 
@@ -98,7 +99,6 @@ The two ADRs that remain Proposed, and the phase whose first plan ratifies each 
 | ADR | Ratify before | Amendments applied at that ratification |
 |-----|---------------|------------------------------------------|
 | user-controlled-diagnostics | Phase 3 | None |
-| host-process-model | Phase 4 | None |
 
 ## Before M4 (not needed for the MVP)
 - **SDK facts and providers** (A10, A29–A31): local‑only SDK facts, provider order, language levels, TypeScript 6/7 adapters.
