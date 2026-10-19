@@ -6,7 +6,7 @@
 - **DESIGN.md:** A11, A12, A26, A32, A44, A51
 - **Review findings addressed:** M‑4, M‑5, S‑3, O‑2, F‑4
 
-> Pre-release note: this record is not yet ratified; ratification is planned for the end of Phase 3, and every ADR will have a number by the MVP release; its Accepted status and issue number do not mean it is ratified (see docs/adr/README.md).
+> Ratification note: ratified together on 2026-10-18 with every other record in this folder (see docs/adr/README.md).
 
 ## Context
 Agents choose the cheapest path. gsd‑atlas has to be cheaper than grep and file reading, return citations, say how current it is, and fit within host limits. Claude Code warns at 10,000 tokens of tool output and moves anything over 25,000 to a file. The response shape is a public contract: changing it later breaks skills, hooks and other tools. The design review added three requirements:

@@ -6,7 +6,7 @@
 - **DESIGN.md:** A5, A20, A21, A43
 - **Review findings addressed:** F‑1 (overlay side), L‑1, L‑2, L‑3, H‑6
 
-> Pre-release note: this record is not yet ratified; ratification is planned for the end of Phase 3, and every ADR will have a number by the MVP release; its Accepted status and issue number do not mean it is ratified (see docs/adr/README.md).
+> Ratification note: ratified together on 2026-10-18 with every other record in this folder (see docs/adr/README.md).
 
 ## Context
 Agents work across many branches and short‑lived worktrees. The store must reflect each one's current state, never accumulate old versions, repair itself when events are missed, and still answer "what did this look like at commit X". The design review found a logic bug in the earlier collection rule (uncommitted content was never collected) and an overstated claim that new worktrees are fully live instantly.

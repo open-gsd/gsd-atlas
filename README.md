@@ -6,7 +6,7 @@ gsd-atlas builds a local index of a code repository and answers cited, fresh, wo
 
 This is an alpha. It indexes TypeScript and JavaScript repositories on macOS and Linux (Windows is not supported in the alpha), and asks the TypeScript compiler for exact references. It requires Node 24.16.0 or newer (24.15.0 truncates TEXT at an embedded NUL in `node:sqlite`), and CI runs Node 24.16.0 and 26 on Linux and macOS. Indexing and answering questions use no network, and gsd-atlas sends no telemetry.
 
-The decision records under [docs/adr](docs/adr/README.md) are drafts for this alpha, and none is ratified. [The alpha limitations](docs/reference/alpha-limitations.md) say what is and is not done yet and hold the [evaluation status](docs/reference/alpha-limitations.md#evaluation-status).
+The decision records under [docs/adr](docs/adr/README.md) are ratified, numbered and Accepted; a record changes only by a dated amendment or by a new record that supersedes it. [The alpha limitations](docs/reference/alpha-limitations.md) say what is and is not done yet and hold the [evaluation status](docs/reference/alpha-limitations.md#evaluation-status).
 
 To install, clone the repository and build it with `npm ci --ignore-scripts` and `npm run build`; the tutorial below walks through it.
 
@@ -49,7 +49,7 @@ What each command proves is in [How to contribute a change](docs/how-to/contribu
 
 ## Documentation
 
-- Decision records (drafts for this alpha): [docs/adr/README.md](docs/adr/README.md)
+- Decision records (ratified, numbered and Accepted): [docs/adr/README.md](docs/adr/README.md)
 - Product requirements: [docs/PRD.md](docs/PRD.md)
 
 ## Licence

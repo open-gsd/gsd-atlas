@@ -2,14 +2,14 @@
 
 Each ADR records one decision: what was decided, why, and what follows. ADRs are append‑only; later changes are dated amendment sections, never rewrites. Conventions follow open‑gsd/gsd‑core `docs/adr/README.md`.
 
-## Pre-release legend
-Before the first release none of these records is ratified. Ratification is planned for the end of Phase 3 (the end-of-Phase-3 ratification step), and every ADR will have a number by the MVP release; drafts are numbered at that step. The `Accepted` status, the issue numbers and the numbered file names in older records, and the `Accepted` and `Ratified` wording in the tables and logs below, come from an earlier process step and do not mean a record is ratified. Until that step no file is renamed and no record is promoted.
+## Ratification status
+Every record in this folder has a number and the status Accepted. The twelve records numbered before the MVP gate (their Ratified dates are in the Ratification log) were ratified together with the last two in one pass on 2026-10-18; the log lists the issues and describes the pass. From now on a record is changed only by a dated amendment section appended to it, or replaced by a new record that supersedes it. New records are named `<issue#>-<kebab-slug>.md` from the start.
 
 ## Naming
-New ADRs are named `<issue#>-<kebab-slug>.md`, with the number of the GitHub issue that proposes them. The repo has no issues yet, so the founding set below is named `draft-<slug>.md`. When the repo is created, open one issue per ADR and rename each file to `<issue#>-<slug>.md` in the same PR that lands it. The eight Phase 1 ADRs were ratified on 2026-10-15 (issue opened, file renamed, Status Accepted); the Ratification log below lists the issues. The four Phase 2 ADRs were ratified on 2026-10-16 (issues 11 to 14). The other two ADRs stay `draft-<slug>.md` and Proposed until the phase named in the Ratification schedule.
+ADRs are named `<issue#>-<kebab-slug>.md`, with the number of the GitHub issue that proposes them. The eight Phase 1 ADRs were ratified on 2026-10-15 (issue opened, file renamed, Status Accepted); the Ratification log below lists the issues. The four Phase 2 ADRs were ratified on 2026-10-16 (issues 11 to 14). The last two ADRs were numbered at the MVP gate on 2026-10-18 (issues 15 and 16).
 
 ## Status vocabulary
-`Proposed` (decided in principle, not ratified) · `Accepted` · `Superseded` (must link its successor) · `Retired`.
+`Proposed` (written and under review, not yet accepted) · `Accepted` · `Superseded` (must link its successor) · `Retired`.
 
 ## Pre‑MVP set
 These decisions shape the MVP's code and data, and are expensive to reverse once data exists. **MVP = working with gsd‑core development:** TypeScript (`.cts` → `.cjs`) on gsd‑core, local and resolved facts, the store, a single‑tenant host, the MCP read tools and the skill (PRD milestones M0–M2). All ADRs were revised after the adversarial design review (`../DESIGN-REVIEW.md`).
@@ -32,7 +32,7 @@ These decisions shape the MVP's code and data, and are expensive to reverse once
 | [3-trust-boundaries](3-trust-boundaries.md) | Permissions only from user config; built‑in providers on by default; endpoint security; untrusted text fenced | A9, A16, A27, A44 | Accepted |
 
 ## Ratification log
-Phase 1 ratification (FND-09): one issue per ADR in open-gsd/gsd-atlas, each draft renamed to `<issue#>-<slug>.md` and moved from Proposed to Accepted. Issues stay open; closing them is a later, separate step.
+Phase 1 ratification (FND-09): one issue per ADR in open-gsd/gsd-atlas, each file renamed to `<issue#>-<slug>.md` and moved from Proposed to Accepted. Every issue in the log is closed: the issues of the earlier records and of the last two were closed as completed on 2026-10-18, after the pull request that numbered the last two.
 
 | Slug | Issue | File | Ratified |
 |------|-------|------|----------|
@@ -52,6 +52,8 @@ Phase 1 ratification (FND-09): one issue per ADR in open-gsd/gsd-atlas, each dra
 | user-controlled-diagnostics | [#15](https://github.com/open-gsd/gsd-atlas/issues/15) | [15-user-controlled-diagnostics.md](15-user-controlled-diagnostics.md) | 2026-10-18 |
 
 Phase 2 ratification (FND-12): the four ADRs scheduled for Phase 2, same procedure.
+
+MVP gate pass (2026-10-18): host-process-model (issue 16, opened for it) and user-controlled-diagnostics (issue 15, reopened) were numbered in [pull request 17](https://github.com/open-gsd/gsd-atlas/pull/17), which changed only header lines, link targets and the rows above. The issues of all fourteen records were closed as completed the same day.
 
 **Editorial repairs made at ratification (not amendments).** A lost-text token (a backslash and the digit one) had replaced passages in four files. Each was repaired from the project's own sources, `PRD.md` section 4.6 and `DESIGN.md` A9, and is pending human review:
 - `3-trust-boundaries.md` decision 2: restored the heading `Commands.` and its three rules.
@@ -93,12 +95,6 @@ Dated amendment sections appended to Accepted ADRs, one line per amendment. The 
 - Amendment 2026-10-18: command-runner - Compiler worker built-in and exact-argv approvals
 - Amendment 2026-10-18: trust-boundaries - Per-command approvals, MCP origin and compiler trust
 - Amendment 2026-10-18: language-modules - TypeScript project model, adapter ids and manifest version 2
-
-## Ratification schedule
-The two ADRs that remain Proposed, and the phase whose first plan ratifies each (from the ROADMAP schedule). The four Phase 2 ADRs were ratified on 2026-10-16 with their amendments (see the Ratification log). Ratifying means: open the issue, rename `draft-<slug>.md` to `<issue#>-<slug>.md`, move Proposed to Accepted, and apply the listed amendments as dated sections.
-
-| ADR | Ratify before | Amendments applied at that ratification |
-|-----|---------------|------------------------------------------|
 
 ## Before M4 (not needed for the MVP)
 - **SDK facts and providers** (A10, A29–A31): local‑only SDK facts, provider order, language levels, TypeScript 6/7 adapters.

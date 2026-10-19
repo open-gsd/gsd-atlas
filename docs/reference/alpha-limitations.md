@@ -60,11 +60,9 @@ A language module can declare a `precise.command`. It runs only after the user a
 
 ## Decision records
 
-The decision records under [docs/adr](../adr/README.md) are drafts for this alpha, and no decision record is ratified. The project owner recorded on 2026-10-18 that "nothing is ratified as it's not done". A ratification step is planned; this page promises no date and no condition for it.
+The decision records under [docs/adr](../adr/README.md) are ratified, numbered and Accepted. A record changes only by a dated amendment section appended to it, or by a new record that supersedes it. The section [Ratification status](../adr/README.md#ratification-status) of that folder says when and how.
 
-Older records still carry an Accepted status line, an issue number and a numbered file name from before that rule. Read them as drafts for this alpha, not as ratified. The legend in [docs/adr/README.md](../adr/README.md#pre-release-legend) explains each.
-
-The diagnostics design is a draft: [the user-controlled diagnostics record](../adr/15-user-controlled-diagnostics.md) and the design document [docs/DIAGNOSTICS.md](../DIAGNOSTICS.md). Their submission and automatic-intake parts do not exist in this release.
+The diagnostics record is accepted, but its submission and automatic-intake parts are not built: [the user-controlled diagnostics record](../adr/15-user-controlled-diagnostics.md) and the design document [docs/DIAGNOSTICS.md](../DIAGNOSTICS.md) describe them, and they do not exist in this release.
 
 ## Evaluation status
 

@@ -6,7 +6,7 @@
 - **DESIGN.md:** A3, A4, A13, A17, A18, A50
 - **Review findings addressed:** ST‑1, ST‑2, ST‑3, ST‑4, E‑1
 
-> Pre-release note: this record is not yet ratified; ratification is planned for the end of Phase 3, and every ADR will have a number by the MVP release; its Accepted status and issue number do not mean it is ratified (see docs/adr/README.md).
+> Ratification note: ratified together on 2026-10-18 with every other record in this folder (see docs/adr/README.md).
 
 ## Context
 The store must answer in milliseconds, update per file save, survive crashes, stay small and never corrupt, on macOS, Linux and Windows. Other local tools have shown multi‑GB stores and frequent corruption (MemPalace keeps verbatim text in ChromaDB by default; Chroma's own maintenance guide describes index growth and fragmentation). The design review found that the benchmarks didn't cover fuzzy search or real reference distributions, and that refusing synced folders would strand common setups.
