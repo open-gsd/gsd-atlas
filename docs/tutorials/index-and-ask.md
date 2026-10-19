@@ -140,7 +140,7 @@ node ../gsd-atlas/dist/bin/gsd-atlas.js refs parseConfig
 {"schema":"gsd-atlas.code-refs/1","ok":true,"data":{"targets":[{"name":"parseConfig","kind":"function","path":"src/config.ts","line":6,"handle":"sym/src%2Fconfig.ts/5be21c1961bd854a67afb280adcbb8d86f2f0460/3"}],"results":[{"target":"sym/src%2Fconfig.ts/5be21c1961bd854a67afb280adcbb8d86f2f0460/3","path":"src/main.ts","line":4,"col":18,"kind":"call","enclosing":"start","tier":"grammar","confidence":"INFERRED","ambiguous":false,"candidates":1,"citation":"c1"}]},"diagnostics":[{"code":"precise_unavailable","severity":"info","message":"no tsconfig.json covers a TypeScript file in this answer; it was answered from grammar facts"}],"citations":[{"id":"c1","path":"src/main.ts","line":4,"col":18,"endLine":4,"endCol":29,"confidence":"INFERRED","debug":"ref/src%2Fmain.ts/99b83294d51bd78aafe182ef98363a7c13992586/0","text_ref":"ut1"}],"watermark":{"seq":3,"stalePaths":[]},"untrusted_text":{"nonce":"e3bf6ce45bf467447c67bb911d612b09","entries":[{"ref":"ut1","text":"BEGIN-UNTRUSTED-e3bf6ce45bf467447c67bb911d612b09\n  const config = parseConfig(text);\nEND-UNTRUSTED-e3bf6ce45bf467447c67bb911d612b09"}]},"degraded":["precise_unavailable"],"answer_id":"a_84566c63b6dfac1a"}
 ```
 
-Notice that the one reference is a `call` inside `start`, in `src/main.ts` at line 4. Its `confidence` is `INFERRED`: the match was made by name, and gsd-atlas says so. Notice also the `degraded` field: it names why this answer is weaker than it could be. Here `precise_unavailable` says that our demo repository has no `tsconfig.json`, so no compiler was asked.
+Notice that the one reference is a `call` inside `start`, in `src/main.ts` at line 4. Its `confidence` is `INFERRED`: the match was made by name, and gsd-atlas says so. Notice also the `degraded` field: it names why this answer is weaker than it could be. Here `precise_unavailable` says that our demo repository has no `tsconfig.json`, so no compiler was asked ([what the tiers are](../reference/typescript-support.md#tiers)).
 
 Now ask what surrounds the function:
 
@@ -219,5 +219,6 @@ We have built an index, asked it all four kinds of question, asked why it answer
 ## Next
 
 - Register the server with your coding agent: [How to register the MCP server with Claude Code, Cursor and Codex](../how-to/register-the-mcp-server.md).
+- Explain any other answer the same way: [How to see why atlas gave an answer](../how-to/see-why-atlas-gave-an-answer.md).
 - Look up every command and option: [the CLI reference](../reference/cli.md).
 - Find out why the index stays current and why only one process may write to it: [About how freshness and the writer lease work](../explanation/how-freshness-and-the-writer-lease-work.md).

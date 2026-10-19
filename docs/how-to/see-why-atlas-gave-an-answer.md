@@ -55,6 +55,6 @@ The precise tier did not answer. Read `data.tiers.reason`: `no TypeScript projec
 
 ## If the tier says `needs_approval`
 
-A command a language module declares is not approved for this repository. A person approves it with `gsd-atlas allow` in a terminal; see [`gsd-atlas allow`](../reference/cli.md#gsd-atlas-allow).
+A command a language module declares is not approved for this repository. A person approves it with `gsd-atlas allow` in a terminal; see [How to approve a precise command for one repository](approve-a-precise-command.md).
 
 For every field of the answer, see [the MCP reference](../reference/mcp.md#code_explain); for the compiler cases and tier states, see [the TypeScript support reference](../reference/typescript-support.md). For why the tier is built this way, see [About how the precise TypeScript tier works](../explanation/how-the-precise-tier-works.md).
