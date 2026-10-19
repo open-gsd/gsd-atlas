@@ -4,21 +4,28 @@ gsd-atlas builds a local index of a code repository and answers cited, fresh, wo
 
 ## Status
 
-It indexes TypeScript and JavaScript repositories on macOS, Linux and Windows. It requires Node 24.16.0 or newer (24.15.0 truncates TEXT at an embedded NUL in `node:sqlite`), and CI runs Node 24.16.0 and 26 on all three systems. Indexing and answering questions use no network, and gsd-atlas sends no telemetry. The precise (compiler) tier, SDK packs, the Agent Skill, a daemon transport and Swift support arrive in subsequent phases.
+This is an alpha. It indexes TypeScript and JavaScript repositories on macOS and Linux (Windows is not supported in the alpha), and asks the TypeScript compiler for exact references. It requires Node 24.16.0 or newer (24.15.0 truncates TEXT at an embedded NUL in `node:sqlite`), and CI runs Node 24.16.0 and 26 on Linux and macOS. Indexing and answering questions use no network, and gsd-atlas sends no telemetry.
 
-The decision records under [docs/adr](docs/adr/README.md) are drafts for this alpha, and none is ratified. [The alpha limitations](docs/reference/alpha-limitations.md) say what else is not done yet.
+The decision records under [docs/adr](docs/adr/README.md) are drafts for this alpha, and none is ratified. [The alpha limitations](docs/reference/alpha-limitations.md) say what is and is not done yet and hold the [evaluation status](docs/reference/alpha-limitations.md#evaluation-status).
+
+To install, clone the repository and build it with `npm ci --ignore-scripts` and `npm run build`; the tutorial below walks through it.
 
 ## Where to go
 
 - Learn: [Index a repository and ask it questions](docs/tutorials/index-and-ask.md).
 - Do:
   - [Register the MCP server with Claude Code, Cursor and Codex](docs/how-to/register-the-mcp-server.md)
+  - [Install the gsd-atlas skills](docs/how-to/install-the-skills.md)
   - [Answer a question about an older commit](docs/how-to/answer-a-question-about-an-older-commit.md)
+  - [See why atlas gave an answer](docs/how-to/see-why-atlas-gave-an-answer.md)
+  - [Find the code that cites an ADR](docs/how-to/find-the-code-that-cites-an-adr.md)
+  - [Approve a precise command for one repository](docs/how-to/approve-a-precise-command.md)
   - [Keep the store healthy](docs/how-to/keep-the-store-healthy.md)
   - [Run the measured gates locally](docs/how-to/run-the-measured-gates-locally.md)
   - [Contribute a change](docs/how-to/contribute-a-change.md)
-- Look up: [the command-line reference](docs/reference/cli.md) and [the MCP reference](docs/reference/mcp.md).
-- Understand: [About how freshness and the writer lease work](docs/explanation/how-freshness-and-the-writer-lease-work.md).
+- Look up: [the command-line reference](docs/reference/cli.md), [the MCP reference](docs/reference/mcp.md), [TypeScript support](docs/reference/typescript-support.md), [ADR citations](docs/reference/adr-citations.md) and [the alpha limitations](docs/reference/alpha-limitations.md).
+- Understand: [freshness and the writer lease](docs/explanation/how-freshness-and-the-writer-lease-work.md), [the precise TypeScript tier](docs/explanation/how-the-precise-tier-works.md) and [what atlas trusts and never sends](docs/explanation/how-atlas-decides-what-to-trust.md).
+- Give feedback: [rate an answer](docs/how-to/rate-an-answer.md), [report a bug](docs/how-to/write-a-bug-bundle.md) and [turn diagnostics on and off](docs/how-to/turn-diagnostics-on-and-off.md). All three stay on your machine.
 
 ## Developer quickstart
 
@@ -42,7 +49,7 @@ What each command proves is in [How to contribute a change](docs/how-to/contribu
 
 ## Documentation
 
-- Architecture decisions: [docs/adr/README.md](docs/adr/README.md)
+- Decision records (drafts for this alpha): [docs/adr/README.md](docs/adr/README.md)
 - Product requirements: [docs/PRD.md](docs/PRD.md)
 
 ## Licence

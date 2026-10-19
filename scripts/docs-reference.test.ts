@@ -649,15 +649,13 @@ test('feedback guides state what the commands do', () => {
   assert.deepEqual(problems, []);
 });
 
-const README_NOT_YET = 'plan 03-36 Task 3 writes the README';
-
-test('every page is linked from the readme', { skip: README_NOT_YET }, () => {
+test('every page is linked from the readme', () => {
   const readme = read('README.md');
   const missing = allPages().filter((page) => !readme.includes(`](${page}`));
   assert.deepEqual(missing, [], `README.md links no page for: ${missing.join(', ')}`);
 });
 
-test('readme is a front door', { skip: README_NOT_YET }, () => {
+test('readme is a front door', () => {
   const readme = read('README.md');
   const lines = readme.replace(/\n$/, '').split('\n').length;
   assert.ok(lines <= 70, `README.md has ${String(lines)} lines; the front door has at most 70`);
@@ -666,7 +664,7 @@ test('readme is a front door', { skip: README_NOT_YET }, () => {
   assert.deepEqual(checkRelativeLinks(root, ['README.md']), []);
 });
 
-test('readme names the supported platforms', { skip: README_NOT_YET }, () => {
+test('readme names the supported platforms', () => {
   const readme = read('README.md');
   const problems: string[] = [...platformProblems('README.md', readme)];
   for (const fragment of ['on macOS and Linux (Windows is not supported in the alpha)', 'CI runs Node 24.16.0 and 26 on Linux and macOS']) {
