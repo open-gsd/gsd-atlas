@@ -1,5 +1,5 @@
 /**
- * `bug` (SKL-04, D-17; docs/DIAGNOSTICS.md section 9; the draft user-controlled-diagnostics ADR): the Host's request kind
+ * `bug` (SKL-04, D-17; docs/DIAGNOSTICS.md section 9; docs/adr/15-user-controlled-diagnostics.md): the Host's request kind
  * for `gsd-atlas bug`. The CLI only sends requests; the Host gathers what the person approved and calls
  * `src/diagnostics`, which shapes the bundle.
  *

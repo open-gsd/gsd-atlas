@@ -1,5 +1,5 @@
 /**
- * User-controlled diagnostics (SKL-03; docs/DIAGNOSTICS.md, draft ADR "user-controlled diagnostics"). Task 1 of plan
+ * User-controlled diagnostics (SKL-03; docs/DIAGNOSTICS.md, docs/adr/15-user-controlled-diagnostics.md). Task 1 of plan
  * 03-21: the catalog, the consent file and the report layout, proved with the smallest report there is (the header).
  */
 import assert from 'node:assert/strict';

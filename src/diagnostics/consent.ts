@@ -1,5 +1,5 @@
 /**
- * Per-type, versioned consent (docs/DIAGNOSTICS.md principles 2 and 3; the draft user-controlled-diagnostics ADR,
+ * Per-type, versioned consent (docs/DIAGNOSTICS.md principles 2 and 3; docs/adr/15-user-controlled-diagnostics.md,
  * decisions 2 and 8). The choices live in one file in the USER's config folder, `diagnostics.json`, and nowhere else:
  * the loader's only inputs are that folder and the shipped catalog, so no repository file, environment variable or
  * agent request can enable a type.

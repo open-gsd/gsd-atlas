@@ -1,5 +1,5 @@
 /**
- * User-controlled diagnostics (SKL-03; docs/DIAGNOSTICS.md; the draft user-controlled-diagnostics ADR): the shipped
+ * User-controlled diagnostics (SKL-03; docs/DIAGNOSTICS.md; docs/adr/15-user-controlled-diagnostics.md): the shipped
  * catalog of data types, per-type versioned consent, collectors, and a deterministic local report. It starts no
  * process, opens no database and touches no network: the Host assembles the data sources and calls it, and an adapter
  * only sends requests to the Host. Submission of a report is not part of this module.
