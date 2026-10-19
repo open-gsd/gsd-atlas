@@ -176,7 +176,7 @@ test('built dist/bin/gsd-atlas.js starts with a shebang and prints the same vers
   assert.equal(fromSource.status, 0, fromSource.stderr);
   assert.equal(fromDist.status, 0, fromDist.stderr);
   assert.equal(fromSource.stdout, fromDist.stdout);
-  assert.match(fromDist.stdout, /^gsd-atlas \d+\.\d+\.\d+\n$/);
+  assert.match(fromDist.stdout, /^gsd-atlas \d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?\n$/);
 });
 
 test('gsd-atlas-mcp run from source with stdin closed exits 0 and prints nothing on stdout', () => {
