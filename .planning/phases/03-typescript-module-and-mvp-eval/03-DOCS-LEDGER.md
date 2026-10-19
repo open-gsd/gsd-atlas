@@ -1,6 +1,6 @@
 # Phase 3 documentation ledger (plan 03-34)
 
-Written with the Claude skill `writing-docs-with-diataxis`, invoked through the Skill tool at the start of plan 03-34 (task 1) before any page was read or changed. `references/types.md` (Reference section and Checklists) and `references/skills-repo.md` (publishing checklist, README as front door) were read. This ledger holds the skill's workflow steps 1 and 2 (the existing pages classified with the compass, then the mixed pages and the unmet needs), the Facts table (every checked statement with its evidence), and the per-page Checklist. Step 5 (what changed, what remains, ranked) is in `03-34-SUMMARY.md`.
+Written with the Claude skill `writing-docs-with-diataxis`, invoked through the Skill tool at the start of plan 03-34 (task 1) before any page was read or changed. `references/types.md` (Reference section and Checklists) and `references/skills-repo.md` (publishing checklist, README as front door) were read. This ledger holds the skill's workflow steps 1 and 2 (the existing pages classified with the compass, then the mixed pages and the unmet needs), the Facts table (every checked statement with its evidence), and the per-page Checklist. Step 5 (what changed, what remains, ranked) is in `03-34-SUMMARY.md`. The ledger itself was committed first (`48296f9`), before any page; the documentation test was committed red (`c687d67`) before the first reference changed.
 
 Compass questions: action or cognition (does it inform what the reader does, or what the reader knows), and acquisition or application (is the reader at study, or at work). Action and study is a tutorial, action and work a how-to guide, cognition and work reference, cognition and study explanation.
 
@@ -10,18 +10,18 @@ Step 1: every page under `docs/tutorials`, `docs/how-to`, `docs/reference`, `doc
 
 | Page | Quadrant | Action or cognition | Study or work | The reader asks | Status | Plan | Commit |
 |------|----------|---------------------|---------------|-----------------|--------|------|--------|
-| `docs/reference/cli.md` | reference | cognition | work | What does command X accept and print? | existing, update | 03-34 task 1 | (pending) |
-| `docs/reference/mcp.md` | reference | cognition | work | What does tool X accept and return? | existing, update | 03-34 task 1 | (pending) |
-| `docs/reference/typescript-support.md` | reference | cognition | work | What exactly does atlas resolve for TypeScript? | new | 03-34 task 2 | (pending) |
-| `docs/reference/adr-citations.md` | reference | cognition | work | Which comments count as ADR citations and how are they resolved? | new | 03-34 task 2 | (pending) |
-| `docs/explanation/how-the-precise-tier-works.md` | explanation | cognition | study | Why is the precise tier built this way? | new | 03-34 task 2 | (pending) |
-| `docs/how-to/see-why-atlas-gave-an-answer.md` | how-to | action | work | How do I see why atlas gave this answer? | new | 03-34 task 2 | (pending) |
-| `docs/how-to/find-the-code-that-cites-an-adr.md` | how-to | action | work | How do I find the code that cites ADR N? | new | 03-34 task 2 | (pending) |
-| `docs/how-to/approve-a-precise-command.md` | how-to | action | work | How do I let atlas run a module's own command here? | new | 03-34 task 3 | (pending) |
-| `docs/how-to/install-the-skills.md` | how-to | action | work | How do I give my agent the atlas skills? | new | 03-34 task 3 | (pending) |
-| `docs/how-to/register-the-mcp-server.md` | how-to | action | work | How do I register the server with my agent? | existing, update | 03-34 task 3 | (pending) |
-| `docs/tutorials/index-and-ask.md` | tutorial | action | study | Can you teach me to index a repository and ask it questions? | existing, update | 03-34 tasks 1 and 3 | (pending) |
-| `docs/how-to/contribute-a-change.md` | how-to | action | work | How do I check a change before I propose it? | existing, update (one sentence) | 03-34 task 1 | (pending) |
+| `docs/reference/cli.md` | reference | cognition | work | What does command X accept and print? | existing, update | 03-34 task 1 | 4ba81dc, 107e712 |
+| `docs/reference/mcp.md` | reference | cognition | work | What does tool X accept and return? | existing, update | 03-34 task 1 | a762231, 4afbc42, 107e712 |
+| `docs/reference/typescript-support.md` | reference | cognition | work | What exactly does atlas resolve for TypeScript? | new | 03-34 task 2 | e832cf2 |
+| `docs/reference/adr-citations.md` | reference | cognition | work | Which comments count as ADR citations and how are they resolved? | new | 03-34 task 2 | 4afbc42 |
+| `docs/explanation/how-the-precise-tier-works.md` | explanation | cognition | study | Why is the precise tier built this way? | new | 03-34 task 2 | 54474f9 |
+| `docs/how-to/see-why-atlas-gave-an-answer.md` | how-to | action | work | How do I see why atlas gave this answer? | new | 03-34 task 2 | 508ceaf |
+| `docs/how-to/find-the-code-that-cites-an-adr.md` | how-to | action | work | How do I find the code that cites ADR N? | new | 03-34 task 2 | 644e6ec |
+| `docs/how-to/approve-a-precise-command.md` | how-to | action | work | How do I let atlas run a module's own command here? | new | 03-34 task 3 | 01d8a6b |
+| `docs/how-to/install-the-skills.md` | how-to | action | work | How do I give my agent the atlas skills? | new | 03-34 task 3 | 49efedc |
+| `docs/how-to/register-the-mcp-server.md` | how-to | action | work | How do I register the server with my agent? | existing, update | 03-34 task 3 | 7ccbd9d |
+| `docs/tutorials/index-and-ask.md` | tutorial | action | study | Can you teach me to index a repository and ask it questions? | existing, update | 03-34 tasks 1 and 3 | f33128c, 681e52e |
+| `docs/how-to/contribute-a-change.md` | how-to | action | work | How do I check a change before I propose it? | existing, update (one sentence) | 03-34 task 1 | a26fe40 |
 | `docs/how-to/answer-a-question-about-an-older-commit.md` | how-to | action | work | How do I ask about an older commit? | existing, unchanged | none | n/a |
 | `docs/how-to/keep-the-store-healthy.md` | how-to | action | work | How do I keep the store healthy? | existing, unchanged here | 03-36 (one fork) | n/a |
 | `docs/how-to/run-the-measured-gates-locally.md` | how-to | action | work | How do I run the measured gates myself? | existing, unchanged | none | n/a |
