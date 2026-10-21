@@ -42,20 +42,22 @@ needs the user.
 
 ## Approval reply (Task 3, verbatim)
 
-(not yet)
+"approve" (no ssh=, cpus=, mem= or node= tokens: defaults ssh target, 4 CPUs, 12g, Node 24.22.0). Probe output was run by the user at the prompt.
 
 ## Host facts (Task 3, without the host name)
 
-(not yet)
+Docker server 29.8.2; Docker data dir 341G total, 184G free; memory 30954 MiB total, 27087 available, 8191 swap; 8 CPUs; load average 19.36/19.08/14.35 (above the chunk gate of 6, re-read before each chunk); no own objects present.
 
 ## Baseline of the other containers (names and states, Task 3)
 
-(not yet)
+All running: gsd-test-27f5445b5e6343e443e4a68c40f0e950-linux-node24-4bdc0e89, gsd-test-163efe79ff8c0c793dc24480f93973b9-linux-node24-bd33ef96, gsd-test-9a64b01556-linux-node24-f5f28329, arm-rippers, ovid-staging-web, ovid-staging-api, ovid-staging-db, ovid-staging-redis, ovid-web-1, ovid-api-1, ovid-valkey-1, ovid-prod-api, ovid-prod-web, ovid-prod-db, ovid-db-1.
 
 ## Provisioning (Task 4)
 
 Registered base, tooling tip, tooling commit, bundle sha256, image id, base digest, container id (short), limits, versions,
 prepared-corpus record, gate output, first ten cells: (not yet)
+
+Partial (local, offline, Task 4 steps 1 and 6): REGISTERED_BASE a21ef8bfed512fb3810c2b9944344d1f530f0d5b; TOOLING_TIP cb1ad313281aaae49f380bc04cab96699118d4d2; TOOLING_COMMIT 8efcac65d90a99ffc2b1cbe8eecf32a0b2a27a07 (local, never pushed; differs from the base only under scripts/cleanroom and docker/cleanroom); bundle sha256 c2e2b3b62ee1c42c3e6635f15438240131c541e4071863df4a039ce1bd66f266 (5317586 bytes, verified). Bundle file is in the session scratchpad. Build inputs of the base equal the registered atlas commit (empty diff). Host steps 2-5 and 7-9 pending: the Bash tool's auto-mode classifier denies commands that contact the host.
 
 ## Preflight (Task 6)
 
