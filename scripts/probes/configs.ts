@@ -22,6 +22,7 @@ export const CONFIG_IDS = [
   'atlas-ts-env',
   'atlas-noskill-ts',
   'atlas-routed',
+  'atlas-routed-ts',
   'atlas-capped',
 ] as const;
 export type ConfigId = (typeof CONFIG_IDS)[number];
@@ -109,6 +110,8 @@ export function planFor(id: ConfigId, ctx: PlanContext): Plan {
       return { atlas: true, prefixArgs: [], spec: withToolSearch(noSkill) };
     case 'atlas-routed':
       return { atlas: true, prefixArgs: [], spec: { ...registered, settings: hookSettings(ARMS.atlas.settings ?? '{}', ctx.hookScript) } };
+    case 'atlas-routed-ts':
+      return { atlas: true, prefixArgs: [], spec: withToolSearch({ ...registered, settings: hookSettings(ARMS.atlas.settings ?? '{}', ctx.hookScript) }) };
     case 'atlas-capped':
       return { atlas: true, prefixArgs: [], serverPatch: { budgetTokens: CAPPED_BUDGET_TOKENS }, spec: registered };
   }
