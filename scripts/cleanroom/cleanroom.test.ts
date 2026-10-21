@@ -700,7 +700,9 @@ describe('compare', { skip: HAVE_ORIGINAL ? false : 'docs/eval/results/results.j
     assert.equal(comparison.classification, 'strong-agreement');
     assert.equal(comparison.reported.flips.atlas.correctness, 1);
     assert.equal(comparison.reported.flips.grep.correctness, 1);
-    assert.ok(comparison.a2 !== null && comparison.a2.accuracy.difference !== 0);
+    // The two flips move S1 in opposite directions, so the mean difference nets out while the cell flips are counted.
+    assert.ok(comparison.a2 !== null && comparison.a2.accuracy.compatible);
+    assert.ok(Math.abs(comparison.a2.accuracy.difference) < 1e-9);
   });
 
   test('compare: a uniform 3 percent token shift is agreement with drift', () => {
@@ -812,17 +814,17 @@ describe('scrub', () => {
     assert.equal(clean.code, 0, clean.stdout + clean.stderr);
     fs.mkdirSync(path.join(dir, 'sub'));
     fs.writeFileSync(path.join(dir, 'sub', 'leak.md'), 'see /home/someone/x and docker.example.test\n');
-    const leaked = runScript('scrub.ts', ['--check', dir, '--deny-env', 'CLEANROOM_TEST_DENY'], { CLEANROOM_TEST_DENY: 'ops@docker.example.test' });
+    const leaked = runScript('scrub.ts', ['--check', dir, '--deny-env', 'CLEANROOM_TEST_DENY'], { CLEANROOM_TEST_DENY: 'zq9user@docker.example.test' });
     assert.equal(leaked.code, 1);
     assert.match(leaked.stdout, /leak\.md/);
     assert.match(leaked.stdout, /home-path/);
     assert.match(leaked.stdout, /deny/);
     assert.ok(!(leaked.stdout + leaked.stderr).includes('docker.example.test'), 'the deny value is never printed');
-    assert.ok(!(leaked.stdout + leaked.stderr).includes('ops'), 'neither part of user@host is printed');
+    assert.ok(!(leaked.stdout + leaked.stderr).includes('zq9user'), 'neither part of user@host is printed');
     // --deny-only skips the path rules but still applies the deny list, tokens and emails.
     const only = runScript('scrub.ts', ['--check', path.join(dir, 'sub'), '--deny-only']);
     assert.equal(only.code, 0, only.stdout + only.stderr);
-    const onlyDeny = runScript('scrub.ts', ['--check', path.join(dir, 'sub'), '--deny-only', '--deny-env', 'CLEANROOM_TEST_DENY'], { CLEANROOM_TEST_DENY: 'ops@docker.example.test' });
+    const onlyDeny = runScript('scrub.ts', ['--check', path.join(dir, 'sub'), '--deny-only', '--deny-env', 'CLEANROOM_TEST_DENY'], { CLEANROOM_TEST_DENY: 'zq9user@docker.example.test' });
     assert.equal(onlyDeny.code, 1);
     const nothing = runScript('scrub.ts', []);
     assert.equal(nothing.code, 2);
