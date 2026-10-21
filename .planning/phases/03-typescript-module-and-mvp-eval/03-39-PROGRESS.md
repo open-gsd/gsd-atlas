@@ -101,11 +101,15 @@ Harness summary (450 rows, no failed session): atlas 225 ok, mean billable token
 
 ## Fetch hashes (Task 9)
 
-(not yet)
+Fetched to the maintainer machine (outside the repository; raw streams stay there): results.jsonl 450 lines sha256 0773eb1f946721cf9201090cb3dd8e937726bae2bc2e5f46a720f67873b84f0e; attempts.jsonl 450 lines e564fdd8dfa52c1102b69c6300042fb2129cf007521fb41bbe5ddab6c32a3df9; sessions.meta.jsonl 455 lines 72071f2504e85706b6e24e9af248e013704b5f2d426fc4d2aca2f3fb507bf1c1; 450 streams; chunk logs and exit files (chunk 1 and 2 exit 1, chunk 3 exit 0). Line counts and the three hashes equal the container's; no discarded-* directory.
 
 ## Classification (Task 9)
 
-(not yet)
+Rules unchanged: compare.ts blob 46a6cafb7e68ae1ca92ad3bd6b8027a1e1f961cf equals the rules commit's; the test file's only differences from the rules commit are added cases and two file lists that gained probe.ts. Originals (analysis.md, diagnosis.md, results/, scripts/eval, SKILL.md, preregistration) unchanged since the plan start commit; verify-prereg ok.
+Registered analysis (analyze.ts unmodified) on the replication rows: OVERALL: MVP not met (ACCURACY non-inferior, TOKENS not fewer, CITATIONS below threshold).
+compare.ts: classification agreement-with-drift; validity valid; A1 all three agree (H1 met, H2 not met, H3 not met); A2: S1 accuracy -0.0444 [-0.0933, 0.0000] not compatible, S2 tokens +972.4 [-2767.7, +5591.1] compatible, S3 citation rate -0.0253 [-0.0657, +0.0101] compatible; statistics that moved: accuracy.
+Commits: tables c26a03a, report cdc742f, guide RED 62300d5 and GREEN b12c87e (merged 76e0dfd). Leak checks clean (results-cleanroom, report, docker/cleanroom with deny list); 58 of 58 tests pass.
+Guide note: provisioning step 4 is prose over `ctl exec` (no clone/npm ci/build subcommand exists); the analyze and compare lines were corrected to the commands actually run.
 
 ## Teardown (Task 11)
 

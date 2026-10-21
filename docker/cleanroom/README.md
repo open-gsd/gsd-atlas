@@ -104,10 +104,11 @@ All commands run from the repository root of the maintainer machine. `ctl` below
 
     ```
     node scripts/eval/harness.ts summary --out-dir <local directory>/cleanroom-run
-    node scripts/eval/analyze.ts <as for the registered analysis, on the replication rows>
+    node scripts/eval/analyze.ts <local directory>/cleanroom-run/results.jsonl \
+      --prereg docs/eval/preregistration.md --out docs/eval/results-cleanroom/analysis-cleanroom.md
     node scripts/cleanroom/compare.ts --original docs/eval/results/results.jsonl \
-      --replication <replication rows> --prereg docs/eval/preregistration.md \
-      --replication-dir <local directory>/cleanroom-run --out <markdown> --json <file>
+      --replication <local directory>/cleanroom-run/results.jsonl --environment <environment.json> \
+      --out docs/eval/results-cleanroom/comparison.md --json <file>
     node scripts/cleanroom/scrub.ts --check <files and directories to commit>
     ```
 
