@@ -87,6 +87,12 @@ describe('planFor', () => {
     assert.ok(JSON.parse(plan.spec.settings ?? '{}').hooks);
   });
 
+  it('atlas-routed-capped is the routed configuration with a patched default budget', () => {
+    const plan = planFor('atlas-routed-capped', ctx);
+    assert.equal(typeof plan.serverPatch?.budgetTokens, 'number');
+    assert.ok(JSON.parse(plan.spec.settings ?? '{}').hooks);
+  });
+
   it('atlas-capped patches a default budget', () => {
     assert.equal(typeof planFor('atlas-capped', ctx).serverPatch?.budgetTokens, 'number');
   });
