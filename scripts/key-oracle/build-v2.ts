@@ -94,14 +94,14 @@ export const AUDIT_CLASS: Readonly<Record<string, string>> = {
 };
 export const NON_CONSISTENT: readonly string[] = Object.keys(AUDIT_CLASS).sort(cmp);
 
-export type Status = 'corrected' | 'reworded+corrected' | 'needs-decision' | 'carried';
+export type Status = 'corrected' | 'reworded+corrected' | 'decided' | 'carried';
 
 /** Wording added to a question text, before the closing "Give your answer ..." sentence. */
 const REWORD: Readonly<Record<string, string>> = {
   'q-012':
     'A string literal that merely spells the name, such as a key in a data table or an index into an object, is not a use; only identifiers bound to the export count.',
   'q-022':
-    'Count a `require(...)` call expression whose path resolves statically, including a `path.join` of string literals and `const` strings. An `import x = require(\'./m.cjs\')` declaration does not count as a call to `require`, and text inside a string handed to a child process does not count.',
+    "An `import x = require('./m.cjs')` declaration in a `.cts` file counts as `require`, and so does a `require(...)` call whose path resolves statically (a string literal, or a `path.join` of string literals and `const` strings). ES `import` statements, `import()` and text inside strings, including a `require` inside a string handed to a child process, do not count.",
   'q-024':
     "An `import x = require('./m.cjs')` declaration in a `.cts` file counts as loading the module with `require`, and so does a `require(...)` call whose path resolves statically (a string literal, or a `path.join` of string literals and `const` strings). ES `import` statements, `import()` and text inside strings do not count.",
   'q-028':
@@ -125,10 +125,10 @@ export const STATUS: Readonly<Record<string, Status>> = {
   'q-024': 'reworded+corrected',
   'q-028': 'reworded+corrected',
   'q-065': 'reworded+corrected',
-  'q-012': 'needs-decision',
-  'q-022': 'needs-decision',
-  'q-030': 'needs-decision',
-  'q-067': 'needs-decision',
+  'q-012': 'decided',
+  'q-022': 'reworded+corrected',
+  'q-030': 'decided',
+  'q-067': 'decided',
 };
 
 const TRAILER = ' Give your answer in the required JSON form.';
@@ -169,7 +169,9 @@ function evidenceFromSites(sites: { file: string; line: number }[], what: string
 }
 
 function emitMode(q: Question): ConsumerMode {
-  return q.text.includes('call `require`') ? 'calls' : 'load';
+  void q;
+  // Decided 2026-10-21: import-equals declarations count as `require` for every emit-consumers question.
+  return 'load';
 }
 
 function sortedItems(items: Item[]): Item[] {
@@ -513,7 +515,7 @@ export function buildChangesMd(input: ReportInput): string {
   const idx = v2.index;
   const qById = new Map(v2.frozenQuestions.questions.map((q) => [q.id, q] as const));
   const fById = new Map(v2.frozenAnswers.answers.map((a) => [a.questionId, a] as const));
-  const counts: Record<Status, number> = { corrected: 0, 'reworded+corrected': 0, 'needs-decision': 0, carried: 0 };
+  const counts: Record<Status, number> = { corrected: 0, 'reworded+corrected': 0, decided: 0, carried: 0 };
   for (const s of v2.status.values()) counts[s]++;
   const lines: string[] = [];
   const w = (s = ''): void => void lines.push(s);
@@ -526,7 +528,7 @@ export function buildChangesMd(input: ReportInput): string {
   w();
   w('## Status counts');
   w();
-  w(`corrected ${counts.corrected}, reworded+corrected ${counts['reworded+corrected']}, needs-decision ${counts['needs-decision']}, carried ${counts.carried}. Total ${v2.status.size}.`);
+  w(`corrected ${counts.corrected}, reworded+corrected ${counts['reworded+corrected']}, decided ${counts.decided}, carried ${counts.carried}. Total ${v2.status.size}.`);
   w();
   w('## Per-question table (the 14 non-consistent questions)');
   w();
@@ -575,12 +577,14 @@ export function buildChangesMd(input: ReportInput): string {
     if (REWORD[id] !== undefined) w(`- Wording change: appended "${REWORD[id]}"`);
     w();
   }
-  w('## Decisions needed (needs-decision)');
+  w('## Decisions (2026-10-21)');
   w();
-  w('- **q-012** (references to `PHASE_COMMAND_ALIASES`). Literal reading chosen: a use is an identifier bound to the export (the question says "imports, calls, reads"). Key unchanged: `src/command-aliases.cts`. Alternative: a string literal naming the symbol as a table key counts; adds `scripts/lib/alias-drift-families.cjs:24` and `tests/commands.test.cjs:4549`.');
-  w('- **q-022** (requirers of compiled `runtime-artifact-layout`). Literal reading chosen: the wording says ".cts sources that call `require`", and an `import x = require()` declaration is not a call expression. Key equals the registered key (24 files; the two `path.join(ROOT, ...)` tests are resolved statically and were already in it). Alternative: declarations count as `require`; adds `src/install-engine.cts:27`, `src/surface.cts:66`, `src/install-shadow-report.cts:115`, `src/installed-surface-resolver.cts:62`. Text inside the child-process string in `tests/release-tarball-smoke.install.test.cjs:475,500,529` is excluded under both readings.');
-  w('- **q-030** (ADR files cited by comments on `StateTransactionKind`). Literal reading chosen: a comment "on" the symbol is attached to it. The ADR-3473 banner (`src/state-transition.cts:399-407`) is separated from the doc comment by a blank line, so the key is ADR-3408 only. Alternative: any comment in the leading trivia of the declaration counts; adds `docs/adr/3473-enforcement-by-construction.md`.');
-  w('- **q-067** (files citing ADR-5). The registered wording lists `ADR-5`, `ADR 5`, `ADR #5`; no comment in the corpus spells it unpadded, so the literal reading is an EMPTY key, which cannot be scored as a positive question and has no abstain form in the frozen schema (the abstain probe supports only a symbol or an ADR file number). v2 therefore states that zero-padded `ADR-0005` counts, and the key is `scripts/gen-adr-index.cjs` (unchanged). Alternative: keep the literal wording and turn the question into a different kind of abstain probe (needs a schema change in a new registration).');
+  w('The four questions whose wording admitted two readings were decided by the user on 2026-10-21. These are decisions about this proposal only; nothing is registered.');
+  w();
+  w('- **q-012** (references to `PHASE_COMMAND_ALIASES`): identifiers only. Key and wording unchanged from the first v2 draft (`src/command-aliases.cts`). Not taken: string literals that name the symbol count; would add `scripts/lib/alias-drift-families.cjs:24` and `tests/commands.test.cjs:4549`. Status decided.');
+  w('- **q-022** (requirers of compiled `runtime-artifact-layout`): CHANGED. `import x = require(\'./m.cjs\')` declarations in `.cts` files count as `require`, consistent with q-024, q-028 and q-065. The key grows from 24 to 28 files (adds `src/install-engine.cts:27`, `src/surface.cts:66`, `src/install-shadow-report.cts:115`, `src/installed-surface-resolver.cts:62`) and the wording was changed to match the q-024/q-028/q-065 style. A `require` inside a string handed to a child process (`tests/release-tarball-smoke.install.test.cjs:475,500,529`) still does not count. Not taken: only `require(...)` call expressions count (the 24-file key). Status reworded+corrected (decided).');
+  w('- **q-030** (ADR files cited by comments on `StateTransactionKind`): attached comments only. Key stays ADR-3408; wording as in the first v2 draft. Not taken: any comment in the leading trivia counts, which would add ADR-3473 from the banner at `src/state-transition.cts:399-407`. Status decided.');
+  w('- **q-067** (files citing ADR-5): zero-padded `ADR-0005` counts; key `scripts/gen-adr-index.cjs`. Not taken: digits exactly as written, which gives an empty key that the frozen schema cannot express for an ADR-citers question. Status decided.');
   w();
   w('## Rule definitions');
   w();
@@ -678,7 +682,7 @@ export const README_TEXT = `# Key set v2 (proposal)
 This directory is a PROPOSAL for a corrected key set. It is not registered and replaces nothing: the registered questions, keys, scorer and the verdict \`OVERALL: MVP not met\` stand unchanged and nothing here rescored any result.
 
 - Files: \`questions.v2.json\` and \`answers.v2.json\` (75 questions, same schema as the registered files, validated with the registered loader), \`changes.md\` (per-question diff, rules, evidence, unresolved forms, checks).
-- 61 questions are carried unchanged. 14 differ: 7 corrected, 3 reworded and corrected, 4 need a decision (the wording admits two readings; v2 takes the literal one and records the other).
+- 61 questions are carried unchanged. 14 differ: 7 corrected, 4 reworded and corrected, 3 decided as proposed (wording gave two readings; the user chose on 2026-10-21, see the Decisions section of \`changes.md\`).
 - Question wording changed for 7 questions (q-012, q-022, q-024, q-028, q-030, q-065, q-067) to state the counting rule explicitly.
 - A new registration would need: a new document version, a freeze with its own hashes, approvals, and fresh sessions.
 - v2 keys were derived AFTER the registered results and the replication were seen, so any accuracy measured under v2 is not a blind test. The sanity table in \`changes.md\` is exploratory and was not used to tune any key.

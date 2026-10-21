@@ -41,10 +41,9 @@
  *      element, call, read, type position, member access `m.F`, `export { F }`, shorthand `{ F }`.
  *      A string literal that spells the name is not a use (binding-level reading).
  *   R3 emit(S): outDir + (S relative to rootDir) with `.cts` replaced by `.cjs`, read from tsconfig.build.json.
- *   R4 emit-consumers(S), two readings chosen by the question wording:
- *        "calls"  (wording: ".cts sources that call `require`"): F1 only.
- *        "load"   (wording: "load that module with `require`, by compiled path or sibling `.cjs` specifier"):
- *                 F1 and F2.  F3 to F6 and strings that contain text such as `require('...')` never count.
+ *   R4 emit-consumers(S): F1 and F2 (decided 2026-10-21 for every emit-consumers question). F3 to F6 and strings
+ *      that contain text such as `require('...')` never count. `consumersOf(..., 'calls')` (F1 only) is kept
+ *      to report the alternative reading.
  *   R5 impact(F in M, depth two): D1 = R1 callers. D2 = for each `.cts` file I in D1 other than M, the files that
  *      call (rule R1, without I's self-calls) any name exported by I: `export function/const`, `export { a as b }`,
  *      `export = { a, b: c, d() {} }`. Result = D1 + D2 minus M.

@@ -262,7 +262,7 @@
     {
       "id": "q-022",
       "category": "emit",
-      "text": "Which files in this repository `require` the compiled CommonJS module that the build produces from `src/runtime-artifact-layout.cts`? Include test files, plain JavaScript files and `.cts` sources that call `require`; list each file once. Count a `require(...)` call expression whose path resolves statically, including a `path.join` of string literals and `const` strings. An `import x = require('./m.cjs')` declaration does not count as a call to `require`, and text inside a string handed to a child process does not count. Give your answer in the required JSON form.",
+      "text": "Which files in this repository `require` the compiled CommonJS module that the build produces from `src/runtime-artifact-layout.cts`? Include test files, plain JavaScript files and `.cts` sources that call `require`; list each file once. An `import x = require('./m.cjs')` declaration in a `.cts` file counts as `require`, and so does a `require(...)` call whose path resolves statically (a string literal, or a `path.join` of string literals and `const` strings). ES `import` statements, `import()` and text inside strings, including a `require` inside a string handed to a child process, do not count. Give your answer in the required JSON form.",
       "key": {
         "kind": "emit-consumers",
         "source": "src/runtime-artifact-layout.cts",

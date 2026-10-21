@@ -162,18 +162,25 @@ describe('corpus derivation', { skip: !haveCorpus && 'gsd-core clone not availab
     const d = (id: string) => v2.derived.get(id);
     assert.deepEqual(v2.comparisons.get('q-012')?.added, []);
     assert.ok(d('q-012')?.alt?.files.includes('scripts/lib/alias-drift-families.cjs'));
-    assert.deepEqual(v2.comparisons.get('q-022')?.added, []);
-    assert.ok(d('q-022')?.alt?.files.includes('src/install-engine.cts'));
+    // Decided 2026-10-21: import-equals declarations count as require, so q-022 becomes a 28-file key.
+    assert.equal(d('q-022')?.files.length, 28);
+    assert.deepEqual(v2.comparisons.get('q-022')?.added, [
+      'src/install-engine.cts',
+      'src/install-shadow-report.cts',
+      'src/installed-surface-resolver.cts',
+      'src/surface.cts',
+    ]);
+    assert.ok(!v2.questionsV2.questions.find((q) => q.id === 'q-022')?.text.includes('does not count as a call'));
     assert.deepEqual(v2.comparisons.get('q-030')?.removed, ['docs/adr/3473-enforcement-by-construction.md']);
     assert.ok(d('q-030')?.alt?.files.includes('docs/adr/3473-enforcement-by-construction.md'));
     assert.deepEqual(d('q-067')?.files, ['scripts/gen-adr-index.cjs']);
     assert.deepEqual(d('q-067')?.alt?.files, []);
   });
 
-  it('statuses: 7 corrected, 3 reworded+corrected, 4 needs-decision, 61 carried', () => {
+  it('statuses: 7 corrected, 4 reworded+corrected, 3 decided, 61 carried, none needs-decision', () => {
     const n: Record<string, number> = {};
     for (const s of v2.status.values()) n[s] = (n[s] ?? 0) + 1;
-    assert.deepEqual(n, { corrected: 7, 'reworded+corrected': 3, 'needs-decision': 4, carried: 61 });
+    assert.deepEqual(n, { corrected: 7, 'reworded+corrected': 4, decided: 3, carried: 61 });
   });
 
   it('carried questions and answers are identical to the registered ones; only reworded questions change text', () => {
@@ -188,7 +195,7 @@ describe('corpus derivation', { skip: !haveCorpus && 'gsd-core clone not availab
         assert.equal(JSON.stringify(newA.get(q.id)), JSON.stringify(frozenA.get(q.id)), q.id);
       } else {
         assert.deepEqual(q.key, frozenQ.get(q.id)?.key, `${q.id} key object (query) is unchanged`);
-        // 'corrected' keeps the registered wording; 'reworded+corrected' and 'needs-decision' state the rule.
+        // 'corrected' keeps the registered wording; 'reworded+corrected' and 'decided' state the rule.
         assert.equal(q.text !== frozenQ.get(q.id)?.text, status !== 'corrected', q.id);
       }
     }
