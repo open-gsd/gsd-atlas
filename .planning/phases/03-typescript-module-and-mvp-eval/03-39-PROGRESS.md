@@ -59,6 +59,18 @@ prepared-corpus record, gate output, first ten cells: (not yet)
 
 Partial (local, offline, Task 4 steps 1 and 6): REGISTERED_BASE a21ef8bfed512fb3810c2b9944344d1f530f0d5b; TOOLING_TIP cb1ad313281aaae49f380bc04cab96699118d4d2; TOOLING_COMMIT 8efcac65d90a99ffc2b1cbe8eecf32a0b2a27a07 (local, never pushed; differs from the base only under scripts/cleanroom and docker/cleanroom); bundle sha256 c2e2b3b62ee1c42c3e6635f15438240131c541e4071863df4a039ce1bd66f266 (5317586 bytes, verified). Bundle file is in the session scratchpad. Build inputs of the base equal the registered atlas commit (empty diff). Host steps 2-5 and 7-9 pending: the Bash tool's auto-mode classifier denies commands that contact the host.
 
+Provisioned 2026-10-21 (host steps run by the user at the prompt and, after the user added an allow rule for cleanroomctl.sh, by the executor):
+- Probe repeated: the same 15 containers, all running, no own objects (matches the Task 3 baseline).
+- Image gsd-atlas-cleanroom:03-39 id sha256:009c7f36fce20262c20ff75ae81484c1a88cfc10471255e4b61e36058f45a4af, label 03-39, base node:24.22.0-bookworm-slim@sha256:a5f4366e834695d5f363b920c104953a535d3a9864d1bdf74566a0ebe01daee5; build verified the release-manifest signature (fingerprint 31DDDE24DDFAB679F42D7BD2BAA929FF1A7ECACE) and the binary checksum.
+- Container up: 4 CPUs, 12 GiB (swap equal), 2048 pids, shares 512, non-root uid 10001, capabilities dropped, no-new-privileges, no published port; mounts only the two own volumes.
+- Inside: claude 2.1.302; node v24.22.0; npm 11.19.1; ripgrep 13.0.0; git 2.39.5; no ANTHROPIC_/CLAUDE_CODE_/AWS_/GOOGLE_/AZURE_ variables; DISABLE_UPDATES=1, DISABLE_AUTOUPDATER=1; doctor: auto-updates disabled; notes file identical to the neutral text; os.totalmem 32458448896 (host figure), nproc 8, cgroup memory.max 12884901888, cpu.max 400000 100000.
+- HEAD in the container equals TOOLING_COMMIT 8efcac65d90a99ffc2b1cbe8eecf32a0b2a27a07 (status empty; bundle removed). npm ci --ignore-scripts 4 s; npm run build 11 s, exit 0. Tooling smoke: both --help exit 0; check-chunk --streams-only on an empty directory exits 1 with stream_missing and no stack trace.
+- Prepared corpus: sha 10ac3a7a947903ba50f538a907af036744d759d5, npmCi true, typescriptVersion 6.0.3, lockSha256 dccc7f1cc3cd7ee9b8d071a03def1e7a4a535cc68a1828df2b797c6aecb357fb (all equal to the registered record); no CLAUDE.md, AGENTS.md, .claude or .mcp.json in the corpus root.
+- verify-prereg ok; plan --scored: gate ok, 450 cells (225 atlas, 225 grep), seed 20261017, concurrency 2, model claude-sonnet-5-5; first ten cells equal the original run's.
+- DEVIATION (verify-provision exit 1 on one check): ~/.claude holds `backups/` (one 84-byte backup of Claude Code's own ~/.claude.json) in addition to CLAUDE.md. Both were created by Claude Code when the executor ran `claude doctor`/`--version` in the container; contents not read (E3). No skills, hooks, settings, plugins or memory files. Decision pending from the user: accept as Claude Code runtime state, or adjust.
+- Observation: host load average was 16 to 19 on 8 CPUs during provisioning; the chunk gate needs at most 6.
+
+
 ## Preflight (Task 6)
 
 Auth fields, environment names, home listing, four probe lines, headroom, gate: (not yet)
