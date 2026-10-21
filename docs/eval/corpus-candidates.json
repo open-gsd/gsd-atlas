@@ -1,0 +1,2295 @@
+{
+ "generated": "2026-10-21",
+ "seed": "20261017",
+ "note": "Measured by scripts/corpus-survey/survey.ts; see docs/eval/corpus-candidates.md. Shallow clones; sha is the clone HEAD at access time.",
+ "corpora": {
+  "gsd-core": {
+   "repo": "open-gsd/gsd-core",
+   "sha": "10ac3a7a947903ba50f538a907af036744d759d5",
+   "commitDate": "2026-10-15 (pinned; read via git archive)",
+   "score": null,
+   "name": "gsd-core",
+   "options": {
+    "seed": "20261017",
+    "maxFiles": 3000,
+    "grepSample": 200,
+    "minNameLength": 3
+   },
+   "tracked": {
+    "files": 3976,
+    "bytes": 65270687,
+    "byExtension": {
+     "(none)": 14,
+     ".md": 1805,
+     ".json": 342,
+     ".yaml": 1,
+     ".yml": 39,
+     ".js": 42,
+     ".tsx": 1,
+     ".sh": 15,
+     ".png": 2,
+     ".svg": 3,
+     ".cjs": 1361,
+     ".mjs": 2,
+     ".cts": 284,
+     ".txt": 49,
+     ".jsonl": 1,
+     ".toml": 5,
+     ".bin": 2,
+     ".tap": 6,
+     ".xml": 1,
+     ".py": 1
+    }
+   },
+   "license": {
+    "spdx": "MIT",
+    "file": "LICENSE",
+    "otherLicenseFiles": {}
+   },
+   "agentConfigs": [
+    "GEMINI.md",
+    "docs/AGENTS.md",
+    "docs/ja-JP/AGENTS.md",
+    "docs/ko-KR/AGENTS.md",
+    "docs/pt-BR/AGENTS.md"
+   ],
+   "tsJs": {
+    "files": 1690,
+    "lines": 1019377,
+    "testFiles": 1159,
+    "declarationFiles": 7,
+    "generatedMarkedFiles": 18
+   },
+   "tsconfig": {
+    "count": 2,
+    "withReferences": 0,
+    "withPaths": 0,
+    "withExtends": 1,
+    "extendsUnresolved": 0
+   },
+   "workspacePackages": 10,
+   "sample": {
+    "eligibleFiles": 524,
+    "files": 524,
+    "names": {
+     "declarations": 2502,
+     "distinctNames": 2196,
+     "multiFileNames": 172
+    },
+    "multiFileShare": 0.07832422586520947,
+    "barrelFiles": 0
+   },
+   "resolution": {
+    "relative": {
+     "total": 1659,
+     "resolved": 1413
+    },
+    "workspace": {
+     "total": 0,
+     "resolved": 0
+    },
+    "external": {
+     "total": 767,
+     "resolved": 0
+    },
+    "filesResolved": 524
+   },
+   "grep": {
+    "names": 200,
+    "linesMedian": 12,
+    "linesP90": 49,
+    "linesMax": 764,
+    "filesMedian": 3,
+    "filesP90": 11,
+    "filesMax": 149,
+    "shareOver20Files": 0.045
+   },
+   "grepAmbiguous": {
+    "names": 172,
+    "linesMedian": 27,
+    "linesP90": 169,
+    "linesMax": 9169,
+    "filesMedian": 6,
+    "filesP90": 36,
+    "filesMax": 881,
+    "shareOver20Files": 0.13953488372093023
+   }
+  },
+  "gsd-pi": {
+   "repo": "open-gsd/gsd-pi",
+   "sha": "bb86b6ca2d3d047899092d845d574beeb5a21965",
+   "commitDate": "2026-10-15",
+   "score": 62,
+   "name": "gsd-pi",
+   "options": {
+    "seed": "20261017",
+    "maxFiles": 3000,
+    "grepSample": 200,
+    "minNameLength": 3
+   },
+   "tracked": {
+    "files": 5787,
+    "bytes": 68291093,
+    "byExtension": {
+     ".yaml": 35,
+     "(none)": 34,
+     ".yml": 34,
+     ".md": 1151,
+     ".jsonc": 1,
+     ".txt": 15,
+     ".py": 40,
+     ".example": 1,
+     ".ci-builder": 1,
+     ".sandbox": 1,
+     ".sh": 32,
+     ".png": 12,
+     ".html": 6,
+     ".json": 131,
+     ".ts": 3886,
+     ".toml": 6,
+     ".mdx": 21,
+     ".svg": 7,
+     ".lock": 1,
+     ".rs": 32,
+     ".js": 23,
+     ".cjs": 46,
+     ".css": 3,
+     ".mjs": 129,
+     ".c": 2,
+     ".jsonl": 9,
+     ".node": 2,
+     ".jpg": 2,
+     ".ps1": 2,
+     ".db": 19,
+     ".db-shm": 1,
+     ".db-wal": 1,
+     ".archived": 2,
+     ".swift": 3,
+     ".tsx": 96
+    }
+   },
+   "license": {
+    "spdx": "MIT",
+    "file": "LICENSE",
+    "otherLicenseFiles": {
+     "MIT": 1
+    }
+   },
+   "agentConfigs": [],
+   "tsJs": {
+    "files": 4180,
+    "lines": 1238330,
+    "testFiles": 2170,
+    "declarationFiles": 4,
+    "generatedMarkedFiles": 6
+   },
+   "tsconfig": {
+    "count": 24,
+    "withReferences": 0,
+    "withPaths": 3,
+    "withExtends": 10,
+    "extendsUnresolved": 0
+   },
+   "workspacePackages": 34,
+   "sample": {
+    "eligibleFiles": 2006,
+    "files": 2006,
+    "names": {
+     "declarations": 7609,
+     "distinctNames": 7233,
+     "multiFileNames": 194
+    },
+    "multiFileShare": 0.026821512512097332,
+    "barrelFiles": 47
+   },
+   "resolution": {
+    "relative": {
+     "total": 5197,
+     "resolved": 5185
+    },
+    "workspace": {
+     "total": 729,
+     "resolved": 2
+    },
+    "external": {
+     "total": 2068,
+     "resolved": 193
+    },
+    "filesResolved": 1500
+   },
+   "grep": {
+    "names": 200,
+    "linesMedian": 9,
+    "linesP90": 38,
+    "linesMax": 15616,
+    "filesMedian": 3,
+    "filesP90": 10,
+    "filesMax": 1947,
+    "shareOver20Files": 0.04
+   },
+   "grepAmbiguous": {
+    "names": 194,
+    "linesMedian": 21,
+    "linesP90": 121,
+    "linesMax": 3425,
+    "filesMedian": 7,
+    "filesP90": 33,
+    "filesMax": 840,
+    "shareOver20Files": 0.19072164948453607
+   }
+  },
+  "vscode": {
+   "repo": "microsoft/vscode",
+   "sha": "a403d0f7dcca0727353f838d89be6d7c682ea7c9",
+   "commitDate": "2026-10-21",
+   "score": 75,
+   "name": "vscode",
+   "options": {
+    "seed": "20261017",
+    "maxFiles": 3000,
+    "grepSample": 200,
+    "minNameLength": 3
+   },
+   "tracked": {
+    "files": 20991,
+    "bytes": 315860324,
+    "byExtension": {
+     ".md": 368,
+     ".ts": 14920,
+     ".ps1": 26,
+     ".sh": 77,
+     ".yml": 126,
+     ".winget": 1,
+     "(none)": 259,
+     ".json": 1433,
+     ".disabled": 1,
+     ".svg": 216,
+     ".py": 75,
+     ".mts": 86,
+     ".mjs": 11,
+     ".js": 135,
+     ".png": 188,
+     ".github-issues": 11,
+     ".code-search": 2,
+     ".code-snippets": 18,
+     ".txt": 182,
+     ".darwin": 1,
+     ".linux": 1,
+     ".win32": 1,
+     ".psm1": 2,
+     ".plist": 8,
+     ".init": 1,
+     ".bat": 13,
+     ".html": 123,
+     ".provisionprofile": 1,
+     ".tiff": 3,
+     ".template": 7,
+     ".jsonc": 2,
+     ".mobileconfig": 1,
+     ".admx": 1,
+     ".adml": 2,
+     ".exe": 2,
+     ".min": 1,
+     ".recipe": 2,
+     ".cjs": 5,
+     ".h": 2,
+     ".css": 518,
+     ".lock": 3,
+     ".toml": 8,
+     ".iss": 2,
+     ".isl": 17,
+     ".dll": 5,
+     ".rs": 114,
+     ".cmd": 11,
+     ".woff": 3,
+     ".yaml": 681,
+     ".snap": 348,
+     ".tsx": 268,
+     ".off": 1,
+     ".nupkg": 3,
+     ".cs": 16,
+     ".tempo-summarized": 6,
+     ".cpp": 17,
+     ".round1": 2,
+     ".round2": 3,
+     ".view-port": 1,
+     ".diff": 32,
+     ".bin": 3,
+     ".messages": 5,
+     ".patch": 50,
+     ".expected": 2,
+     ".text": 22,
+     ".xml": 35,
+     ".ipynb": 92,
+     ".go": 4,
+     ".java": 7,
+     ".rb": 5,
+     ".mmd": 1,
+     ".tiktoken": 2,
+     ".sqlite": 98,
+     ".hpp": 4,
+     ".scss": 4,
+     ".asar": 1,
+     ".ico": 32,
+     ".pic": 1,
+     ".tmLanguage": 1,
+     ".code-workspace": 1,
+     ".less": 4,
+     ".php": 3,
+     ".pug": 2,
+     ".coffee": 2,
+     ".bib": 1,
+     ".c": 1,
+     ".cc": 1,
+     ".clj": 1,
+     ".cshtml": 1,
+     ".cu": 1,
+     ".dart": 1,
+     ".env": 1,
+     ".fs": 1,
+     ".groovy": 1,
+     ".handlebars": 1,
+     ".hbs": 1,
+     ".hlsl": 1,
+     ".ini": 1,
+     ".jl": 1,
+     ".jsx": 1,
+     ".log": 1,
+     ".lua": 1,
+     ".m": 1,
+     ".mm": 1,
+     ".p6": 1,
+     ".pl": 2,
+     ".r": 1,
+     ".rst": 1,
+     ".shader": 1,
+     ".sql": 1,
+     ".sty": 1,
+     ".swift": 1,
+     ".tex": 1,
+     ".vb": 1,
+     ".icns": 29,
+     ".desktop": 2,
+     ".xpm": 1,
+     ".bmp": 14,
+     ".jxs": 4,
+     ".zip": 1,
+     ".scm": 5,
+     ".tst": 90,
+     ".mp3": 44,
+     ".jsonl": 2,
+     ".scpt": 2,
+     ".ps1xml": 1,
+     ".psd1": 1,
+     ".zsh": 4,
+     ".fish": 1,
+     ".wuff": 1,
+     ".qwoff": 1,
+     ".pdf": 1,
+     ".pac": 2
+    }
+   },
+   "license": {
+    "spdx": "MIT",
+    "file": "LICENSE.txt",
+    "otherLicenseFiles": {
+     "MIT": 3
+    }
+   },
+   "agentConfigs": [
+    ".agents/skills/launch/SKILL.md",
+    ".agents/skills/launch/playwrightScripts/focus-chat-input.ts",
+    ".agents/skills/launch/scripts/bootstrap/bootstrap-profile.ps1",
+    ".agents/skills/launch/scripts/bootstrap/bootstrap-profile.sh",
+    ".agents/skills/launch/scripts/bootstrap/windows-process-tree-monitor.ps1",
+    ".agents/skills/launch/scripts/cleanup/cleanup.ps1",
+    ".agents/skills/launch/scripts/cleanup/windows-process-arguments.ps1",
+    ".agents/skills/launch/scripts/launch.ps1",
+    ".agents/skills/launch/scripts/launch.sh",
+    ".agents/skills/launch/scripts/monaco-paste.sh",
+    ".agents/skills/launch/scripts/monaco-paste.ts",
+    ".agents/skills/launch/scripts/updateSettings.ts",
+    ".agents/skills/launch/scripts/waitForCdp.ts",
+    ".github/copilot-instructions.md",
+    ".github/skills/accessibility/SKILL.md",
+    ".github/skills/agent-host-chat-contributions/SKILL.md",
+    ".github/skills/agent-host-e2e-tests/SKILL.md",
+    ".github/skills/agent-host-logs/SKILL.md",
+    ".github/skills/agent-host-logs/scripts/extract.py",
+    ".github/skills/author-contributions/SKILL.md",
+    ".github/skills/auto-perf-optimize/SKILL.md",
+    ".github/skills/auto-perf-optimize/scratchpad/.gitignore",
+    ".github/skills/auto-perf-optimize/scratchpad/README.md",
+    ".github/skills/auto-perf-optimize/scripts/chat-memory-smoke.mts",
+    ".github/skills/auto-perf-optimize/scripts/chat-session-switch-smoke.mts",
+    ".github/skills/auto-perf-optimize/scripts/userDataProfile.mts",
+    ".github/skills/auto-perf-optimize/scripts/workbench-css-performance.mts",
+    ".github/skills/azure-pipelines/SKILL.md",
+    ".github/skills/azure-pipelines/azure-pipeline.ts",
+    ".github/skills/build-champ-triage/SKILL.md",
+    ".github/skills/chat-customizations-editor/SKILL.md",
+    ".github/skills/chat-perf/SKILL.md",
+    ".github/skills/chat-pet-sprite-creation/SKILL.md",
+    ".github/skills/ci-artifact-testing/SKILL.md",
+    ".github/skills/code-oss-logs/SKILL.md",
+    ".github/skills/code-review/SKILL.md",
+    ".github/skills/codenotify/SKILL.md",
+    ".github/skills/component-fixtures/SKILL.md",
+    ".github/skills/component/SKILL.md",
+    ".github/skills/cpu-profile-analysis/SKILL.md",
+    ".github/skills/customizations-in-the-agent-host/SKILL.md",
+    ".github/skills/design-philosophy/SKILL.md",
+    ".github/skills/doc-comments/SKILL.md",
+    ".github/skills/experiments/SKILL.md",
+    ".github/skills/feature-tryouts/SKILL.md",
+    ".github/skills/feedback-learning/SKILL.md",
+    ".github/skills/fix-ci-failures/SKILL.md",
+    ".github/skills/fixissueno/SKILL.md",
+    ".github/skills/flaky-smoke-tests/SKILL.md",
+    ".github/skills/heap-snapshot-analysis/SKILL.md",
+    ".github/skills/heap-snapshot-analysis/helpers/compareSnapshots.ts",
+    ".github/skills/heap-snapshot-analysis/helpers/findRetainers.ts",
+    ".github/skills/heap-snapshot-analysis/helpers/parseSnapshot.ts",
+    ".github/skills/heap-snapshot-analysis/helpers/streamSnapshot.mjs",
+    ".github/skills/heap-snapshot-analysis/scratchpad/.gitignore",
+    ".github/skills/heap-snapshot-analysis/scratchpad/README.md",
+    ".github/skills/integrated-browser/SKILL.md",
+    ".github/skills/integration-tests/SKILL.md",
+    ".github/skills/issue-grouping/SKILL.md",
+    ".github/skills/memory-leak-audit/SKILL.md",
+    ".github/skills/migrate-issues/SKILL.md",
+    ".github/skills/otel/SKILL.md",
+    ".github/skills/policy-and-managed-settings/SKILL.md",
+    ".github/skills/policy-and-managed-settings/extension-policy.md",
+    ".github/skills/policy-and-managed-settings/github-managed-settings.md",
+    ".github/skills/policy-and-managed-settings/legacy-permission-policy.md",
+    ".github/skills/policy-and-managed-settings/local-testing.md",
+    ".github/skills/policy-and-managed-settings/mixed-policy.md",
+    ".github/skills/policy-and-managed-settings/policy-support-maintenance.md",
+    ".github/skills/policy-and-managed-settings/sdk-runtime-policy.md",
+    ".github/skills/policy-and-managed-settings/vscode-policy.md",
+    ".github/skills/sessions/SKILL.md",
+    ".github/skills/setup-environment/SKILL.md",
+    ".github/skills/smoke-tests/SKILL.md",
+    ".github/skills/sweeper-implement/SKILL.md",
+    ".github/skills/sweeper-plan/SKILL.md",
+    ".github/skills/symbolicate-crash-dump/SKILL.md",
+    ".github/skills/unit-tests/SKILL.md",
+    ".github/skills/update-instructions/SKILL.md",
+    ".github/skills/update-screenshots/SKILL.md",
+    ".github/skills/ux-css-layout/SKILL.md",
+    ".github/skills/ux-theming/SKILL.md",
+    ".github/skills/validate-ui-scenario/SKILL.md",
+    ".github/skills/vscode-dev-workbench/SKILL.md",
+    ".mcp.json",
+    "AGENTS.md",
+    "extensions/copilot/.agents/skills/github-copilot-upgrader/SKILL.md",
+    "extensions/copilot/.agents/skills/launch/SKILL.md",
+    "extensions/copilot/src/extension/chatSessions/copilotcli/AGENTS.md",
+    "extensions/copilot/src/platform/authentication/common/AGENTS.md",
+    "src/vs/platform/agentHost/AGENTS.md",
+    "src/vs/platform/agentHost/common/state/AGENTS.md",
+    "src/vs/platform/agentHost/node/copilot/prompts/AGENTS.md",
+    "src/vs/platform/agentHost/test/node/AGENTS.md",
+    "src/vs/workbench/contrib/imageCarousel/AGENTS.md"
+   ],
+   "tsJs": {
+    "files": 15426,
+    "lines": 5032587,
+    "testFiles": 4807,
+    "declarationFiles": 254,
+    "generatedMarkedFiles": 975
+   },
+   "tsconfig": {
+    "count": 135,
+    "withReferences": 0,
+    "withPaths": 16,
+    "withExtends": 88,
+    "extendsUnresolved": 0
+   },
+   "workspacePackages": 136,
+   "sample": {
+    "eligibleFiles": 10371,
+    "files": 3000,
+    "names": {
+     "declarations": 7200,
+     "distinctNames": 6958,
+     "multiFileNames": 135
+    },
+    "multiFileShare": 0.019402127048002298,
+    "barrelFiles": 19
+   },
+   "resolution": {
+    "relative": {
+     "total": 14259,
+     "resolved": 14181
+    },
+    "workspace": {
+     "total": 45,
+     "resolved": 0
+    },
+    "external": {
+     "total": 635,
+     "resolved": 95
+    },
+    "filesResolved": 1500
+   },
+   "grep": {
+    "names": 200,
+    "linesMedian": 9,
+    "linesP90": 61,
+    "linesMax": 14866,
+    "filesMedian": 3,
+    "filesP90": 17,
+    "filesMax": 3311,
+    "shareOver20Files": 0.1
+   },
+   "grepAmbiguous": {
+    "names": 135,
+    "linesMedian": 51,
+    "linesP90": 4396,
+    "linesMax": 40871,
+    "filesMedian": 16,
+    "filesP90": 749,
+    "filesMax": 7448,
+    "shareOver20Files": 0.45185185185185184
+   }
+  },
+  "TypeScript": {
+   "repo": "microsoft/TypeScript",
+   "sha": "98add1bbed1c814e97457587c2da407dc3f78330",
+   "commitDate": "2026-10-21",
+   "score": 25,
+   "name": "TypeScript",
+   "options": {
+    "seed": "20261017",
+    "maxFiles": 3000,
+    "grepSample": 200,
+    "minNameLength": 3
+   },
+   "tracked": {
+    "files": 67927,
+    "bytes": 217038918,
+    "byExtension": {
+     ".yml": 31,
+     ".json": 211,
+     ".jsonc": 1129,
+     "(none)": 23,
+     ".md": 67,
+     ".yaml": 4,
+     ".mjs": 5,
+     ".txt": 7640,
+     ".work": 1,
+     ".ts": 13046,
+     ".js": 13391,
+     ".cjs": 1,
+     ".cts": 1,
+     ".png": 1,
+     ".go": 5198,
+     ".golden": 14,
+     ".mod": 3,
+     ".sum": 2,
+     ".mts": 13,
+     ".config": 1,
+     ".csproj": 1,
+     ".gz": 13,
+     ".s": 3,
+     ".symbols": 13019,
+     ".types": 13019,
+     ".map": 152,
+     ".contentmapper": 28,
+     ".baseline": 557,
+     ".tsx": 353
+    }
+   },
+   "license": {
+    "spdx": "Apache-2.0",
+    "file": "LICENSE.txt",
+    "otherLicenseFiles": {
+     "Apache-2.0": 4,
+     "MIT": 1
+    }
+   },
+   "agentConfigs": [
+    ".github/copilot-instructions.md",
+    ".github/skills/api-client/SKILL.md",
+    ".github/skills/compiler-and-fourslash-tests/SKILL.md",
+    ".github/skills/mcfly/SKILL.md",
+    ".github/skills/security-report-check/SKILL.md"
+   ],
+   "tsJs": {
+    "files": 26810,
+    "lines": 1734745,
+    "testFiles": 26475,
+    "declarationFiles": 247,
+    "generatedMarkedFiles": 91
+   },
+   "tsconfig": {
+    "count": 13,
+    "withReferences": 3,
+    "withPaths": 0,
+    "withExtends": 7,
+    "extendsUnresolved": 0
+   },
+   "workspacePackages": 5,
+   "sample": {
+    "eligibleFiles": 157,
+    "files": 157,
+    "names": {
+     "declarations": 1332,
+     "distinctNames": 1244,
+     "multiFileNames": 48
+    },
+    "multiFileShare": 0.03858520900321544,
+    "barrelFiles": 2
+   },
+   "resolution": {
+    "relative": {
+     "total": 480,
+     "resolved": 479
+    },
+    "workspace": {
+     "total": 7,
+     "resolved": 0
+    },
+    "external": {
+     "total": 138,
+     "resolved": 0
+    },
+    "filesResolved": 157
+   },
+   "grep": {
+    "names": 200,
+    "linesMedian": 9,
+    "linesP90": 76,
+    "linesMax": 1585,
+    "filesMedian": 5,
+    "filesP90": 15,
+    "filesMax": 455,
+    "shareOver20Files": 0.06
+   },
+   "grepAmbiguous": null
+  },
+  "angular": {
+   "repo": "angular/angular",
+   "sha": "3cc1edf3210a9debb0be57a4e99e53a54505db32",
+   "commitDate": "2026-10-21",
+   "score": 73,
+   "name": "angular",
+   "options": {
+    "seed": "20261017",
+    "maxFiles": 3000,
+    "grepSample": 200,
+    "minNameLength": 3
+   },
+   "tracked": {
+    "files": 11699,
+    "bytes": 117807734,
+    "byExtension": {
+     ".md": 1518,
+     ".sh": 12,
+     "(none)": 81,
+     ".json": 568,
+     ".toml": 3,
+     ".yaml": 52,
+     ".yml": 16,
+     ".bazel": 728,
+     ".js": 908,
+     ".mts": 180,
+     ".mjs": 28,
+     ".cjs": 3,
+     ".lock": 2,
+     ".html": 453,
+     ".ts": 6191,
+     ".scss": 146,
+     ".bzl": 40,
+     ".svg": 102,
+     ".tsx": 30,
+     ".template": 2,
+     ".css": 321,
+     ".xlf": 7,
+     ".ico": 33,
+     ".png": 140,
+     ".webmanifest": 1,
+     ".gif": 6,
+     ".jpg": 16,
+     ".ics": 1,
+     ".conf": 2,
+     ".mdc": 1,
+     ".txt": 11,
+     ".patch": 2,
+     ".rs": 70,
+     ".ng": 1,
+     ".arb": 1,
+     ".xmb": 1,
+     ".xtb": 1,
+     ".puml": 7,
+     ".woff2": 1,
+     ".ttf": 4,
+     ".tsbuildinfo": 1,
+     ".snap": 8
+    }
+   },
+   "license": {
+    "spdx": "MIT",
+    "file": "LICENSE",
+    "otherLicenseFiles": {
+     "UNCLEAR": 1,
+     "Apache-2.0": 2
+    }
+   },
+   "agentConfigs": [
+    "AGENTS.md",
+    "adev/src/context/AGENTS.md",
+    "adev/src/context/GEMINI.md",
+    "packages/compiler-cli/preprocessor/AGENTS.md"
+   ],
+   "tsJs": {
+    "files": 7340,
+    "lines": 1263704,
+    "testFiles": 3521,
+    "declarationFiles": 663,
+    "generatedMarkedFiles": 12
+   },
+   "tsconfig": {
+    "count": 145,
+    "withReferences": 1,
+    "withPaths": 56,
+    "withExtends": 85,
+    "extendsUnresolved": 0
+   },
+   "workspacePackages": 53,
+   "sample": {
+    "eligibleFiles": 3805,
+    "files": 3000,
+    "names": {
+     "declarations": 5819,
+     "distinctNames": 5096,
+     "multiFileNames": 201
+    },
+    "multiFileShare": 0.03944270015698587,
+    "barrelFiles": 186
+   },
+   "resolution": {
+    "relative": {
+     "total": 4208,
+     "resolved": 4207
+    },
+    "workspace": {
+     "total": 999,
+     "resolved": 870
+    },
+    "external": {
+     "total": 748,
+     "resolved": 0
+    },
+    "filesResolved": 1500
+   },
+   "grep": {
+    "names": 200,
+    "linesMedian": 8,
+    "linesP90": 75,
+    "linesMax": 3433,
+    "filesMedian": 3,
+    "filesP90": 16,
+    "filesMax": 821,
+    "shareOver20Files": 0.09
+   },
+   "grepAmbiguous": {
+    "names": 200,
+    "linesMedian": 23,
+    "linesP90": 638,
+    "linesMax": 13597,
+    "filesMedian": 10,
+    "filesP90": 164,
+    "filesMax": 1142,
+    "shareOver20Files": 0.34
+   }
+  },
+  "excalidraw": {
+   "repo": "excalidraw/excalidraw",
+   "sha": "1d4dc2c0e6e476911d0760e9c3cf3694f2d43384",
+   "commitDate": "2026-10-21",
+   "score": 51,
+   "name": "excalidraw",
+   "options": {
+    "seed": "20261017",
+    "maxFiles": 3000,
+    "grepSample": 200,
+    "minNameLength": 3
+   },
+   "tracked": {
+    "files": 1320,
+    "bytes": 56740643,
+    "byExtension": {
+     "(none)": 22,
+     ".json": 95,
+     ".development": 1,
+     ".production": 1,
+     ".test": 1,
+     ".yml": 14,
+     ".svg": 11,
+     ".md": 18,
+     ".js": 25,
+     ".mdx": 33,
+     ".png": 32,
+     ".tsx": 322,
+     ".css": 3,
+     ".scss": 84,
+     ".ico": 3,
+     ".jpeg": 5,
+     ".lock": 3,
+     ".html": 2,
+     ".ts": 365,
+     ".mts": 3,
+     ".snap": 23,
+     ".rules": 2,
+     ".cjs": 1,
+     ".woff2": 237,
+     ".sfd": 1,
+     ".excalidrawlib": 1,
+     ".txt": 1,
+     ".jpg": 4,
+     ".wasm": 2,
+     ".ttf": 5
+    }
+   },
+   "license": {
+    "spdx": "MIT",
+    "file": "LICENSE",
+    "otherLicenseFiles": {
+     "MIT": 1
+    }
+   },
+   "agentConfigs": [
+    ".github/copilot-instructions.md",
+    "AGENTS.md",
+    "CLAUDE.md"
+   ],
+   "tsJs": {
+    "files": 716,
+    "lines": 225620,
+    "testFiles": 159,
+    "declarationFiles": 13,
+    "generatedMarkedFiles": 4
+   },
+   "tsconfig": {
+    "count": 12,
+    "withReferences": 0,
+    "withPaths": 10,
+    "withExtends": 8,
+    "extendsUnresolved": 1
+   },
+   "workspacePackages": 12,
+   "sample": {
+    "eligibleFiles": 544,
+    "files": 544,
+    "names": {
+     "declarations": 1916,
+     "distinctNames": 1880,
+     "multiFileNames": 12
+    },
+    "multiFileShare": 0.006382978723404255,
+    "barrelFiles": 13
+   },
+   "resolution": {
+    "relative": {
+     "total": 2423,
+     "resolved": 2104
+    },
+    "workspace": {
+     "total": 1176,
+     "resolved": 1158
+    },
+    "external": {
+     "total": 483,
+     "resolved": 0
+    },
+    "filesResolved": 544
+   },
+   "grep": {
+    "names": 200,
+    "linesMedian": 5,
+    "linesP90": 28,
+    "linesMax": 826,
+    "filesMedian": 3,
+    "filesP90": 10,
+    "filesMax": 148,
+    "shareOver20Files": 0.07
+   },
+   "grepAmbiguous": {
+    "names": 12,
+    "linesMedian": 13,
+    "linesP90": 94,
+    "linesMax": 138,
+    "filesMedian": 8,
+    "filesP90": 17,
+    "filesMax": 32,
+    "shareOver20Files": 0.08333333333333333
+   }
+  },
+  "backstage": {
+   "repo": "backstage/backstage",
+   "sha": "53d5be17828fc558132aafd5b4b7d996480aa0f1",
+   "commitDate": "2026-10-21",
+   "score": 73,
+   "name": "backstage",
+   "options": {
+    "seed": "20261017",
+    "maxFiles": 3000,
+    "grepSample": 200,
+    "minNameLength": 3
+   },
+   "tracked": {
+    "files": 12313,
+    "bytes": 287530389,
+    "byExtension": {
+     ".md": 1926,
+     ".js": 441,
+     ".json": 390,
+     ".yml": 95,
+     ".mdc": 3,
+     "(none)": 88,
+     ".env": 1,
+     ".sh": 8,
+     ".yaml": 701,
+     ".json5": 1,
+     ".txt": 18,
+     ".ts": 5595,
+     ".tsx": 1865,
+     ".css": 133,
+     ".ini": 1,
+     ".patch": 2,
+     ".cjs": 14,
+     ".png": 437,
+     ".svg": 127,
+     ".dockerbuild": 1,
+     ".hostbuild": 1,
+     ".template": 1,
+     ".tpl": 1,
+     ".ps1": 1,
+     ".tf": 1,
+     ".mjs": 13,
+     ".mdx": 114,
+     ".jpg": 42,
+     ".lock": 7,
+     ".drawio": 1,
+     ".jpeg": 9,
+     ".gif": 43,
+     ".pdf": 11,
+     ".scss": 10,
+     ".ico": 6,
+     ".webp": 1,
+     ".ai": 1,
+     ".html": 10,
+     ".jsx": 1,
+     ".gz": 8,
+     ".zip": 5,
+     ".mts": 9,
+     ".cts": 6,
+     ".hbs": 125,
+     ".tmpl": 1,
+     ".mustache": 30,
+     ".snap": 2,
+     ".crt": 1,
+     ".tsx__": 2,
+     ".dockerfile": 2,
+     ".toml": 1
+    }
+   },
+   "license": {
+    "spdx": "Apache-2.0",
+    "file": "LICENSE",
+    "otherLicenseFiles": {
+     "UNCLEAR": 1
+    }
+   },
+   "agentConfigs": [
+    ".claude/CLAUDE.md",
+    ".claude/skills/backstage-release-notes/SKILL.md",
+    ".claude/skills/catalog-db-performance.md",
+    ".cursor/rules/backstage-project.mdc",
+    ".cursor/rules/tests/backend-test-utils.mdc",
+    ".cursor/rules/tests/test-utils.mdc",
+    ".github/copilot-instructions.md",
+    "AGENTS.md",
+    "plugins/catalog-backend/CLAUDE.md"
+   ],
+   "tsJs": {
+    "files": 7944,
+    "lines": 1033426,
+    "testFiles": 1933,
+    "declarationFiles": 100,
+    "generatedMarkedFiles": 273
+   },
+   "tsconfig": {
+    "count": 8,
+    "withReferences": 0,
+    "withPaths": 1,
+    "withExtends": 6,
+    "extendsUnresolved": 6
+   },
+   "workspacePackages": 270,
+   "sample": {
+    "eligibleFiles": 5915,
+    "files": 3000,
+    "names": {
+     "declarations": 3397,
+     "distinctNames": 2895,
+     "multiFileNames": 166
+    },
+    "multiFileShare": 0.05734024179620035,
+    "barrelFiles": 609
+   },
+   "resolution": {
+    "relative": {
+     "total": 2472,
+     "resolved": 2433
+    },
+    "workspace": {
+     "total": 1699,
+     "resolved": 10
+    },
+    "external": {
+     "total": 1774,
+     "resolved": 43
+    },
+    "filesResolved": 1500
+   },
+   "grep": {
+    "names": 200,
+    "linesMedian": 9,
+    "linesP90": 58,
+    "linesMax": 3552,
+    "filesMedian": 4,
+    "filesP90": 21,
+    "filesMax": 854,
+    "shareOver20Files": 0.105
+   },
+   "grepAmbiguous": {
+    "names": 165,
+    "linesMedian": 34,
+    "linesP90": 880,
+    "linesMax": 45477,
+    "filesMedian": 14,
+    "filesP90": 340,
+    "filesMax": 2745,
+    "shareOver20Files": 0.3939393939393939
+   }
+  },
+  "n8n": {
+   "repo": "n8n-io/n8n",
+   "sha": "58f11bf0cf5e384efa7f6818fc940ff5ed8200a9",
+   "commitDate": "2026-10-21",
+   "score": 43,
+   "name": "n8n",
+   "options": {
+    "seed": "20261017",
+    "maxFiles": 3000,
+    "grepSample": 200,
+    "minNameLength": 3
+   },
+   "tracked": {
+    "files": 32234,
+    "bytes": 224513845,
+    "byExtension": {
+     "(none)": 116,
+     ".md": 794,
+     ".json": 3917,
+     ".mjs": 338,
+     ".py": 88,
+     ".png": 113,
+     ".mts": 72,
+     ".sh": 13,
+     ".yml": 359,
+     ".conf": 2,
+     ".cjs": 7,
+     ".example": 4,
+     ".ts": 23187,
+     ".rego": 2,
+     ".yaml": 9,
+     ".js": 46,
+     ".jpg": 4,
+     ".jsonc": 23,
+     ".hcl": 2,
+     ".distroless": 1,
+     ".snap": 204,
+     ".csv": 6,
+     ".toml": 2,
+     ".lock": 2,
+     ".pem": 10,
+     ".grammar": 3,
+     ".txt": 10,
+     ".mmd": 1,
+     ".log": 2,
+     ".html": 17,
+     ".icns": 1,
+     ".ico": 3,
+     ".css": 4,
+     ".vue": 1443,
+     ".scss": 103,
+     ".template": 29,
+     ".svg": 1171,
+     ".MD": 2,
+     ".env": 2,
+     ".xml": 1,
+     ".zip": 1,
+     ".cmd": 2,
+     ".mjml": 16,
+     ".handlebars": 14,
+     ".woff2": 4,
+     ".ttf": 1,
+     ".woff": 1,
+     ".mdx": 6,
+     ".gif": 1,
+     ".webp": 3,
+     ".data": 1,
+     ".pdf": 4,
+     ".rtf": 1,
+     ".xls": 1,
+     ".tf": 8,
+     ".jsonl": 33,
+     ".patch": 24
+    }
+   },
+   "license": {
+    "spdx": "LicenseRef-SUL-1.0 (fair-code, not OSI)",
+    "file": "LICENSE.md",
+    "otherLicenseFiles": {
+     "UNCLEAR": 5,
+     "LicenseRef-SUL-1.0 (fair-code, not OSI)": 2,
+     "MIT": 3,
+     "ISC": 1,
+     "Apache-2.0": 1
+    }
+   },
+   "agentConfigs": [
+    ".agents/review-rules/README.md",
+    ".agents/review-rules/backend/controller-request-validation.md",
+    ".agents/review-rules/backend/error-classes.md",
+    ".agents/review-rules/backend/explicit-any.md",
+    ".agents/review-rules/backend/hand-rolled-delays.md",
+    ".agents/review-rules/backend/lazy-load-heavy-modules.md",
+    ".agents/review-rules/backend/license-enforcement.md",
+    ".agents/review-rules/db-migrations/conventions-and-tests.md",
+    ".agents/review-rules/db-migrations/cross-db-compatibility.md",
+    ".agents/review-rules/db-migrations/data-safety.md",
+    ".agents/review-rules/db-migrations/necessity-and-schema-design.md",
+    ".agents/review-rules/db-migrations/performance-and-scale.md",
+    ".agents/review-rules/frontend/component-wrappers.md",
+    ".agents/review-rules/frontend/design-system.md",
+    ".agents/review-rules/frontend/i18n.md",
+    ".agents/review-rules/frontend/vue-correctness.md",
+    ".agents/review-rules/qa-dx/docker-image-pinning.md",
+    ".agents/review-rules/qa-dx/docker-native-modules.md",
+    ".agents/review-rules/qa-dx/ratchets-and-allowlists.md",
+    ".agents/review-rules/qa-dx/workflow-safety.md",
+    ".agents/review-rules/security/auth-and-access-control.md",
+    ".agents/review-rules/security/code-execution-and-sandboxing.md",
+    ".agents/review-rules/security/credentials-and-secrets.md",
+    ".agents/review-rules/security/node-input-safety.md",
+    ".agents/review-rules/security/outbound-requests.md",
+    ".agents/review-rules/security/rendering-untrusted-content.md",
+    ".agents/review-rules/testing/coverage.md",
+    ".agents/skills/AGENTS.md",
+    ".agents/skills/agent-design-language/SKILL.md",
+    ".agents/skills/community-pr-readiness-check/SKILL.md",
+    ".agents/skills/community-pr-readiness-check/reference/checks.md",
+    ".agents/skills/community-pr-readiness-check/reference/label-flow.md",
+    ".agents/skills/community-pr-readiness-check/reference/re-review.md",
+    ".agents/skills/community-pr-readiness-check/reference/teams.md",
+    ".agents/skills/content-design/SKILL.md",
+    ".agents/skills/conventions/SKILL.md",
+    ".agents/skills/create-agent-builder-eval/SKILL.md",
+    ".agents/skills/create-agent-builder-eval/local-setup.md",
+    ".agents/skills/create-community-node-lint-rule/SKILL.md",
+    ".agents/skills/create-community-node-lint-rule/reference.md",
+    ".agents/skills/create-instance-ai-eval/SKILL.md",
+    ".agents/skills/create-instance-ai-eval/case-shapes.md",
+    ".agents/skills/create-instance-ai-eval/running-evals.md",
+    ".agents/skills/create-instance-ai-eval/sourcing-cases.md",
+    ".agents/skills/create-issue/SKILL.md",
+    ".agents/skills/create-pr/SKILL.md",
+    ".agents/skills/create-skill/SKILL.md",
+    ".agents/skills/db-migrations/SKILL.md",
+    ".agents/skills/env-var-docs/SKILL.md",
+    ".agents/skills/experiments/SKILL.md",
+    ".agents/skills/experiments/reference.md",
+    ".agents/skills/gh-stack/SKILL.md",
+    ".agents/skills/human-like-code-review/SKILL.md",
+    ".agents/skills/linear-issue/SKILL.md",
+    ".agents/skills/loom-transcript/SKILL.md",
+    ".agents/skills/nathan/SKILL.md",
+    ".agents/skills/node-add-oauth/SKILL.md",
+    ".agents/skills/protect-endpoints/SKILL.md",
+    ".agents/skills/public-api/SKILL.md",
+    ".agents/skills/public-api/reference.md",
+    ".agents/skills/reproduce-bug/SKILL.md",
+    ".agents/skills/spec-driven-development/SKILL.md",
+    ".agents/skills/telemetry/SKILL.md",
+    ".agents/skills/testmax-assistant-ui/SKILL.md",
+    ".agents/skills/testmax-assistant-ui/examples/stop-button/scenarios.json",
+    ".agents/skills/testmax-assistant-ui/examples/stop-button/stop-mid-run.mjs",
+    ".agents/skills/testmax-assistant-ui/scenarios/smoke-chat.mjs",
+    ".agents/skills/testmax-assistant-ui/scenarios/visual-assistant-home.mjs",
+    ".agents/skills/testmax-assistant-ui/scenarios/visual-thread-reply.mjs",
+    ".agents/skills/testmax-assistant-ui/scripts/baseline.py",
+    ".agents/skills/testmax-assistant-ui/scripts/common.py",
+    ".agents/skills/testmax-assistant-ui/scripts/kit.mjs",
+    ".agents/skills/testmax-assistant-ui/scripts/live_page.py",
+    ".agents/skills/testmax-assistant-ui/scripts/report.py",
+    ".agents/skills/testmax-assistant-ui/scripts/run.py",
+    ".agents/skills/testmax-assistant-ui/scripts/run_scenario.mjs",
+    ".agents/skills/testmax-assistant-ui/scripts/visual_diff.mjs",
+    ".agents/skills/testmax-n8n-ai/SKILL.md",
+    ".agents/skills/testmax-n8n-ai/assets/comparison-page.png",
+    ".agents/skills/testmax-n8n-ai/sandbox/Dockerfile",
+    ".agents/skills/testmax-n8n-ai/sandbox/screen.mjs",
+    ".agents/skills/testmax-n8n-ai/scripts/binary_checks.mts",
+    ".agents/skills/testmax-n8n-ai/scripts/build_report.py",
+    ".agents/skills/testmax-n8n-ai/scripts/capture_canvas.mjs",
+    ".agents/skills/testmax-n8n-ai/scripts/claims.py",
+    ".agents/skills/testmax-n8n-ai/scripts/compare.py",
+    ".agents/skills/testmax-n8n-ai/scripts/derive_checks.mjs",
+    ".agents/skills/testmax-n8n-ai/scripts/langsmith_usage.py",
+    ".agents/skills/testmax-n8n-ai/scripts/live.py",
+    ".agents/skills/testmax-n8n-ai/scripts/live_server.py",
+    ".agents/skills/testmax-n8n-ai/scripts/merge_verdicts.py",
+    ".agents/skills/testmax-n8n-ai/scripts/n8n_api.py",
+    ".agents/skills/testmax-n8n-ai/scripts/n8n_browser.mjs",
+    ".agents/skills/testmax-n8n-ai/scripts/prepare.py",
+    ".agents/skills/testmax-n8n-ai/scripts/record_iai.mjs",
+    ".agents/skills/testmax-n8n-ai/scripts/request_recorder.py",
+    ".agents/skills/testmax-n8n-ai/scripts/run_cli_builder.py",
+    ".agents/skills/testmax-n8n-ai/scripts/run_instance_ai.py",
+    ".agents/skills/testmax-n8n-ai/scripts/run_scenarios.py",
+    ".agents/skills/testmax-n8n-ai/scripts/run_wire.mjs",
+    ".agents/skills/testmax-n8n-ai/scripts/sdk.mjs",
+    ".agents/skills/testmax-n8n-ai/scripts/summarize_runs.py",
+    ".agents/skills/testmax-n8n-ai/scripts/wire.mjs",
+    ".agents/skills/ui-design/SKILL.md",
+    ".agents/skills/ui-design/rules/web-animation-guidelines.md",
+    ".agents/skills/ui-design/rules/web-interface-guidelines.md",
+    ".claude/README.md",
+    ".claude/plugins/n8n/.claude-plugin/marketplace.json",
+    ".claude/plugins/n8n/.claude-plugin/plugin.json",
+    ".claude/plugins/n8n/README.md",
+    ".claude/plugins/n8n/agents/developer.md",
+    ".claude/plugins/n8n/agents/linear-issue-triager.md",
+    ".claude/plugins/n8n/commands/plan.md",
+    ".claude/plugins/n8n/commands/triage.md",
+    ".claude/plugins/n8n/scripts/track-skill-usage.mjs",
+    ".claude/plugins/n8n/skills/agent-design-language",
+    ".claude/plugins/n8n/skills/community-pr-readiness-check",
+    ".claude/plugins/n8n/skills/content-design",
+    ".claude/plugins/n8n/skills/conventions",
+    ".claude/plugins/n8n/skills/create-agent-builder-eval",
+    ".claude/plugins/n8n/skills/create-community-node-lint-rule",
+    ".claude/plugins/n8n/skills/create-instance-ai-eval",
+    ".claude/plugins/n8n/skills/create-issue",
+    ".claude/plugins/n8n/skills/create-pr",
+    ".claude/plugins/n8n/skills/create-skill",
+    ".claude/plugins/n8n/skills/db-migrations",
+    ".claude/plugins/n8n/skills/env-var-docs",
+    ".claude/plugins/n8n/skills/experiments",
+    ".claude/plugins/n8n/skills/gh-stack",
+    ".claude/plugins/n8n/skills/human-like-code-review",
+    ".claude/plugins/n8n/skills/linear-issue",
+    ".claude/plugins/n8n/skills/loom-transcript",
+    ".claude/plugins/n8n/skills/nathan",
+    ".claude/plugins/n8n/skills/node-add-oauth",
+    ".claude/plugins/n8n/skills/protect-endpoints",
+    ".claude/plugins/n8n/skills/public-api",
+    ".claude/plugins/n8n/skills/reproduce-bug",
+    ".claude/plugins/n8n/skills/setup-mcps/SKILL.md",
+    ".claude/plugins/n8n/skills/spec-driven-development",
+    ".claude/plugins/n8n/skills/telemetry",
+    ".claude/plugins/n8n/skills/testmax-assistant-ui",
+    ".claude/plugins/n8n/skills/testmax-n8n-ai",
+    ".claude/plugins/n8n/skills/ui-design",
+    ".claude/settings.json",
+    ".github/CLAUDE.md",
+    "AGENTS.md",
+    "CLAUDE.md",
+    "packages/@n8n/agents/AGENTS.md",
+    "packages/@n8n/ai-utilities/AGENTS.md",
+    "packages/@n8n/ai-workflow-builder.ee/AGENTS.md",
+    "packages/@n8n/ai-workflow-builder.ee/CLAUDE.md",
+    "packages/@n8n/db/AGENTS.md",
+    "packages/@n8n/engine/AGENTS.md",
+    "packages/@n8n/instance-ai/CLAUDE.md",
+    "packages/@n8n/node-cli/src/template/templates/shared/default/.agents/credentials.md",
+    "packages/@n8n/node-cli/src/template/templates/shared/default/.agents/nodes-declarative.md",
+    "packages/@n8n/node-cli/src/template/templates/shared/default/.agents/nodes-programmatic.md",
+    "packages/@n8n/node-cli/src/template/templates/shared/default/.agents/nodes.md",
+    "packages/@n8n/node-cli/src/template/templates/shared/default/.agents/properties.md",
+    "packages/@n8n/node-cli/src/template/templates/shared/default/.agents/versioning.md",
+    "packages/@n8n/node-cli/src/template/templates/shared/default/.agents/workflow.md",
+    "packages/@n8n/node-cli/src/template/templates/shared/default/AGENTS.md",
+    "packages/@n8n/node-cli/src/template/templates/shared/default/CLAUDE.md",
+    "packages/@n8n/nodes-langchain/AGENTS.md",
+    "packages/cli/AGENTS.md",
+    "packages/cli/src/modules/agents/AGENTS.md",
+    "packages/cli/src/modules/instance-ai/AGENTS.md",
+    "packages/cli/src/modules/knowledge/AGENTS.md",
+    "packages/cli/src/modules/n8n-packages/CLAUDE.md",
+    "packages/cli/src/modules/skills/AGENTS.md",
+    "packages/frontend/@n8n/design-system/AGENTS.md",
+    "packages/frontend/AGENTS.md",
+    "packages/frontend/CLAUDE.md",
+    "packages/frontend/editor-ui/src/app/stores/workflowDocument/CLAUDE.md",
+    "packages/frontend/editor-ui/src/features/agents/AGENTS.md",
+    "packages/nodes-base/AGENTS.md",
+    "packages/nodes-base/CLAUDE.md",
+    "packages/quality/AGENTS.md",
+    "packages/quality/efficiency/AGENTS.md",
+    "packages/quality/environments/AGENTS.md",
+    "packages/quality/policy/AGENTS.md",
+    "packages/quality/testing/AGENTS.md",
+    "packages/quality/testing/janitor/CLAUDE.md",
+    "packages/quality/testing/playwright/AGENTS.md",
+    "packages/quality/testing/playwright/CLAUDE.md",
+    "packages/quality/testing/playwright/tests/infrastructure/benchmarks/AGENTS.md",
+    "scripts/instance-seeding/AGENTS.md"
+   ],
+   "tsJs": {
+    "files": 23650,
+    "lines": 4663995,
+    "testFiles": 10198,
+    "declarationFiles": 39,
+    "generatedMarkedFiles": 53
+   },
+   "tsconfig": {
+    "count": 191,
+    "withReferences": 18,
+    "withPaths": 45,
+    "withExtends": 164,
+    "extendsUnresolved": 145
+   },
+   "workspacePackages": 101,
+   "sample": {
+    "eligibleFiles": 13418,
+    "files": 3000,
+    "names": {
+     "declarations": 5762,
+     "distinctNames": 5170,
+     "multiFileNames": 132
+    },
+    "multiFileShare": 0.02553191489361702,
+    "barrelFiles": 109
+   },
+   "resolution": {
+    "relative": {
+     "total": 2855,
+     "resolved": 2808
+    },
+    "workspace": {
+     "total": 1991,
+     "resolved": 126
+    },
+    "external": {
+     "total": 1484,
+     "resolved": 639
+    },
+    "filesResolved": 1500
+   },
+   "grep": {
+    "names": 200,
+    "linesMedian": 7,
+    "linesP90": 40,
+    "linesMax": 898,
+    "filesMedian": 3,
+    "filesP90": 12,
+    "filesMax": 265,
+    "shareOver20Files": 0.05
+   },
+   "grepAmbiguous": null
+  },
+  "nest": {
+   "repo": "nestjs/nest",
+   "sha": "62647d3ec95e816a4556b3e04106eb4af002b4b8",
+   "commitDate": "2026-10-21",
+   "score": 57,
+   "name": "nest",
+   "options": {
+    "seed": "20261017",
+    "maxFiles": 3000,
+    "grepSample": 200,
+    "minNameLength": 3
+   },
+   "tracked": {
+    "files": 2590,
+    "bytes": 7724429,
+    "byExtension": {
+     ".yml": 20,
+     ".json": 256,
+     "(none)": 65,
+     ".md": 45,
+     ".mjs": 1,
+     ".ts": 2066,
+     ".gql": 3,
+     ".graphql": 5,
+     ".proto": 13,
+     ".pem": 2,
+     ".conf": 1,
+     ".txt": 2,
+     ".mts": 79,
+     ".html": 4,
+     ".cjs": 2,
+     ".js": 7,
+     ".hbs": 2,
+     ".prisma": 1,
+     ".svg": 1,
+     ".jpg": 2,
+     ".yaml": 2,
+     ".sql": 6,
+     ".png": 1,
+     ".sh": 4
+    }
+   },
+   "license": {
+    "spdx": "MIT",
+    "file": "LICENSE",
+    "otherLicenseFiles": {}
+   },
+   "agentConfigs": [],
+   "tsJs": {
+    "files": 2155,
+    "lines": 190677,
+    "testFiles": 609,
+    "declarationFiles": 0,
+    "generatedMarkedFiles": 1
+   },
+   "tsconfig": {
+    "count": 151,
+    "withReferences": 18,
+    "withPaths": 43,
+    "withExtends": 69,
+    "extendsUnresolved": 0
+   },
+   "workspacePackages": 53,
+   "sample": {
+    "eligibleFiles": 1546,
+    "files": 1546,
+    "names": {
+     "declarations": 1511,
+     "distinctNames": 1094,
+     "multiFileNames": 111
+    },
+    "multiFileShare": 0.10146252285191956,
+    "barrelFiles": 99
+   },
+   "resolution": {
+    "relative": {
+     "total": 2618,
+     "resolved": 2616
+    },
+    "workspace": {
+     "total": 1161,
+     "resolved": 413
+    },
+    "external": {
+     "total": 758,
+     "resolved": 0
+    },
+    "filesResolved": 1500
+   },
+   "grep": {
+    "names": 200,
+    "linesMedian": 8,
+    "linesP90": 52,
+    "linesMax": 320,
+    "filesMedian": 3,
+    "filesP90": 15,
+    "filesMax": 100,
+    "shareOver20Files": 0.07
+   },
+   "grepAmbiguous": {
+    "names": 111,
+    "linesMedian": 21,
+    "linesP90": 93,
+    "linesMax": 1046,
+    "filesMedian": 9,
+    "filesP90": 32,
+    "filesMax": 335,
+    "shareOver20Files": 0.21621621621621623
+   }
+  },
+  "vue-core": {
+   "repo": "vuejs/core",
+   "sha": "65eae178383289b6a9f93505ab85017460f72395",
+   "commitDate": "2026-10-21",
+   "score": 64,
+   "name": "vue-core",
+   "options": {
+    "seed": "20261017",
+    "maxFiles": 3000,
+    "grepSample": 200,
+    "minNameLength": 3
+   },
+   "tracked": {
+    "files": 703,
+    "bytes": 6509694,
+    "byExtension": {
+     "(none)": 20,
+     ".yml": 11,
+     ".md": 31,
+     ".excalidraw": 1,
+     ".png": 2,
+     ".json5": 1,
+     ".json": 33,
+     ".js": 31,
+     ".toml": 1,
+     ".ts": 485,
+     ".tsx": 5,
+     ".html": 25,
+     ".svg": 1,
+     ".vue": 11,
+     ".css": 1,
+     ".snap": 34,
+     ".scss": 1,
+     ".mjs": 5,
+     ".mts": 2,
+     ".yaml": 2
+    }
+   },
+   "license": {
+    "spdx": "MIT",
+    "file": "LICENSE",
+    "otherLicenseFiles": {
+     "MIT": 12
+    }
+   },
+   "agentConfigs": [],
+   "tsJs": {
+    "files": 528,
+    "lines": 164069,
+    "testFiles": 207,
+    "declarationFiles": 12,
+    "generatedMarkedFiles": 4
+   },
+   "tsconfig": {
+    "count": 6,
+    "withReferences": 0,
+    "withPaths": 3,
+    "withExtends": 2,
+    "extendsUnresolved": 0
+   },
+   "workspacePackages": 18,
+   "sample": {
+    "eligibleFiles": 309,
+    "files": 309,
+    "names": {
+     "declarations": 933,
+     "distinctNames": 834,
+     "multiFileNames": 26
+    },
+    "multiFileShare": 0.03117505995203837,
+    "barrelFiles": 14
+   },
+   "resolution": {
+    "relative": {
+     "total": 1056,
+     "resolved": 1022
+    },
+    "workspace": {
+     "total": 316,
+     "resolved": 311
+    },
+    "external": {
+     "total": 171,
+     "resolved": 0
+    },
+    "filesResolved": 309
+   },
+   "grep": {
+    "names": 200,
+    "linesMedian": 9,
+    "linesP90": 64,
+    "linesMax": 876,
+    "filesMedian": 4,
+    "filesP90": 16,
+    "filesMax": 100,
+    "shareOver20Files": 0.075
+   },
+   "grepAmbiguous": {
+    "names": 26,
+    "linesMedian": 76,
+    "linesP90": 643,
+    "linesMax": 2355,
+    "filesMedian": 21,
+    "filesP90": 89,
+    "filesMax": 191,
+    "shareOver20Files": 0.5384615384615384
+   }
+  },
+  "material-ui": {
+   "repo": "mui/material-ui",
+   "sha": "2a8f217d7919d80d8760a7b63d6d97a70530deaf",
+   "commitDate": "2026-10-22",
+   "score": 61,
+   "name": "material-ui",
+   "options": {
+    "seed": "20261017",
+    "maxFiles": 3000,
+    "grepSample": 200,
+    "minNameLength": 3
+   },
+   "tracked": {
+    "files": 41537,
+    "bytes": 275912932,
+    "byExtension": {
+     ".md": 435,
+     ".yaml": 3,
+     "(none)": 38,
+     ".yml": 27,
+     ".mjs": 10802,
+     ".ini": 1,
+     ".json": 497,
+     ".ts": 2721,
+     ".js": 13424,
+     ".tsx": 1483,
+     ".preview": 2,
+     ".css": 46,
+     ".txt": 1,
+     ".png": 907,
+     ".jpg": 182,
+     ".svg": 10741,
+     ".mov": 6,
+     ".mp4": 68,
+     ".webm": 1,
+     ".gif": 3,
+     ".jpeg": 44,
+     ".png~": 1,
+     ".ico": 10,
+     ".woff2": 20,
+     ".mts": 40,
+     ".html": 12,
+     ".jsx": 8,
+     ".toml": 1,
+     ".cjs": 3,
+     ".diff": 1,
+     ".xml": 1,
+     ".template": 8
+    }
+   },
+   "license": {
+    "spdx": "MIT",
+    "file": "LICENSE",
+    "otherLicenseFiles": {
+     "MIT": 1
+    }
+   },
+   "agentConfigs": [
+    ".agents/skills/material-ui-review/SKILL.md",
+    ".agents/skills/material-ui-review/agents/openai.yaml",
+    ".agents/skills/mui-release/SKILL.md",
+    ".agents/skills/mui-release/stage-1-prepare-pr.md",
+    ".agents/skills/mui-release/stage-2-publish-packages.md",
+    ".agents/skills/mui-release/stage-3-publish-docs.md",
+    ".agents/skills/mui-release/stage-4-github-release.md",
+    ".claude/skills/material-ui-review/SKILL.md",
+    ".claude/skills/mui-release",
+    "AGENTS.md",
+    "CLAUDE.md",
+    "skills/material-ui-nextjs/AGENTS.md",
+    "skills/material-ui-styling/AGENTS.md",
+    "skills/material-ui-tailwind/AGENTS.md",
+    "skills/material-ui-theming/AGENTS.md"
+   ],
+   "tsJs": {
+    "files": 28481,
+    "lines": 774097,
+    "testFiles": 906,
+    "declarationFiles": 316,
+    "generatedMarkedFiles": 2
+   },
+   "tsconfig": {
+    "count": 69,
+    "withReferences": 16,
+    "withPaths": 43,
+    "withExtends": 38,
+    "extendsUnresolved": 0
+   },
+   "workspacePackages": 44,
+   "sample": {
+    "eligibleFiles": 27275,
+    "files": 3000,
+    "names": {
+     "declarations": 1529,
+     "distinctNames": 290,
+     "multiFileNames": 18
+    },
+    "multiFileShare": 0.06206896551724138,
+    "barrelFiles": 54
+   },
+   "resolution": {
+    "relative": {
+     "total": 12239,
+     "resolved": 12214
+    },
+    "workspace": {
+     "total": 669,
+     "resolved": 641
+    },
+    "external": {
+     "total": 1941,
+     "resolved": 0
+    },
+    "filesResolved": 1500
+   },
+   "grep": {
+    "names": 200,
+    "linesMedian": 5,
+    "linesP90": 60,
+    "linesMax": 1778,
+    "filesMedian": 3,
+    "filesP90": 28,
+    "filesMax": 542,
+    "shareOver20Files": 0.115
+   },
+   "grepAmbiguous": {
+    "names": 18,
+    "linesMedian": 51,
+    "linesP90": 1778,
+    "linesMax": 76590,
+    "filesMedian": 23,
+    "filesP90": 542,
+    "filesMax": 27407,
+    "shareOver20Files": 0.5555555555555556
+   }
+  },
+  "strapi": {
+   "repo": "strapi/strapi",
+   "sha": "487dc3ff16d642a759ebfcfe6cf475e16a72767f",
+   "commitDate": "2026-10-21",
+   "score": 65,
+   "name": "strapi",
+   "options": {
+    "seed": "20261017",
+    "maxFiles": 3000,
+    "grepSample": 200,
+    "minNameLength": 3
+   },
+   "tracked": {
+    "files": 7147,
+    "bytes": 79380566,
+    "byExtension": {
+     ".md": 233,
+     ".json": 770,
+     ".yaml": 4,
+     ".ts": 3807,
+     "(none)": 180,
+     ".yml": 51,
+     ".cjs": 75,
+     ".js": 718,
+     ".mjs": 84,
+     ".sh": 7,
+     ".sql": 1,
+     ".txt": 13,
+     ".c4": 32,
+     ".lock": 3,
+     ".mdx": 22,
+     ".jsx": 38,
+     ".example": 12,
+     ".tsx": 848,
+     ".css": 9,
+     ".png": 44,
+     ".tldr": 1,
+     ".svg": 15,
+     ".jpg": 59,
+     ".snap": 36,
+     ".pub": 2,
+     ".gif": 5,
+     ".webp": 21,
+     ".hbs": 30,
+     ".html": 3,
+     ".properties": 1,
+     ".bin": 1,
+     ".docx": 1,
+     ".pdf": 2,
+     ".tiff": 1,
+     ".exe": 1,
+     ".jpeg": 9,
+     ".jsonl": 8
+    }
+   },
+   "license": {
+    "spdx": "MIT",
+    "file": "LICENSE",
+    "otherLicenseFiles": {
+     "MIT": 37,
+     "UNCLEAR": 2
+    }
+   },
+   "agentConfigs": [
+    ".cursor/worktrees.json",
+    "AGENTS.md",
+    "CLAUDE.md",
+    "docs/AGENTS.md",
+    "docs/CLAUDE.md"
+   ],
+   "tsJs": {
+    "files": 5570,
+    "lines": 812462,
+    "testFiles": 1884,
+    "declarationFiles": 16,
+    "generatedMarkedFiles": 1
+   },
+   "tsconfig": {
+    "count": 176,
+    "withReferences": 0,
+    "withPaths": 13,
+    "withExtends": 147,
+    "extendsUnresolved": 146
+   },
+   "workspacePackages": 60,
+   "sample": {
+    "eligibleFiles": 3672,
+    "files": 3000,
+    "names": {
+     "declarations": 2553,
+     "distinctNames": 2240,
+     "multiFileNames": 133
+    },
+    "multiFileShare": 0.059375,
+    "barrelFiles": 156
+   },
+   "resolution": {
+    "relative": {
+     "total": 3170,
+     "resolved": 3148
+    },
+    "workspace": {
+     "total": 672,
+     "resolved": 0
+    },
+    "external": {
+     "total": 1970,
+     "resolved": 0
+    },
+    "filesResolved": 1500
+   },
+   "grep": {
+    "names": 200,
+    "linesMedian": 7,
+    "linesP90": 56,
+    "linesMax": 6715,
+    "filesMedian": 3,
+    "filesP90": 22,
+    "filesMax": 770,
+    "shareOver20Files": 0.105
+   },
+   "grepAmbiguous": {
+    "names": 133,
+    "linesMedian": 25,
+    "linesP90": 1885,
+    "linesMax": 27728,
+    "filesMedian": 9,
+    "filesP90": 522,
+    "filesMax": 2876,
+    "shareOver20Files": 0.39097744360902253
+   }
+  },
+  "grafana": {
+   "repo": "grafana/grafana",
+   "sha": "0be7d5b210a48ee7cdbdee69bec7bc2935a8c0b5",
+   "commitDate": "2026-10-21",
+   "score": 40,
+   "name": "grafana",
+   "options": {
+    "seed": "20261017",
+    "maxFiles": 3000,
+    "grepSample": 200,
+    "minNameLength": 3
+   },
+   "tracked": {
+    "files": 23923,
+    "bytes": 225116026,
+    "byExtension": {
+     ".toml": 9,
+     "(none)": 239,
+     ".md": 1065,
+     ".mk": 4,
+     ".sh": 100,
+     ".mod": 51,
+     ".sum": 52,
+     ".yaml": 231,
+     ".yml": 163,
+     ".js": 111,
+     ".json": 1361,
+     ".json5": 1,
+     ".txt": 133,
+     ".mts": 18,
+     ".tmpl": 11,
+     ".ini": 8,
+     ".patch": 6,
+     ".cjs": 25,
+     ".cue": 211,
+     ".go": 6971,
+     ".list": 24,
+     ".ts": 4968,
+     ".proto": 13,
+     ".backup": 1,
+     ".png": 86,
+     ".jsonnet": 1,
+     ".conf": 21,
+     ".crt": 1,
+     ".sql": 1234,
+     ".pem": 3,
+     ".ldif": 9,
+     ".cfg": 1,
+     ".cnf": 3,
+     ".tpl": 2,
+     ".template": 3,
+     ".alloy": 7,
+     ".dockerfile": 2,
+     ".libsonnet": 6,
+     ".svg": 1730,
+     ".tsx": 4636,
+     ".mjml": 16,
+     ".css": 10,
+     ".work": 1,
+     ".rc": 1,
+     ".mdx": 112,
+     ".snap": 72,
+     ".arrow": 1,
+     ".csv": 16,
+     ".html": 17,
+     ".ps1": 1,
+     ".service": 2,
+     ".wxs": 2,
+     ".rtf": 2,
+     ".bmp": 3,
+     ".ico": 1,
+     ".map": 1,
+     ".log": 1,
+     ".zip": 8,
+     ".rb": 1,
+     ".fga": 4,
+     ".cert": 2,
+     ".jsonc": 47,
+     ".http": 9,
+     ".hcl": 11,
+     ".mustache": 2,
+     ".text": 1,
+     ".jpg": 11,
+     ".s": 1,
+     ".xml": 5,
+     ".grammar": 1,
+     ".gif": 3,
+     ".otf": 1,
+     ".eot": 2,
+     ".ttf": 2,
+     ".woff": 2,
+     ".woff2": 10,
+     ".geojson": 4,
+     ".scss": 3,
+     ".mjs": 9,
+     ".py": 1,
+     ".deb": 1,
+     ".rpm": 1,
+     ".lock": 1
+    }
+   },
+   "license": {
+    "spdx": "AGPL-3.0",
+    "file": "LICENSE",
+    "otherLicenseFiles": {
+     "MPL-2.0": 1,
+     "MIT": 2,
+     "Apache-2.0": 14,
+     "AGPL-3.0": 4,
+     "BSD-3-Clause": 1
+    }
+   },
+   "agentConfigs": [
+    ".claude/skills/add-e2e-selectors/SKILL.md",
+    ".claude/skills/frontend-testing-strategy/SKILL.md",
+    ".claude/skills/panel-testing-strategy/SKILL.md",
+    "AGENTS.md",
+    "CLAUDE.md",
+    "docs/AGENTS.md",
+    "e2e-playwright/alerting-suite/AGENTS.md",
+    "e2e-playwright/dashboard-new-layouts/AGENTS.md",
+    "e2e-playwright/plugin-e2e/plugin-e2e-api-tests/AGENTS.md",
+    "packages/grafana-ui/AGENTS.md",
+    "pkg/router/AGENTS.md",
+    "pkg/storage/unified/AGENTS.md",
+    "public/app/core/journeys/AGENTS.md",
+    "public/app/features/AGENTS.md",
+    "public/app/features/alerting/unified/AGENTS.md",
+    "public/app/features/expressions/components/SqlExpressions/SqlEditor/AGENTS.md",
+    "public/app/plugins/panel/AGENTS.md"
+   ],
+   "tsJs": {
+    "files": 9767,
+    "lines": 1597745,
+    "testFiles": 3107,
+    "declarationFiles": 22,
+    "generatedMarkedFiles": 189
+   },
+   "tsconfig": {
+    "count": 43,
+    "withReferences": 0,
+    "withPaths": 4,
+    "withExtends": 39,
+    "extendsUnresolved": 8
+   },
+   "workspacePackages": 28,
+   "sample": {
+    "eligibleFiles": 6638,
+    "files": 3000,
+    "names": {
+     "declarations": 5739,
+     "distinctNames": 5390,
+     "multiFileNames": 134
+    },
+    "multiFileShare": 0.024860853432282004,
+    "barrelFiles": 21
+   },
+   "resolution": {
+    "relative": {
+     "total": 4286,
+     "resolved": 4189
+    },
+    "workspace": {
+     "total": 2310,
+     "resolved": 8
+    },
+    "external": {
+     "total": 3038,
+     "resolved": 1182
+    },
+    "filesResolved": 1500
+   },
+   "grep": {
+    "names": 200,
+    "linesMedian": 9,
+    "linesP90": 42,
+    "linesMax": 3047,
+    "filesMedian": 3,
+    "filesP90": 11,
+    "filesMax": 1012,
+    "shareOver20Files": 0.065
+   },
+   "grepAmbiguous": null
+  },
+  "svelte": {
+   "repo": "sveltejs/svelte",
+   "sha": "2334f5ed0bc9628fddd9767a92f7f12c09e50cd5",
+   "commitDate": "2026-10-22",
+   "score": 65,
+   "name": "svelte",
+   "options": {
+    "seed": "20261017",
+    "maxFiles": 3000,
+    "grepSample": 200,
+    "minNameLength": 3
+   },
+   "tracked": {
+    "files": 9270,
+    "bytes": 7267827,
+    "byExtension": {
+     ".md": 142,
+     ".json": 463,
+     "(none)": 12,
+     ".yml": 9,
+     ".png": 3,
+     ".js": 3493,
+     ".svelte": 4611,
+     ".mjs": 1,
+     ".html": 259,
+     ".ts": 86,
+     ".css": 189,
+     ".yaml": 2
+    }
+   },
+   "license": {
+    "spdx": "MIT",
+    "file": "LICENSE.md",
+    "otherLicenseFiles": {}
+   },
+   "agentConfigs": [
+    ".agents/skills/performance-investigation/SKILL.md",
+    "AGENTS.md"
+   ],
+   "tsJs": {
+    "files": 3580,
+    "lines": 163006,
+    "testFiles": 3129,
+    "declarationFiles": 39,
+    "generatedMarkedFiles": 14
+   },
+   "tsconfig": {
+    "count": 6,
+    "withReferences": 0,
+    "withPaths": 4,
+    "withExtends": 3,
+    "extendsUnresolved": 0
+   },
+   "workspacePackages": 3,
+   "sample": {
+    "eligibleFiles": 412,
+    "files": 412,
+    "names": {
+     "declarations": 1469,
+     "distinctNames": 1301,
+     "multiFileNames": 124
+    },
+    "multiFileShare": 0.09531129900076864,
+    "barrelFiles": 4
+   },
+   "resolution": {
+    "relative": {
+     "total": 1380,
+     "resolved": 1374
+    },
+    "workspace": {
+     "total": 10,
+     "resolved": 4
+    },
+    "external": {
+     "total": 322,
+     "resolved": 124
+    },
+    "filesResolved": 412
+   },
+   "grep": {
+    "names": 200,
+    "linesMedian": 7,
+    "linesP90": 73,
+    "linesMax": 923,
+    "filesMedian": 5,
+    "filesP90": 26,
+    "filesMax": 265,
+    "shareOver20Files": 0.125
+   },
+   "grepAmbiguous": {
+    "names": 124,
+    "linesMedian": 44,
+    "linesP90": 791,
+    "linesMax": 2127,
+    "filesMedian": 20,
+    "filesP90": 240,
+    "filesMax": 1607,
+    "shareOver20Files": 0.49193548387096775
+   }
+  },
+  "apollo-client": {
+   "repo": "apollographql/apollo-client",
+   "sha": "c4aeadcd44688b39aa5f60d8bee178531c546028",
+   "commitDate": "2026-10-19",
+   "score": 62,
+   "name": "apollo-client",
+   "options": {
+    "seed": "20261017",
+    "maxFiles": 3000,
+    "grepSample": 200,
+    "minNameLength": 3
+   },
+   "tracked": {
+    "files": 1163,
+    "bytes": 18052626,
+    "byExtension": {
+     "(none)": 17,
+     ".md": 74,
+     ".json": 102,
+     ".yml": 22,
+     ".mjs": 4,
+     ".cjs": 4,
+     ".ts": 680,
+     ".js": 11,
+     ".sh": 2,
+     ".yaml": 4,
+     ".mdx": 101,
+     ".png": 9,
+     ".jpg": 2,
+     ".svg": 1,
+     ".tsx": 92,
+     ".har": 2,
+     ".html": 6,
+     ".patch": 9,
+     ".snap": 18,
+     ".graphql": 2,
+     ".cts": 1
+    }
+   },
+   "license": {
+    "spdx": "MIT",
+    "file": "LICENSE",
+    "otherLicenseFiles": {}
+   },
+   "agentConfigs": [
+    ".agents/skills/apollo-client",
+    ".claude/commands/chores.md",
+    ".claude/documentation.md",
+    ".claude/hooks.md",
+    ".claude/settings.json",
+    ".claude/skills",
+    "CLAUDE.md"
+   ],
+   "tsJs": {
+    "files": 792,
+    "lines": 409134,
+    "testFiles": 262,
+    "declarationFiles": 6,
+    "generatedMarkedFiles": 2
+   },
+   "tsconfig": {
+    "count": 64,
+    "withReferences": 43,
+    "withPaths": 8,
+    "withExtends": 43,
+    "extendsUnresolved": 0
+   },
+   "workspacePackages": 18,
+   "sample": {
+    "eligibleFiles": 525,
+    "files": 525,
+    "names": {
+     "declarations": 576,
+     "distinctNames": 501,
+     "multiFileNames": 44
+    },
+    "multiFileShare": 0.08782435129740519,
+    "barrelFiles": 29
+   },
+   "resolution": {
+    "relative": {
+     "total": 799,
+     "resolved": 796
+    },
+    "workspace": {
+     "total": 719,
+     "resolved": 508
+    },
+    "external": {
+     "total": 637,
+     "resolved": 3
+    },
+    "filesResolved": 525
+   },
+   "grep": {
+    "names": 200,
+    "linesMedian": 16,
+    "linesP90": 384,
+    "linesMax": 18593,
+    "filesMedian": 9,
+    "filesP90": 53,
+    "filesMax": 783,
+    "shareOver20Files": 0.2
+   },
+   "grepAmbiguous": {
+    "names": 43,
+    "linesMedian": 141,
+    "linesP90": 1773,
+    "linesMax": 16120,
+    "filesMedian": 24,
+    "filesP90": 76,
+    "filesMax": 418,
+    "shareOver20Files": 0.5581395348837209
+   }
+  }
+ }
+}
