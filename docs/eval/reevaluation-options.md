@@ -249,3 +249,24 @@ Local files (repository, this worktree): `docs/eval/analysis.md`, `docs/eval/dia
 - I did not read `docs/eval/replication-cleanroom.md`, `docs/reference/alpha-limitations.md`, the freezer code, or Phase 4's own plans; claims about what they say or allow rest on the files listed above.
 - Cost figures are notional API-equivalent costs from the analyses; Max-plan allowance use is not recorded anywhere I read. Estimates for other corpora and for probes are extrapolations from per-session costs and are labelled as such.
 - Nothing in this note was used to select, change or score any registered question, key or result, and the result files were read only.
+
+## Appendix: follow-up checks on two flagged items (2026-10-21)
+
+Both checks were run after the note above by the orchestrating session, read-only: the replication streams (kept outside the repository), the frozen question and answer files, and a local clone of gsd-core at the pinned commit `10ac3a7a947903ba50f538a907af036744d759d5`. No registered file, key or result was changed. They are exploratory and are not registered analyses.
+
+### A.1 Was MCP tool-search deferral active in the harness? No
+
+- The `init` event of the atlas sessions lists all seven atlas tools (`atlas_status`, `code_context`, `code_explain`, `code_find`, `code_impact`, `code_refs`, `lang_list`) beside `Bash`, `Read`, `Skill` and `StructuredOutput`, and no tool-search tool. The grep arm lists `Bash`, `Read` and `StructuredOutput`.
+- The definitions are in the prompt of the first request. Mean first-request tokens (input + cache creation + cache read) over the 450 replication sessions: atlas 10,853, grep 6,073, a gap of 4,780 tokens per session. Mean assistant messages per session: atlas 3.04, grep 2.94.
+- 4,780 x 3.04 is about 14.5k of the replication's 18.95k billable-token gap (77%). This agrees with section 2.4 (about 15.2k of 18k); the diagnosis's 3,200 tokens per turn was an underestimate. Removing all fixed context reaches parity at best; fewer tokens needs an atlas call to replace grep turns.
+
+### A.2 Are the 11 always-wrong questions key defects? Largely yes, by a mechanical pattern
+
+For each of the 11 questions (q-001, q-008, q-010, q-011, q-014, q-022, q-024, q-028, q-036, q-065, q-069) the answer sets of the 6 replication sessions (both arms, 3 runs) were compared with the key's distinct files.
+
+- Within a question, nearly every session has the same number of extra files and almost no missing ones, in both arms. Independent sessions agreeing on the same extras points at the key or the question wording, not at the tools.
+- q-024, q-028, q-065 (`emit`): the keys list only `tests/*.cjs` files. Every session also lists the `src/*.cts` files that contain `import x = require('./<module>.cjs')`. For q-024 the 14 extras are exactly the 14 command-router `.cts` files, and `git grep` at the pinned commit confirms each contains that statement. The question asks for files that "load that module with `require`, whether by its compiled path or by a sibling `.cjs` specifier", which those imports are; only q-022's text names `.cts` sources explicitly. The key counts runtime `require` calls in JavaScript only.
+- q-001 (callers) and q-014 (references): `src/runtime-hooks-surface.cts` calls `isManagedHookCommand` and references `resolveExecutableBinary`, but obtains them by destructuring a module object that is cast to a locally declared type (`const { ... } = shellCmdProjection as { ... }`). Every session lists it; the key does not. This is the failure shape of a compiler-symbol oracle when the type is re-declared by a cast.
+- Not verified here: q-008, q-010, q-011, q-022, q-036, q-069 (mixed misses and extras). The depth-two `impact` questions (q-036, q-069) may share the cause.
+
+Consequences, stated as limits: at least five of the 75 questions give both arms near-zero credit for reasons unrelated to the tools, so the accuracy figures understate both arms and compress the difference between them. The `emit` category, the one repeated atlas advantage, sits on exactly the questions where key and wording disagree, so it should not be read as a benefit. The keys are frozen; a corrected key set is a new registration (`diagnosis.md` section 9 item 5). Cheapest next step, with no model spend: audit all 75 keys against the pinned corpus with `git grep` and the question wording, and record which are ambiguous or wrong before any new run.
