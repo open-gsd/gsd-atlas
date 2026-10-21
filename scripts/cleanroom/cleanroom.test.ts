@@ -584,7 +584,7 @@ describe('check-chunk', () => {
   });
 
   test('every command line prints its usage and exits 0 on --help', () => {
-    for (const name of ['check-chunk.ts', 'compare.ts', 'scrub.ts']) {
+    for (const name of ['check-chunk.ts', 'compare.ts', 'scrub.ts', 'probe.ts']) {
       const done = runScript(name, ['--help']);
       assert.equal(done.code, 0, `${name}: ${done.stderr}`);
       assert.match(done.stdout, /usage:/i, name);
@@ -832,11 +832,349 @@ describe('scrub', () => {
 });
 
 // ---------------------------------------------------------------------------------------------
+// The image, the notes file and the control script (content cases; nothing is built)
+
+const DOCKER_DIR = path.join(REPO, 'docker', 'cleanroom');
+const readDocker = (name: string): string => fs.readFileSync(path.join(DOCKER_DIR, name), 'utf8');
+const logical = (text: string): string => text.replace(/\\\n\s*/g, ' ');
+
+const NODE_24_BASE = 'node:24.22.0-bookworm-slim@sha256:a5f4366e834695d5f363b920c104953a535d3a9864d1bdf74566a0ebe01daee5';
+const NODE_26_BASE = 'node:26.12.0-bookworm-slim@sha256:298992629d69bbd5b2b03ad57094d8e4fcb3a8eeb7c4e25d29de656519568913';
+const CLAUDE_SHA256 = '60d7eb7f12fbb28a52533fe8be5884097403562aa02dc73991a021c7067e29a5';
+const RELEASE_FINGERPRINT = '31DDDE24DDFAB679F42D7BD2BAA929FF1A7ECACE';
+
+const atLeast = (version: string, floor: string): boolean => {
+  const a = version.split('.').map(Number);
+  const b = floor.split('.').map(Number);
+  for (let i = 0; i < 3; i += 1) {
+    if ((a[i] ?? 0) !== (b[i] ?? 0)) return (a[i] ?? 0) > (b[i] ?? 0);
+  }
+  return true;
+};
+
+describe('clean-room image', () => {
+  test('Dockerfile pins the base image by digest', () => {
+    const dockerfile = readDocker('Dockerfile');
+    assert.ok(dockerfile.includes(`ARG BASE_IMAGE=${NODE_24_BASE}`), 'the default base is the Node 24.22.0 digest');
+    const froms = dockerfile.split('\n').filter((line) => /^FROM\s/i.test(line));
+    assert.ok(froms.length >= 2, 'two stages');
+    for (const line of froms) assert.match(line, /^FROM \$\{BASE_IMAGE\}( AS [a-z]+)?$/, line);
+    assert.ok(!dockerfile.includes('26.12.0'), 'the Dockerfile itself names only the default base');
+    const control = readDocker('cleanroomctl.sh');
+    assert.equal(control.split(NODE_26_BASE).length - 1, 1, 'the 26.12.0 digest is held once, in the control script');
+    const floor = (JSON.parse(fs.readFileSync(path.join(REPO, 'package.json'), 'utf8')) as { engines: { node: string } }).engines.node.replace(/^>=/, '');
+    for (const base of [NODE_24_BASE, NODE_26_BASE]) {
+      const version = /^node:(\d+\.\d+\.\d+)-bookworm-slim@sha256:[0-9a-f]{64}$/.exec(base)?.[1];
+      assert.ok(version !== undefined && atLeast(version, floor), `${base} is at or above the engines floor ${floor}`);
+    }
+  });
+
+  test('Dockerfile installs Claude Code 2.1.302 from the official release URL, verifies the pinned sha256 and the signed manifest and equals the registered claudeVersion', () => {
+    const dockerfile = logical(readDocker('Dockerfile'));
+    const prereg = readPrereg(PREREG_FILE);
+    assert.equal(prereg.params.claudeVersion, '2.1.302');
+    assert.ok(dockerfile.includes(`ARG CLAUDE_VERSION=${prereg.params.claudeVersion}`));
+    assert.ok(dockerfile.includes(`ARG CLAUDE_SHA256=${CLAUDE_SHA256}`));
+    assert.ok(dockerfile.includes(`ARG CLAUDE_RELEASE_FINGERPRINT=${RELEASE_FINGERPRINT}`));
+    assert.ok(dockerfile.includes('https://downloads.claude.ai/claude-code-releases/'));
+    assert.ok(dockerfile.includes('https://downloads.claude.ai/keys/claude-code.asc'));
+    for (const needle of ['manifest.json', 'manifest.json.sig', 'linux-x64', 'gpg', '--verify', 'sha256sum -c', '--with-colons']) {
+      assert.ok(dockerfile.includes(needle), needle);
+    }
+    // The fingerprint and both checksums are compared with the pinned arguments, and a mismatch stops the build.
+    assert.match(dockerfile, /test "\$\{fingerprint\}" = "\$\{CLAUDE_RELEASE_FINGERPRINT\}"/);
+    assert.match(dockerfile, /test "\$\{manifest_sha\}" = "\$\{CLAUDE_SHA256\}"/);
+    assert.match(dockerfile, /echo "\$\{CLAUDE_SHA256\}  claude" \| sha256sum -c -/);
+    assert.match(dockerfile, /COPY --from=fetch \/fetch\/claude \/usr\/local\/bin\/claude/);
+  });
+
+  test('Dockerfile disables updates and sets no credential or provider variable, no EXPOSE, no ADD from a URL, no secret argument', () => {
+    const dockerfile = logical(readDocker('Dockerfile'));
+    const names: string[] = [];
+    for (const line of dockerfile.split('\n')) {
+      const env = /^ENV\s+(.+)$/.exec(line);
+      if (env !== null) for (const pair of (env[1] as string).split(/\s+/)) names.push(pair.split('=')[0] as string);
+    }
+    assert.deepEqual(names.sort(), ['DISABLE_AUTOUPDATER', 'DISABLE_UPDATES', 'HOME', 'TMPDIR']);
+    assert.match(dockerfile, /ENV HOME=\/home\/cleanroom TMPDIR=\/work\/tmp DISABLE_UPDATES=1 DISABLE_AUTOUPDATER=1/);
+    assert.ok(!/^\s*EXPOSE\b/m.test(dockerfile), 'no EXPOSE');
+    assert.ok(!/^\s*ADD\b/m.test(dockerfile), 'no ADD');
+    assert.ok(!/^\s*VOLUME\b/m.test(dockerfile), 'no VOLUME');
+    for (const line of dockerfile.split('\n')) {
+      const arg = /^ARG\s+([A-Za-z0-9_]+)/.exec(line);
+      if (arg !== null) assert.ok(!/SECRET|TOKEN|PASSWORD|API_?KEY|CREDENTIAL|AUTH/i.test(arg[1] as string), `ARG ${arg[1] as string}`);
+    }
+    for (const prefix of ['ANTHROPIC_', 'CLAUDE_CODE_', 'AWS_', 'GOOGLE_', 'AZURE_']) {
+      assert.ok(!dockerfile.includes(prefix), prefix);
+    }
+    const leaks = findLeaks(dockerfile, { deny: [], denyOnly: true });
+    assert.deepEqual(leaks, [], 'no token-like string or email address');
+  });
+
+  test('Dockerfile runs as a non-root user with a fixed uid', () => {
+    const dockerfile = logical(readDocker('Dockerfile'));
+    assert.match(dockerfile, /useradd[^\n]*--uid 10001[^\n]*cleanroom/);
+    assert.match(dockerfile, /--home-dir \/home\/cleanroom/);
+    const users = dockerfile.split('\n').filter((line) => /^USER\s/.test(line));
+    assert.deepEqual(users, ['USER cleanroom']);
+    assert.match(dockerfile, /^WORKDIR \/work$/m);
+    assert.match(dockerfile, /^CMD \["sleep", "infinity"\]$/m);
+    assert.match(dockerfile, /LABEL org\.gsd-atlas\.cleanroom\.plan="03-39"/);
+  });
+
+  test('Dockerfile installs ripgrep and git and adds no compiler toolchain', () => {
+    const dockerfile = logical(readDocker('Dockerfile'));
+    const installs = dockerfile.split('\n').filter((line) => /apt-get install/.test(line));
+    assert.equal(installs.length, 2, 'one install per stage');
+    for (const line of installs) assert.ok(line.includes('--no-install-recommends'), line);
+    const finalInstall = installs.at(-1) as string;
+    assert.match(finalInstall, /ca-certificates git ripgrep tmux procps jq less/);
+    assert.ok(!/\b(build-essential|gcc|g\+\+|make|cmake|clang|python3|node-gyp)\b/.test(dockerfile), 'no compiler toolchain');
+    const fetchInstall = installs[0] as string;
+    assert.match(fetchInstall, /curl gnupg ca-certificates/);
+  });
+
+  test('user-claude.md is the exact neutral text and holds none of the forbidden words', () => {
+    const notes = readDocker('user-claude.md');
+    assert.equal(notes, '# Notes\n\nThis is a general-purpose Linux development machine.\n');
+    for (const word of ['atlas', 'grep', 'codegraph', 'mcp', 'skill', 'hook', 'tool', 'search', 'symbol', 'citation', 'cite', 'token', 'answer', 'question', 'repository']) {
+      assert.ok(!notes.toLowerCase().includes(word), word);
+    }
+  });
+
+  test('cleanroomctl.sh uses only its own object names, labels everything, checks the label before removing, requires CLEANROOM_SSH, and has no prune, no sudo, no wildcard or command-substitution removal, no publish flag, no docker socket mount', () => {
+    const raw = readDocker('cleanroomctl.sh');
+    const script = logical(raw);
+    const own = new Set([
+      'gsd-atlas-cleanroom',
+      'gsd-atlas-cleanroom:03-39',
+      'gsd-atlas-cleanroom-net',
+      'gsd-atlas-cleanroom-home',
+      'gsd-atlas-cleanroom-work',
+    ]);
+    for (const match of raw.matchAll(/gsd-atlas-cleanroom[A-Za-z0-9_.:-]*/g)) {
+      const name = match[0].replace(/[.:-]+$/, '');
+      assert.ok(own.has(name), `${name} is not one of the five own names`);
+    }
+    for (const name of own) assert.ok(raw.includes(name), name);
+    assert.match(raw, /org\.gsd-atlas\.cleanroom\.plan/);
+    assert.match(raw, /--label "\$\{LABEL_KEY\}=\$\{LABEL_VALUE\}"/);
+    assert.match(raw, /: "\$\{CLEANROOM_SSH:\?/);
+    assert.ok(!raw.includes('holodeck'), 'no default host');
+    assert.ok(!/\bsudo\b/.test(raw), 'no sudo');
+    assert.ok(!/prune/i.test(raw), 'no prune');
+    assert.ok(!/docker\s+system/.test(raw), 'no docker system');
+    assert.ok(!/docker\.sock/.test(raw), 'no docker socket');
+    assert.ok(!/docker logs|docker cp\b/.test(raw), 'no logs and no cp');
+    for (const line of script.split('\n').filter((entry) => /docker run/.test(entry))) {
+      assert.ok(!/(\s-p\s|--publish|\s-P\s|--privileged)/.test(line), `publish or privileged flag: ${line}`);
+      assert.ok(line.includes('--cap-drop ALL'), 'all capabilities dropped');
+      assert.ok(line.includes('no-new-privileges:true'), 'no-new-privileges');
+      assert.ok(line.includes('--pids-limit') && line.includes('--cpu-shares') && line.includes('--memory-swap'), 'explicit limits');
+    }
+    // Every removal sits in the one function that reads the label first.
+    const removal = /^remove_object\(\) \{\n([\s\S]*?)^\}/m.exec(raw);
+    assert.ok(removal !== null, 'a remove_object function');
+    const body = removal[1] as string;
+    assert.ok(body.indexOf('require_label') >= 0 && body.indexOf('require_label') < body.search(/ rm /), 'the label is read before the removal');
+    for (const line of script.split('\n')) {
+      if (/\brm\b/.test(line) && /docker/.test(line)) {
+        assert.ok(removal[0].includes(line.trim()) || /remove_object/.test(line), `a removal outside remove_object: ${line}`);
+      }
+      if (/(docker[^\n]*\brm\b|\brm\s)/.test(line)) {
+        assert.ok(!/\$\(|\*|`/.test(line.replace(/'[^']*'/g, '')), `wildcard or substitution in a removal: ${line}`);
+      }
+    }
+    // The remote commands take object names from constants, never from the arguments or the environment.
+    assert.ok(!/docker (?:container |network |image |volume )?(?:rm|stop|start|restart|kill|exec|inspect)[^\n]*"\$\{?[1-9@*]/.test(script), 'no object name from an argument');
+  });
+
+  test('cleanroomctl.sh has no syntax error and answers help without CLEANROOM_SSH', () => {
+    const file = path.join(DOCKER_DIR, 'cleanroomctl.sh');
+    const syntax = spawnSync('bash', ['-n', file], { encoding: 'utf8' });
+    assert.equal(syntax.status, 0, syntax.stderr);
+    const env = { ...process.env };
+    delete env['CLEANROOM_SSH'];
+    const help = spawnSync('bash', [file, 'help'], { encoding: 'utf8', env });
+    assert.equal(help.status, 0, help.stderr);
+    assert.match(help.stdout, /usage:/i);
+    const refused = spawnSync('bash', [file, 'status'], { encoding: 'utf8', env });
+    assert.notEqual(refused.status, 0);
+    assert.match(refused.stderr, /CLEANROOM_SSH/);
+    const bad = spawnSync('bash', [file, 'status'], { encoding: 'utf8', env: { ...env, CLEANROOM_SSH: '-oProxyCommand=x' } });
+    assert.notEqual(bad.status, 0, 'an ssh target that looks like an option is refused');
+    const unknown = spawnSync('bash', [file, 'prune'], { encoding: 'utf8', env: { ...env, CLEANROOM_SSH: 'host.example.test' } });
+    assert.notEqual(unknown.status, 0, 'an unknown subcommand is refused');
+  });
+
+  test('the image files carry no host name, token or email address', () => {
+    for (const name of ['Dockerfile', 'user-claude.md', 'cleanroomctl.sh']) {
+      assert.deepEqual(findLeaks(readDocker(name), { deny: ['nomorestars'], denyOnly: true }), [], name);
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// probe
+
+function executable(file: string, text: string): string {
+  fs.writeFileSync(file, text, { mode: 0o755 });
+  return file;
+}
+
+interface ProbeRun {
+  code: number | null;
+  stdout: string;
+  stderr: string;
+  argv: string[];
+  stdin: string;
+  outDir: string;
+}
+
+function runProbe(arm: string, events: Json[], extra: string[] = []): ProbeRun {
+  const dir = tmpDir('probe');
+  const corpus = path.join(dir, 'corpus');
+  fs.mkdirSync(corpus);
+  fs.writeFileSync(path.join(corpus, 'a.ts'), 'export const a = 1;\n');
+  const outDir = path.join(dir, 'out');
+  const eventsFile = path.join(dir, 'events.json');
+  fs.writeFileSync(eventsFile, JSON.stringify(events));
+  const claude = executable(
+    path.join(dir, 'claude'),
+    [
+      '#!/usr/bin/env node',
+      "const fs = require('node:fs');",
+      "fs.writeFileSync(process.env.FAKE_ARGV_OUT, JSON.stringify(process.argv.slice(2)));",
+      "let input = '';",
+      "process.stdin.on('data', (chunk) => { input += chunk; });",
+      "process.stdin.on('end', () => {",
+      '  fs.writeFileSync(process.env.FAKE_STDIN_OUT, input);',
+      "  for (const event of JSON.parse(fs.readFileSync(process.env.FAKE_EVENTS, 'utf8'))) console.log(JSON.stringify(event));",
+      '});',
+      '',
+    ].join('\n'),
+  );
+  const atlas = executable(path.join(dir, 'fake-gsd-atlas.js'), '#!/usr/bin/env node\nprocess.exit(0);\n');
+  const done = runScript('probe.ts', ['--arm', arm, '--corpus-dir', corpus, '--out-dir', outDir, '--claude', claude, '--atlas-bin', atlas, ...extra], {
+    FAKE_ARGV_OUT: path.join(dir, 'argv.json'),
+    FAKE_STDIN_OUT: path.join(dir, 'stdin.txt'),
+    FAKE_EVENTS: eventsFile,
+  });
+  const read = (file: string): string => (fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : '');
+  const argvText = read(path.join(dir, 'argv.json'));
+  return { ...done, argv: argvText === '' ? [] : (JSON.parse(argvText) as string[]), stdin: read(path.join(dir, 'stdin.txt')), outDir };
+}
+
+const argAfter = (argv: readonly string[], flag: string): string | undefined => {
+  const at = argv.indexOf(flag);
+  return at < 0 ? undefined : argv[at + 1];
+};
+
+describe('probe', () => {
+  const reply = (text: string): Json => resultEvent({ result: text, total_cost_usd: 0.012 });
+
+  test('probe grep arm builds the registered session and reports the compact line', () => {
+    const run = runProbe('grep', [initEvent('grep'), rateEvent(), reply('ok')]);
+    assert.equal(run.code, 0, run.stderr);
+    const lines = run.stdout.trim().split('\n');
+    assert.equal(lines.length, 1, 'one compact line');
+    const report = JSON.parse(lines[0] as string) as Json;
+    assert.equal(report['probe'], 'grep');
+    assert.equal(report['status'], 'ok');
+    assert.deepEqual(report['signatureDiffs'], []);
+    assert.equal(report['apiKeySource'], 'none');
+    assert.equal(report['claudeCodeVersion'], '2.1.302');
+    assert.equal(report['hookEvents'], 0);
+    assert.equal(report['costUsd'], 0.012);
+    assert.ok(!('reply' in report), 'arm probes do not print the reply');
+    const rate = report['rateLimit'] as Json;
+    assert.equal(rate['status'], 'allowed_warning');
+    assert.equal(rate['fiveHour'], 0.28);
+    assert.equal(rate['sevenDay'], 0.56);
+    assert.equal(rate['isUsingOverage'], false);
+    assert.ok(!run.stdout.includes('/'), 'no path in the line');
+    assert.equal(run.stdin, 'Reply with the single word ok.');
+    assert.equal(argAfter(run.argv, '--setting-sources'), '');
+    assert.ok(run.argv.includes('--strict-mcp-config'));
+    assert.equal(argAfter(run.argv, '--tools'), 'Bash,Read');
+    assert.equal(argAfter(run.argv, '--max-budget-usd'), '0.05');
+    assert.equal(argAfter(run.argv, '--model'), 'claude-sonnet-5-5');
+    assert.ok(argAfter(run.argv, '--json-schema')?.includes('"items"'));
+    assert.ok(!run.argv.includes('--plugin-dir') && !run.argv.includes('--settings'));
+    assert.ok(fs.existsSync(path.join(run.outDir, 'streams', 'probe-grep.grep.1.a1.jsonl')));
+    const checked = checkResultsDir({ outDir: run.outDir, streamsOnly: true });
+    assert.equal(checked.ok, true, JSON.stringify(checked.findings));
+  });
+
+  test('probe atlas arm adds the plugin, the settings, the Skill tool and the atlas tools', () => {
+    const run = runProbe('atlas', [initEvent('atlas'), rateEvent(), reply('ok')]);
+    assert.equal(run.code, 0, run.stderr);
+    const report = JSON.parse(run.stdout.trim()) as Json;
+    assert.equal(report['probe'], 'atlas');
+    assert.deepEqual(report['signatureDiffs'], []);
+    assert.equal(argAfter(run.argv, '--tools'), 'Bash,Read,Skill');
+    assert.ok(run.argv.includes('--plugin-dir'));
+    assert.equal(argAfter(run.argv, '--settings'), '{"disableBundledSkills":true,"skillOverrides":{"plugin-authoring":"off","design":"off","doctor":"off"}}');
+    const allowed = argAfter(run.argv, '--allowedTools') ?? '';
+    assert.ok(allowed.includes('Skill(gsd-atlas-eval:gsd-atlas)'));
+    for (const tool of ATLAS_TOOL_NAMES) assert.ok(allowed.includes(tool), tool);
+    assert.equal(path.basename(argAfter(run.argv, '--mcp-config') ?? ''), 'mcp.json');
+  });
+
+  test('probe names an init signature difference', () => {
+    const odd = initEvent('grep');
+    (odd['tools'] as string[]).push('WebFetch');
+    const run = runProbe('grep', [odd, rateEvent(), reply('ok')]);
+    assert.equal(run.code, 0, run.stderr);
+    const report = JSON.parse(run.stdout.trim()) as { signatureDiffs: string[] };
+    assert.ok(report.signatureDiffs.some((diff) => diff.includes('WebFetch')));
+  });
+
+  test('probe control-harness uses the grep arm isolation flags and prints the reply', () => {
+    const run = runProbe('control-harness', [initEvent('grep'), rateEvent(), reply('none')]);
+    assert.equal(run.code, 0, run.stderr);
+    const report = JSON.parse(run.stdout.trim()) as Json;
+    assert.equal(report['probe'], 'control-harness');
+    assert.equal(report['reply'], 'none');
+    assert.ok(run.stdin.includes('CLAUDE.md'));
+    assert.ok(run.stdin.includes('otherwise reply with the single word none'));
+    assert.equal(argAfter(run.argv, '--setting-sources'), '');
+    assert.ok(run.argv.includes('--strict-mcp-config'));
+    assert.equal(argAfter(run.argv, '--tools'), 'Bash,Read');
+    assert.ok(fs.existsSync(path.join(run.outDir, 'streams', 'probe-control-harness.control.1.a1.jsonl')));
+  });
+
+  test('probe control-default runs without --setting-sources and prints at most 200 characters of the reply', () => {
+    const run = runProbe('control-default', [initEvent('grep'), rateEvent(), reply('x'.repeat(300))]);
+    assert.equal(run.code, 0, run.stderr);
+    const report = JSON.parse(run.stdout.trim()) as { reply: string; probe: string };
+    assert.equal(report.probe, 'control-default');
+    assert.equal(report.reply.length, 200);
+    assert.ok(!run.argv.includes('--setting-sources'));
+    assert.ok(!run.argv.includes('--strict-mcp-config') && !run.argv.includes('--mcp-config'));
+    assert.equal(argAfter(run.argv, '--tools'), '');
+    assert.ok(run.argv.includes('--no-session-persistence'));
+    assert.equal(argAfter(run.argv, '--model'), 'claude-sonnet-5-5');
+    assert.equal(argAfter(run.argv, '--max-budget-usd'), '0.05');
+  });
+
+  test('probe refuses a bad arm and a missing corpus directory', () => {
+    const noArm = runScript('probe.ts', ['--corpus-dir', os.tmpdir(), '--out-dir', path.join(tmpDir('probe-bad'), 'out')]);
+    assert.equal(noArm.code, 2);
+    const wrongArm = runScript('probe.ts', ['--arm', 'both', '--corpus-dir', os.tmpdir(), '--out-dir', path.join(tmpDir('probe-bad2'), 'out')]);
+    assert.equal(wrongArm.code, 2);
+    const noCorpus = runScript('probe.ts', ['--arm', 'grep', '--corpus-dir', path.join(tmpDir('probe-bad3'), 'missing'), '--out-dir', path.join(tmpDir('probe-bad4'), 'out')]);
+    assert.equal(noCorpus.code, 2);
+    assert.ok(!/\n\s+at /.test(noCorpus.stderr), 'no stack trace');
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
 // shape of the tooling
 
 describe('tooling imports', () => {
   test('the tools import only Node built-ins and the registered eval modules, never src', () => {
-    const files = ['init-signature.ts', 'check-chunk.ts', 'compare.ts', 'scrub.ts'];
+    const files = ['init-signature.ts', 'check-chunk.ts', 'compare.ts', 'scrub.ts', 'probe.ts'];
     for (const name of files) {
       const text = fs.readFileSync(SCRIPT(name), 'utf8');
       const specifiers = [...text.matchAll(/^\s*(?:import|export)\s[^;]*?from\s+'([^']+)'/gm)].map((match) => match[1] as string);
