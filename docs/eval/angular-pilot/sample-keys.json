@@ -1,0 +1,396 @@
+{
+ "unresolved": [
+  {
+   "specifier": "typescript",
+   "files": 263
+  },
+  {
+   "specifier": "rxjs",
+   "files": 85
+  },
+  {
+   "specifier": "rxjs/operators",
+   "files": 29
+  },
+  {
+   "specifier": "path",
+   "files": 27
+  },
+  {
+   "specifier": "@babel/core",
+   "files": 13
+  },
+  {
+   "specifier": "fs",
+   "files": 13
+  },
+  {
+   "specifier": "vscode-languageserver",
+   "files": 10
+  },
+  {
+   "specifier": "node:fs/promises",
+   "files": 8
+  },
+  {
+   "specifier": "node:fs",
+   "files": 6
+  },
+  {
+   "specifier": "magic-string",
+   "files": 5
+  },
+  {
+   "specifier": "node:path",
+   "files": 5
+  },
+  {
+   "specifier": "node:url",
+   "files": 5
+  },
+  {
+   "specifier": "semver",
+   "files": 5
+  },
+  {
+   "specifier": "tinyglobby",
+   "files": 5
+  },
+  {
+   "specifier": "vscode-uri",
+   "files": 5
+  },
+  {
+   "specifier": "yargs",
+   "files": 5
+  },
+  {
+   "specifier": "zone.js",
+   "files": 4
+  },
+  {
+   "specifier": "child_process",
+   "files": 3
+  },
+  {
+   "specifier": "node:module",
+   "files": 3
+  },
+  {
+   "specifier": "reflect-metadata",
+   "files": 3
+  },
+  {
+   "specifier": "url",
+   "files": 3
+  },
+  {
+   "specifier": "@jridgewell/sourcemap-codec",
+   "files": 2
+  },
+  {
+   "specifier": "convert-source-map",
+   "files": 2
+  },
+  {
+   "specifier": "module",
+   "files": 2
+  },
+  {
+   "specifier": "os",
+   "files": 2
+  },
+  {
+   "specifier": "vscode-jsonrpc/node",
+   "files": 2
+  },
+  {
+   "specifier": "@angular/ssr",
+   "files": 1
+  },
+  {
+   "specifier": "@angular/ssr/node",
+   "files": 1
+  },
+  {
+   "specifier": "@mcp-b/webmcp-types",
+   "files": 1
+  },
+  {
+   "specifier": "@standard-schema/spec",
+   "files": 1
+  },
+  {
+   "specifier": "assert",
+   "files": 1
+  },
+  {
+   "specifier": "chokidar",
+   "files": 1
+  },
+  {
+   "specifier": "cldr",
+   "files": 1
+  },
+  {
+   "specifier": "cldrjs",
+   "files": 1
+  },
+  {
+   "specifier": "esbuild",
+   "files": 1
+  },
+  {
+   "specifier": "fs/promises",
+   "files": 1
+  },
+  {
+   "specifier": "http",
+   "files": 1
+  },
+  {
+   "specifier": "readline",
+   "files": 1
+  },
+  {
+   "specifier": "vscode-languageserver-textdocument",
+   "files": 1
+  }
+ ],
+ "samples": [
+  {
+   "spec": "callers:isInSkipHydrationBlock@packages/core/src/render3/state.ts",
+   "key": [
+    "packages/core/src/hydration/utils.ts",
+    "packages/core/src/render3/i18n/i18n_apply.ts",
+    "packages/core/src/render3/instructions/projection.ts",
+    "packages/core/src/render3/tnode_manipulation.ts"
+   ],
+   "detail": [
+    "packages/core/src/hydration/utils.ts:528",
+    "packages/core/src/render3/i18n/i18n_apply.ts:158",
+    "packages/core/src/render3/instructions/projection.ts:195",
+    "packages/core/src/render3/tnode_manipulation.ts:288"
+   ],
+   "grepFiles": 8,
+   "inBoth": [
+    "packages/core/src/hydration/utils.ts",
+    "packages/core/src/render3/i18n/i18n_apply.ts",
+    "packages/core/src/render3/instructions/projection.ts",
+    "packages/core/src/render3/tnode_manipulation.ts"
+   ],
+   "keyOnly": [],
+   "grepOnly": [
+    "packages/core/src/hydration/annotate.ts",
+    "packages/core/src/hydration/skip_hydration.ts",
+    "packages/core/src/linker/view_container_ref.ts",
+    "packages/core/src/render3/state.ts"
+   ]
+  },
+  {
+   "spec": "callers:findTightestNode@packages/language-service/src/utils/ts_utils.ts",
+   "key": [
+    "packages/language-service/src/completions.ts",
+    "packages/language-service/src/definitions.ts",
+    "packages/language-service/src/language_service.ts",
+    "packages/language-service/src/refactorings/convert_to_signal_input/full_class_input_refactoring.ts",
+    "packages/language-service/src/refactorings/convert_to_signal_input/individual_input_refactoring.ts",
+    "packages/language-service/src/refactorings/convert_to_signal_queries/full_class_query_refactoring.ts",
+    "packages/language-service/src/refactorings/convert_to_signal_queries/individual_query_refactoring.ts",
+    "packages/language-service/src/references_and_rename.ts",
+    "packages/language-service/src/references_and_rename_utils.ts",
+    "packages/language-service/src/signature_help.ts",
+    "packages/language-service/src/utils/index.ts",
+    "packages/language-service/src/utils/ts_utils.ts"
+   ],
+   "detail": [
+    "packages/language-service/src/completions.ts:821",
+    "packages/language-service/src/definitions.ts:413",
+    "packages/language-service/src/language_service.ts:1215",
+    "packages/language-service/src/refactorings/convert_to_signal_input/full_class_input_refactoring.ts:47",
+    "packages/language-service/src/refactorings/convert_to_signal_input/full_class_input_refactoring.ts:85",
+    "packages/language-service/src/refactorings/convert_to_signal_input/individual_input_refactoring.ts:52",
+    "packages/language-service/src/refactorings/convert_to_signal_input/individual_input_refactoring.ts:89",
+    "packages/language-service/src/refactorings/convert_to_signal_queries/full_class_query_refactoring.ts:47",
+    "packages/language-service/src/refactorings/convert_to_signal_queries/full_class_query_refactoring.ts:85",
+    "packages/language-service/src/refactorings/convert_to_signal_queries/individual_query_refactoring.ts:49",
+    "packages/language-service/src/refactorings/convert_to_signal_queries/individual_query_refactoring.ts:86",
+    "packages/language-service/src/references_and_rename.ts:381",
+    "packages/language-service/src/references_and_rename_utils.ts:323",
+    "packages/language-service/src/signature_help.ts:98",
+    "packages/language-service/src/utils/index.ts:122",
+    "packages/language-service/src/utils/ts_utils.ts:33"
+   ],
+   "grepFiles": 15,
+   "inBoth": [
+    "packages/language-service/src/completions.ts",
+    "packages/language-service/src/definitions.ts",
+    "packages/language-service/src/language_service.ts",
+    "packages/language-service/src/refactorings/convert_to_signal_input/full_class_input_refactoring.ts",
+    "packages/language-service/src/refactorings/convert_to_signal_input/individual_input_refactoring.ts",
+    "packages/language-service/src/refactorings/convert_to_signal_queries/full_class_query_refactoring.ts",
+    "packages/language-service/src/refactorings/convert_to_signal_queries/individual_query_refactoring.ts",
+    "packages/language-service/src/references_and_rename.ts",
+    "packages/language-service/src/references_and_rename_utils.ts",
+    "packages/language-service/src/signature_help.ts",
+    "packages/language-service/src/utils/index.ts",
+    "packages/language-service/src/utils/ts_utils.ts"
+   ],
+   "keyOnly": [],
+   "grepOnly": [
+    "packages/compiler-cli/preprocessor/language-service/src/references_and_rename.ts",
+    "packages/compiler-cli/preprocessor/language-service/src/references_and_rename_utils.ts",
+    "packages/compiler-cli/preprocessor/language-service/src/signature_help.ts"
+   ]
+  },
+  {
+   "spec": "callers:splitNsName@packages/compiler/src/ml_parser/tags.ts",
+   "key": [
+    "packages/compiler/src/ml_parser/parser.ts",
+    "packages/compiler/src/ml_parser/tags.ts",
+    "packages/compiler/src/render3/view/util.ts",
+    "packages/compiler/src/schema/dom_element_schema_registry.ts",
+    "packages/compiler/src/template/pipeline/src/ingest.ts",
+    "packages/compiler/src/template/pipeline/src/phases/binding_specialization.ts",
+    "packages/compiler/src/template_parser/binding_parser.ts",
+    "packages/compiler/src/template_parser/template_preparser.ts",
+    "packages/compiler/src/typecheck/ops/scope.ts"
+   ],
+   "detail": [
+    "packages/compiler/src/ml_parser/parser.ts:1011",
+    "packages/compiler/src/ml_parser/tags.ts:47",
+    "packages/compiler/src/ml_parser/tags.ts:52",
+    "packages/compiler/src/ml_parser/tags.ts:57",
+    "packages/compiler/src/ml_parser/tags.ts:63",
+    "packages/compiler/src/render3/view/util.ts:174",
+    "packages/compiler/src/render3/view/util.ts:179",
+    "packages/compiler/src/schema/dom_element_schema_registry.ts:23",
+    "packages/compiler/src/schema/dom_element_schema_registry.ts:459",
+    "packages/compiler/src/template/pipeline/src/ingest.ts:343",
+    "packages/compiler/src/template/pipeline/src/ingest.ts:468",
+    "packages/compiler/src/template/pipeline/src/ingest.ts:1518",
+    "packages/compiler/src/template/pipeline/src/ingest.ts:1548",
+    "packages/compiler/src/template/pipeline/src/ingest.ts:2171",
+    "packages/compiler/src/template/pipeline/src/phases/binding_specialization.ts:65",
+    "packages/compiler/src/template_parser/binding_parser.ts:892",
+    "packages/compiler/src/template_parser/binding_parser.ts:894",
+    "packages/compiler/src/template_parser/binding_parser.ts:925",
+    "packages/compiler/src/template_parser/template_preparser.ts:51",
+    "packages/compiler/src/typecheck/ops/scope.ts:1147"
+   ],
+   "grepFiles": 12,
+   "inBoth": [
+    "packages/compiler/src/ml_parser/parser.ts",
+    "packages/compiler/src/ml_parser/tags.ts",
+    "packages/compiler/src/render3/view/util.ts",
+    "packages/compiler/src/schema/dom_element_schema_registry.ts",
+    "packages/compiler/src/template/pipeline/src/ingest.ts",
+    "packages/compiler/src/template/pipeline/src/phases/binding_specialization.ts",
+    "packages/compiler/src/template_parser/binding_parser.ts",
+    "packages/compiler/src/template_parser/template_preparser.ts",
+    "packages/compiler/src/typecheck/ops/scope.ts"
+   ],
+   "keyOnly": [],
+   "grepOnly": [
+    "packages/core/src/render3/i18n/i18n_parse.ts",
+    "packages/core/src/render3/util/tags.ts",
+    "packages/core/src/sanitization/sanitization.ts"
+   ]
+  },
+  {
+   "spec": "references:DirectiveMeta@packages/compiler/src/render3/view/t2_api.ts",
+   "key": [
+    "packages/compiler-cli/preprocessor/src/compiler-utils.ts",
+    "packages/compiler-cli/src/ngtsc/metadata/src/api.ts",
+    "packages/compiler-cli/src/ngtsc/typecheck/api/api.ts",
+    "packages/compiler-cli/src/ngtsc/typecheck/src/context.ts",
+    "packages/compiler/src/render3/view/t2_api.ts",
+    "packages/compiler/src/render3/view/t2_binder.ts"
+   ],
+   "detail": [
+    "packages/compiler-cli/preprocessor/src/compiler-utils.ts:21",
+    "packages/compiler-cli/preprocessor/src/compiler-utils.ts:45",
+    "packages/compiler-cli/src/ngtsc/metadata/src/api.ts:17",
+    "packages/compiler-cli/src/ngtsc/metadata/src/api.ts:17",
+    "packages/compiler-cli/src/ngtsc/metadata/src/api.ts:196",
+    "packages/compiler-cli/src/ngtsc/typecheck/api/api.ts:13",
+    "packages/compiler-cli/src/ngtsc/typecheck/api/api.ts:28",
+    "packages/compiler-cli/src/ngtsc/typecheck/src/context.ts:11",
+    "packages/compiler-cli/src/ngtsc/typecheck/src/context.ts:86",
+    "packages/compiler/src/render3/view/t2_api.ts:202",
+    "packages/compiler/src/render3/view/t2_api.ts:214",
+    "packages/compiler/src/render3/view/t2_binder.ts:63",
+    "packages/compiler/src/render3/view/t2_binder.ts:125",
+    "packages/compiler/src/render3/view/t2_binder.ts:144",
+    "packages/compiler/src/render3/view/t2_binder.ts:167",
+    "packages/compiler/src/render3/view/t2_binder.ts:175",
+    "packages/compiler/src/render3/view/t2_binder.ts:562",
+    "packages/compiler/src/render3/view/t2_binder.ts:593",
+    "packages/compiler/src/render3/view/t2_binder.ts:901",
+    "packages/compiler/src/render3/view/t2_binder.ts:964",
+    "packages/compiler/src/render3/view/t2_binder.ts:1282"
+   ],
+   "grepFiles": 28,
+   "inBoth": [
+    "packages/compiler-cli/preprocessor/src/compiler-utils.ts",
+    "packages/compiler-cli/src/ngtsc/metadata/src/api.ts",
+    "packages/compiler-cli/src/ngtsc/typecheck/api/api.ts",
+    "packages/compiler-cli/src/ngtsc/typecheck/src/context.ts",
+    "packages/compiler/src/render3/view/t2_api.ts",
+    "packages/compiler/src/render3/view/t2_binder.ts"
+   ],
+   "keyOnly": [],
+   "grepOnly": [
+    "packages/compiler-cli/index.ts",
+    "packages/compiler-cli/private/migrations.ts",
+    "packages/compiler-cli/src/ngtsc/annotations/common/src/diagnostics.ts",
+    "packages/compiler-cli/src/ngtsc/annotations/component/src/handler.ts",
+    "packages/compiler-cli/src/ngtsc/core/src/compiler.ts",
+    "packages/compiler-cli/src/ngtsc/docs/src/class_extractor.ts",
+    "packages/compiler-cli/src/ngtsc/metadata/src/dts.ts",
+    "packages/compiler-cli/src/ngtsc/metadata/src/host_directives_resolver.ts",
+    "packages/compiler-cli/src/ngtsc/metadata/src/inheritance.ts",
+    "packages/compiler-cli/src/ngtsc/metadata/src/registry.ts",
+    "packages/compiler-cli/src/ngtsc/metadata/src/util.ts",
+    "packages/compiler-cli/src/ngtsc/scope/src/api.ts",
+    "packages/compiler-cli/src/ngtsc/scope/src/dependency.ts",
+    "packages/compiler-cli/src/ngtsc/scope/src/local.ts",
+    "packages/compiler-cli/src/ngtsc/scope/src/selectorless_scope.ts",
+    "packages/compiler-cli/src/ngtsc/scope/src/standalone.ts",
+    "packages/compiler-cli/src/ngtsc/scope/src/typecheck.ts",
+    "packages/compiler-cli/src/ngtsc/typecheck/api/context.ts",
+    "packages/compiler-cli/src/ngtsc/typecheck/src/checker.ts",
+    "packages/compiler-cli/src/ngtsc/typecheck/testing/index.ts",
+    "packages/language-service/src/references_and_rename.ts",
+    "packages/language-service/src/references_and_rename_utils.ts"
+   ]
+  },
+  {
+   "spec": "heritage:AstVisitor@packages/compiler/src/expression_parser/ast.ts",
+   "key": [
+    "packages/compiler/src/expression_parser/ast.ts",
+    "packages/compiler/src/expression_parser/serializer.ts",
+    "packages/compiler/src/typecheck/expression.ts"
+   ],
+   "detail": [
+    "packages/compiler/src/expression_parser/ast.ts:741 RecursiveAstVisitor",
+    "packages/compiler/src/expression_parser/serializer.ts:16 SerializeExpressionVisitor",
+    "packages/compiler/src/typecheck/expression.ts:58 TcbExprTranslator",
+    "packages/compiler/src/typecheck/expression.ts:465 VeSafeLhsInferenceBugDetector"
+   ],
+   "grepFiles": 7,
+   "inBoth": [
+    "packages/compiler/src/expression_parser/ast.ts",
+    "packages/compiler/src/expression_parser/serializer.ts",
+    "packages/compiler/src/typecheck/expression.ts"
+   ],
+   "keyOnly": [],
+   "grepOnly": [
+    "packages/animations/browser/src/dsl/animation_ast.ts",
+    "packages/animations/browser/src/dsl/animation_timeline_builder.ts",
+    "packages/animations/browser/src/util.ts",
+    "packages/compiler-cli/preprocessor/src/selectorless.ts"
+   ]
+  }
+ ]
+}
