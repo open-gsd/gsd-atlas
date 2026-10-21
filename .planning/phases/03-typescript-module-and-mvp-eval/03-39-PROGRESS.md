@@ -91,6 +91,9 @@ Host after preflight: own objects present (five); 1-minute load 10.88 (gate need
 | --- | --- | --- | --- | --- | --- |
 | 1 (line 5 USD, load 0.01 at start, nice 10) | rows 0 to 141 (attempts 141, streams 141, skipped 0) | 5.0233 USD | about 80 min (ended 2026-10-21T12:43Z; start time approximate) | harness exit 1 (cost stop reached, expected); check-chunk: ok; 0 infrastructureFailure true | 0.08 / 0.08 |
 | 2 (line 10 USD, load 0.04 at start, nice 10) | rows 141 to 303 (attempts 303, streams 303) | 10.0409 USD | about 5 h (ended 2026-10-21T18:10Z; start time approximate) | harness exit 1 (cost stop reached, expected); check-chunk: ok; 0 infrastructureFailure true | 0.03 / 0.09 (window reset between chunks) |
+| 3 (line 20 USD, load 0.18 at start, nice 10) | rows 303 to 450 (attempts 450, streams 450, skipped 303) | 5.4666 USD (run total 15.5075 USD) | about 30 min (ended 2026-10-21T18:50Z; start time approximate) | harness exit 0 (all cells done); check-chunk --final: ok; 0 infrastructureFailure true | 0.06 / 0.10 |
+
+Harness summary (450 rows, no failed session): atlas 225 ok, mean billable tokens 42906.1, mean tool calls 3.3, mean wall 11899 ms, cost 8.7457 USD; grep 225 ok, mean billable tokens 23951.7, mean tool calls 3.0, mean wall 10555 ms, cost 6.7618 USD; 75 questions with both arms; disagreement 4 of 75 (5.3%). Registered analysis (Task 9) not yet run.
 
 ## Discards
 
