@@ -4,7 +4,8 @@ import { describe, it } from 'node:test';
 import { buildQuestion, orderCandidates, pickFresh } from './questions.ts';
 import type { Candidate } from './questions.ts';
 
-const cand = (kind: Candidate['kind'], symbol: string, definedIn: string, files = 5): Candidate => ({ kind, symbol, definedIn, files });
+const cand = (kind: 'callers' | 'references' | 'impact', symbol: string, definedIn: string, files = 5): Candidate =>
+  ({ kind, symbol, definedIn, files }) as Candidate;
 
 describe('buildQuestion', () => {
   it('states the counting rules of the v2 wording for callers', () => {
@@ -62,7 +63,7 @@ describe('pickFresh', () => {
     const one = pickFresh(pool, new Set(), { callers: 2, references: 1, impact: 0, emit: 0 }, 11);
     const two = pickFresh(pool, new Set(), { callers: 2, references: 1, impact: 0, emit: 0 }, 11);
     assert.deepEqual(one, two);
-    const names = one.map((c) => (c.kind === 'emit' || c.kind === 'emit-consumers' ? c.source : c.symbol));
+    const names = one.map((c) => ('source' in c ? c.source : c.symbol));
     assert.equal(new Set(names).size, names.length);
   });
 });

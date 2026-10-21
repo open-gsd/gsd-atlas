@@ -7,8 +7,11 @@ import { createHash } from 'node:crypto';
 
 export type SymbolKind = 'callers' | 'references' | 'impact';
 export type Candidate =
-  | { kind: SymbolKind; symbol: string; definedIn: string; files: number }
-  | { kind: 'emit' | 'emit-consumers'; source: string; files: number };
+  | { kind: 'callers'; symbol: string; definedIn: string; files: number }
+  | { kind: 'references'; symbol: string; definedIn: string; files: number }
+  | { kind: 'impact'; symbol: string; definedIn: string; files: number }
+  | { kind: 'emit'; source: string; files: number }
+  | { kind: 'emit-consumers'; source: string; files: number };
 
 export interface ProbeKey {
   kind: string;
