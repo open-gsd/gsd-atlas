@@ -18,6 +18,17 @@ describe('isPilotSource', () => {
   });
 });
 
+describe('isPilotSource with tests', () => {
+  it('also keeps specs and test directories when tests are in scope, but never schematics, examples or d.ts', () => {
+    assert.equal(isPilotSource('packages/core/test/x.ts', { tests: true }), true);
+    assert.equal(isPilotSource('packages/core/src/x.spec.ts', { tests: true }), true);
+    assert.equal(isPilotSource('packages/core/src/x_spec.ts', { tests: true }), true);
+    assert.equal(isPilotSource('packages/core/schematics/x.ts', { tests: true }), false);
+    assert.equal(isPilotSource('packages/examples/core/x.ts', { tests: true }), false);
+    assert.equal(isPilotSource('packages/core/src/x.d.ts', { tests: true }), false);
+  });
+});
+
 describe('ambiguousNames', () => {
   it('keeps names declared in at least two distinct files, with the files sorted', () => {
     const out = ambiguousNames([d('a', 'p/2.ts'), d('a', 'p/1.ts'), d('a', 'p/1.ts'), d('b', 'p/1.ts'), d('c', 'p/3.ts'), d('c', 'p/4.ts', 'class')]);
