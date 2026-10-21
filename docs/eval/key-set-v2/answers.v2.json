@@ -1779,7 +1779,7 @@
       "unexplained": [],
       "notes": {
         "v2Rule": "R2",
-        "v2Status": "needs-decision"
+        "v2Status": "decided"
       },
       "oracleVersion": "v2-derive.1"
     },
@@ -2461,6 +2461,22 @@
           "line": 366
         },
         {
+          "file": "src/install-engine.cts",
+          "line": 27
+        },
+        {
+          "file": "src/install-shadow-report.cts",
+          "line": 115
+        },
+        {
+          "file": "src/installed-surface-resolver.cts",
+          "line": 62
+        },
+        {
+          "file": "src/surface.cts",
+          "line": 66
+        },
+        {
           "file": "tests/advertised-command-parity.test.cjs",
           "line": 16
         },
@@ -2601,8 +2617,8 @@
       ],
       "unexplained": [],
       "notes": {
-        "v2Rule": "R4-calls",
-        "v2Status": "needs-decision"
+        "v2Rule": "R4-load",
+        "v2Status": "reworded+corrected"
       },
       "oracleVersion": "v2-derive.1"
     },
@@ -2882,7 +2898,7 @@
       "unexplained": [],
       "notes": {
         "v2Rule": "R7",
-        "v2Status": "needs-decision"
+        "v2Status": "decided"
       },
       "oracleVersion": "v2-derive.1"
     },
@@ -4719,7 +4735,7 @@
       "notes": {
         "excludedNonComment": 2,
         "v2Rule": "R6",
-        "v2Status": "needs-decision"
+        "v2Status": "decided"
       },
       "oracleVersion": "v2-derive.1"
     },

@@ -6,7 +6,7 @@ Corpus: gsd-core at `10ac3a7a947903ba50f538a907af036744d759d5`, read with read-o
 
 ## Status counts
 
-corrected 7, reworded+corrected 3, needs-decision 4, carried 61. Total 75.
+corrected 7, reworded+corrected 4, decided 3, carried 61. Total 75.
 
 ## Per-question table (the 14 non-consistent questions)
 
@@ -18,15 +18,15 @@ Old and new size are distinct files in the key. Evidence is a `git grep -n` patt
 | q-008 | callers | key-likely-incomplete | 20 | 23 | 3 | 0 | R1 | corrected |
 | q-010 | callers | key-likely-incomplete | 12 | 14 | 2 | 0 | R1 | corrected |
 | q-011 | callers | key-likely-incomplete | 9 | 10 | 1 | 0 | R1 | corrected |
-| q-012 | references | ambiguous-wording | 1 | 1 | 0 | 0 | R2 | needs-decision |
+| q-012 | references | ambiguous-wording | 1 | 1 | 0 | 0 | R2 | decided |
 | q-014 | references | key-likely-incomplete | 5 | 6 | 1 | 0 | R2 | corrected |
-| q-022 | emit | ambiguous-wording | 24 | 24 | 0 | 0 | R4-calls | needs-decision |
+| q-022 | emit | ambiguous-wording | 24 | 28 | 4 | 0 | R4-load | reworded+corrected |
 | q-024 | emit | key-likely-incomplete | 1 | 15 | 14 | 0 | R4-load | reworded+corrected |
 | q-028 | emit | key-likely-incomplete | 4 | 14 | 10 | 0 | R4-load | reworded+corrected |
-| q-030 | adr | ambiguous-wording | 2 | 1 | 0 | 1 | R7 | needs-decision |
+| q-030 | adr | ambiguous-wording | 2 | 1 | 0 | 1 | R7 | decided |
 | q-036 | impact | key-likely-incomplete | 17 | 29 | 12 | 0 | R5 | corrected |
 | q-065 | emit | key-likely-incomplete | 10 | 18 | 8 | 0 | R4-load | reworded+corrected |
-| q-067 | adr | ambiguous-wording | 1 | 1 | 0 | 0 | R6 | needs-decision |
+| q-067 | adr | ambiguous-wording | 1 | 1 | 0 | 0 | R6 | decided |
 | q-069 | impact | key-likely-incomplete | 29 | 41 | 12 | 0 | R5 | corrected |
 
 ## Evidence and diff of file sets for the 14 questions
@@ -66,7 +66,7 @@ Old and new size are distinct files in the key. Evidence is a `git grep -n` patt
   - `tests/planning-document.test.cjs`: tests/planning-document.test.cjs:42 call
 - Removed from the key (0): (none)
 
-### q-012 (references, ambiguous-wording, needs-decision)
+### q-012 (references, ambiguous-wording, decided)
 
 - Rule R2. Old key 1 files, v2 key 1 files.
 - Pattern: `git -C <gsd-core> grep -n -E '\bPHASE_COMMAND_ALIASES\b' 10ac3a7a947903ba50f538a907af036744d759d5`
@@ -85,19 +85,18 @@ Old and new size are distinct files in the key. Evidence is a `git grep -n` patt
   - `src/runtime-hooks-surface.cts`: src/runtime-hooks-surface.cts:59 use
 - Removed from the key (0): (none)
 
-### q-022 (emit, ambiguous-wording, needs-decision)
+### q-022 (emit, ambiguous-wording, reworded+corrected)
 
-- Rule R4-calls. Old key 24 files, v2 key 24 files.
+- Rule R4-load. Old key 24 files, v2 key 28 files.
 - Pattern: `git -C <gsd-core> grep -n -E 'runtime-artifact-layout' 10ac3a7a947903ba50f538a907af036744d759d5 -- 'src/*.cts' 'tests/*.cjs' 'pi/*.cjs'`
-- Added to the key (0): (none)
-- Removed from the key (0): (none)
-- ALTERNATIVE READING (`import x = require()` declarations count as `require`): key would be 28 files; adds `src/install-engine.cts`, `src/install-shadow-report.cts`, `src/installed-surface-resolver.cts`, `src/surface.cts`; drops (none).
+- Added to the key (4): 
   - `src/install-engine.cts`: src/install-engine.cts:27 import-equals
   - `src/install-shadow-report.cts`: src/install-shadow-report.cts:115 import-equals
   - `src/installed-surface-resolver.cts`: src/installed-surface-resolver.cts:62 import-equals
   - `src/surface.cts`: src/surface.cts:66 import-equals
-- Matching references excluded by the reading: `src/install-engine.cts:27 import-equals`, `src/install-shadow-report.cts:115 import-equals`, `src/installed-surface-resolver.cts:62 import-equals`, `src/surface.cts:66 import-equals`
-- Wording change: appended "Count a `require(...)` call expression whose path resolves statically, including a `path.join` of string literals and `const` strings. An `import x = require('./m.cjs')` declaration does not count as a call to `require`, and text inside a string handed to a child process does not count."
+- Removed from the key (0): (none)
+- ALTERNATIVE READING (only `require(...)` calls count): key would be 24 files; adds (none); drops `src/install-engine.cts`, `src/install-shadow-report.cts`, `src/installed-surface-resolver.cts`, `src/surface.cts`.
+- Wording change: appended "An `import x = require('./m.cjs')` declaration in a `.cts` file counts as `require`, and so does a `require(...)` call whose path resolves statically (a string literal, or a `path.join` of string literals and `const` strings). ES `import` statements, `import()` and text inside strings, including a `require` inside a string handed to a child process, do not count."
 
 ### q-024 (emit, key-likely-incomplete, reworded+corrected)
 
@@ -141,7 +140,7 @@ Old and new size are distinct files in the key. Evidence is a `git grep -n` patt
 - ALTERNATIVE READING (only `require(...)` calls count): key would be 4 files; adds (none); drops `src/commonjs-marker.cts`, `src/install-effort-resolver.cts`, `src/install-engine.cts`, `src/install-model-override-resolver.cts`, `src/install-profiles.cts`, `src/installer-migrations.cts`, `src/retired-artifact-cleanup.cts`, `src/runtime-artifact-conversion.cts`, `src/runtime-artifact-layout.cts`, `src/user-artifact-staging.cts`.
 - Wording change: appended "An `import x = require('./m.cjs')` declaration in a `.cts` file counts as loading the module with `require`, and so does a `require(...)` call whose path resolves statically (a string literal, or a `path.join` of string literals and `const` strings). ES `import` statements, `import()` and text inside strings do not count."
 
-### q-030 (adr, ambiguous-wording, needs-decision)
+### q-030 (adr, ambiguous-wording, decided)
 
 - Rule R7. Old key 2 files, v2 key 1 files.
 - Pattern: `git -C <gsd-core> show 10ac3a7a947903ba50f538a907af036744d759d5:src/state-transition.cts (comments above `StateTransactionKind`)`
@@ -187,7 +186,7 @@ Old and new size are distinct files in the key. Evidence is a `git grep -n` patt
 - ALTERNATIVE READING (only `require(...)` calls count): key would be 11 files; adds (none); drops `src/claude-orchestration-command-router.cts`, `src/commands.cts`, `src/docs.cts`, `src/init.cts`, `src/install-effort-resolver.cts`, `src/install-model-override-resolver.cts`, `src/model-adapter.cts`.
 - Wording change: appended "An `import x = require('./m.cjs')` declaration in a `.cts` file counts as loading the module with `require`, and so does a `require(...)` call whose path resolves statically (a string literal, or a `path.join` of string literals and `const` strings). ES `import` statements, `import()` and text inside strings do not count."
 
-### q-067 (adr, ambiguous-wording, needs-decision)
+### q-067 (adr, ambiguous-wording, decided)
 
 - Rule R6. Old key 1 files, v2 key 1 files.
 - Pattern: `git -C <gsd-core> grep -n -i -E 'ADR[- #]*0*5\b' 10ac3a7a947903ba50f538a907af036744d759d5 -- '*.cjs' '*.cts' '*.js'`
@@ -216,12 +215,14 @@ Old and new size are distinct files in the key. Evidence is a `git grep -n` patt
   - `tests/verify.test.cjs`: tests/verify.test.cjs:2760 cmdValidateHealth (exported by src/verify.cts)
 - Removed from the key (0): (none)
 
-## Decisions needed (needs-decision)
+## Decisions (2026-10-21)
 
-- **q-012** (references to `PHASE_COMMAND_ALIASES`). Literal reading chosen: a use is an identifier bound to the export (the question says "imports, calls, reads"). Key unchanged: `src/command-aliases.cts`. Alternative: a string literal naming the symbol as a table key counts; adds `scripts/lib/alias-drift-families.cjs:24` and `tests/commands.test.cjs:4549`.
-- **q-022** (requirers of compiled `runtime-artifact-layout`). Literal reading chosen: the wording says ".cts sources that call `require`", and an `import x = require()` declaration is not a call expression. Key equals the registered key (24 files; the two `path.join(ROOT, ...)` tests are resolved statically and were already in it). Alternative: declarations count as `require`; adds `src/install-engine.cts:27`, `src/surface.cts:66`, `src/install-shadow-report.cts:115`, `src/installed-surface-resolver.cts:62`. Text inside the child-process string in `tests/release-tarball-smoke.install.test.cjs:475,500,529` is excluded under both readings.
-- **q-030** (ADR files cited by comments on `StateTransactionKind`). Literal reading chosen: a comment "on" the symbol is attached to it. The ADR-3473 banner (`src/state-transition.cts:399-407`) is separated from the doc comment by a blank line, so the key is ADR-3408 only. Alternative: any comment in the leading trivia of the declaration counts; adds `docs/adr/3473-enforcement-by-construction.md`.
-- **q-067** (files citing ADR-5). The registered wording lists `ADR-5`, `ADR 5`, `ADR #5`; no comment in the corpus spells it unpadded, so the literal reading is an EMPTY key, which cannot be scored as a positive question and has no abstain form in the frozen schema (the abstain probe supports only a symbol or an ADR file number). v2 therefore states that zero-padded `ADR-0005` counts, and the key is `scripts/gen-adr-index.cjs` (unchanged). Alternative: keep the literal wording and turn the question into a different kind of abstain probe (needs a schema change in a new registration).
+The four questions whose wording admitted two readings were decided by the user on 2026-10-21. These are decisions about this proposal only; nothing is registered.
+
+- **q-012** (references to `PHASE_COMMAND_ALIASES`): identifiers only. Key and wording unchanged from the first v2 draft (`src/command-aliases.cts`). Not taken: string literals that name the symbol count; would add `scripts/lib/alias-drift-families.cjs:24` and `tests/commands.test.cjs:4549`. Status decided.
+- **q-022** (requirers of compiled `runtime-artifact-layout`): CHANGED. `import x = require('./m.cjs')` declarations in `.cts` files count as `require`, consistent with q-024, q-028 and q-065. The key grows from 24 to 28 files (adds `src/install-engine.cts:27`, `src/surface.cts:66`, `src/install-shadow-report.cts:115`, `src/installed-surface-resolver.cts:62`) and the wording was changed to match the q-024/q-028/q-065 style. A `require` inside a string handed to a child process (`tests/release-tarball-smoke.install.test.cjs:475,500,529`) still does not count. Not taken: only `require(...)` call expressions count (the 24-file key). Status reworded+corrected (decided).
+- **q-030** (ADR files cited by comments on `StateTransactionKind`): attached comments only. Key stays ADR-3408; wording as in the first v2 draft. Not taken: any comment in the leading trivia counts, which would add ADR-3473 from the banner at `src/state-transition.cts:399-407`. Status decided.
+- **q-067** (files citing ADR-5): zero-padded `ADR-0005` counts; key `scripts/gen-adr-index.cjs`. Not taken: digits exactly as written, which gives an empty key that the frozen schema cannot express for an ADR-citers question. Status decided.
 
 ## Rule definitions
 
@@ -292,7 +293,7 @@ Agreement of the oracle with the registered key, by key kind, over all 75 questi
 | callers | 13 | 17 |
 | definition | 7 | 7 |
 | emit | 4 | 4 |
-| emit-consumers | 3 | 6 |
+| emit-consumers | 2 | 6 |
 | heritage | 8 | 8 |
 | impact | 4 | 6 |
 | references | 7 | 8 |
@@ -314,15 +315,15 @@ For the 14 changed questions only: how many of the 6 replication sessions per qu
 | q-008 | corrected | 5/6 | 0/6 | n/a |
 | q-010 | corrected | 2/6 | 0/6 | n/a |
 | q-011 | corrected | 3/6 | 0/6 | n/a |
-| q-012 | needs-decision | 2/6 | 2/6 | 4/6 |
+| q-012 | decided | 2/6 | 2/6 | 4/6 |
 | q-014 | corrected | 6/6 | 0/6 | n/a |
-| q-022 | needs-decision | 0/6 | 0/6 | 0/6 |
+| q-022 | reworded+corrected | 0/6 | 0/6 | 0/6 |
 | q-024 | reworded+corrected | 6/6 | 0/6 | 0/6 |
 | q-028 | reworded+corrected | 6/6 | 0/6 | 0/6 |
-| q-030 | needs-decision | 5/6 | 1/6 | 1/6 |
+| q-030 | decided | 5/6 | 1/6 | 1/6 |
 | q-036 | corrected | 0/6 | 0/6 | n/a |
 | q-065 | reworded+corrected | 6/6 | 0/6 | 0/6 |
-| q-067 | needs-decision | 2/6 | 2/6 | 4/6 |
+| q-067 | decided | 2/6 | 2/6 | 4/6 |
 | q-069 | corrected | 0/6 | 0/6 | n/a |
 
 ## The 61 carried questions
