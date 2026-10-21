@@ -73,7 +73,17 @@ Provisioned 2026-10-21 (host steps run by the user at the prompt and, after the 
 
 ## Preflight (Task 6)
 
-Auth fields, environment names, home listing, four probe lines, headroom, gate: (not yet)
+Task 5: login done by the user in the container (reply "logged-in"); the executor never saw the credentials.
+Auth (four-field filter): loggedIn=true authMethod=claude.ai apiProvider=firstParty subscriptionType=max. No provider, API-key or token variable. Home entries: .credentials.json, CLAUDE.md, backups (no hooks, skills, agents, commands or plugins; the user accepted-by-default the backups/ runtime-state deviation noted under Provisioning). Doctor: auto-updates disabled.
+Probes (all status ok, apiKeySource none, claude 2.1.302, model claude-sonnet-5-5, zero hook events, no init-signature difference for either arm):
+- atlas: cost 0.043898, 4147 ms
+- grep: cost 0.024794, 3551 ms
+- control-harness: reply `none`, cost 0.0108187
+- control-default: reply `# Notes`, cost 0.0100809
+Isolation reading: control-default quoted the notes and control-harness replied none, so the harness isolation flags kept the user-level notes file out of the session.
+Probe cost total 0.0895916 USD notional (cap 0.20). Headroom: five-hour 0.12 (resets 2026-10-21T05:20:00Z), seven-day 0.03 (resets 2026-10-27T23:00:00Z), status allowed, isUsingOverage false, overageEnabled false. Ceilings hold (seven-day < 0.93, five-hour < 0.75).
+Gate after login: plan --scored gate ok, 450 cells, first ten cells equal the original's; preflight: ok.
+Host after preflight: own objects present (five); 1-minute load 10.88 (gate needs <= 6); disk 186G free; the other containers are the host's own (two gsd-test-* names differ from the Task 3 baseline: host activity, not ours).
 
 ## Chunk table (Tasks 7 and 8)
 
