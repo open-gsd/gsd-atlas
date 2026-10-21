@@ -1,0 +1,33 @@
+{
+  "replicationDate": "2026-10-21",
+  "image": {
+    "id": "sha256:009c7f36fce20262c20ff75ae81484c1a88cfc10471255e4b61e36058f45a4af",
+    "baseImage": "node:24.22.0-bookworm-slim@sha256:a5f4366e834695d5f363b920c104953a535d3a9864d1bdf74566a0ebe01daee5"
+  },
+  "claudeCode": "2.1.302",
+  "node": "24.22.0",
+  "originalNode": "26.11.1",
+  "npm": "11.19.1",
+  "git": "2.39.5",
+  "ripgrep": "13.0.0",
+  "kernel": "Linux 7.0.0-38-generic",
+  "architecture": "x86_64",
+  "limits": {
+    "cpus": 4,
+    "memoryBytes": 12884901888,
+    "swapBytes": 12884901888,
+    "pids": 2048,
+    "cgroupMemoryMax": 12884901888,
+    "cgroupCpuMax": "400000 100000",
+    "osTotalmemBytes": 32458448896,
+    "nproc": 8
+  },
+  "maintainerMachineNow": {
+    "node": "26.11.1",
+    "git": "2.54.0 (Apple Git-157)",
+    "ripgrep": "15.2.0",
+    "operatingSystem": "macOS 27.0.1, Darwin arm64",
+    "cpuCount": 18,
+    "note": "read at analysis time as the best evidence of the original environment; the original run did not record these"
+  }
+}
