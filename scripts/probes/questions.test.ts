@@ -54,7 +54,7 @@ describe('pickFresh', () => {
     ];
     const picked = pickFresh(pool, new Set(['used', 'src/used.cts']), { callers: 2, references: 1, impact: 1, emit: 1 }, 7);
     assert.equal(picked.filter((c) => c.kind === 'callers').length, 2);
-    assert.ok(!picked.some((c) => (c.kind === 'emit' ? c.source === 'src/used.cts' : c.symbol === 'used')));
+    assert.ok(!picked.some((c) => ('source' in c ? c.source === 'src/used.cts' : c.symbol === 'used')));
     assert.equal(picked.length, 5);
   });
 
