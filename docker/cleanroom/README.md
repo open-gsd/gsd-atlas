@@ -24,6 +24,8 @@ Every remote command the script builds uses five fixed object names, all labelle
 
 The container is always built from the registered base commit `a21ef8bfed512fb3810c2b9944344d1f530f0d5b` plus one local tooling commit that differs from the base only under `scripts/cleanroom` and `docker/cleanroom`. Never build it from the integration head: the head's build inputs differ from the measured build (the post-eval fixes), and the scored gate refuses it. Package the two commits as a git bundle on the maintainer machine and record its sha256 for `load-bundle`.
 
+The tooling commit that the 2026-10-21 replication ran is `8efcac65d90a99ffc2b1cbe8eecf32a0b2a27a07` (parent: the base above), published as the tag `cleanroom-03-39-tooling`. To recreate that exact environment: `git fetch origin tag cleanroom-03-39-tooling`, then `git bundle create atlas-cleanroom.bundle cleanroom-03-39-tooling` and continue from step 4. The same files exist on `main` (plus this guide and one added test case), so a new tooling commit can be made by checking out the base and copying `docker/cleanroom` and `scripts/cleanroom` from `main`; record the new commit id before the run.
+
 ## Steps
 
 All commands run from the repository root of the maintainer machine. `ctl` below stands for `bash docker/cleanroom/cleanroomctl.sh` with `CLEANROOM_SSH` exported.
