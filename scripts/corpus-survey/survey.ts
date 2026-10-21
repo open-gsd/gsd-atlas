@@ -64,15 +64,33 @@ export interface SurveyResult {
   workspacePackages: number;
   sample: { eligibleFiles: number; files: number; names: AmbiguityStats; multiFileShare: number; barrelFiles: number };
   resolution: { relative: Resolution; workspace: Resolution; external: Resolution; filesResolved: number };
-  grep: {
-    names: number;
-    linesMedian: number;
-    linesP90: number;
-    linesMax: number;
-    filesMedian: number;
-    filesP90: number;
-    filesMax: number;
-    shareOver20Files: number;
+  grep: GrepSummary;
+  /** Same measure restricted to names exported from more than one sampled file (the ambiguous tail). */
+  grepAmbiguous: GrepSummary;
+}
+
+export interface GrepSummary {
+  names: number;
+  linesMedian: number;
+  linesP90: number;
+  linesMax: number;
+  filesMedian: number;
+  filesP90: number;
+  filesMax: number;
+  shareOver20Files: number;
+}
+
+function summarise(count: number, g: { lines: number[]; files: number[] }): GrepSummary {
+  const over20 = g.files.filter((f) => f > 20).length;
+  return {
+    names: count,
+    linesMedian: percentile(g.lines, 50),
+    linesP90: percentile(g.lines, 90),
+    linesMax: Math.max(0, ...g.lines),
+    filesMedian: percentile(g.files, 50),
+    filesP90: percentile(g.files, 90),
+    filesMax: Math.max(0, ...g.files),
+    shareOver20Files: count === 0 ? 0 : over20 / count,
   };
 }
 
@@ -288,7 +306,11 @@ export async function surveyDirectory(dir: string, opts: SurveyOptions): Promise
   const pool = [...new Set([...namesByFile.values()].flat())].filter((n) => n.length >= MIN_NAME_LENGTH);
   const chosen = rankBySeed(pool, `${opts.seed}:grep`, opts.grepSample);
   const g = await grepCounts(dir, chosen);
-  const over20 = g.files.filter((f) => f > 20).length;
+  const fileCount = new Map<string, Set<string>>();
+  for (const [file, ns] of namesByFile) for (const n of ns) (fileCount.get(n) ?? fileCount.set(n, new Set()).get(n)!).add(file);
+  const ambiguousPool = pool.filter((n) => (fileCount.get(n)?.size ?? 0) > 1);
+  const chosenAmb = rankBySeed(ambiguousPool, `${opts.seed}:grep-ambiguous`, opts.grepSample);
+  const ga = await grepCounts(dir, chosenAmb);
 
   return {
     name: opts.name,
@@ -308,16 +330,8 @@ export async function surveyDirectory(dir: string, opts: SurveyOptions): Promise
       barrelFiles,
     },
     resolution: { relative: rel, workspace: wsr, external: ext, filesResolved },
-    grep: {
-      names: chosen.length,
-      linesMedian: percentile(g.lines, 50),
-      linesP90: percentile(g.lines, 90),
-      linesMax: Math.max(0, ...g.lines),
-      filesMedian: percentile(g.files, 50),
-      filesP90: percentile(g.files, 90),
-      filesMax: Math.max(0, ...g.files),
-      shareOver20Files: chosen.length === 0 ? 0 : over20 / chosen.length,
-    },
+    grep: summarise(chosen.length, g),
+    grepAmbiguous: summarise(chosenAmb.length, ga),
   };
 }
 
