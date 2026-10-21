@@ -205,8 +205,9 @@ const CREDENTIAL_PATTERNS: ReadonlyArray<readonly [string, RegExp]> = [
 const INFRASTRUCTURE_TEXT =
   /rate[ _-]?limit|usage limit|limit reached|hit your .{0,40}limit|overloaded|\b429\b|\b529\b|quota|credit|expired|invalid (?:api )?key|invalid (?:authentication|credentials)|not logged in|\/login|log ?in\b|unauthori[sz]ed|authorization|billing/i;
 
-interface RateInfo {
+export interface RateInfo {
   readonly status: string | null;
+  readonly rateLimitType: string | null;
   readonly isUsingOverage: boolean;
   readonly overageEnabled: boolean;
   readonly windows: ReadonlyArray<{ readonly name: 'five_hour' | 'seven_day'; readonly utilization: number; readonly resetsAt: number | null }>;
@@ -222,7 +223,8 @@ interface StreamFacts {
   readonly hasResult: boolean;
 }
 
-function rateInfoOf(event: Record<string, unknown>): RateInfo | null {
+/** The fields of a `rate_limit_event` that the checks read; null when the event carries no `rate_limit_info`. */
+export function rateInfoOf(event: Record<string, unknown>): RateInfo | null {
   const info = event['rate_limit_info'];
   if (!isRecord(info)) return null;
   const windows: Array<{ name: 'five_hour' | 'seven_day'; utilization: number; resetsAt: number | null }> = [];
@@ -243,6 +245,7 @@ function rateInfoOf(event: Record<string, unknown>): RateInfo | null {
   }
   return {
     status: typeof info['status'] === 'string' ? info['status'] : null,
+    rateLimitType: typeof info['rateLimitType'] === 'string' ? info['rateLimitType'] : null,
     isUsingOverage: info['isUsingOverage'] === true || event['isUsingOverage'] === true,
     overageEnabled: info['overageEnabled'] === true || event['overageEnabled'] === true,
     windows,
@@ -288,7 +291,8 @@ function analyzeStream(textOf: string, arm: 'atlas' | 'grep' | null): StreamFact
   };
 }
 
-const iso = (seconds: number | null): string | null => {
+/** An epoch (seconds, or milliseconds when it is that large) as an ISO time; null when absent. */
+export const iso = (seconds: number | null): string | null => {
   if (seconds === null) return null;
   const ms = seconds > 1e11 ? seconds : seconds * 1000;
   return new Date(ms).toISOString();
