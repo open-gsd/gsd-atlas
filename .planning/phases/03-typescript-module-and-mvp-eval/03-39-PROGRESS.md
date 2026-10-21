@@ -89,6 +89,7 @@ Host after preflight: own objects present (five); 1-minute load 10.88 (gate need
 
 | Chunk | Cells | Notional cost | Wall time | Check result | Max utilization (five-hour / seven-day) |
 | --- | --- | --- | --- | --- | --- |
+| 1 (line 5 USD, load 0.01 at start, nice 10) | rows 0 to 141 (attempts 141, streams 141, skipped 0) | 5.0233 USD | about 80 min (ended 2026-10-21T12:43Z; start time approximate) | harness exit 1 (cost stop reached, expected); check-chunk: ok; 0 infrastructureFailure true | 0.08 / 0.08 |
 
 ## Discards
 
