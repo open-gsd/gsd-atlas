@@ -42,6 +42,8 @@ test('surveyDirectory measures a small synthetic tree', async () => {
     assert.equal(r.resolution.external.total, 1);
     assert.ok(r.grep.names >= 1);
     assert.ok(r.grep.filesMedian >= 1);
+    assert.equal(r.grepAmbiguous.names, 1);
+    assert.ok(r.grepAmbiguous.filesMedian >= 2);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
