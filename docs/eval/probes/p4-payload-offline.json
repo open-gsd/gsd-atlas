@@ -1,0 +1,91 @@
+{
+ "arm": "atlas",
+ "thresholds": [
+  2048,
+  4096,
+  8192,
+  16384,
+  32768
+ ],
+ "sessions": 225,
+ "sessionTokens": 9653873,
+ "byTool": {
+  "Bash": {
+   "calls": 425,
+   "medianBytes": 810,
+   "maxBytes": 29817,
+   "totalBytes": 1102689,
+   "overBytes": {
+    "2048": 140,
+    "4096": 85,
+    "8192": 41,
+    "16384": 12,
+    "32768": 0
+   },
+   "tokens": 576019,
+   "carriedTokens": 1294597
+  },
+  "mcp__gsd-atlas__code_refs": {
+   "calls": 38,
+   "medianBytes": 4777,
+   "maxBytes": 7941,
+   "totalBytes": 171827,
+   "overBytes": {
+    "2048": 25,
+    "4096": 20,
+    "8192": 0,
+    "16384": 0,
+    "32768": 0
+   },
+   "tokens": 94675,
+   "carriedTokens": 184679
+  },
+  "Read": {
+   "calls": 5,
+   "medianBytes": 3868,
+   "maxBytes": 5901,
+   "totalBytes": 16407,
+   "overBytes": {
+    "2048": 4,
+    "4096": 1,
+    "8192": 0,
+    "16384": 0,
+    "32768": 0
+   },
+   "tokens": 7850,
+   "carriedTokens": 15123
+  },
+  "mcp__gsd-atlas__code_impact": {
+   "calls": 21,
+   "medianBytes": 7836,
+   "maxBytes": 31759,
+   "totalBytes": 230549,
+   "overBytes": {
+    "2048": 21,
+    "4096": 21,
+    "8192": 3,
+    "16384": 3,
+    "32768": 0
+   },
+   "tokens": 138180,
+   "carriedTokens": 546499
+  },
+  "mcp__gsd-atlas__code_find": {
+   "calls": 31,
+   "medianBytes": 386,
+   "maxBytes": 1399,
+   "totalBytes": 15762,
+   "overBytes": {
+    "2048": 0,
+    "4096": 0,
+    "8192": 0,
+    "16384": 0,
+    "32768": 0
+   },
+   "tokens": 12501,
+   "carriedTokens": 15615
+  }
+ },
+ "atlasCarriedTokens": 746793,
+ "atlasCarriedShareOfSessionTokens": 0.0773568287049146
+}

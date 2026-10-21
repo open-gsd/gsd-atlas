@@ -1,0 +1,1773 @@
+{
+ "corpusId": "gsd-core",
+ "corpusSha": "5150deb5c8a336706810e215af32c10c0b5e2b0c",
+ "deriveVersion": "v2",
+ "answers": [
+  {
+   "questionId": "pq-001",
+   "kind": "references",
+   "abstain": false,
+   "items": [
+    {
+     "file": "gsd-core/bin/gsd-tools.cjs",
+     "line": 4171,
+     "symbol": "routeContextPredicates"
+    },
+    {
+     "file": "gsd-core/bin/gsd-tools.cjs",
+     "line": 4259,
+     "symbol": "routeContextPredicates"
+    },
+    {
+     "file": "scripts/gen-context-index.cjs",
+     "line": 126,
+     "symbol": "buildFreshIndex"
+    },
+    {
+     "file": "scripts/gen-context-index.cjs",
+     "line": 200,
+     "symbol": "checkReport"
+    },
+    {
+     "file": "scripts/gen-context-index.cjs",
+     "line": 211,
+     "symbol": "checkReport"
+    },
+    {
+     "file": "tests/context-index-sync.test.cjs",
+     "line": 89,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/context-index-sync.test.cjs",
+     "line": 91,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/context-index-sync.test.cjs",
+     "line": 122,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/context-index-sync.test.cjs",
+     "line": 124,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/context-predicates-query.test.cjs",
+     "line": 40,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/context-predicates-query.test.cjs",
+     "line": 62,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/context-predicates.property.test.cjs",
+     "line": 24,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/context-predicates.property.test.cjs",
+     "line": 76,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/context-predicates.property.test.cjs",
+     "line": 113,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/context-predicates.property.test.cjs",
+     "line": 114,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/context-predicates.property.test.cjs",
+     "line": 120,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/context-predicates.property.test.cjs",
+     "line": 139,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/context-predicates.property.test.cjs",
+     "line": 143,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/context-predicates.property.test.cjs",
+     "line": 193,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/context-predicates.property.test.cjs",
+     "line": 215,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/context-predicates.test.cjs",
+     "line": 29,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/context-predicates.test.cjs",
+     "line": 43,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/context-predicates.test.cjs",
+     "line": 52,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/context-predicates.test.cjs",
+     "line": 58,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/context-predicates.test.cjs",
+     "line": 67,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/context-predicates.test.cjs",
+     "line": 74,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/context-predicates.test.cjs",
+     "line": 81,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/context-predicates.test.cjs",
+     "line": 88,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/context-predicates.test.cjs",
+     "line": 94,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/context-predicates.test.cjs",
+     "line": 99,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/context-predicates.test.cjs",
+     "line": 105,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/context-predicates.test.cjs",
+     "line": 112,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/context-predicates.test.cjs",
+     "line": 118,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/context-predicates.test.cjs",
+     "line": 129,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/context-predicates.test.cjs",
+     "line": 136,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/context-predicates.test.cjs",
+     "line": 144,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/context-predicates.test.cjs",
+     "line": 150,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/context-predicates.test.cjs",
+     "line": 159,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/context-predicates.test.cjs",
+     "line": 164,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/context-predicates.test.cjs",
+     "line": 170,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/context-predicates.test.cjs",
+     "line": 171,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/context-predicates.test.cjs",
+     "line": 179,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/context-predicates.test.cjs",
+     "line": 205,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/context-predicates.test.cjs",
+     "line": 221,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/context-predicates.test.cjs",
+     "line": 228,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/context-predicates.test.cjs",
+     "line": 237,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/context-predicates.test.cjs",
+     "line": 244,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/context-predicates.test.cjs",
+     "line": 245,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/context-predicates.test.cjs",
+     "line": 256,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/context-predicates.test.cjs",
+     "line": 268,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/context-predicates.test.cjs",
+     "line": 282,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/context-predicates.test.cjs",
+     "line": 288,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/context-predicates.test.cjs",
+     "line": 295,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/context-predicates.test.cjs",
+     "line": 302,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/context-predicates.test.cjs",
+     "line": 308,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/context-predicates.test.cjs",
+     "line": 315,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/context-predicates.test.cjs",
+     "line": 321,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/context-predicates.test.cjs",
+     "line": 331,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/context-predicates.test.cjs",
+     "line": 338,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/context-predicates.test.cjs",
+     "line": 344,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/context-predicates.test.cjs",
+     "line": 349,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/context-predicates.test.cjs",
+     "line": 355,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/context-predicates.test.cjs",
+     "line": 361,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/context-predicates.test.cjs",
+     "line": 366,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/context-predicates.test.cjs",
+     "line": 372,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/context-predicates.test.cjs",
+     "line": 378,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/context-predicates.test.cjs",
+     "line": 384,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/context-predicates.test.cjs",
+     "line": 398,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/context-predicates.test.cjs",
+     "line": 414,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/context-predicates.test.cjs",
+     "line": 423,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/context-predicates.test.cjs",
+     "line": 429,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/context-predicates.test.cjs",
+     "line": 434,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/context-predicates.test.cjs",
+     "line": 440,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/context-predicates.test.cjs",
+     "line": 445,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/context-predicates.test.cjs",
+     "line": 451,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/context-predicates.test.cjs",
+     "line": 459,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/context-predicates.test.cjs",
+     "line": 468,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/context-predicates.test.cjs",
+     "line": 478,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/context-predicates.test.cjs",
+     "line": 485,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/context-predicates.test.cjs",
+     "line": 492,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/context-predicates.test.cjs",
+     "line": 498,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/context-predicates.test.cjs",
+     "line": 504,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/context-predicates.test.cjs",
+     "line": 511,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/context-predicates.test.cjs",
+     "line": 518,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/context-predicates.test.cjs",
+     "line": 525,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/context-predicates.test.cjs",
+     "line": 534,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/context-predicates.test.cjs",
+     "line": 541,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/context-predicates.test.cjs",
+     "line": 548,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/context-predicates.test.cjs",
+     "line": 560,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/context-predicates.test.cjs",
+     "line": 570,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/context-predicates.test.cjs",
+     "line": 587,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/context-predicates.test.cjs",
+     "line": 588,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/context-predicates.test.cjs",
+     "line": 589,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/context-predicates.test.cjs",
+     "line": 603,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/context-predicates.test.cjs",
+     "line": 609,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/context-predicates.test.cjs",
+     "line": 623,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/context-predicates.test.cjs",
+     "line": 633,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/context-predicates.test.cjs",
+     "line": 664,
+     "symbol": "assertFenceParity"
+    },
+    {
+     "file": "tests/tracer-bullet.test.cjs",
+     "line": 443,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/tracer-bullet.test.cjs",
+     "line": 528,
+     "symbol": "operativeLineIndexes"
+    },
+    {
+     "file": "tests/tracer-bullet.test.cjs",
+     "line": 583,
+     "symbol": "isOperativePosition"
+    }
+   ],
+   "granularity": "file",
+   "equality": "exact-set",
+   "needles": [
+    "parsePredicates"
+   ],
+   "rule": "R2"
+  },
+  {
+   "questionId": "pq-002",
+   "kind": "impact",
+   "abstain": false,
+   "items": [
+    {
+     "file": "bin/install.js"
+    },
+    {
+     "file": "src/install-profiles.cts"
+    },
+    {
+     "file": "src/mcp-catalog.cts"
+    },
+    {
+     "file": "tests/agent-descriptor-parity.install.test.cjs"
+    },
+    {
+     "file": "tests/agent-marker-documentation-guard.test.cjs"
+    },
+    {
+     "file": "tests/mcp-catalog.test.cjs"
+    },
+    {
+     "file": "tests/resolver-hoist-guard.test.cjs"
+    },
+    {
+     "file": "tests/section-marker-inversion-guard.test.cjs"
+    },
+    {
+     "file": "tests/workflow-fragments-emission.install.test.cjs"
+    },
+    {
+     "file": "tests/workflow-fragments.property.test.cjs"
+    },
+    {
+     "file": "tests/workflow-fragments.test.cjs"
+    }
+   ],
+   "granularity": "file",
+   "equality": "exact-set",
+   "needles": [
+    "toFragments"
+   ],
+   "rule": "R5"
+  },
+  {
+   "questionId": "pq-003",
+   "kind": "emit",
+   "abstain": false,
+   "items": [
+    {
+     "file": "gsd-core/bin/lib/roadmap-upgrade.cjs"
+    }
+   ],
+   "granularity": "file",
+   "equality": "exact-set",
+   "needles": [
+    "roadmap-upgrade.cjs"
+   ],
+   "rule": "R3"
+  },
+  {
+   "questionId": "pq-004",
+   "kind": "references",
+   "abstain": false,
+   "items": [
+    {
+     "file": "gsd-core/bin/lib/capability-command-router.cjs",
+     "line": 681,
+     "symbol": "routeCapabilityCommand"
+    },
+    {
+     "file": "src/capability-consent.cts",
+     "line": 678,
+     "symbol": "hasProjectConsent"
+    },
+    {
+     "file": "src/capability-consent.cts",
+     "line": 886,
+     "symbol": "recordProjectConsent"
+    },
+    {
+     "file": "src/capability-consent.cts",
+     "line": 939,
+     "symbol": "revokeProjectConsent"
+    },
+    {
+     "file": "src/capability-consent.cts",
+     "line": 972,
+     "symbol": "readConsentedReviewerHost"
+    },
+    {
+     "file": "src/capability-consent.cts",
+     "line": 1000,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/capability-cli.test.cjs",
+     "line": 853,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/capability-cli.test.cjs",
+     "line": 969,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/capability-cli.test.cjs",
+     "line": 1082,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/capability-cli.test.cjs",
+     "line": 1085,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/capability-consent.test.cjs",
+     "line": 419,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/capability-consent.test.cjs",
+     "line": 431,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/capability-consent.test.cjs",
+     "line": 442,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/capability-consent.test.cjs",
+     "line": 455,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/capability-consent.test.cjs",
+     "line": 467,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/capability-consent.test.cjs",
+     "line": 500,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/capability-consent.test.cjs",
+     "line": 506,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/capability-consent.test.cjs",
+     "line": 518,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/capability-consent.test.cjs",
+     "line": 534,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/capability-consent.test.cjs",
+     "line": 558,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/capability-consent.test.cjs",
+     "line": 561,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/capability-consent.test.cjs",
+     "line": 594,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/capability-consent.test.cjs",
+     "line": 672,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/capability-consent.test.cjs",
+     "line": 817,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/capability-consent.test.cjs",
+     "line": 943,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/capability-lifecycle.test.cjs",
+     "line": 2935,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/capability-lifecycle.test.cjs",
+     "line": 2950,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/capability-lifecycle.test.cjs",
+     "line": 3067,
+     "symbol": "<module>"
+    }
+   ],
+   "granularity": "file",
+   "equality": "exact-set",
+   "needles": [
+    "readConsentStore"
+   ],
+   "rule": "R2"
+  },
+  {
+   "questionId": "pq-005",
+   "kind": "callers",
+   "abstain": false,
+   "items": [
+    {
+     "file": "src/health-diagnostic-rules/consistency.cts",
+     "line": 65,
+     "symbol": "checkC001"
+    },
+    {
+     "file": "src/health-diagnostic-rules/roadmap-disk-consistency.cts",
+     "line": 299,
+     "symbol": "checkW007"
+    },
+    {
+     "file": "src/milestone.cts",
+     "line": 1346,
+     "symbol": "cmdPhasesClear"
+    },
+    {
+     "file": "tests/adr-612-bracket-grammar.test.cjs",
+     "line": 268,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/adr-612-bracket-grammar.test.cjs",
+     "line": 269,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/adr-612-bracket-grammar.test.cjs",
+     "line": 270,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/adr-612-bracket-grammar.test.cjs",
+     "line": 272,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/adr-612-bracket-grammar.test.cjs",
+     "line": 273,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/adr-612-bracket-grammar.test.cjs",
+     "line": 275,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/adr-612-bracket-grammar.test.cjs",
+     "line": 276,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/adr-612-bracket-grammar.test.cjs",
+     "line": 277,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/adr-612-bracket-grammar.test.cjs",
+     "line": 285,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/adr-612-bracket-grammar.test.cjs",
+     "line": 286,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/adr-612-bracket-grammar.test.cjs",
+     "line": 287,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/adr-612-bracket-grammar.test.cjs",
+     "line": 297,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/adr-612-bracket-grammar.test.cjs",
+     "line": 298,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/adr-612-bracket-grammar.test.cjs",
+     "line": 299,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/adr-612-bracket-grammar.test.cjs",
+     "line": 300,
+     "symbol": "<module>"
+    }
+   ],
+   "granularity": "file",
+   "equality": "exact-set",
+   "needles": [
+    "isSentinelPhaseDir"
+   ],
+   "rule": "R1"
+  },
+  {
+   "questionId": "pq-006",
+   "kind": "emit",
+   "abstain": false,
+   "items": [
+    {
+     "file": "gsd-core/bin/lib/host-runtime-detection.cjs"
+    }
+   ],
+   "granularity": "file",
+   "equality": "exact-set",
+   "needles": [
+    "host-runtime-detection.cjs"
+   ],
+   "rule": "R3"
+  },
+  {
+   "questionId": "pq-007",
+   "kind": "callers",
+   "abstain": false,
+   "items": [
+    {
+     "file": "bin/install.js",
+     "line": 4050,
+     "symbol": "_isAnthropicFlavoredModel"
+    },
+    {
+     "file": "gsd-core/bin/gsd-tools.cjs",
+     "line": 2561,
+     "symbol": "resolveDispatchModelPin"
+    },
+    {
+     "file": "src/agent-install-check.cts",
+     "line": 360,
+     "symbol": "checkCodexModelPosture"
+    },
+    {
+     "file": "src/commands.cts",
+     "line": 1231,
+     "symbol": "cmdEffortSyncCodex"
+    },
+    {
+     "file": "tests/codex-config.test.cjs",
+     "line": 1784,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/codex-config.test.cjs",
+     "line": 1787,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/codex-config.test.cjs",
+     "line": 1795,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/codex-config.test.cjs",
+     "line": 1796,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/codex-config.test.cjs",
+     "line": 1819,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/host-integration.test.cjs",
+     "line": 2645,
+     "symbol": "installSideWouldEmit"
+    },
+    {
+     "file": "tests/model-catalog.unit.test.cjs",
+     "line": 115,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/model-catalog.unit.test.cjs",
+     "line": 116,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/model-catalog.unit.test.cjs",
+     "line": 117,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/model-catalog.unit.test.cjs",
+     "line": 118,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/model-catalog.unit.test.cjs",
+     "line": 122,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/model-catalog.unit.test.cjs",
+     "line": 123,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/model-catalog.unit.test.cjs",
+     "line": 124,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/model-catalog.unit.test.cjs",
+     "line": 128,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/model-catalog.unit.test.cjs",
+     "line": 132,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/model-catalog.unit.test.cjs",
+     "line": 133,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/model-catalog.unit.test.cjs",
+     "line": 134,
+     "symbol": "<module>"
+    }
+   ],
+   "granularity": "file",
+   "equality": "exact-set",
+   "needles": [
+    "isAnthropicFlavoredModel",
+    "gsdIsAnthropicFlavoredModel"
+   ],
+   "rule": "R1"
+  },
+  {
+   "questionId": "pq-008",
+   "kind": "references",
+   "abstain": false,
+   "items": [
+    {
+     "file": "src/capability-trust.cts",
+     "line": 1358,
+     "symbol": "executableSetChanged"
+    },
+    {
+     "file": "src/capability-trust.cts",
+     "line": 1370,
+     "symbol": "signatureForManifest"
+    },
+    {
+     "file": "src/capability-trust.cts",
+     "line": 1743,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/capability-trust.test.cjs",
+     "line": 427,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/capability-trust.test.cjs",
+     "line": 473,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/capability-trust.test.cjs",
+     "line": 474,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/feat-2483-review-claude-mds-guard.test.cjs",
+     "line": 311,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/feat-2483-review-claude-mds-guard.test.cjs",
+     "line": 314,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/feat-2483-review-claude-mds-guard.test.cjs",
+     "line": 323,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/feat-2483-review-claude-mds-guard.test.cjs",
+     "line": 336,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/feat-2483-review-claude-mds-guard.test.cjs",
+     "line": 351,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/feat-2483-review-claude-mds-guard.test.cjs",
+     "line": 385,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/feat-2483-review-claude-mds-guard.test.cjs",
+     "line": 386,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/feat-2483-review-claude-mds-guard.test.cjs",
+     "line": 429,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/feat-2483-review-claude-mds-guard.test.cjs",
+     "line": 430,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/feat-2483-review-claude-mds-guard.test.cjs",
+     "line": 439,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/feat-2483-review-claude-mds-guard.test.cjs",
+     "line": 440,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/feat-2483-review-claude-mds-guard.test.cjs",
+     "line": 500,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/instruction-surface-disclosure.security.test.cjs",
+     "line": 503,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/instruction-surface-disclosure.security.test.cjs",
+     "line": 507,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/reviewer-trust-disclosure.test.cjs",
+     "line": 293,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/reviewer-trust-disclosure.test.cjs",
+     "line": 294,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/reviewer-trust-disclosure.test.cjs",
+     "line": 855,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/reviewer-trust-disclosure.test.cjs",
+     "line": 858,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/reviewer-trust-disclosure.test.cjs",
+     "line": 867,
+     "symbol": "<module>"
+    }
+   ],
+   "granularity": "file",
+   "equality": "exact-set",
+   "needles": [
+    "disclosureSignature"
+   ],
+   "rule": "R2"
+  },
+  {
+   "questionId": "pq-009",
+   "kind": "callers",
+   "abstain": false,
+   "items": [
+    {
+     "file": "src/capability-lock.cts",
+     "line": 231,
+     "symbol": "getProcessStartTime"
+    },
+    {
+     "file": "src/capability-lock.cts",
+     "line": 240,
+     "symbol": "getProcessStartTime"
+    },
+    {
+     "file": "src/gate-predicate.cts",
+     "line": 58,
+     "symbol": "runBoundedShell"
+    },
+    {
+     "file": "src/graphify.cts",
+     "line": 72,
+     "symbol": "execGraphify"
+    },
+    {
+     "file": "src/graphify.cts",
+     "line": 123,
+     "symbol": "checkGraphifyInstalled"
+    },
+    {
+     "file": "src/graphify.cts",
+     "line": 152,
+     "symbol": "checkGraphifyVersion"
+    },
+    {
+     "file": "src/graphify.cts",
+     "line": 167,
+     "symbol": "checkGraphifyVersion"
+    },
+    {
+     "file": "src/graphify.cts",
+     "line": 181,
+     "symbol": "checkGraphifyVersion"
+    },
+    {
+     "file": "src/shell-command-projection.cts",
+     "line": 1088,
+     "symbol": "dispatchGsdCommand"
+    },
+    {
+     "file": "tests/faulty-deps.test.cjs",
+     "line": 62,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/faulty-deps.test.cjs",
+     "line": 73,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/faulty-deps.test.cjs",
+     "line": 141,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/shell-command-projection-dispatch.test.cjs",
+     "line": 117,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/shell-command-projection-dispatch.test.cjs",
+     "line": 124,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/shell-command-projection-dispatch.test.cjs",
+     "line": 129,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/shell-command-projection-dispatch.test.cjs",
+     "line": 1049,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/shell-command-projection-dispatch.test.cjs",
+     "line": 1064,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/shell-command-projection-dispatch.test.cjs",
+     "line": 1076,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/shell-command-projection-dispatch.test.cjs",
+     "line": 1083,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/shell-command-projection-dispatch.test.cjs",
+     "line": 1091,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/shell-command-projection-dispatch.test.cjs",
+     "line": 1111,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/shell-command-projection-dispatch.test.cjs",
+     "line": 1134,
+     "symbol": "<module>"
+    }
+   ],
+   "granularity": "file",
+   "equality": "exact-set",
+   "needles": [
+    "execTool"
+   ],
+   "rule": "R1"
+  },
+  {
+   "questionId": "pq-010",
+   "kind": "references",
+   "abstain": false,
+   "items": [
+    {
+     "file": "src/capability-lifecycle.cts",
+     "line": 1073,
+     "symbol": "installCapability"
+    },
+    {
+     "file": "src/capability-lifecycle.cts",
+     "line": 1276,
+     "symbol": "upgradeCapability"
+    },
+    {
+     "file": "src/capability-trust.cts",
+     "line": 1733,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/capability-trust.test.cjs",
+     "line": 246,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/capability-trust.test.cjs",
+     "line": 256,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/capability-trust.test.cjs",
+     "line": 267,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/capability-trust.test.cjs",
+     "line": 278,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/capability-trust.test.cjs",
+     "line": 289,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/capability-trust.test.cjs",
+     "line": 302,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/capability-trust.test.cjs",
+     "line": 318,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/capability-trust.test.cjs",
+     "line": 332,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/capability-trust.test.cjs",
+     "line": 641,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/capability-trust.test.cjs",
+     "line": 654,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/capability-trust.test.cjs",
+     "line": 667,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/capability-trust.test.cjs",
+     "line": 685,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/instruction-surface-disclosure.security.test.cjs",
+     "line": 502,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/instruction-surface-disclosure.security.test.cjs",
+     "line": 506,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/reviewer-trust-disclosure.test.cjs",
+     "line": 421,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/reviewer-trust-disclosure.test.cjs",
+     "line": 561,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/reviewer-trust-disclosure.test.cjs",
+     "line": 582,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/reviewer-trust-disclosure.test.cjs",
+     "line": 595,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/reviewer-trust-disclosure.test.cjs",
+     "line": 596,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/reviewer-trust-disclosure.test.cjs",
+     "line": 607,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/reviewer-trust-disclosure.test.cjs",
+     "line": 608,
+     "symbol": "<module>"
+    }
+   ],
+   "granularity": "file",
+   "equality": "exact-set",
+   "needles": [
+    "evaluateInstallTrust"
+   ],
+   "rule": "R2"
+  },
+  {
+   "questionId": "pq-011",
+   "kind": "impact",
+   "abstain": false,
+   "items": [
+    {
+     "file": "gsd-core/bin/gsd-tools.cjs"
+    },
+    {
+     "file": "src/check-command-router.cts"
+    },
+    {
+     "file": "src/verify-command-router.cts"
+    },
+    {
+     "file": "tests/api-coverage-gate-e2e.test.cjs"
+    },
+    {
+     "file": "tests/check-predicate.test.cjs"
+    },
+    {
+     "file": "tests/check-router-cutover-equivalence.test.cjs"
+    },
+    {
+     "file": "tests/check-ui-plan-gate.test.cjs"
+    },
+    {
+     "file": "tests/check-ui-safety-gate.test.cjs"
+    },
+    {
+     "file": "tests/gate-predicate-evaluator-missing.test.cjs"
+    },
+    {
+     "file": "tests/gate-verify-command-paths.unit.test.cjs"
+    },
+    {
+     "file": "tests/refactor-1390-t3-characterization.test.cjs"
+    }
+   ],
+   "granularity": "file",
+   "equality": "exact-set",
+   "needles": [
+    "evaluateVerifyCommandPaths"
+   ],
+   "rule": "R5"
+  },
+  {
+   "questionId": "pq-012",
+   "kind": "impact",
+   "abstain": false,
+   "items": [
+    {
+     "file": "src/check-command-router.cts"
+    },
+    {
+     "file": "src/gate-tdd-red-evidence.cts"
+    },
+    {
+     "file": "tests/gate-tdd-red-evidence-containment.test.cjs"
+    },
+    {
+     "file": "tests/gate-tdd-red-evidence.unit.test.cjs"
+    },
+    {
+     "file": "tests/report-parser.property.test.cjs"
+    },
+    {
+     "file": "tests/tdd-red-evidence.test.cjs"
+    },
+    {
+     "file": "tests/test-report-evidence.test.cjs"
+    }
+   ],
+   "granularity": "file",
+   "equality": "exact-set",
+   "needles": [
+    "classifyRedEvidence"
+   ],
+   "rule": "R5"
+  },
+  {
+   "questionId": "pq-013",
+   "kind": "callers",
+   "abstain": false,
+   "items": [
+    {
+     "file": "src/install-engine.cts",
+     "line": 82,
+     "symbol": "withInstallerPackageSource"
+    },
+    {
+     "file": "src/install-engine.cts",
+     "line": 201,
+     "symbol": "provisionRuntimeSurfaceCorpus"
+    },
+    {
+     "file": "src/install-engine.cts",
+     "line": 227,
+     "symbol": "executingPackageRoot"
+    },
+    {
+     "file": "src/install-engine.cts",
+     "line": 2040,
+     "symbol": "installOpencodeFamilyArtifacts"
+    },
+    {
+     "file": "src/surface.cts",
+     "line": 230,
+     "symbol": "normalizeSkillManifest"
+    },
+    {
+     "file": "src/surface.cts",
+     "line": 797,
+     "symbol": "listSurface"
+    },
+    {
+     "file": "tests/install-fs-adapter-seam.test.cjs",
+     "line": 255,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/install-fs-adapter-seam.test.cjs",
+     "line": 291,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/runtime-artifact-layout.test.cjs",
+     "line": 1083,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/runtime-artifact-layout.test.cjs",
+     "line": 1092,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/runtime-artifact-layout.test.cjs",
+     "line": 1126,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/runtime-artifact-layout.test.cjs",
+     "line": 1378,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/runtime-artifact-layout.test.cjs",
+     "line": 1519,
+     "symbol": "<module>"
+    }
+   ],
+   "granularity": "file",
+   "equality": "exact-set",
+   "needles": [
+    "findInstallSourceRoot",
+    "realFindInstallSourceRoot"
+   ],
+   "rule": "R1"
+  },
+  {
+   "questionId": "pq-014",
+   "kind": "emit-consumers",
+   "abstain": false,
+   "items": [
+    {
+     "file": "src/graphify-command-router.cts",
+     "line": 27
+    },
+    {
+     "file": "tests/graphify-auto-update.slow.test.cjs",
+     "line": 22
+    },
+    {
+     "file": "tests/graphify-graph-path.test.cjs",
+     "line": 30
+    },
+    {
+     "file": "tests/graphify-query.test.cjs",
+     "line": 22
+    },
+    {
+     "file": "tests/graphify-visualization.test.cjs",
+     "line": 18
+    },
+    {
+     "file": "tests/graphify.test.cjs",
+     "line": 38
+    }
+   ],
+   "granularity": "file",
+   "equality": "exact-set",
+   "needles": [
+    "graphify.cjs",
+    "require"
+   ],
+   "rule": "R4-load"
+  },
+  {
+   "questionId": "pq-015",
+   "kind": "emit-consumers",
+   "abstain": false,
+   "items": [
+    {
+     "file": "tests/adr-parser.property.test.cjs",
+     "line": 25
+    },
+    {
+     "file": "tests/adr-parser.test.cjs",
+     "line": 8
+    },
+    {
+     "file": "tests/adr-parser.unit.test.cjs",
+     "line": 32
+    }
+   ],
+   "granularity": "file",
+   "equality": "exact-set",
+   "needles": [
+    "adr-parser.cjs",
+    "require"
+   ],
+   "rule": "R4-load"
+  },
+  {
+   "questionId": "pq-016",
+   "kind": "callers",
+   "abstain": false,
+   "items": [
+    {
+     "file": "gsd-core/bin/gsd-tools.cjs",
+     "line": 1422,
+     "symbol": "routeProjectInstructionFile"
+    },
+    {
+     "file": "src/profile-output.cts",
+     "line": 1066,
+     "symbol": "cmdGenerateClaudeProfile"
+    },
+    {
+     "file": "src/profile-output.cts",
+     "line": 1078,
+     "symbol": "cmdGenerateClaudeProfile"
+    },
+    {
+     "file": "src/profile-output.cts",
+     "line": 1183,
+     "symbol": "cmdGenerateClaudeMd"
+    },
+    {
+     "file": "tests/gemini-runtime-removed.test.cjs",
+     "line": 210,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/gemini-runtime-removed.test.cjs",
+     "line": 218,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/project-instruction-file-parity.test.cjs",
+     "line": 88,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/project-instruction-file-parity.test.cjs",
+     "line": 104,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/runtime-descriptor-owner.test.cjs",
+     "line": 229,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/runtime-name-policy.test.cjs",
+     "line": 85,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/runtime-name-policy.test.cjs",
+     "line": 89,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/runtime-name-policy.test.cjs",
+     "line": 93,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/runtime-name-policy.test.cjs",
+     "line": 97,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/runtime-name-policy.test.cjs",
+     "line": 101,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/runtime-name-policy.test.cjs",
+     "line": 105,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/runtime-name-policy.test.cjs",
+     "line": 114,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/runtime-name-policy.test.cjs",
+     "line": 118,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/runtime-name-policy.test.cjs",
+     "line": 122,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/runtime-name-policy.test.cjs",
+     "line": 123,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/runtime-name-policy.test.cjs",
+     "line": 124,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/runtime-name-policy.test.cjs",
+     "line": 125,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/runtime-name-policy.test.cjs",
+     "line": 130,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/runtime-name-policy.test.cjs",
+     "line": 132,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/runtime-name-policy.test.cjs",
+     "line": 138,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/runtime-name-policy.test.cjs",
+     "line": 140,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/runtime-name-policy.test.cjs",
+     "line": 285,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/runtime-name-policy.test.cjs",
+     "line": 416,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/runtime-name-policy.test.cjs",
+     "line": 423,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/runtime-name-policy.test.cjs",
+     "line": 433,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/runtime-name-policy.test.cjs",
+     "line": 434,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/runtime-name-policy.test.cjs",
+     "line": 435,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/trae-imperative-reference.test.cjs",
+     "line": 221,
+     "symbol": "<module>"
+    },
+    {
+     "file": "tests/trae-imperative-reference.test.cjs",
+     "line": 229,
+     "symbol": "<module>"
+    }
+   ],
+   "granularity": "file",
+   "equality": "exact-set",
+   "needles": [
+    "getProjectInstructionFile"
+   ],
+   "rule": "R1"
+  }
+ ]
+}
