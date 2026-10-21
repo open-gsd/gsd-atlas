@@ -1192,3 +1192,22 @@ describe('tooling imports', () => {
     assert.ok(Math.abs(mean - ORIGINAL_MEAN_WALL_MS) < 0.01, `${String(mean)} against ${String(ORIGINAL_MEAN_WALL_MS)}`);
   });
 });
+
+// ---------------------------------------------------------------------------------------------
+// the maintainer re-run guide
+
+describe('re-run guide', () => {
+  test('README names the registered verdict as standing and covers build, login, preflight, chunked run, fetch, compare and teardown, and names no host', () => {
+    const text = readDocker('README.md');
+    assert.ok(text.includes('OVERALL: MVP not met'), 'the registered verdict');
+    assert.match(text, /stands/i);
+    assert.ok(text.includes('docs/eval/replication-cleanroom.md'), 'link to the replication report');
+    for (const word of ['build', 'login', 'preflight', 'chunk', 'fetch', 'compare', 'down', '--stop-at-cost-usd', '24.22.0', '26.11.1']) {
+      assert.ok(text.includes(word), `the guide covers ${word}`);
+    }
+    assert.ok(!/\b[a-z0-9-]+(?:\.[a-z0-9-]+)*\.(?:com|net|org|io)\b/i.test(text), 'no host-name-like string');
+    assert.ok(!/[\w.+-]+@[\w-]+\.[\w.-]+/.test(text), 'no email address');
+    const rootReadme = fs.readFileSync(path.join(REPO, 'README.md'), 'utf8');
+    assert.ok(!rootReadme.includes('docker/cleanroom'), 'the root README does not link the guide');
+  });
+});
