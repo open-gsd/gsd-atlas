@@ -14,11 +14,13 @@ import { censusOfSource, createPilotOracle, type Decl, type HeritageRow } from '
 export type { Decl, HeritageRow };
 
 /** The pilot's scope: framework sources under `packages/`, no tests, no schematics, no examples, no `.d.ts`. */
-export function isPilotSource(rel: string): boolean {
+export function isPilotSource(rel: string, opts: { tests?: boolean } = {}): boolean {
   if (!rel.startsWith('packages/')) return false;
   if (!/\.(ts|tsx)$/.test(rel) || rel.endsWith('.d.ts')) return false;
+  if (/(^|\/)(schematics|integrationtest|examples)\//.test(rel)) return false;
+  if (opts.tests === true) return true;
   if (rel.endsWith('.spec.ts') || rel.endsWith('_spec.ts')) return false;
-  if (/(^|\/)(test|schematics|integrationtest|examples)\//.test(rel)) return false;
+  if (/(^|\/)test\//.test(rel)) return false;
   return true;
 }
 
@@ -81,20 +83,22 @@ function grepFileCount(repo: string, name: string): number {
 }
 
 function main(): void {
-  const { values } = parseArgs({ options: { repo: { type: 'string' }, out: { type: 'string' }, 'max-names': { type: 'string' } } });
+  const { values } = parseArgs({ options: { repo: { type: 'string' }, out: { type: 'string' }, 'max-names': { type: 'string' }, 'with-tests': { type: 'boolean' } } });
   if (values.repo === undefined || values.out === undefined) throw new Error('usage: --repo <checkout> --out <json> [--max-names N]');
   const repo = values.repo;
-  const tracked = git(repo, ['ls-files', 'packages']).split('\n').filter(isPilotSource);
+  const inScope = (r: string): boolean => isPilotSource(r, { tests: values['with-tests'] === true });
+  const tracked = git(repo, ['ls-files', 'packages']).split('\n').filter(inScope);
   const decls: Decl[] = [];
   const heritage: HeritageRow[] = [];
-  for (const rel of tracked) {
+  // targets are declared in non-test sources only; with --with-tests the references are searched in tests too
+  for (const rel of tracked.filter((r) => isPilotSource(r))) {
     const c = censusOfSource(rel, fs.readFileSync(`${repo}/${rel}`, 'utf8'));
     decls.push(...c.decls);
     heritage.push(...c.heritage);
   }
   const amb = ambiguousNames(decls).filter((a) => a.name.length >= 3);
   const limit = values['max-names'] === undefined ? amb.length : Number(values['max-names']);
-  const oracle = createPilotOracle({ root: repo, tsconfig: 'packages/tsconfig.json', include: (r) => isPilotSource(r), files: tracked });
+  const oracle = createPilotOracle({ root: repo, tsconfig: 'packages/tsconfig.json', include: inScope, files: tracked });
   const rows: (SupplyRow & { declFile: string; declKind: string })[] = [];
   const grepCache = new Map<string, number>();
   for (const a of amb.slice(0, limit)) {
