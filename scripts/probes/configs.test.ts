@@ -80,6 +80,13 @@ describe('planFor', () => {
     assert.ok(parsed.hooks);
   });
 
+  it('atlas-routed-ts combines the routing hook with tool search', () => {
+    const plan = planFor('atlas-routed-ts', ctx);
+    assert.ok(plan.spec.tools.includes('ToolSearch'));
+    assert.ok(plan.spec.allowedTools.includes('ToolSearch'));
+    assert.ok(JSON.parse(plan.spec.settings ?? '{}').hooks);
+  });
+
   it('atlas-capped patches a default budget', () => {
     assert.equal(typeof planFor('atlas-capped', ctx).serverPatch?.budgetTokens, 'number');
   });
