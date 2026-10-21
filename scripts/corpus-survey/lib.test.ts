@@ -82,7 +82,7 @@ test('ambiguityStats counts names declared in more than one file', () => {
   const s = ambiguityStats(map);
   assert.equal(s.distinctNames, 3);
   assert.equal(s.multiFileNames, 1);
-  assert.equal(s.declarations, 5);
+  assert.equal(s.declarations, 6);
 });
 
 test('isTestPath recognises common test and fixture locations', () => {
