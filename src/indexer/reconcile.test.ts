@@ -419,7 +419,7 @@ describe('index exclusions (quick task 261021-re7, D-03): defaults and .atlasign
 
     world.repo.remove('.atlasignore');
     const back = await world.indexer.reconcile(world.dir);
-    assert.equal(back.parsed, 1);
+    assert.equal(back.changed, 1);
     assert.equal((await world.reader.find('helper')).data.length, 1);
     assert.deepEqual(world.indexer.status().lastReconcile?.excluded, { byDefaults: 0, byAtlasignore: 0 });
   });

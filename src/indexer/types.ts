@@ -12,7 +12,7 @@ import type { Clock, Diagnostic } from '../facts/index.ts';
 import type { Governor } from '../governor/index.ts';
 import type { GrammarEngine } from '../grammar-engine/index.ts';
 import type { Roots } from '../lang/index.ts';
-import type { SourceTree } from '../source-tree/index.ts';
+import type { ExclusionCounts, SourceTree } from '../source-tree/index.ts';
 import type { EventSource, WatchMode } from './event-source.ts';
 
 /** Tunables of the Indexer. Defaults: `DEFAULT_INDEXER_CONFIG`. Every key is overridable in config. */
@@ -159,6 +159,8 @@ export interface LastReconcile {
   readonly at: number;
   readonly changed: number;
   readonly durationMs: number;
+  /** Files its snapshot left out of the index (quick task 261021-re7): by the built-in defaults and by `.atlasignore`. Counts only. */
+  readonly excluded: ExclusionCounts;
 }
 
 export interface IndexerStatus {

@@ -22,6 +22,7 @@ import { MAX_CITATIONS_PER_FILE, diagnostic } from '../facts/index.ts';
 import type { Diagnostic } from '../facts/index.ts';
 import { CITATION_COMMENT_TOO_LONG } from '../grammar-engine/index.ts';
 import { SOURCE_TREE_CODES } from '../source-tree/index.ts';
+import type { ExclusionCounts } from '../source-tree/index.ts';
 import { compareCodeUnits, emitOutputsAmong, processBatch, runJob } from './process.ts';
 import type { PathResult, ProcessContext } from './process.ts';
 import type { FailedPath, ReconcileOutcome } from './types.ts';
@@ -67,6 +68,11 @@ export interface ReconcileReport extends ReconcileOutcome {
   /** Snapshot diagnostics plus one diagnostic per file the source set dropped (and one count of unclaimed extensions). */
   readonly skipped: readonly Diagnostic[];
   readonly failed: readonly FailedPath[];
+  /**
+   * How many files the snapshot left out of the index: by the built-in tooling and build-output defaults and by the
+   * repository's `.atlasignore` (quick task 261021-re7). The same numbers ride `skipped` as two pathless notes.
+   */
+  readonly excluded: ExclusionCounts;
 }
 
 /**
@@ -210,5 +216,6 @@ export async function reconcileWorktree(
     files: truth.size,
     skipped,
     failed: failures,
+    excluded: snapshot.excluded,
   };
 }

@@ -411,8 +411,12 @@ describe('Tenant: the build envelope tells what the build could not index', () =
     assert.equal((reply.data as { parsed: number }).parsed, 0);
   });
 
-  it('the allow-list is exactly the two aggregated notes the Indexer makes, and nothing a source-tree diagnostic can be', () => {
-    assert.deepEqual([...BUILD_NOTE_CODES], ['emit_output_not_indexed', CITATION_COMMENT_TOO_LONG]);
+  // Changed on purpose by quick task 261021-re7: the allow-list gains the three pathless index-exclusion notes.
+  it('the allow-list is exactly the two aggregated notes the Indexer makes and the three pathless exclusion notes, and nothing a source-tree diagnostic can be', () => {
+    assert.deepEqual(
+      [...BUILD_NOTE_CODES],
+      ['emit_output_not_indexed', CITATION_COMMENT_TOO_LONG, 'index_excluded_by_defaults', 'index_excluded_by_atlasignore', 'atlasignore_unusable'],
+    );
     assert.deepEqual(buildNotes([], false), []);
     assert.deepEqual(
       buildNotes([], true).map((note) => [note.code, note.severity, note.subject]),
