@@ -19,12 +19,13 @@ To install the alpha from npm, run `npm install -g @opengsd/gsd-atlas@alpha`, th
   - [Answer a question about an older commit](docs/how-to/answer-a-question-about-an-older-commit.md)
   - [See why atlas gave an answer](docs/how-to/see-why-atlas-gave-an-answer.md)
   - [Find the code that cites an ADR](docs/how-to/find-the-code-that-cites-an-adr.md)
+  - [Exclude files from the index](docs/how-to/exclude-files-from-the-index.md)
   - [Approve a precise command for one repository](docs/how-to/approve-a-precise-command.md)
   - [Keep the store healthy](docs/how-to/keep-the-store-healthy.md)
   - [Run the measured gates locally](docs/how-to/run-the-measured-gates-locally.md)
   - [Contribute a change](docs/how-to/contribute-a-change.md)
   - [Release an alpha to npm](docs/how-to/release-an-alpha.md) (for maintainers)
-- Look up: [the command-line reference](docs/reference/cli.md), [the MCP reference](docs/reference/mcp.md), [TypeScript support](docs/reference/typescript-support.md), [ADR citations](docs/reference/adr-citations.md), [the release channels](docs/reference/release-channels.md) and [the alpha limitations](docs/reference/alpha-limitations.md).
+- Look up: [the command-line reference](docs/reference/cli.md), [the MCP reference](docs/reference/mcp.md), [TypeScript support](docs/reference/typescript-support.md), [ADR citations](docs/reference/adr-citations.md), [the index exclusions](docs/reference/index-exclusions.md), [the release channels](docs/reference/release-channels.md) and [the alpha limitations](docs/reference/alpha-limitations.md).
 - Understand: [freshness and the writer lease](docs/explanation/how-freshness-and-the-writer-lease-work.md), [the precise TypeScript tier](docs/explanation/how-the-precise-tier-works.md) and [what atlas trusts and never sends](docs/explanation/how-atlas-decides-what-to-trust.md).
 - Give feedback: [rate an answer](docs/how-to/rate-an-answer.md), [report a bug](docs/how-to/report-a-bug.md) and [turn diagnostics on and off](docs/how-to/turn-diagnostics-on-and-off.md). All three stay on your machine.
 
