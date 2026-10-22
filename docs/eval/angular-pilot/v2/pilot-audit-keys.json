@@ -1,0 +1,1450 @@
+{
+  "note": "Supplementary audit of the 23 non-exact pilot sessions. Unscored, unregistered. Proposed corrected keys: a key is changed only when a verdict b (a genuine hit the key lacks) exists; none does, so every audited key is unchanged. Evidence is the regeneration of each audited key with the oracle of the pinned clone and the oracle references of every audited file.",
+  "pin": "3cc1edf3210a9debb0be57a4e99e53a54505db32",
+  "defects": [],
+  "keys": {
+    "p-301": {
+      "changed": false,
+      "files": [
+        "packages/common/http/src/backend.ts",
+        "packages/common/src/pipes/async_pipe.ts",
+        "packages/core/rxjs-interop/src/to_observable.ts",
+        "packages/core/src/render3/reactivity/linked_signal.ts",
+        "packages/core/src/resource/debounce.ts",
+        "packages/core/src/resource/resource.ts",
+        "packages/core/test/acceptance/foreign_component/foreign_component_spec.ts",
+        "packages/core/test/render3/reactivity_spec.ts",
+        "packages/core/test/signals/non_reactive_spec.ts",
+        "packages/forms/signals/compat/src/compat_field_node.ts",
+        "packages/forms/signals/compat/src/signal_form_control/signal_form_control.ts",
+        "packages/forms/signals/src/api/structure.ts",
+        "packages/forms/signals/src/directive/control_cva.ts",
+        "packages/forms/signals/src/directive/form_field.ts",
+        "packages/forms/signals/src/directive/form_root.ts",
+        "packages/forms/signals/src/directive/native.ts",
+        "packages/forms/signals/src/field/context.ts",
+        "packages/forms/signals/src/field/manager.ts",
+        "packages/forms/signals/src/field/metadata.ts",
+        "packages/forms/signals/src/field/node.ts",
+        "packages/forms/signals/src/field/proxy.ts",
+        "packages/forms/signals/src/field/structure.ts",
+        "packages/forms/signals/src/field/validation.ts",
+        "packages/forms/signals/src/schema/logic.ts",
+        "packages/forms/signals/src/util/deep_signal.ts",
+        "packages/forms/signals/src/webmcp/registration.ts",
+        "packages/forms/signals/test/node/field_proxy.spec.ts",
+        "packages/forms/src/directives/ng_form.ts",
+        "packages/forms/src/directives/reactive_directives/abstract_form.directive.ts",
+        "packages/forms/src/model/abstract_model.ts",
+        "packages/forms/src/model/form_array.ts",
+        "packages/forms/src/model/form_control.ts",
+        "packages/forms/src/model/form_group.ts",
+        "packages/router/src/directives/router_link.ts",
+        "packages/router/src/directives/router_link_active.ts",
+        "packages/router/src/navigation_transition.ts",
+        "packages/router/src/router.ts",
+        "packages/router/src/router_resource.ts",
+        "packages/router/src/router_scroller.ts"
+      ]
+    },
+    "p-304": {
+      "changed": false,
+      "files": [
+        "packages/common/src/directives/ng_class.ts",
+        "packages/common/src/directives/ng_if.ts",
+        "packages/common/src/pipes/utils.ts",
+        "packages/core/src/animation/utils.ts",
+        "packages/core/src/change_detection/differs/default_iterable_differ.ts",
+        "packages/core/src/change_detection/differs/default_keyvalue_differ.ts",
+        "packages/core/src/di/create_injector.ts",
+        "packages/core/src/di/forward_ref.ts",
+        "packages/core/src/di/injector_compatibility.ts",
+        "packages/core/src/di/null_injector.ts",
+        "packages/core/src/di/provider_collection.ts",
+        "packages/core/src/di/r3_injector.ts",
+        "packages/core/src/linker/ng_module_registration.ts",
+        "packages/core/src/platform/bootstrap.ts",
+        "packages/core/src/render3/def_getters.ts",
+        "packages/core/src/render3/definition_factory.ts",
+        "packages/core/src/render3/errors_di.ts",
+        "packages/core/src/render3/instructions/shared.ts",
+        "packages/core/src/render3/instructions/styling.ts",
+        "packages/core/src/render3/ng_module_ref.ts",
+        "packages/core/src/render3/queries/query.ts",
+        "packages/core/src/util/assert.ts",
+        "packages/core/test/change_detection/util.ts",
+        "packages/core/test/linker/integration_spec.ts",
+        "packages/core/test/linker/ng_module_integration_spec.ts",
+        "packages/core/test/linker/query_integration_spec.ts",
+        "packages/core/test/util/stringify_spec.ts",
+        "packages/core/testing/src/metadata_overrider.ts",
+        "packages/core/testing/src/test_bed.ts"
+      ]
+    },
+    "p-305": {
+      "changed": false,
+      "files": [
+        "packages/compiler-cli/preprocessor/language-service/src/completions.ts",
+        "packages/compiler/src/combined_visitor.ts",
+        "packages/compiler/src/render3/r3_ast.ts",
+        "packages/compiler/src/render3/r3_template_transform.ts",
+        "packages/compiler/src/render3/view/t2_binder.ts",
+        "packages/compiler/src/template/pipeline/src/ingest.ts",
+        "packages/compiler/src/typecheck/ops/content_projection.ts",
+        "packages/compiler/src/typecheck/ops/scope.ts",
+        "packages/compiler/test/render3/r3_ast_spans_spec.ts",
+        "packages/compiler/test/render3/r3_template_transform_spec.ts",
+        "packages/compiler/test/render3/util/expression.ts",
+        "packages/language-service/src/completions.ts",
+        "packages/language-service/src/semantic_tokens.ts",
+        "packages/language-service/src/template_target.ts"
+      ]
+    },
+    "p-306": {
+      "changed": false,
+      "files": [
+        "packages/platform-browser/animations/async/src/async_animation_renderer.ts",
+        "packages/platform-browser/src/browser.ts",
+        "packages/platform-browser/src/browser/meta.ts",
+        "packages/platform-browser/src/browser/testability.ts",
+        "packages/platform-browser/src/dom/dom_renderer.ts",
+        "packages/platform-browser/src/dom/events/event_manager.ts",
+        "packages/platform-browser/src/hydration.ts",
+        "packages/platform-browser/src/security/dom_sanitization_service.ts"
+      ]
+    },
+    "p-307": {
+      "changed": false,
+      "files": [
+        "packages/compiler-cli/preprocessor/src/indexing/indexer.ts",
+        "packages/compiler-cli/preprocessor/src/oob.ts",
+        "packages/compiler-cli/preprocessor/src/selectorless.ts",
+        "packages/compiler-cli/src/ngtsc/annotations/component/src/selectorless.ts",
+        "packages/compiler-cli/src/ngtsc/typecheck/api/checker.ts",
+        "packages/compiler-cli/src/ngtsc/typecheck/api/symbols.ts",
+        "packages/compiler-cli/src/ngtsc/typecheck/src/checker.ts",
+        "packages/compiler-cli/src/ngtsc/typecheck/src/oob.ts",
+        "packages/compiler-cli/src/ngtsc/typecheck/src/template_symbol_builder.ts",
+        "packages/compiler-cli/src/ngtsc/typecheck/test/type_checker__get_symbol_of_template_node_spec.ts",
+        "packages/compiler-cli/src/ngtsc/typecheck/testing/index.ts",
+        "packages/compiler/src/combined_visitor.ts",
+        "packages/compiler/src/indexer/api.ts",
+        "packages/compiler/src/indexer/template.ts",
+        "packages/compiler/src/render3/r3_ast.ts",
+        "packages/compiler/src/render3/r3_template_transform.ts",
+        "packages/compiler/src/render3/view/t2_api.ts",
+        "packages/compiler/src/render3/view/t2_binder.ts",
+        "packages/compiler/src/template/pipeline/src/ingest.ts",
+        "packages/compiler/src/typecheck/oob.ts",
+        "packages/compiler/src/typecheck/ops/bindings.ts",
+        "packages/compiler/src/typecheck/ops/content_projection.ts",
+        "packages/compiler/src/typecheck/ops/inputs.ts",
+        "packages/compiler/src/typecheck/ops/references.ts",
+        "packages/compiler/src/typecheck/ops/schema.ts",
+        "packages/compiler/src/typecheck/ops/scope.ts",
+        "packages/compiler/src/typecheck/ops/selectorless.ts",
+        "packages/compiler/src/typecheck/ops/signal_forms.ts",
+        "packages/compiler/test/render3/r3_ast_spans_spec.ts",
+        "packages/compiler/test/render3/r3_template_transform_spec.ts",
+        "packages/compiler/test/render3/util/expression.ts",
+        "packages/compiler/test/render3/view/binding_spec.ts",
+        "packages/compiler/test/render3/view/util.ts",
+        "packages/language-service/src/document_symbols.ts",
+        "packages/language-service/src/references_and_rename.ts",
+        "packages/language-service/src/references_and_rename_utils.ts",
+        "packages/language-service/src/semantic_tokens.ts",
+        "packages/language-service/src/smart_selection.ts",
+        "packages/language-service/src/template_target.ts",
+        "packages/language-service/test/legacy/template_target_spec.ts"
+      ]
+    },
+    "p-308": {
+      "changed": false,
+      "files": [
+        "packages/common/test/directives/ng_optimized_image_spec.ts",
+        "packages/common/test/pipes/json_pipe_spec.ts",
+        "packages/common/test/pipes/slice_pipe_spec.ts",
+        "packages/core/src/metadata/directives.ts",
+        "packages/core/src/render3/definition.ts",
+        "packages/core/src/render3/util/discovery_utils.ts",
+        "packages/core/test/acceptance/animation_spec.ts",
+        "packages/core/test/acceptance/change_detection_signals_in_zones_spec.ts",
+        "packages/core/test/acceptance/change_detection_spec.ts",
+        "packages/core/test/acceptance/change_detection_transplanted_view_spec.ts",
+        "packages/core/test/acceptance/control_flow_for_spec.ts",
+        "packages/core/test/acceptance/defer_spec.ts",
+        "packages/core/test/acceptance/di_spec.ts",
+        "packages/core/test/acceptance/discover_utils_spec.ts",
+        "packages/core/test/acceptance/hmr_spec.ts",
+        "packages/core/test/acceptance/host_binding_spec.ts",
+        "packages/core/test/acceptance/i18n_spec.ts",
+        "packages/core/test/acceptance/integration_spec.ts",
+        "packages/core/test/acceptance/lifecycle_spec.ts",
+        "packages/core/test/acceptance/query_spec.ts",
+        "packages/core/test/acceptance/view_container_ref_spec.ts",
+        "packages/core/test/application_ref_integration_spec.ts",
+        "packages/core/test/application_ref_spec.ts",
+        "packages/core/test/bundling/image-directive/e2e/lcp-check/lcp-check.ts",
+        "packages/core/test/bundling/image-directive/index.ts",
+        "packages/core/test/component_fixture_spec.ts",
+        "packages/core/test/directive_lifecycle_integration_spec.ts",
+        "packages/core/test/legacy_animation/legacy_animation_integration_spec.ts",
+        "packages/core/test/legacy_animation/legacy_animation_query_integration_spec.ts",
+        "packages/core/test/legacy_animation/legacy_animations_with_web_animations_integration_spec.ts",
+        "packages/core/test/linker/change_detection_integration_spec.ts",
+        "packages/core/test/linker/query_integration_spec.ts",
+        "packages/core/test/linker/view_injector_integration_spec.ts",
+        "packages/core/test/render3/integration_spec.ts",
+        "packages/core/test/render3/jit/declare_component_spec.ts",
+        "packages/core/test/test_bed_effect_spec.ts",
+        "packages/core/test/test_bed_spec.ts",
+        "packages/elements/test/component-factory-strategy_spec.ts",
+        "packages/forms/signals/test/web/form_field.spec.ts",
+        "packages/platform-browser/test/browser/bootstrap_spec.ts",
+        "packages/router/src/components/empty_outlet.ts",
+        "packages/router/testing/src/router_testing_harness.ts",
+        "packages/upgrade/static/test/integration/change_detection_spec.ts",
+        "packages/upgrade/static/test/integration/downgrade_component_spec.ts",
+        "packages/upgrade/static/test/integration/downgrade_module_spec.ts",
+        "packages/upgrade/static/test/integration/upgrade_component_spec.ts"
+      ]
+    },
+    "p-311": {
+      "changed": false,
+      "files": [
+        "packages/router/src/navigation_transition.ts",
+        "packages/router/src/operators/recognize.ts",
+        "packages/router/test/apply_redirects.spec.ts",
+        "packages/router/test/create_router_state.spec.ts"
+      ]
+    },
+    "p-313": {
+      "changed": false,
+      "files": [
+        "packages/forms/signals/compat/src/api/extract.ts",
+        "packages/forms/signals/src/api/rules/validation/standard_schema.ts",
+        "packages/forms/signals/src/api/rules/validation/validate.ts",
+        "packages/forms/signals/src/api/rules/validation/validate_async.ts",
+        "packages/forms/signals/src/api/rules/validation/validate_tree.ts",
+        "packages/forms/signals/src/api/structure.ts",
+        "packages/forms/signals/src/directive/form_root.ts",
+        "packages/forms/signals/src/field/context.ts",
+        "packages/forms/signals/src/field/node.ts",
+        "packages/forms/signals/src/field/proxy.ts",
+        "packages/forms/signals/src/field/state.ts",
+        "packages/forms/signals/src/field/structure.ts",
+        "packages/forms/signals/src/field/validation.ts",
+        "packages/forms/signals/src/schema/logic.ts",
+        "packages/forms/signals/src/util/deep_signal.ts",
+        "packages/forms/signals/src/webmcp/registration.ts",
+        "packages/forms/signals/test/node/compat/compat.spec.ts",
+        "packages/forms/signals/test/node/logic_node.spec.ts",
+        "packages/forms/signals/test/node/submit.spec.ts"
+      ]
+    },
+    "p-314": {
+      "changed": false,
+      "files": [
+        "packages/common/locales/closure-locale.ts",
+        "packages/common/src/i18n/locale_data.ts",
+        "packages/common/test/i18n/format_date_spec.ts",
+        "packages/common/test/i18n/format_number_spec.ts",
+        "packages/common/test/i18n/locale_data_api_spec.ts",
+        "packages/common/test/i18n/localization_spec.ts",
+        "packages/common/test/pipes/date_pipe_spec.ts",
+        "packages/common/test/pipes/number_pipe_spec.ts",
+        "packages/core/test/acceptance/i18n_spec.ts",
+        "packages/core/test/i18n/locale_data_api_spec.ts"
+      ]
+    }
+  },
+  "evidence": [
+    {
+      "questionId": "p-301",
+      "symbol": "untracked",
+      "kind": "callers",
+      "regeneratedFileCount": 39,
+      "keyFileCount": 39,
+      "regeneratedEqualsKey": true
+    },
+    {
+      "questionId": "p-301",
+      "file": "packages/router/src/directives/router_link_active.ts",
+      "verdicts": [
+        "missing:c"
+      ],
+      "inTrackedScope": true,
+      "inKey": true,
+      "inOracleSet": true,
+      "references": [
+        {
+          "line": 24,
+          "role": "import",
+          "typeOnly": false,
+          "enclosing": "<module>",
+          "text": "untracked"
+        },
+        {
+          "line": 288,
+          "role": "call",
+          "typeOnly": false,
+          "enclosing": "isLinkActive",
+          "text": "untracked"
+        }
+      ]
+    },
+    {
+      "questionId": "p-304",
+      "symbol": "stringify",
+      "kind": "callers",
+      "regeneratedFileCount": 29,
+      "keyFileCount": 29,
+      "regeneratedEqualsKey": true
+    },
+    {
+      "questionId": "p-304",
+      "file": "packages/core/src/util/stringify.ts",
+      "verdicts": [
+        "extra:a"
+      ],
+      "inTrackedScope": true,
+      "inKey": false,
+      "inOracleSet": false,
+      "references": [
+        {
+          "line": 9,
+          "role": "definition",
+          "typeOnly": false,
+          "enclosing": "<module>",
+          "text": "stringify"
+        },
+        {
+          "line": 15,
+          "role": "use",
+          "typeOnly": false,
+          "enclosing": "stringify",
+          "text": "stringify"
+        }
+      ]
+    },
+    {
+      "questionId": "p-304",
+      "file": "packages/core/test/util/stringify_spec.ts",
+      "verdicts": [
+        "missing:c"
+      ],
+      "inTrackedScope": true,
+      "inKey": true,
+      "inOracleSet": true,
+      "references": [
+        {
+          "line": 8,
+          "role": "import",
+          "typeOnly": false,
+          "enclosing": "<module>",
+          "text": "stringify"
+        },
+        {
+          "line": 12,
+          "role": "call",
+          "typeOnly": false,
+          "enclosing": "<module>",
+          "text": "stringify"
+        },
+        {
+          "line": 15,
+          "role": "call",
+          "typeOnly": false,
+          "enclosing": "<module>",
+          "text": "stringify"
+        }
+      ]
+    },
+    {
+      "questionId": "p-305",
+      "symbol": "Text",
+      "kind": "references",
+      "regeneratedFileCount": 14,
+      "keyFileCount": 14,
+      "regeneratedEqualsKey": true
+    },
+    {
+      "questionId": "p-305",
+      "file": "packages/compiler-cli/preprocessor/language-service/src/completions.ts",
+      "verdicts": [
+        "missing:c"
+      ],
+      "inTrackedScope": true,
+      "inKey": true,
+      "inOracleSet": true,
+      "references": [
+        {
+          "line": 31,
+          "role": "import",
+          "typeOnly": false,
+          "enclosing": "<module>",
+          "text": "TmplAstText"
+        },
+        {
+          "line": 185,
+          "role": "use",
+          "typeOnly": false,
+          "enclosing": "isLetCompletion",
+          "text": "TmplAstText"
+        },
+        {
+          "line": 190,
+          "role": "use",
+          "typeOnly": false,
+          "enclosing": "isBlockCompletion",
+          "text": "TmplAstText"
+        },
+        {
+          "line": 369,
+          "role": "use",
+          "typeOnly": false,
+          "enclosing": "isElementTagCompletion",
+          "text": "TmplAstText"
+        },
+        {
+          "line": 962,
+          "role": "call",
+          "typeOnly": false,
+          "enclosing": "getCompletionsAtPosition",
+          "text": "TmplAstText"
+        }
+      ]
+    },
+    {
+      "questionId": "p-305",
+      "file": "packages/compiler/src/render3/view/t2_binder.ts",
+      "verdicts": [
+        "missing:c"
+      ],
+      "inTrackedScope": true,
+      "inKey": true,
+      "inOracleSet": true,
+      "references": [
+        {
+          "line": 50,
+          "role": "import",
+          "typeOnly": false,
+          "enclosing": "<module>",
+          "text": "Text"
+        },
+        {
+          "line": 484,
+          "role": "use",
+          "typeOnly": true,
+          "enclosing": "visitText",
+          "text": "Text"
+        },
+        {
+          "line": 989,
+          "role": "use",
+          "typeOnly": true,
+          "enclosing": "visitText",
+          "text": "Text"
+        }
+      ]
+    },
+    {
+      "questionId": "p-305",
+      "file": "packages/compiler/src/typecheck/ops/content_projection.ts",
+      "verdicts": [
+        "missing:c"
+      ],
+      "inTrackedScope": true,
+      "inKey": true,
+      "inOracleSet": true,
+      "references": [
+        {
+          "line": 23,
+          "role": "import",
+          "typeOnly": false,
+          "enclosing": "<module>",
+          "text": "Text"
+        },
+        {
+          "line": 157,
+          "role": "use",
+          "typeOnly": false,
+          "enclosing": "shouldCheck",
+          "text": "Text"
+        }
+      ]
+    },
+    {
+      "questionId": "p-305",
+      "file": "packages/compiler/src/typecheck/ops/scope.ts",
+      "verdicts": [
+        "missing:c"
+      ],
+      "inTrackedScope": true,
+      "inKey": true,
+      "inOracleSet": true,
+      "references": [
+        {
+          "line": 35,
+          "role": "import",
+          "typeOnly": false,
+          "enclosing": "<module>",
+          "text": "Text"
+        },
+        {
+          "line": 1063,
+          "role": "use",
+          "typeOnly": false,
+          "enclosing": "validateReferenceBasedDeferredTrigger",
+          "text": "Text"
+        }
+      ]
+    },
+    {
+      "questionId": "p-305",
+      "file": "packages/language-service/src/completions.ts",
+      "verdicts": [
+        "missing:c"
+      ],
+      "inTrackedScope": true,
+      "inKey": true,
+      "inOracleSet": true,
+      "references": [
+        {
+          "line": 32,
+          "role": "import",
+          "typeOnly": false,
+          "enclosing": "<module>",
+          "text": "TmplAstText"
+        },
+        {
+          "line": 223,
+          "role": "use",
+          "typeOnly": true,
+          "enclosing": "isBlockCompletion",
+          "text": "TmplAstText"
+        },
+        {
+          "line": 224,
+          "role": "use",
+          "typeOnly": false,
+          "enclosing": "isBlockCompletion",
+          "text": "TmplAstText"
+        },
+        {
+          "line": 232,
+          "role": "use",
+          "typeOnly": true,
+          "enclosing": "getBlockCompletions",
+          "text": "TmplAstText"
+        },
+        {
+          "line": 735,
+          "role": "use",
+          "typeOnly": true,
+          "enclosing": "isElementTagCompletion",
+          "text": "TmplAstText"
+        },
+        {
+          "line": 736,
+          "role": "use",
+          "typeOnly": false,
+          "enclosing": "isElementTagCompletion",
+          "text": "TmplAstText"
+        },
+        {
+          "line": 748,
+          "role": "use",
+          "typeOnly": true,
+          "enclosing": "getElementTagCompletion",
+          "text": "TmplAstText"
+        },
+        {
+          "line": 825,
+          "role": "use",
+          "typeOnly": true,
+          "enclosing": "getElementTagCompletionDetails",
+          "text": "TmplAstText"
+        },
+        {
+          "line": 898,
+          "role": "use",
+          "typeOnly": true,
+          "enclosing": "getElementTagCompletionSymbol",
+          "text": "TmplAstText"
+        }
+      ]
+    },
+    {
+      "questionId": "p-305",
+      "file": "packages/language-service/src/semantic_tokens.ts",
+      "verdicts": [
+        "missing:c"
+      ],
+      "inTrackedScope": true,
+      "inKey": true,
+      "inOracleSet": true,
+      "references": [
+        {
+          "line": 37,
+          "role": "import",
+          "typeOnly": false,
+          "enclosing": "<module>",
+          "text": "TmplAstText"
+        },
+        {
+          "line": 156,
+          "role": "use",
+          "typeOnly": true,
+          "enclosing": "visitText",
+          "text": "TmplAstText"
+        }
+      ]
+    },
+    {
+      "questionId": "p-305",
+      "file": "packages/language-service/src/template_target.ts",
+      "verdicts": [
+        "missing:c"
+      ],
+      "inTrackedScope": true,
+      "inKey": true,
+      "inOracleSet": true,
+      "references": [
+        {
+          "line": 51,
+          "role": "import",
+          "typeOnly": false,
+          "enclosing": "<module>",
+          "text": "TmplAstText"
+        },
+        {
+          "line": 620,
+          "role": "use",
+          "typeOnly": true,
+          "enclosing": "visitText",
+          "text": "TmplAstText"
+        }
+      ]
+    },
+    {
+      "questionId": "p-306",
+      "symbol": "RuntimeErrorCode",
+      "kind": "references",
+      "regeneratedFileCount": 8,
+      "keyFileCount": 8,
+      "regeneratedEqualsKey": true
+    },
+    {
+      "questionId": "p-306",
+      "file": "packages/platform-browser/animations/async/src/async_animation_renderer.ts",
+      "verdicts": [
+        "missing:c"
+      ],
+      "inTrackedScope": true,
+      "inKey": true,
+      "inOracleSet": true,
+      "references": [
+        {
+          "line": 33,
+          "role": "import",
+          "typeOnly": false,
+          "enclosing": "<module>",
+          "text": "ɵRuntimeErrorCode"
+        },
+        {
+          "line": 33,
+          "role": "import",
+          "typeOnly": false,
+          "enclosing": "<module>",
+          "text": "RuntimeErrorCode"
+        },
+        {
+          "line": 93,
+          "role": "use",
+          "typeOnly": false,
+          "enclosing": "loadImpl",
+          "text": "RuntimeErrorCode"
+        }
+      ]
+    },
+    {
+      "questionId": "p-307",
+      "symbol": "Component",
+      "kind": "references",
+      "regeneratedFileCount": 40,
+      "keyFileCount": 40,
+      "regeneratedEqualsKey": true
+    },
+    {
+      "questionId": "p-307",
+      "file": "packages/compiler-cli/src/ngtsc/typecheck/api/checker.ts",
+      "verdicts": [
+        "missing:c"
+      ],
+      "inTrackedScope": true,
+      "inKey": true,
+      "inOracleSet": true,
+      "references": [
+        {
+          "line": 18,
+          "role": "import",
+          "typeOnly": false,
+          "enclosing": "<module>",
+          "text": "TmplAstComponent"
+        },
+        {
+          "line": 176,
+          "role": "use",
+          "typeOnly": true,
+          "enclosing": "<module>",
+          "text": "TmplAstComponent"
+        }
+      ]
+    },
+    {
+      "questionId": "p-307",
+      "file": "packages/compiler-cli/src/ngtsc/typecheck/src/checker.ts",
+      "verdicts": [
+        "missing:c"
+      ],
+      "inTrackedScope": true,
+      "inKey": true,
+      "inOracleSet": true,
+      "references": [
+        {
+          "line": 25,
+          "role": "import",
+          "typeOnly": false,
+          "enclosing": "<module>",
+          "text": "TmplAstComponent"
+        },
+        {
+          "line": 1118,
+          "role": "use",
+          "typeOnly": true,
+          "enclosing": "getSymbolOfNode",
+          "text": "TmplAstComponent"
+        }
+      ]
+    },
+    {
+      "questionId": "p-307",
+      "file": "packages/compiler/src/indexer/api.ts",
+      "verdicts": [
+        "missing:c"
+      ],
+      "inTrackedScope": true,
+      "inKey": true,
+      "inOracleSet": true,
+      "references": [
+        {
+          "line": 13,
+          "role": "import",
+          "typeOnly": false,
+          "enclosing": "<module>",
+          "text": "Component"
+        },
+        {
+          "line": 205,
+          "role": "use",
+          "typeOnly": true,
+          "enclosing": "<module>",
+          "text": "Component"
+        },
+        {
+          "line": 210,
+          "role": "use",
+          "typeOnly": true,
+          "enclosing": "<module>",
+          "text": "Component"
+        },
+        {
+          "line": 213,
+          "role": "use",
+          "typeOnly": true,
+          "enclosing": "<module>",
+          "text": "Component"
+        }
+      ]
+    },
+    {
+      "questionId": "p-307",
+      "file": "packages/compiler/src/render3/view/t2_api.ts",
+      "verdicts": [
+        "missing:c"
+      ],
+      "inTrackedScope": true,
+      "inKey": true,
+      "inOracleSet": true,
+      "references": [
+        {
+          "line": 14,
+          "role": "import",
+          "typeOnly": false,
+          "enclosing": "<module>",
+          "text": "Component"
+        },
+        {
+          "line": 60,
+          "role": "use",
+          "typeOnly": true,
+          "enclosing": "<module>",
+          "text": "Component"
+        }
+      ]
+    },
+    {
+      "questionId": "p-307",
+      "file": "packages/compiler/src/render3/view/t2_binder.ts",
+      "verdicts": [
+        "missing:c"
+      ],
+      "inTrackedScope": true,
+      "inKey": true,
+      "inOracleSet": true,
+      "references": [
+        {
+          "line": 24,
+          "role": "import",
+          "typeOnly": false,
+          "enclosing": "<module>",
+          "text": "Component"
+        },
+        {
+          "line": 471,
+          "role": "use",
+          "typeOnly": true,
+          "enclosing": "visitComponent",
+          "text": "Component"
+        },
+        {
+          "line": 490,
+          "role": "use",
+          "typeOnly": true,
+          "enclosing": "visitElementLike",
+          "text": "Component"
+        },
+        {
+          "line": 708,
+          "role": "use",
+          "typeOnly": true,
+          "enclosing": "visitComponent",
+          "text": "Component"
+        },
+        {
+          "line": 889,
+          "role": "use",
+          "typeOnly": true,
+          "enclosing": "trackSelectorlessMatchesAndDirectives",
+          "text": "Component"
+        },
+        {
+          "line": 1503,
+          "role": "use",
+          "typeOnly": false,
+          "enclosing": "referenceTargetToElement",
+          "text": "Component"
+        }
+      ]
+    },
+    {
+      "questionId": "p-307",
+      "file": "packages/compiler/src/typecheck/oob.ts",
+      "verdicts": [
+        "missing:c"
+      ],
+      "inTrackedScope": true,
+      "inKey": true,
+      "inOracleSet": true,
+      "references": [
+        {
+          "line": 15,
+          "role": "import",
+          "typeOnly": false,
+          "enclosing": "<module>",
+          "text": "Component"
+        },
+        {
+          "line": 130,
+          "role": "use",
+          "typeOnly": true,
+          "enclosing": "<module>",
+          "text": "Component"
+        },
+        {
+          "line": 182,
+          "role": "use",
+          "typeOnly": true,
+          "enclosing": "<module>",
+          "text": "Component"
+        },
+        {
+          "line": 190,
+          "role": "use",
+          "typeOnly": true,
+          "enclosing": "<module>",
+          "text": "Component"
+        },
+        {
+          "line": 243,
+          "role": "use",
+          "typeOnly": true,
+          "enclosing": "<module>",
+          "text": "Component"
+        }
+      ]
+    },
+    {
+      "questionId": "p-307",
+      "file": "packages/compiler/src/typecheck/ops/bindings.ts",
+      "verdicts": [
+        "missing:c"
+      ],
+      "inTrackedScope": true,
+      "inKey": true,
+      "inOracleSet": true,
+      "references": [
+        {
+          "line": 15,
+          "role": "import",
+          "typeOnly": false,
+          "enclosing": "<module>",
+          "text": "Component"
+        },
+        {
+          "line": 87,
+          "role": "use",
+          "typeOnly": true,
+          "enclosing": "getBoundAttributes",
+          "text": "Component"
+        }
+      ]
+    },
+    {
+      "questionId": "p-307",
+      "file": "packages/compiler/src/typecheck/ops/content_projection.ts",
+      "verdicts": [
+        "missing:c"
+      ],
+      "inTrackedScope": true,
+      "inKey": true,
+      "inOracleSet": true,
+      "references": [
+        {
+          "line": 12,
+          "role": "import",
+          "typeOnly": false,
+          "enclosing": "<module>",
+          "text": "Component"
+        },
+        {
+          "line": 47,
+          "role": "use",
+          "typeOnly": true,
+          "enclosing": "TcbControlFlowContentProjectionOp",
+          "text": "Component"
+        }
+      ]
+    },
+    {
+      "questionId": "p-307",
+      "file": "packages/compiler/src/typecheck/ops/inputs.ts",
+      "verdicts": [
+        "missing:c"
+      ],
+      "inTrackedScope": true,
+      "inKey": true,
+      "inOracleSet": true,
+      "references": [
+        {
+          "line": 12,
+          "role": "import",
+          "typeOnly": false,
+          "enclosing": "<module>",
+          "text": "Component"
+        },
+        {
+          "line": 54,
+          "role": "use",
+          "typeOnly": true,
+          "enclosing": "TcbDirectiveInputsOp",
+          "text": "Component"
+        }
+      ]
+    },
+    {
+      "questionId": "p-307",
+      "file": "packages/compiler/src/typecheck/ops/references.ts",
+      "verdicts": [
+        "missing:c"
+      ],
+      "inTrackedScope": true,
+      "inKey": true,
+      "inOracleSet": true,
+      "references": [
+        {
+          "line": 10,
+          "role": "import",
+          "typeOnly": false,
+          "enclosing": "<module>",
+          "text": "Component"
+        },
+        {
+          "line": 33,
+          "role": "use",
+          "typeOnly": true,
+          "enclosing": "<module>",
+          "text": "Component"
+        },
+        {
+          "line": 61,
+          "role": "use",
+          "typeOnly": true,
+          "enclosing": "TcbReferenceOp",
+          "text": "Component"
+        }
+      ]
+    },
+    {
+      "questionId": "p-307",
+      "file": "packages/compiler/src/typecheck/ops/schema.ts",
+      "verdicts": [
+        "missing:c"
+      ],
+      "inTrackedScope": true,
+      "inKey": true,
+      "inOracleSet": true,
+      "references": [
+        {
+          "line": 10,
+          "role": "import",
+          "typeOnly": false,
+          "enclosing": "<module>",
+          "text": "Component"
+        },
+        {
+          "line": 31,
+          "role": "use",
+          "typeOnly": true,
+          "enclosing": "TcbDomSchemaCheckerOp",
+          "text": "Component"
+        },
+        {
+          "line": 44,
+          "role": "use",
+          "typeOnly": false,
+          "enclosing": "execute",
+          "text": "Component"
+        },
+        {
+          "line": 94,
+          "role": "use",
+          "typeOnly": true,
+          "enclosing": "getTagName",
+          "text": "Component"
+        }
+      ]
+    },
+    {
+      "questionId": "p-307",
+      "file": "packages/compiler/src/typecheck/ops/scope.ts",
+      "verdicts": [
+        "missing:c"
+      ],
+      "inTrackedScope": true,
+      "inKey": true,
+      "inOracleSet": true,
+      "references": [
+        {
+          "line": 17,
+          "role": "import",
+          "typeOnly": false,
+          "enclosing": "<module>",
+          "text": "Component"
+        },
+        {
+          "line": 118,
+          "role": "use",
+          "typeOnly": true,
+          "enclosing": "Scope",
+          "text": "Component"
+        },
+        {
+          "line": 429,
+          "role": "use",
+          "typeOnly": false,
+          "enclosing": "resolveLocal",
+          "text": "Component"
+        },
+        {
+          "line": 441,
+          "role": "use",
+          "typeOnly": false,
+          "enclosing": "resolveLocal",
+          "text": "Component"
+        },
+        {
+          "line": 516,
+          "role": "use",
+          "typeOnly": false,
+          "enclosing": "appendNode",
+          "text": "Component"
+        },
+        {
+          "line": 553,
+          "role": "use",
+          "typeOnly": true,
+          "enclosing": "checkAndAppendReferencesOfNode",
+          "text": "Component"
+        },
+        {
+          "line": 731,
+          "role": "use",
+          "typeOnly": true,
+          "enclosing": "appendInputsOfSelectorlessNode",
+          "text": "Component"
+        },
+        {
+          "line": 773,
+          "role": "use",
+          "typeOnly": true,
+          "enclosing": "appendOutputsOfSelectorlessNode",
+          "text": "Component"
+        },
+        {
+          "line": 806,
+          "role": "use",
+          "typeOnly": true,
+          "enclosing": "appendDirectiveInputs",
+          "text": "Component"
+        },
+        {
+          "line": 857,
+          "role": "use",
+          "typeOnly": true,
+          "enclosing": "appendSelectorlessDirectives",
+          "text": "Component"
+        },
+        {
+          "line": 930,
+          "role": "use",
+          "typeOnly": true,
+          "enclosing": "appendContentProjectionCheckOp",
+          "text": "Component"
+        },
+        {
+          "line": 947,
+          "role": "use",
+          "typeOnly": true,
+          "enclosing": "appendComponentNode",
+          "text": "Component"
+        },
+        {
+          "line": 1101,
+          "role": "use",
+          "typeOnly": true,
+          "enclosing": "reportConflictingBindings",
+          "text": "Component"
+        }
+      ]
+    },
+    {
+      "questionId": "p-307",
+      "file": "packages/compiler/src/typecheck/ops/selectorless.ts",
+      "verdicts": [
+        "missing:c"
+      ],
+      "inTrackedScope": true,
+      "inKey": true,
+      "inOracleSet": true,
+      "references": [
+        {
+          "line": 9,
+          "role": "import",
+          "typeOnly": false,
+          "enclosing": "<module>",
+          "text": "Component"
+        },
+        {
+          "line": 18,
+          "role": "use",
+          "typeOnly": true,
+          "enclosing": "getComponentTagName",
+          "text": "Component"
+        },
+        {
+          "line": 33,
+          "role": "use",
+          "typeOnly": true,
+          "enclosing": "TcbComponentNodeOp",
+          "text": "Component"
+        }
+      ]
+    },
+    {
+      "questionId": "p-307",
+      "file": "packages/compiler/src/typecheck/ops/signal_forms.ts",
+      "verdicts": [
+        "missing:c"
+      ],
+      "inTrackedScope": true,
+      "inKey": true,
+      "inOracleSet": true,
+      "references": [
+        {
+          "line": 13,
+          "role": "import",
+          "typeOnly": false,
+          "enclosing": "<module>",
+          "text": "Component"
+        },
+        {
+          "line": 251,
+          "role": "use",
+          "typeOnly": true,
+          "enclosing": "expandBoundAttributesForField",
+          "text": "Component"
+        }
+      ]
+    },
+    {
+      "questionId": "p-307",
+      "file": "packages/compiler/test/render3/view/binding_spec.ts",
+      "verdicts": [
+        "missing:c"
+      ],
+      "inTrackedScope": true,
+      "inKey": true,
+      "inOracleSet": true,
+      "references": [
+        {
+          "line": 426,
+          "role": "use",
+          "typeOnly": true,
+          "enclosing": "<module>",
+          "text": "Component"
+        },
+        {
+          "line": 1124,
+          "role": "use",
+          "typeOnly": true,
+          "enclosing": "<module>",
+          "text": "Component"
+        },
+        {
+          "line": 1156,
+          "role": "use",
+          "typeOnly": true,
+          "enclosing": "<module>",
+          "text": "Component"
+        },
+        {
+          "line": 1192,
+          "role": "use",
+          "typeOnly": true,
+          "enclosing": "<module>",
+          "text": "Component"
+        },
+        {
+          "line": 1222,
+          "role": "use",
+          "typeOnly": true,
+          "enclosing": "<module>",
+          "text": "Component"
+        },
+        {
+          "line": 1247,
+          "role": "use",
+          "typeOnly": true,
+          "enclosing": "<module>",
+          "text": "Component"
+        }
+      ]
+    },
+    {
+      "questionId": "p-307",
+      "file": "packages/compiler/test/render3/view/util.ts",
+      "verdicts": [
+        "missing:c"
+      ],
+      "inTrackedScope": true,
+      "inKey": true,
+      "inOracleSet": true,
+      "references": [
+        {
+          "line": 107,
+          "role": "use",
+          "typeOnly": false,
+          "enclosing": "findExpressionInNode",
+          "text": "Component"
+        }
+      ]
+    },
+    {
+      "questionId": "p-308",
+      "symbol": "ChangeDetectionStrategy",
+      "kind": "references",
+      "regeneratedFileCount": 46,
+      "keyFileCount": 46,
+      "regeneratedEqualsKey": true
+    },
+    {
+      "questionId": "p-308",
+      "file": "packages/router/test/integration/integration.spec.ts",
+      "verdicts": [
+        "extra:a"
+      ],
+      "inTrackedScope": true,
+      "inKey": false,
+      "inOracleSet": false,
+      "references": []
+    },
+    {
+      "questionId": "p-311",
+      "symbol": "recognize",
+      "kind": "impact",
+      "regeneratedFileCount": 4,
+      "keyFileCount": 4,
+      "regeneratedEqualsKey": true,
+      "direct": [
+        "packages/router/src/operators/recognize.ts",
+        "packages/router/test/apply_redirects.spec.ts",
+        "packages/router/test/create_router_state.spec.ts"
+      ],
+      "viaCallers": [
+        "packages/router/src/navigation_transition.ts"
+      ]
+    },
+    {
+      "questionId": "p-311",
+      "file": "packages/router/src/router.ts",
+      "verdicts": [
+        "extra:a"
+      ],
+      "inTrackedScope": true,
+      "inKey": false,
+      "inOracleSet": false,
+      "references": []
+    },
+    {
+      "questionId": "p-313",
+      "symbol": "isArray",
+      "kind": "impact",
+      "regeneratedFileCount": 19,
+      "keyFileCount": 19,
+      "regeneratedEqualsKey": true,
+      "direct": [
+        "packages/forms/signals/compat/src/api/extract.ts",
+        "packages/forms/signals/src/api/structure.ts",
+        "packages/forms/signals/src/field/context.ts",
+        "packages/forms/signals/src/field/proxy.ts",
+        "packages/forms/signals/src/field/structure.ts",
+        "packages/forms/signals/src/field/validation.ts",
+        "packages/forms/signals/src/schema/logic.ts",
+        "packages/forms/signals/src/util/deep_signal.ts"
+      ],
+      "viaCallers": [
+        "packages/forms/signals/src/api/rules/validation/standard_schema.ts",
+        "packages/forms/signals/src/api/rules/validation/validate.ts",
+        "packages/forms/signals/src/api/rules/validation/validate_async.ts",
+        "packages/forms/signals/src/api/rules/validation/validate_tree.ts",
+        "packages/forms/signals/src/directive/form_root.ts",
+        "packages/forms/signals/src/field/node.ts",
+        "packages/forms/signals/src/field/state.ts",
+        "packages/forms/signals/src/webmcp/registration.ts",
+        "packages/forms/signals/test/node/compat/compat.spec.ts",
+        "packages/forms/signals/test/node/logic_node.spec.ts",
+        "packages/forms/signals/test/node/submit.spec.ts"
+      ]
+    },
+    {
+      "questionId": "p-313",
+      "file": "packages/forms/signals/src/field/field_adapter.ts",
+      "verdicts": [
+        "extra:a"
+      ],
+      "inTrackedScope": true,
+      "inKey": false,
+      "inOracleSet": false,
+      "references": []
+    },
+    {
+      "questionId": "p-313",
+      "file": "packages/forms/signals/src/field/state.ts",
+      "verdicts": [
+        "missing:c"
+      ],
+      "inTrackedScope": true,
+      "inKey": true,
+      "inOracleSet": true,
+      "references": []
+    },
+    {
+      "questionId": "p-313",
+      "file": "packages/forms/signals/test/node/deep_signal.spec.ts",
+      "verdicts": [
+        "extra:a"
+      ],
+      "inTrackedScope": true,
+      "inKey": false,
+      "inOracleSet": false,
+      "references": []
+    },
+    {
+      "questionId": "p-313",
+      "file": "packages/forms/signals/test/node/logic_node.spec.ts",
+      "verdicts": [
+        "missing:c"
+      ],
+      "inTrackedScope": true,
+      "inKey": true,
+      "inOracleSet": true,
+      "references": []
+    },
+    {
+      "questionId": "p-314",
+      "symbol": "registerLocaleData",
+      "kind": "impact",
+      "regeneratedFileCount": 10,
+      "keyFileCount": 10,
+      "regeneratedEqualsKey": true,
+      "direct": [
+        "packages/common/src/i18n/locale_data.ts",
+        "packages/common/test/i18n/format_date_spec.ts",
+        "packages/common/test/i18n/format_number_spec.ts",
+        "packages/common/test/i18n/locale_data_api_spec.ts",
+        "packages/common/test/i18n/localization_spec.ts",
+        "packages/common/test/pipes/date_pipe_spec.ts",
+        "packages/common/test/pipes/number_pipe_spec.ts",
+        "packages/core/test/i18n/locale_data_api_spec.ts"
+      ],
+      "viaCallers": [
+        "packages/common/locales/closure-locale.ts",
+        "packages/core/test/acceptance/i18n_spec.ts"
+      ]
+    },
+    {
+      "questionId": "p-314",
+      "file": "packages/common/locales/closure-locale.ts",
+      "verdicts": [
+        "missing:c"
+      ],
+      "inTrackedScope": true,
+      "inKey": true,
+      "inOracleSet": true,
+      "references": []
+    },
+    {
+      "questionId": "p-314",
+      "file": "packages/common/locales/generate-locales-tool/closure-locale-file.ts",
+      "verdicts": [
+        "extra:a"
+      ],
+      "inTrackedScope": true,
+      "inKey": false,
+      "inOracleSet": false,
+      "references": []
+    }
+  ]
+}
