@@ -172,6 +172,8 @@ function main(): void {
   fs.writeFileSync(path.join(out, 'selection-log.md'), lines.join('\n'));
   oracle.dispose();
   if (needed.length > 0) {
+    // the oracle's selected keys, for the first reader, before any role exists (not a registered file)
+    fs.writeFileSync(path.join(out, 'keys-draft.json'), `${JSON.stringify(entries.map((e) => ({ id: e.id, category: e.category, name: e.name, file: e.file, notes: e.notes, items: e.items, useSite: e.useSite })), null, 1)}\n`);
     fs.writeFileSync(path.join(out, 'roles-needed.json'), `${JSON.stringify(needed, null, 2)}\n`);
     process.stdout.write(`selection done (${String(picked.length)} picked, ${String(skipped.length)} skipped); ${String(needed.length)} role(s) missing, see roles-needed.json\n`);
     process.exit(2);

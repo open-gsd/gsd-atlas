@@ -135,6 +135,12 @@ describe('questionTextV2', () => {
     }
   });
 
+  it('tells a heritage reader that a subtype of the target may share its name (the defect that excluded NgModuleFactory in v1)', () => {
+    const text = questionTextV2({ category: 'heritage', ...base });
+    assert.match(text, /A subtype counts even when it has the same name as the target, as long as its heritage clause refers to the target/);
+    assert.doesNotMatch(questionTextV2({ category: 'callers', ...base }), /A subtype counts/);
+  });
+
   it('carries the nested-call sentence in every impact question and a depth-two formula', () => {
     const text = questionTextV2({ category: 'impact', ...base, kind: 'function', role: 'the function that checks a value' });
     assert.match(text, /a call inside a nested function, a callback or an unnamed arrow function counts for the nearest enclosing declaration that has a name/);
