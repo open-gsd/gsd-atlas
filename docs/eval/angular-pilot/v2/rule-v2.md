@@ -14,7 +14,7 @@ Only aggregate counts of a re-run of the existing census (`scripts/angular-pilot
 
 - Pin `3cc1edf3210a9debb0be57a4e99e53a54505db32`; oracle `angular-pilot-1` (the v1 oracle, TypeScript 6.0.3, spec and test files in scope); scope exactly as v1 (`SCOPE_RULE` in `scripts/angular-pilot/select.ts`).
 - **Seed 20261022** (new; v1 used 20261021, the registered run 20261017). Candidates are ordered by `sha256("20261022\0<name>@<declaring file>")`, ascending. One question per distinct name across all categories.
-- Ids `q2-301`..`q2-316`, in the order callers, references, heritage, impact, definition, abstain.
+- Ids `p-301`..`p-316` (the brief said `q2-301`..; the frozen loader's id pattern is `^[qp]-\d+$`, so `q2-` cannot load, and `p-` is the pilot prefix), in the order callers, references, heritage, impact, definition, abstain.
 - Definitions. *Grep files*: tracked files of the whole tree that contain the name as a whole word (`git grep -l -w -F`). *Other declarations*: exported top-level declarations of the same name in other non-test files of `packages/` (the census `otherDeclFiles`; kind need not match). *Key size*: files for callers, references and impact; named classes and interfaces (items) for heritage.
 
 ## The rule
