@@ -23,7 +23,7 @@ All of it is judged on a **fresh question set on a corpus fixed in advance** (se
 | --- | --- | --- |
 | N1 | Correctness on structural questions | A-reg exact-set correctness minus G, paired by question, lower bound of the 90% interval above 0 (superiority), on the full fresh set. |
 | N2 | Verifiability | Share of A-reg answers whose every claimed item carries a citation that resolves to the right file and line: at least 0.80 (the old H3 threshold, kept unchanged), and at least G's rate. |
-| N3 | Cost is bounded, not minimised | Priced cost ratio A-reg / G, upper bound of the 90% interval at most **R_max** (owner to set, see section 5). |
+| N3 | Cost is bounded, not minimised | Priced cost ratio A-reg / G, upper bound of the 90% interval at most **R_max = 1.5** (owner decision, 2026-10-22). |
 | N4 | The tool is used | Share of A-reg sessions with at least one atlas call: at least 0.50 on questions in the structural strata (callers, references, impact). |
 
 **Pass** = N1, N2, N3 and N4 all hold. **Fail** otherwise. No partial credit and no change of margins after data. A failure is a second documented miss, and both attempts are cited by any later registration.
@@ -45,9 +45,9 @@ Two caveats that argue against reading the pilot as a prediction: the called ses
 - **Controls:** same safeguards as every run (subscription login only, extra usage off, stop at 0.60 either window, no API key, pinned Claude Code version, model pin).
 - **Registration:** a new document (not Revision 2 of the old one), its own approvals and hashes, citing the old verdict, replication and pilot.
 
-## 5. Decisions the owner must make before registration
+## 5. Decisions the owner must make before registration (item 1 decided; 2 to 5 open)
 
-1. **R_max for N3.** The honest way to set it is by what the extra cost buys the user, before looking at the next data. The only numbers on the table are the old 1.19x priced ratio and the pilot's token ratios, which must not be used to tune it. A value is a judgement, for example whether an agent session may cost up to 1.5x or 2x grep for more accurate, cited answers.
+1. **R_max for N3: decided, 1.5 times grep's priced cost (owner, 2026-10-22; recorded before any new data).** Original question: The honest way to set it is by what the extra cost buys the user, before looking at the next data. The only numbers on the table are the old 1.19x priced ratio and the pilot's token ratios, which must not be used to tune it. A value is a judgement, for example whether an agent session may cost up to 1.5x or 2x grep for more accurate, cited answers.
 2. **Requirements wording.** Whether EVL-03 and EVL-04 are amended to the N1-N4 form, or the new run is recorded as a separate claim with EVL-03 left failing. D-04 says a changed margin voids the claim, so the amendment must be a dated decision, not a silent edit.
 3. **Phase 4.** Whether it stays blocked until this gate is met, or starts by an explicit recorded decision (option F) in parallel. The roadmap says the dependency is a decision, not technical.
 4. **Corpus and size.** Angular alone with 40 questions, or angular plus gsd-pi.
