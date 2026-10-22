@@ -1,0 +1,291 @@
+{
+  "note": "Verdicts of the supplementary audit of the 23 non-exact pilot sessions. a: key right, session wrong; b: genuine hit the key lacks (key defect); c: session omitted a genuine key hit; d: path-format artifact or wording ambiguity. Per file; the path-format sessions are listed apart and their prefix-explained instances count as d.",
+  "pathFormatSessions": [
+    "ang-G-p-305-r1",
+    "ang-A-ts-p-305-r2",
+    "ang-G-p-307-r1",
+    "ang-G-p-307-r2"
+  ],
+  "verdicts": [
+    {
+      "questionId": "p-301",
+      "file": "packages/router/src/directives/router_link_active.ts",
+      "side": "missing",
+      "verdict": "c",
+      "reason": "line 288 `untracked(isActive(...))` is a call; untracked is imported from @angular/core (line 24).",
+      "evidence": "oracle"
+    },
+    {
+      "questionId": "p-304",
+      "file": "packages/core/src/util/stringify.ts",
+      "side": "extra",
+      "verdict": "a",
+      "reason": "stringify.ts:15 is `token.map(stringify)`: the function is passed as a value, not called; the question says a reference that is not called is not a call, and the oracle classifies it as role use (not call).",
+      "evidence": "oracle"
+    },
+    {
+      "questionId": "p-304",
+      "file": "packages/core/test/util/stringify_spec.ts",
+      "side": "missing",
+      "verdict": "c",
+      "reason": "lines 12 and 15 call stringify imported from ../../src/util/stringify.",
+      "evidence": "oracle"
+    },
+    {
+      "questionId": "p-305",
+      "file": "packages/compiler-cli/preprocessor/language-service/src/completions.ts",
+      "side": "missing",
+      "verdict": "c",
+      "reason": "a genuine use (calls, type position or alias use) at the lines in the evidence; the file is in the key and in the regenerated oracle set.",
+      "evidence": "oracle"
+    },
+    {
+      "questionId": "p-305",
+      "file": "packages/compiler/src/render3/view/t2_binder.ts",
+      "side": "missing",
+      "verdict": "c",
+      "reason": "a genuine use (calls, type position or alias use) at the lines in the evidence; the file is in the key and in the regenerated oracle set.",
+      "evidence": "oracle"
+    },
+    {
+      "questionId": "p-305",
+      "file": "packages/compiler/src/typecheck/ops/content_projection.ts",
+      "side": "missing",
+      "verdict": "c",
+      "reason": "a genuine use (calls, type position or alias use) at the lines in the evidence; the file is in the key and in the regenerated oracle set.",
+      "evidence": "oracle"
+    },
+    {
+      "questionId": "p-305",
+      "file": "packages/compiler/src/typecheck/ops/scope.ts",
+      "side": "missing",
+      "verdict": "c",
+      "reason": "a genuine use (calls, type position or alias use) at the lines in the evidence; the file is in the key and in the regenerated oracle set.",
+      "evidence": "oracle"
+    },
+    {
+      "questionId": "p-305",
+      "file": "packages/language-service/src/completions.ts",
+      "side": "missing",
+      "verdict": "c",
+      "reason": "a genuine use (calls, type position or alias use) at the lines in the evidence; the file is in the key and in the regenerated oracle set.",
+      "evidence": "oracle"
+    },
+    {
+      "questionId": "p-305",
+      "file": "packages/language-service/src/semantic_tokens.ts",
+      "side": "missing",
+      "verdict": "c",
+      "reason": "a genuine use (calls, type position or alias use) at the lines in the evidence; the file is in the key and in the regenerated oracle set.",
+      "evidence": "oracle"
+    },
+    {
+      "questionId": "p-305",
+      "file": "packages/language-service/src/template_target.ts",
+      "side": "missing",
+      "verdict": "c",
+      "reason": "a genuine use (calls, type position or alias use) at the lines in the evidence; the file is in the key and in the regenerated oracle set.",
+      "evidence": "oracle"
+    },
+    {
+      "questionId": "p-306",
+      "file": "packages/platform-browser/animations/async/src/async_animation_renderer.ts",
+      "side": "missing",
+      "verdict": "c",
+      "reason": "line 93 `RuntimeErrorCode.ANIMATION_RENDERER_ASYNC_LOADING_FAILURE` is a read through the alias `ɵRuntimeErrorCode as RuntimeErrorCode` (line 33) of the re-export in private_export.ts:19; aliases count as uses.",
+      "evidence": "oracle"
+    },
+    {
+      "questionId": "p-307",
+      "file": "packages/compiler-cli/src/ngtsc/typecheck/api/checker.ts",
+      "side": "missing",
+      "verdict": "c",
+      "reason": "a genuine use (calls, type position or alias use) at the lines in the evidence; the file is in the key and in the regenerated oracle set.",
+      "evidence": "oracle"
+    },
+    {
+      "questionId": "p-307",
+      "file": "packages/compiler-cli/src/ngtsc/typecheck/src/checker.ts",
+      "side": "missing",
+      "verdict": "c",
+      "reason": "a genuine use (calls, type position or alias use) at the lines in the evidence; the file is in the key and in the regenerated oracle set.",
+      "evidence": "oracle"
+    },
+    {
+      "questionId": "p-307",
+      "file": "packages/compiler/src/indexer/api.ts",
+      "side": "missing",
+      "verdict": "c",
+      "reason": "a genuine use (calls, type position or alias use) at the lines in the evidence; the file is in the key and in the regenerated oracle set.",
+      "evidence": "oracle"
+    },
+    {
+      "questionId": "p-307",
+      "file": "packages/compiler/src/render3/view/t2_api.ts",
+      "side": "missing",
+      "verdict": "c",
+      "reason": "a genuine use (calls, type position or alias use) at the lines in the evidence; the file is in the key and in the regenerated oracle set.",
+      "evidence": "oracle"
+    },
+    {
+      "questionId": "p-307",
+      "file": "packages/compiler/src/render3/view/t2_binder.ts",
+      "side": "missing",
+      "verdict": "c",
+      "reason": "a genuine use (calls, type position or alias use) at the lines in the evidence; the file is in the key and in the regenerated oracle set.",
+      "evidence": "oracle"
+    },
+    {
+      "questionId": "p-307",
+      "file": "packages/compiler/src/typecheck/oob.ts",
+      "side": "missing",
+      "verdict": "c",
+      "reason": "a genuine use (calls, type position or alias use) at the lines in the evidence; the file is in the key and in the regenerated oracle set.",
+      "evidence": "oracle"
+    },
+    {
+      "questionId": "p-307",
+      "file": "packages/compiler/src/typecheck/ops/bindings.ts",
+      "side": "missing",
+      "verdict": "c",
+      "reason": "a genuine use (calls, type position or alias use) at the lines in the evidence; the file is in the key and in the regenerated oracle set.",
+      "evidence": "oracle"
+    },
+    {
+      "questionId": "p-307",
+      "file": "packages/compiler/src/typecheck/ops/content_projection.ts",
+      "side": "missing",
+      "verdict": "c",
+      "reason": "a genuine use (calls, type position or alias use) at the lines in the evidence; the file is in the key and in the regenerated oracle set.",
+      "evidence": "oracle"
+    },
+    {
+      "questionId": "p-307",
+      "file": "packages/compiler/src/typecheck/ops/inputs.ts",
+      "side": "missing",
+      "verdict": "c",
+      "reason": "a genuine use (calls, type position or alias use) at the lines in the evidence; the file is in the key and in the regenerated oracle set.",
+      "evidence": "oracle"
+    },
+    {
+      "questionId": "p-307",
+      "file": "packages/compiler/src/typecheck/ops/references.ts",
+      "side": "missing",
+      "verdict": "c",
+      "reason": "a genuine use (calls, type position or alias use) at the lines in the evidence; the file is in the key and in the regenerated oracle set.",
+      "evidence": "oracle"
+    },
+    {
+      "questionId": "p-307",
+      "file": "packages/compiler/src/typecheck/ops/schema.ts",
+      "side": "missing",
+      "verdict": "c",
+      "reason": "a genuine use (calls, type position or alias use) at the lines in the evidence; the file is in the key and in the regenerated oracle set.",
+      "evidence": "oracle"
+    },
+    {
+      "questionId": "p-307",
+      "file": "packages/compiler/src/typecheck/ops/scope.ts",
+      "side": "missing",
+      "verdict": "c",
+      "reason": "a genuine use (calls, type position or alias use) at the lines in the evidence; the file is in the key and in the regenerated oracle set.",
+      "evidence": "oracle"
+    },
+    {
+      "questionId": "p-307",
+      "file": "packages/compiler/src/typecheck/ops/selectorless.ts",
+      "side": "missing",
+      "verdict": "c",
+      "reason": "a genuine use (calls, type position or alias use) at the lines in the evidence; the file is in the key and in the regenerated oracle set.",
+      "evidence": "oracle"
+    },
+    {
+      "questionId": "p-307",
+      "file": "packages/compiler/src/typecheck/ops/signal_forms.ts",
+      "side": "missing",
+      "verdict": "c",
+      "reason": "a genuine use (calls, type position or alias use) at the lines in the evidence; the file is in the key and in the regenerated oracle set.",
+      "evidence": "oracle"
+    },
+    {
+      "questionId": "p-307",
+      "file": "packages/compiler/test/render3/view/binding_spec.ts",
+      "side": "missing",
+      "verdict": "c",
+      "reason": "a genuine use (calls, type position or alias use) at the lines in the evidence; the file is in the key and in the regenerated oracle set.",
+      "evidence": "oracle"
+    },
+    {
+      "questionId": "p-307",
+      "file": "packages/compiler/test/render3/view/util.ts",
+      "side": "missing",
+      "verdict": "c",
+      "reason": "a genuine use (calls, type position or alias use) at the lines in the evidence; the file is in the key and in the regenerated oracle set.",
+      "evidence": "oracle"
+    },
+    {
+      "questionId": "p-308",
+      "file": "packages/router/test/integration/integration.spec.ts",
+      "side": "extra",
+      "verdict": "a",
+      "reason": "The only occurrence of the name is the test title string at line 114 (`Should work inside ChangeDetectionStrategy.OnPush components`); a string literal is not a use.",
+      "evidence": "oracle"
+    },
+    {
+      "questionId": "p-311",
+      "file": "packages/router/src/router.ts",
+      "side": "extra",
+      "verdict": "a",
+      "reason": "router.ts calls NavigationTransitions.setupNavigations/handleNavigationRequest; the target is called by operators/recognize.ts (depth 1) and that wrapper by navigation_transition.ts (depth 2), so router.ts is depth 3. Not a caller of any function whose body calls the target.",
+      "evidence": "oracle"
+    },
+    {
+      "questionId": "p-313",
+      "file": "packages/forms/signals/src/field/field_adapter.ts",
+      "side": "extra",
+      "verdict": "a",
+      "reason": "field_adapter.ts does `new FieldNodeState(node)`; FieldNodeState (state.ts:109-112) calls ArrayMergeLogic.compute, which calls isArray: FieldNodeState is a depth-2 declaration, its constructor callers are depth 3.",
+      "evidence": "oracle"
+    },
+    {
+      "questionId": "p-313",
+      "file": "packages/forms/signals/test/node/deep_signal.spec.ts",
+      "side": "extra",
+      "verdict": "a",
+      "reason": "deepSignal (deep_signal.ts) calls the private valueForWrite, which calls isArray directly; deep_signal.ts is a direct file and the spec calls deepSignal, one hop further (depth 3).",
+      "evidence": "oracle"
+    },
+    {
+      "questionId": "p-313",
+      "file": "packages/forms/signals/src/field/state.ts",
+      "side": "missing",
+      "verdict": "c",
+      "reason": "state.ts:112 calls disabledReasons.compute (ArrayMergeLogic<DisabledReason>, declared logic.ts:258) inside a class field initializer; ArrayMergeIgnoreLogic.compute calls isArray (logic.ts:166). Reached through an instantiated generic type, which the oracle bug fixed by 9a3067e had dropped; the key of record (19) has it.",
+      "evidence": "oracle"
+    },
+    {
+      "questionId": "p-313",
+      "file": "packages/forms/signals/test/node/logic_node.spec.ts",
+      "side": "missing",
+      "verdict": "c",
+      "reason": "logic_node.spec.ts calls syncErrors.compute (ArrayMergeIgnoreLogic<..., null>, logic.ts:262) at lines 38, 52, 71 and more; same generic-receiver path as state.ts.",
+      "evidence": "oracle"
+    },
+    {
+      "questionId": "p-314",
+      "file": "packages/common/locales/generate-locales-tool/closure-locale-file.ts",
+      "side": "extra",
+      "verdict": "a",
+      "reason": "The registerLocaleData text at lines 172 and 186 is inside the template literal returned by generateClosureLocaleFile (lines 170-188), generated source text, not a call.",
+      "evidence": "oracle"
+    },
+    {
+      "questionId": "p-314",
+      "file": "packages/common/locales/closure-locale.ts",
+      "side": "missing",
+      "verdict": "c",
+      "reason": "closure-locale.ts:2050 calls common registerLocaleData (imported from ../src/i18n/locale_data, which forwards to the core target): a depth-2 file.",
+      "evidence": "oracle"
+    }
+  ]
+}
