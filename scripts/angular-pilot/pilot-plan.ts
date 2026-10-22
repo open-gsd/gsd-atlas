@@ -90,6 +90,11 @@ export function calibrationBatch(questions: readonly { id: string; category: str
   };
 }
 
+/** A calibration schedule for exactly the given question ids: each id x the 3 conditions x 1 run, in the seeded group order. */
+export function calibrationJobsFor(questionIds: readonly string[], seed = SEED): PilotJob[] {
+  return toJobs('cal', makeSchedule(questionIds, ARMS, 1, seed));
+}
+
 export interface ClosedBookJob {
   jobId: string;
   questionId: string;
