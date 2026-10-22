@@ -71,10 +71,10 @@ describe('pickQuestions', () => {
   it('takes candidates in hash order per category, one question per name, logging every skip', () => {
     const ordered = orderRows(rows, 20261021);
     const bad = new Set([ordered[0]!.name]);
-    const { picked, skipped } = pickQuestions(rows, (cat, r) => (bad.has(r.name) ? { ok: false, reason: 'key size 1' } : { ok: true, value: `${cat}:${r.name}` }), { seed: 20261021, quota: { callers: 2, heritage: 0, impact: 1, references: 1, definition: 0 }, exclusions: [] });
+    const { picked, skipped } = pickQuestions(rows, (cat, r) => (cat === 'callers' && bad.has(r.name) ? { ok: false, reason: 'key size 1' } : { ok: true, value: `${cat}:${r.name}` }), { seed: 20261021, quota: { callers: 2, heritage: 0, impact: 1, references: 1, definition: 0 }, exclusions: [] });
     assert.equal(picked.length, 4);
     assert.deepEqual(picked.filter((p) => p.category === 'callers').map((p) => p.row.name), [ordered[1]!.name, ordered[2]!.name]);
-    assert.deepEqual(picked.filter((p) => p.category === 'impact').map((p) => p.row.name), [ordered[3]!.name]);
+    assert.deepEqual(picked.filter((p) => p.category === 'impact').map((p) => p.row.name), [ordered[0]!.name]);
     assert.equal(new Set(picked.map((p) => p.row.name)).size, 4);
     assert.deepEqual(skipped, [{ category: 'callers', name: ordered[0]!.name, file: ordered[0]!.file, reason: 'key size 1' }]);
   });

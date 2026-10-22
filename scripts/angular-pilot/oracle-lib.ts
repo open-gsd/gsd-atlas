@@ -310,7 +310,7 @@ export function createPilotOracle(opts: PilotOracleOptions): PilotOracle {
       if ((ts.isMethodDeclaration(n) || ts.isGetAccessorDeclaration(n) || ts.isSetAccessorDeclaration(n)) && ts.isIdentifier(n.name)) return make(n.name);
       if (ts.isConstructorDeclaration(n) || ts.isClassStaticBlockDeclaration(n)) return ts.isClassLike(n.parent) ? make(n.parent.name) : undefined;
       if (ts.isArrowFunction(n) || ts.isFunctionExpression(n)) {
-        const p = n.parent;
+        const p: ts.Node | undefined = n.parent;
         if (ts.isFunctionExpression(n) && n.name !== undefined) return make(n.name);
         if (p !== undefined && (ts.isVariableDeclaration(p) || ts.isPropertyDeclaration(p) || ts.isPropertyAssignment(p)) && p.initializer === n) return make(p.name);
         continue;
