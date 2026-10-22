@@ -375,3 +375,91 @@ describe('Reconcile and builds report comments the bound skipped (plan 03-24, ap
     );
   });
 });
+
+describe('index exclusions (quick task 261021-re7, D-03): defaults and .atlasignore on Reconcile, ensureFresh and status', () => {
+  const FILES = { ...THREE_FILES, '.atlasignore': 'b.toy\n' };
+  const codes = (skipped: ReadonlyArray<{ code: string }>): string[] => skipped.map((d) => d.code).filter((c) => c.startsWith('index_excluded_by_') || c === 'atlasignore_unusable');
+
+  it('a build indexes neither the files .atlasignore names nor an untracked file under a default, and reports both counts as pathless notes', async (t) => {
+    const world = await makeWorld(t, { files: FILES });
+    world.repo.write('node_modules/pkg/dep.toy', 'fn dependency {\n}\n');
+    const result = await world.indexer.build(world.dir);
+
+    assert.equal((await world.reader.find('helper')).data.length, 0, 'b.toy is named by .atlasignore');
+    assert.equal((await world.reader.find('dependency')).data.length, 0, 'node_modules is a default');
+    assert.equal((await world.reader.find('Widget')).data.length, 1, 'the rest is indexed');
+    assert.equal((await world.reader.fileFacts('b.toy')).data, null);
+    assert.equal((await world.reader.fileFacts('node_modules/pkg/dep.toy')).data, null);
+    assert.deepEqual(codes(result.skipped), ['index_excluded_by_defaults', 'index_excluded_by_atlasignore']);
+    for (const note of result.skipped.filter((d) => d.code.startsWith('index_excluded_by_'))) {
+      assert.equal(note.subject, undefined);
+      assert.equal(note.severity, 'info');
+      assert.ok(!/toy|node_modules|pkg/.test(note.message), note.message);
+    }
+  });
+
+  it('a start-up Reconcile records the counts in status().lastReconcile; a Reconcile before that records none', async (t) => {
+    const world = await makeWorld(t, { files: FILES });
+    world.repo.write('node_modules/pkg/dep.toy', 'fn dependency {\n}\n');
+    assert.equal(world.indexer.status().lastReconcile, null);
+    await world.indexer.start();
+    assert.deepEqual(world.indexer.status().lastReconcile?.excluded, { byDefaults: 1, byAtlasignore: 1 });
+  });
+
+  it('adding a .atlasignore removes the facts of the files it names on the next Reconcile, and removing it brings them back', async (t) => {
+    const world = await makeWorld(t, { files: THREE_FILES });
+    await world.indexer.build(world.dir);
+    assert.equal((await world.reader.find('helper')).data.length, 1);
+
+    world.repo.write('.atlasignore', 'b.toy\n');
+    const hidden = await world.indexer.reconcile(world.dir);
+    assert.equal(hidden.removed, 1);
+    assert.equal((await world.reader.find('helper')).data.length, 0);
+    assert.deepEqual(world.indexer.status().lastReconcile?.excluded, { byDefaults: 0, byAtlasignore: 1 });
+
+    world.repo.remove('.atlasignore');
+    const back = await world.indexer.reconcile(world.dir);
+    assert.equal(back.parsed, 1);
+    assert.equal((await world.reader.find('helper')).data.length, 1);
+    assert.deepEqual(world.indexer.status().lastReconcile?.excluded, { byDefaults: 0, byAtlasignore: 0 });
+  });
+
+  it('ensureFresh on an excluded path indexes nothing and the request is complete, not stale', async (t) => {
+    const log = newLog();
+    const world = await makeWorld(t, { files: FILES, wrapTree: recordingTree(log) });
+    await world.indexer.build(world.dir);
+    world.repo.write('node_modules/pkg/dep.toy', 'fn dependency {\n}\n');
+    world.repo.write('b.toy', 'fn helper_edited {\n}\n');
+
+    const result = await world.indexer.ensureFresh(world.dir, ['node_modules/pkg/dep.toy', 'b.toy']);
+    assert.deepEqual(result, { complete: true, stalePaths: [], invalid: [] });
+    assert.equal((await world.reader.find('dependency')).data.length, 0);
+    assert.equal((await world.reader.find('helper_edited')).data.length, 0);
+    assert.equal(log.hashPaths.flat().includes('b.toy'), false, 'an excluded path is never hashed');
+    assert.equal(log.hashPaths.flat().includes('node_modules/pkg/dep.toy'), false);
+  });
+
+  it('a file event for an excluded path is dropped by the filter: nothing is hashed or indexed', async (t) => {
+    const manual = createManualEventSource();
+    const log = newLog();
+    const world = await makeWorld(t, { files: FILES, source: manual.source, wrapTree: recordingTree(log) });
+    await world.indexer.start();
+    log.hashPaths.length = 0;
+    world.repo.write('node_modules/pkg/dep.toy', 'fn dependency {\n}\n');
+    world.repo.write('b.toy', 'fn helper_edited {\n}\n');
+    world.repo.write('d.toy', 'fn kept_one {\n}\n');
+    for (const rel of ['node_modules/pkg/dep.toy', 'b.toy', 'd.toy']) manual.emit(world.dir, rel);
+    await world.clock.advance(debounceMs);
+    await eventually(async () => (await world.reader.find('kept_one')).data.length === 1, 'the kept path to be indexed');
+    assert.equal(log.hashPaths.flat().includes('b.toy'), false);
+    assert.equal(log.hashPaths.flat().includes('node_modules/pkg/dep.toy'), false);
+    assert.equal((await world.reader.find('dependency')).data.length, 0);
+  });
+
+  it('an unusable .atlasignore adds one warning to the notes and hides nothing', async (t) => {
+    const world = await makeWorld(t, { files: { ...THREE_FILES, '.atlasignore': `b.toy\n${'#'.repeat(70000)}\n` } });
+    const result = await world.indexer.build(world.dir);
+    assert.deepEqual(codes(result.skipped), ['atlasignore_unusable']);
+    assert.equal((await world.reader.find('helper')).data.length, 1);
+  });
+});

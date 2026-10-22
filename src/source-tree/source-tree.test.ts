@@ -30,7 +30,10 @@ const subcommand = (spec: { readonly args: readonly string[] }): string | undefi
 const setupRunner = createRealRunner({ decide: allowAll });
 
 describe('Source Tree tracer: one batched hash-object over a whole snapshot', () => {
-  it('hashes tracked and untracked files to the git blob ids, in exactly four git starts', async (t) => {
+  // Changed on purpose by quick task 261021-re7: the snapshot lists tracked files (-s), untracked files with the built-in
+  // defaults, the tracked files the defaults remove, and untracked files without the defaults (the count of what they
+  // removed), so a snapshot starts six processes: the filter list, four listings and the one hash.
+  it('hashes tracked and untracked files to the git blob ids, in exactly six git starts', async (t) => {
     const repo = await createTempGitRepo({
       runner: setupRunner,
       files: { 'a.txt': 'alpha\n', 'dir/b.ts': 'export const b = 1;\n', 'sp ace.txt': 'space\n' },
@@ -54,7 +57,10 @@ describe('Source Tree tracer: one batched hash-object over a whole snapshot', ()
     );
 
     assert.equal(recording.denials.length, 0);
-    assert.equal(recording.starts.length, 4, recording.starts.map((s) => subcommand(s)).join(','));
+    assert.equal(recording.starts.length, 6, recording.starts.map((s) => subcommand(s)).join(','));
+    assert.equal(recording.starts.filter((s) => subcommand(s) === 'ls-files').length, 4);
+    assert.equal(subcommand(recording.starts[0] as RecordedSpec), 'config', 'the filter list comes first');
+    assert.deepEqual(snapshot.excluded, { byDefaults: 0, byAtlasignore: 0 });
     assert.ok(recording.starts.every((s) => s.executable === 'git' && s.builtinId === 'git'));
     const hashes = recording.starts.filter((s) => subcommand(s) === 'hash-object');
     assert.equal(hashes.length, 1);

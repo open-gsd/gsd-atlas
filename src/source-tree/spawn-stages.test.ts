@@ -83,7 +83,7 @@ describe('sequential spawn stages of the Source Tree calls (plan 02-46)', () => 
     assert.deepEqual([...kept.keys()], ['src/a.ts']);
   });
 
-  it('new file is three stages', async (t) => {
+  it('new file is three stages (the first holds the two concurrent listings)', async (t) => {
     const { repo, tree, stagesOf } = await rig(t);
     repo.write('src/new.ts', 'export const fresh = 1;\n');
     let kept: ReadonlyMap<string, string> = new Map();
@@ -92,7 +92,9 @@ describe('sequential spawn stages of the Source Tree calls (plan 02-46)', () => 
       assert.deepEqual([...listed], ['src/new.ts']);
       kept = await prepareLike(tree, repo.dir, ['src/new.ts']);
     });
-    assert.deepEqual(stages, [['ls-files'], ['check-attr', 'config'], ['hash-object']]);
+    // Changed on purpose by quick task 261021-re7: the ignore verdict is two concurrent listings (the tree's own list
+    // without the built-in defaults, and the tracked paths the tracked defaults remove): one stage, two spawns.
+    assert.deepEqual(stages, [['ls-files', 'ls-files'], ['check-attr', 'config'], ['hash-object']]);
     assert.deepEqual([...kept.keys()], ['src/new.ts']);
   });
 

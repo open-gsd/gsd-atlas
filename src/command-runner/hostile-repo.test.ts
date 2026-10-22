@@ -15,6 +15,7 @@ import path from 'node:path';
 import { describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { ESLint } from 'eslint';
+import { defaultPatterns } from '../source-tree/default-excludes.ts';
 import { createFakeSourceTree, createSourceTree } from '../source-tree/index.ts';
 import { createTempGitRepo } from '../test-kit/index.ts';
 import type { TempGitRepo } from '../test-kit/index.ts';
@@ -417,7 +418,9 @@ describe('hostile repository (ROADMAP SC4)', () => {
     assert.equal(recording.denials.length, 0);
     assert.ok(recording.starts.length > 0);
     assert.ok(recording.starts.every((s) => s.executable === 'git' && s.builtinId === 'git'), 'a start was not a built-in git spec');
-    assert.deepEqual(recording.starts.map(subcommand).sort(), ['config', 'hash-object', 'ls-files', 'ls-files']);
+    // Changed on purpose by quick task 261021-re7: a snapshot lists four times (tracked files, untracked files with the
+    // built-in defaults, the tracked paths the defaults remove, untracked files without the defaults).
+    assert.deepEqual(recording.starts.map(subcommand).sort(), ['config', 'hash-object', 'ls-files', 'ls-files', 'ls-files', 'ls-files']);
     const hashes = recording.starts.filter((s) => subcommand(s) === 'hash-object');
     assert.equal(hashes.length, 1);
     const stdin = (hashes[0] as RecordedSpec).stdin;
@@ -465,5 +468,50 @@ describe('hostile repository (ROADMAP SC4)', () => {
     assert.deepEqual(boundary, []);
     const fatal = results.flatMap((r) => r.messages.filter((m) => m.fatal));
     assert.deepEqual(fatal, []);
+  });
+});
+
+describe('hostile repository: ignore files full of option-looking lines (quick task 261021-re7, T-re7-03)', () => {
+  const IGNORE_LINES = [
+    '--help',
+    '-x',
+    '--exclude=evil',
+    '--exclude-from=/etc/passwd',
+    '--exclude-per-directory=.gitignore',
+    '--git-dir=/tmp/elsewhere',
+    '-c core.fsmonitor=/bin/sh',
+    '',
+  ].join('\n');
+  const FLAG = '--exclude-per-directory=.atlasignore';
+
+  it('a snapshot and an ignore verdict start only built-in git specs whose arguments are constants', async (t) => {
+    const p = await poisonedRepo(t, { '.atlasignore': IGNORE_LINES, '.gitignore': IGNORE_LINES });
+    p.repo.write('--help', 'a file named like an option\n');
+    p.repo.write('-x', 'another\n');
+    const recording = createRecordingRunner({ delegate: createRealRunner() });
+    const tree = createSourceTree({ runner: recording, repoDir: p.repo.dir, envOverlay: p.repo.envOverlay });
+
+    const { files } = await tree.snapshot(p.repo.dir);
+    const listed = await tree.unignoredPaths(p.repo.dir, ['--help', '-x', 'untracked.txt', 'a.txt']);
+
+    assert.ok(files.has('a.txt') && files.has('untracked.txt'));
+    assert.deepEqual([...listed].sort(), ['a.txt', 'untracked.txt']);
+    for (const marker of [p.m1, p.m2, p.m3]) assert.equal(exists(marker), false, 'something the repository configures ran');
+    assert.equal(recording.denials.length, 0);
+    assert.ok(recording.starts.every((s) => s.executable === 'git' && s.builtinId === 'git'));
+
+    const patterns = new Set(defaultPatterns('all'));
+    const fixed = new Set(['-z', '-s', '--cached', '--others', '--ignored', '--exclude-standard', '--exclude', FLAG]);
+    const listings = recording.starts.filter((s) => subcommand(s) === 'ls-files');
+    assert.ok(listings.length >= 6, 'both stages ran');
+    assert.ok(listings.some((s) => s.args.includes(FLAG)), 'the second stage ran: the file is usable text');
+    for (const spec of listings) {
+      assert.equal(spec.stdin, undefined, 'no name on stdin');
+      const rest = spec.args.slice(spec.args.indexOf('ls-files') + 1);
+      rest.forEach((token, i) => {
+        if (rest[i - 1] === '--exclude') assert.ok(patterns.has(token), `--exclude value ${token}`);
+        else assert.ok(fixed.has(token), `token ${token}`);
+      });
+    }
   });
 });

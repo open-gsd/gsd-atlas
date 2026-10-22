@@ -27,6 +27,7 @@ interface Snapshot {
     reconciling: boolean;
     lastReconcileAt: number | null;
     lastIndexedAt: number | null;
+    excluded: { byDefaults: number; byAtlasignore: number } | null;
   } | null;
   readonly governor: { queued: number; running: number; leases: number };
   readonly citations: { filesWithGaps: number };
@@ -101,7 +102,8 @@ describe('atlas_status: state from injected ports', () => {
       repo: h.dir,
       worktrees: [{ worktree: h.dir, seq: 7, staleCount: 0 }],
       store: { schemaVersion: 1, sizeBytes: 4096, writerLeaseHeld: true, rebuilt: false },
-      indexer: { watchMode: 'native', queued: 0, running: 0, failed: 0, reconciling: false, lastReconcileAt: 4000, lastIndexedAt: 5000 },
+      // Changed on purpose by quick task 261021-re7: the indexer part gains `excluded`, null until a Reconcile recorded it.
+      indexer: { watchMode: 'native', queued: 0, running: 0, failed: 0, reconciling: false, lastReconcileAt: 4000, lastIndexedAt: 5000, excluded: null },
       governor: { queued: 1, running: 2, leases: 3 },
       citations: { filesWithGaps: 0 },
       tiers: [{ module: 'typescript', grammar: true, precise: false, platform: false }],
@@ -305,5 +307,42 @@ describe('atlas_status reports state, not benefit or content', () => {
     assert.equal(envelope.ok, false);
     assert.equal(envelope.diagnostics[0]?.code, 'unavailable');
     assert.equal(JSON.stringify(envelope).includes('the store is gone'), false, 'the port error text is not echoed');
+  });
+});
+
+describe('atlas_status: how many files the index left out (quick task 261021-re7, D-03)', () => {
+  it('reports the counts of the last Reconcile as numbers only, and null before any Reconcile recorded them', async (t) => {
+    const h = await world(t);
+    const withCounts = await h
+      .query({ status: ports(h, { indexer: { lastReconcile: { at: 4000, excluded: { byDefaults: 12, byAtlasignore: 3 } } } }) })
+      .ask(statusRequest(h));
+    assert.deepEqual(snapshotOf(withCounts).indexer?.excluded, { byDefaults: 12, byAtlasignore: 3 });
+
+    const before = await h.query({ status: ports(h, { indexer: { lastReconcile: null } }) }).ask(statusRequest(h));
+    assert.equal(snapshotOf(before).indexer?.excluded, null);
+    assert.equal(snapshotOf(before).indexer?.lastReconcileAt, null);
+
+    const none = await h.query({ status: ports(h, { indexer: null }) }).ask(statusRequest(h));
+    assert.equal(snapshotOf(none).indexer, null);
+  });
+
+  it('the counts add no health reason and no degraded code: a repository that hides many files stays ok', async (t) => {
+    const h = await world(t);
+    const envelope = await h
+      .query({ status: ports(h, { indexer: { lastReconcile: { at: 4000, excluded: { byDefaults: 99999, byAtlasignore: 99999 } } } }) })
+      .ask(statusRequest(h));
+    assert.equal(snapshotOf(envelope).health, 'ok');
+    assert.deepEqual(snapshotOf(envelope).reasons, []);
+    assert.equal('degraded' in envelope, false);
+  });
+
+  it('holds no path: the envelope text has only the numbers', async (t) => {
+    const h = await world(t);
+    const envelope = await h
+      .query({ status: ports(h, { indexer: { lastReconcile: { at: 4000, excluded: { byDefaults: 1, byAtlasignore: 2 } } } }) })
+      .ask(statusRequest(h));
+    const excluded = snapshotOf(envelope).indexer?.excluded;
+    assert.deepEqual(Object.keys(excluded ?? {}).sort(), ['byAtlasignore', 'byDefaults']);
+    for (const value of Object.values(excluded ?? {})) assert.equal(Number.isSafeInteger(value), true);
   });
 });
