@@ -1,0 +1,452 @@
+{
+ "closedBook": {
+  "n": 16,
+  "exact": 1,
+  "billableMean": 15575.375,
+  "costSum": 0.31953180000000003,
+  "byCategory": {
+   "callers": {
+    "n": 5,
+    "exact": 0,
+    "matched": 0,
+    "missing": 16,
+    "extra": 0,
+    "answeredFound": 0,
+    "billable": 86168,
+    "cost": 0.1044947
+   },
+   "references": {
+    "n": 3,
+    "exact": 0,
+    "matched": 0,
+    "missing": 29,
+    "extra": 0,
+    "answeredFound": 0,
+    "billable": 53049,
+    "cost": 0.06309640000000001
+   },
+   "heritage": {
+    "n": 3,
+    "exact": 0,
+    "matched": 0,
+    "missing": 28,
+    "extra": 0,
+    "answeredFound": 0,
+    "billable": 40333,
+    "cost": 0.050748400000000006
+   },
+   "impact": {
+    "n": 2,
+    "exact": 0,
+    "matched": 0,
+    "missing": 6,
+    "extra": 0,
+    "answeredFound": 0,
+    "billable": 28819,
+    "cost": 0.0389371
+   },
+   "definition": {
+    "n": 2,
+    "exact": 0,
+    "matched": 0,
+    "missing": 2,
+    "extra": 1,
+    "answeredFound": 1,
+    "billable": 23689,
+    "cost": 0.0445598
+   },
+   "abstain": {
+    "n": 1,
+    "exact": 1,
+    "matched": 0,
+    "missing": 0,
+    "extra": 0,
+    "answeredFound": 0,
+    "billable": 17148,
+    "cost": 0.0176954
+   }
+  },
+  "rateFirst": {
+   "fiveHour": 0.24,
+   "sevenDay": 0.16,
+   "isUsingOverage": false,
+   "overageStatus": "rejected"
+  },
+  "rateLast": {
+   "fiveHour": 0.25,
+   "sevenDay": 0.16,
+   "isUsingOverage": false,
+   "overageStatus": "rejected"
+  }
+ },
+ "calibrationByCondition": {
+  "G": {
+   "n": 4,
+   "billableMean": 35932.75,
+   "billableMedian": 31030.5,
+   "inputMean": 8,
+   "cacheCreationMean": 8728.75,
+   "cacheReadMean": 26072,
+   "outputMean": 1124,
+   "firstRequestMean": 6554.5,
+   "toolCallsMean": 3,
+   "numTurnsMean": 5,
+   "atlasCallSessions": 0,
+   "atlasCallsTotal": 0,
+   "toolSearchSessions": 0,
+   "skillLoaded": 0,
+   "wallSecMean": 12.605,
+   "wallSecMedian": 9.2255,
+   "costMean": 0.04877820000000001,
+   "costSum": 0.19511280000000003,
+   "exact": 4,
+   "matched": 26,
+   "missing": 0,
+   "extra": 0,
+   "initToolCounts": [
+    3
+   ],
+   "initMcp": [
+    0
+   ],
+   "hasToolSearch": 0,
+   "apiKeySources": [
+    "none"
+   ],
+   "versions": [
+    "2.1.305"
+   ],
+   "statuses": [
+    "ok"
+   ]
+  },
+  "A-ts": {
+   "n": 4,
+   "billableMean": 37628.25,
+   "billableMedian": 30249,
+   "inputMean": 8,
+   "cacheCreationMean": 7395,
+   "cacheReadMean": 29116.5,
+   "outputMean": 1108.75,
+   "firstRequestMean": 7612.5,
+   "toolCallsMean": 3.25,
+   "numTurnsMean": 5.25,
+   "atlasCallSessions": 0,
+   "atlasCallsTotal": 0,
+   "toolSearchSessions": 0,
+   "skillLoaded": 0,
+   "wallSecMean": 12.476,
+   "wallSecMedian": 9.6715,
+   "costMean": 0.04359515,
+   "costSum": 0.1743806,
+   "exact": 4,
+   "matched": 26,
+   "missing": 0,
+   "extra": 0,
+   "initToolCounts": [
+    11
+   ],
+   "initMcp": [
+    7
+   ],
+   "hasToolSearch": 4,
+   "apiKeySources": [
+    "none"
+   ],
+   "versions": [
+    "2.1.305"
+   ],
+   "statuses": [
+    "ok"
+   ]
+  },
+  "A-reg": {
+   "n": 4,
+   "billableMean": 43726.75,
+   "billableMedian": 42675,
+   "inputMean": 6.5,
+   "cacheCreationMean": 9647.5,
+   "cacheReadMean": 33136.5,
+   "outputMean": 936.25,
+   "firstRequestMean": 11338.5,
+   "toolCallsMean": 2.5,
+   "numTurnsMean": 4.5,
+   "atlasCallSessions": 1,
+   "atlasCallsTotal": 2,
+   "toolSearchSessions": 0,
+   "skillLoaded": 0,
+   "wallSecMean": 12.16625,
+   "wallSecMedian": 10.44,
+   "costMean": 0.051279149999999996,
+   "costSum": 0.20511659999999998,
+   "exact": 4,
+   "matched": 26,
+   "missing": 0,
+   "extra": 0,
+   "initToolCounts": [
+    11
+   ],
+   "initMcp": [
+    7
+   ],
+   "hasToolSearch": 0,
+   "apiKeySources": [
+    "none"
+   ],
+   "versions": [
+    "2.1.305"
+   ],
+   "statuses": [
+    "ok"
+   ]
+  }
+ },
+ "calibrationAll": {
+  "n": 12,
+  "costSum": 0.5746100000000001,
+  "rateFirst": {
+   "fiveHour": 0.25,
+   "sevenDay": 0.16,
+   "isUsingOverage": false,
+   "overageStatus": "rejected"
+  },
+  "rateLast": {
+   "fiveHour": 0.27,
+   "sevenDay": 0.17,
+   "isUsingOverage": false,
+   "overageStatus": "rejected"
+  },
+  "maxFive": 0.27,
+  "maxSeven": 0.17,
+  "overage": [
+   "false/rejected"
+  ]
+ },
+ "perQuestion": {
+  "p-210": [
+   {
+    "c": "A-reg",
+    "cat": "heritage",
+    "billable": 53720,
+    "first": 11188,
+    "tools": 3,
+    "atlas": 0,
+    "ts": 0,
+    "equal": true,
+    "m": 17,
+    "mi": 0,
+    "ex": 0,
+    "ans": "found",
+    "by": {
+     "Bash": 3,
+     "StructuredOutput": 1
+    }
+   },
+   {
+    "c": "G",
+    "cat": "heritage",
+    "billable": 60086,
+    "first": 6404,
+    "tools": 5,
+    "atlas": 0,
+    "ts": 0,
+    "equal": true,
+    "m": 17,
+    "mi": 0,
+    "ex": 0,
+    "ans": "found",
+    "by": {
+     "Bash": 5,
+     "StructuredOutput": 1
+    }
+   },
+   {
+    "c": "A-ts",
+    "cat": "heritage",
+    "billable": 65225,
+    "first": 7462,
+    "tools": 5,
+    "atlas": 0,
+    "ts": 0,
+    "equal": true,
+    "m": 17,
+    "mi": 0,
+    "ex": 0,
+    "ans": "found",
+    "by": {
+     "Bash": 5,
+     "StructuredOutput": 1
+    }
+   }
+  ],
+  "p-201": [
+   {
+    "c": "A-reg",
+    "cat": "callers",
+    "billable": 37245,
+    "first": 11387,
+    "tools": 2,
+    "atlas": 0,
+    "ts": 0,
+    "equal": true,
+    "m": 3,
+    "mi": 0,
+    "ex": 0,
+    "ans": "found",
+    "by": {
+     "Bash": 2,
+     "StructuredOutput": 1
+    }
+   },
+   {
+    "c": "G",
+    "cat": "callers",
+    "billable": 33387,
+    "first": 6603,
+    "tools": 2,
+    "atlas": 0,
+    "ts": 0,
+    "equal": true,
+    "m": 3,
+    "mi": 0,
+    "ex": 0,
+    "ans": "found",
+    "by": {
+     "Bash": 2,
+     "StructuredOutput": 1
+    }
+   },
+   {
+    "c": "A-ts",
+    "cat": "callers",
+    "billable": 26036,
+    "first": 7661,
+    "tools": 2,
+    "atlas": 0,
+    "ts": 0,
+    "equal": true,
+    "m": 3,
+    "mi": 0,
+    "ex": 0,
+    "ans": "found",
+    "by": {
+     "Bash": 2,
+     "StructuredOutput": 1
+    }
+   }
+  ],
+  "p-203": [
+   {
+    "c": "G",
+    "cat": "callers",
+    "billable": 21584,
+    "first": 6612,
+    "tools": 2,
+    "atlas": 0,
+    "ts": 0,
+    "equal": true,
+    "m": 4,
+    "mi": 0,
+    "ex": 0,
+    "ans": "found",
+    "by": {
+     "Bash": 2,
+     "StructuredOutput": 1
+    }
+   },
+   {
+    "c": "A-reg",
+    "cat": "callers",
+    "billable": 35837,
+    "first": 11396,
+    "tools": 2,
+    "atlas": 0,
+    "ts": 0,
+    "equal": true,
+    "m": 4,
+    "mi": 0,
+    "ex": 0,
+    "ans": "found",
+    "by": {
+     "Bash": 2,
+     "StructuredOutput": 1
+    }
+   },
+   {
+    "c": "A-ts",
+    "cat": "callers",
+    "billable": 24790,
+    "first": 7670,
+    "tools": 2,
+    "atlas": 0,
+    "ts": 0,
+    "equal": true,
+    "m": 4,
+    "mi": 0,
+    "ex": 0,
+    "ans": "found",
+    "by": {
+     "Bash": 2,
+     "StructuredOutput": 1
+    }
+   }
+  ],
+  "p-208": [
+   {
+    "c": "G",
+    "cat": "references",
+    "billable": 28674,
+    "first": 6599,
+    "tools": 3,
+    "atlas": 0,
+    "ts": 0,
+    "equal": true,
+    "m": 2,
+    "mi": 0,
+    "ex": 0,
+    "ans": "found",
+    "by": {
+     "Bash": 3,
+     "StructuredOutput": 1
+    }
+   },
+   {
+    "c": "A-reg",
+    "cat": "references",
+    "billable": 48105,
+    "first": 11383,
+    "tools": 3,
+    "atlas": 2,
+    "ts": 0,
+    "equal": true,
+    "m": 2,
+    "mi": 0,
+    "ex": 0,
+    "ans": "found",
+    "by": {
+     "mcp__gsd-atlas__code_refs": 2,
+     "Bash": 1,
+     "StructuredOutput": 1
+    }
+   },
+   {
+    "c": "A-ts",
+    "cat": "references",
+    "billable": 34462,
+    "first": 7657,
+    "tools": 4,
+    "atlas": 0,
+    "ts": 0,
+    "equal": true,
+    "m": 2,
+    "mi": 0,
+    "ex": 0,
+    "ans": "found",
+    "by": {
+     "Bash": 4,
+     "StructuredOutput": 1
+    }
+   }
+  ]
+ }
+}
