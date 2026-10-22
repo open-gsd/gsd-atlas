@@ -3,8 +3,8 @@ import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { describe, it } from 'node:test';
 
-import { runChunks } from './driver.ts';
-import { buildSchedule, chunkSchedule, type PilotJob, type PilotRecord } from './pilot-plan.ts';
+import { docsPaths, runChunks, selectQuestionIds } from './driver.ts';
+import { buildSchedule, calibrationJobsFor, chunkSchedule, type PilotJob, type PilotRecord } from './pilot-plan.ts';
 
 const driver = path.resolve(import.meta.dirname, 'driver.ts');
 const IDS = Array.from({ length: 16 }, (_, i) => `p-${String(201 + i)}`);
@@ -43,6 +43,35 @@ describe('driver --dry-run', () => {
     const r = spawnSync(process.execPath, [driver, '--stage', 'pilot'], { encoding: 'utf8', env: { PATH: '/nonexistent' } });
     assert.notEqual(r.status, 0);
     assert.match(r.stderr, /--launch/);
+  });
+});
+
+describe('--docs and --only (additive)', () => {
+  it('docsPaths defaults to the v1 docs directory and takes an override', () => {
+    assert.match(docsPaths().questions, /docs[\\/]eval[\\/]angular-pilot[\\/]pilot-questions\.json$/);
+    assert.match(docsPaths().answers, /docs[\\/]eval[\\/]angular-pilot[\\/]pilot-answers\.json$/);
+    assert.equal(docsPaths('/x/y').questions, path.join('/x/y', 'pilot-questions.json'));
+    assert.equal(docsPaths('/x/y').answers, path.join('/x/y', 'pilot-answers.json'));
+  });
+  it('selectQuestionIds keeps the given ids in file order and rejects unknown or empty selections', () => {
+    assert.deepEqual(selectQuestionIds(['p-1', 'p-2', 'p-3'], 'p-3,p-1'), ['p-1', 'p-3']);
+    assert.deepEqual(selectQuestionIds(['p-1', 'p-2'], undefined), ['p-1', 'p-2']);
+    assert.throws(() => selectQuestionIds(['p-1'], 'p-9'), /unknown question id/);
+    assert.throws(() => selectQuestionIds(['p-1'], ' , '), /no question ids/);
+  });
+  it('calibrationJobsFor builds one run per condition for exactly the given ids', () => {
+    const jobs = calibrationJobsFor(['p-304', 'p-307', 'p-312', 'p-310']);
+    assert.equal(jobs.length, 12);
+    for (const id of ['p-304', 'p-307', 'p-312', 'p-310']) assert.deepEqual(jobs.filter((j) => j.questionId === id).map((j) => j.condition).sort(), ['A-reg', 'A-ts', 'G']);
+    assert.ok(jobs.every((j) => j.jobId.startsWith('cal-') && j.run === 1));
+  });
+  it('--dry-run --docs reads the question file of that directory', () => {
+    const v2 = path.resolve(import.meta.dirname, '..', '..', 'docs', 'eval', 'angular-pilot', 'v2');
+    const r = spawnSync(process.execPath, [driver, '--dry-run', '--docs', v2], { encoding: 'utf8', env: { PATH: '/nonexistent' } });
+    assert.equal(r.status, 0, r.stderr);
+    assert.equal(r.stdout.split('\n').filter((l) => /^\s+\d{3}\s+ang-/.test(l)).length, 96);
+    assert.match(r.stdout, /p-304/);
+    assert.doesNotMatch(r.stdout, /p-201/);
   });
 });
 
