@@ -70,7 +70,7 @@ describe('runChunks', () => {
 
   it('stops before a session that could pass the cap', async () => {
     const ran: string[] = [];
-    const res = await runChunks({ ...base, capUsd: 1, chunks, done: new Set(), runOne: async (j) => (ran.push(j.jobId), okRecord(j, { costUsd: 0.5 })) });
+    const res = await runChunks({ ...base, capUsd: 2.2, chunks, done: new Set(), runOne: async (j) => (ran.push(j.jobId), okRecord(j, { costUsd: 0.8 })) });
     assert.equal(ran.length, 1);
     assert.match(res.reasons.join(' '), /cap/);
   });
