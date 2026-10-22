@@ -5,6 +5,7 @@ import { describe, it } from 'node:test';
 
 import type { Row } from './pilot-analysis.ts';
 import {
+  keyEntries,
   normalizePath,
   rescoreRows,
   scenarioSummary,
@@ -22,6 +23,15 @@ describe('normalizePath', () => {
     assert.equal(normalizePath('compiler/src/a.ts'), 'packages/compiler/src/a.ts');
     assert.equal(normalizePath('packages/compiler/src/a.ts'), 'packages/compiler/src/a.ts');
     assert.equal(normalizePath('./packages/x.ts'), 'packages/x.ts');
+  });
+});
+
+describe('keyEntries', () => {
+  const items = [{ file: 'packages/a.ts', line: 3, symbol: 'X' }, { file: 'packages/a.ts', line: 9, symbol: 'Y' }, { file: 'packages/a.ts', line: 9, symbol: 'Y' }];
+  it('follows the granularity of the question', () => {
+    assert.deepEqual(keyEntries({ granularity: 'file', items }), ['packages/a.ts']);
+    assert.deepEqual(keyEntries({ granularity: 'file+symbol', items }), ['packages/a.ts#X', 'packages/a.ts#Y']);
+    assert.deepEqual(keyEntries({ granularity: 'file+line', items }), ['packages/a.ts:3', 'packages/a.ts:9']);
   });
 });
 
@@ -103,8 +113,8 @@ describe('the committed pilot data', () => {
   const dir = path.join(import.meta.dirname, '..', '..', 'docs', 'eval', 'angular-pilot', 'v2');
   const rows = fs.readFileSync(path.join(dir, 'pilot', 'pilot-sessions.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l) as Row);
   const summary = JSON.parse(fs.readFileSync(path.join(dir, 'pilot', 'summary.json'), 'utf8')) as { notExact: NotExact[]; ratio: Record<string, { r: number }>; byCond: Record<string, { correctness: number; matched: number; missing: number; extra: number }>; classification: { class: string } };
-  const answers = JSON.parse(fs.readFileSync(path.join(dir, 'pilot-answers.json'), 'utf8')) as { answers: { questionId: string; items: { file?: string }[] }[] };
-  const keys: Keys = Object.fromEntries(answers.answers.map((a) => [a.questionId, [...new Set(a.items.map((i) => i.file ?? ''))].sort()]));
+  const answers = JSON.parse(fs.readFileSync(path.join(dir, 'pilot-answers.json'), 'utf8')) as { answers: { questionId: string; granularity: string; items: { file?: string; line?: number; symbol?: string }[] }[] };
+  const keys: Keys = Object.fromEntries(answers.answers.map((a) => [a.questionId, keyEntries(a)]));
 
   it('rescoring with the original keys reproduces summary.json exactly', () => {
     const out = rescoreRows(rows, summary.notExact, keys, { keys, normalize: false });
@@ -118,7 +128,7 @@ describe('the committed pilot data', () => {
     assert.equal(s.classification.class, summary.classification.class);
   });
 
-  it('normalisation changes exactly the four path-prefix sessions that were wrong only by the prefix', () => {
+  it('normalisation turns exactly the two path-prefix sessions that were wrong only by the prefix into exact matches', () => {
     const out = rescoreRows(rows, summary.notExact, keys, { keys, normalize: true });
     const flipped = out.filter((r, i) => r.exact !== rows[i]!.exact).map((r) => r.jobId).sort();
     assert.deepEqual(flipped, ['ang-A-ts-p-305-r2', 'ang-G-p-307-r2']);
