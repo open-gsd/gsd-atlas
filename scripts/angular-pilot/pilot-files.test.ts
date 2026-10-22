@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { describe, it } from 'node:test';
@@ -45,5 +46,28 @@ describe('the generated pilot files', () => {
       assert.match(q.text, /Angular HTML templates and inline `template:` strings/, q.id);
       assert.match(q.text, /different symbol/, q.id);
     }
+  });
+});
+
+describe('the wording changes after the second reader (2026-10-21)', () => {
+  const qs = loadQuestions(path.join(dir, 'pilot-questions.json'));
+  const text = (id: string): string => qs.questions.find((q) => q.id === id)!.text;
+
+  it('p-212 says which enclosing declaration a nested or unnamed call counts for', () => {
+    const t = text('p-212');
+    assert.match(t, /a call inside a nested function, a callback or an unnamed arrow function counts for the nearest enclosing declaration that has a name/);
+    assert.match(t, /a function that is only passed as a value has no callers/);
+  });
+
+  it('p-215 names the other declaration as an interface and p-214 and p-215 carry the enum line rule', () => {
+    assert.match(text('p-215'), /Another declaration named `CanDeactivate` \(an interface\) is declared elsewhere in the tree/);
+    assert.doesNotMatch(text('p-215'), /Another class named/);
+    for (const id of ['p-214', 'p-215']) assert.match(text(id), /for an enum the `export enum` line/, id);
+    assert.match(text('p-214'), /Another enum named `SecurityContext` is declared elsewhere/);
+  });
+
+  it('leave pilot-answers.json byte-identical', () => {
+    const sha = createHash('sha256').update(fs.readFileSync(path.join(dir, 'pilot-answers.json'))).digest('hex');
+    assert.equal(sha, 'c92c391f362eb41b478c9c8c6fb1406da7ec56f1b19adc514d12447f571d0f92');
   });
 });
