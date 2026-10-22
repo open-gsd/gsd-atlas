@@ -58,7 +58,13 @@ A second reader (a different agent) for the v2 key audit and the owner's review 
 | declaring file last changed | >= 2026-01-01 | no date condition |
 | callers key (files) | 8..60 | 4..60 |
 | references key (files) | 8..60 | 8..60 |
-| impact depth-two key (files) | 10..80 | 6..80 |
+| impact depth-two key (files) | 10..80 | 6..80 (4..80 after Amendment 2) |
 | heritage key (named subtypes) | 4..30 | 2..30 |
 
 Tier-2 supply (aggregate): callers 4..60 = 12 declarations of 11 names; impact pool 47 declarations of 26 names; heritage 2..30 = 22 declarations of 14 names; any kind 268 declarations of 93 names. Every selected question is labelled with its tier in the selection log and the audit. The date condition (g) is dropped in tier 2 because tier 1 plus date cannot fill callers or heritage; the contamination control that remains is the closed-book result of the calibration batch (no memorised keys) and the wording change itself. If tier 2 cannot fill a category, the generator stops and reports the shortfall; no further relaxation is made without a new dated amendment committed before the regeneration. The processing order, seed, wording rules, exclusion rule and premise check are unchanged.
+
+## Amendment 2 (2026-10-21, committed before regeneration): tier-2 impact lower bound 6 -> 4
+
+**Finding.** The first run of `generate-v2.ts` under Amendment 1 selected its heritage and callers questions and then stopped: the impact category filled 3 of 4. Nothing was written (no question or key file); the run printed its skipped candidates, so from this point the author has seen the names and key sizes of the skipped impact candidates, which the earlier commits had not. Tier-2 impact candidates were skipped for a depth-two key of 1 to 5 files (outside 6..80), for an any-audit flag, or for a key far above the range (`inject`, 273 files). The tier-2 impact supply with a key of 6 or more files, once flagged and exhausted names are removed, is 3 questions.
+
+**Amendment.** The tier-2 impact lower bound is lowered from 6 to **4** files, the same lower bound as tier-2 callers; it is a round number chosen by symmetry with callers, not by looking for a particular name, but the reader should know the choice was made after the skip list had been seen. Tier 1 and every other bound are unchanged, so tier-1 impact candidates still need 10..80 files. Selection is re-run from scratch with the new bound; question order, hash order and everything else are as before. If the impact category still cannot fill, the generator stops and reports; nothing is relaxed further without a new dated amendment committed first.

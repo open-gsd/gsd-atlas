@@ -44,7 +44,7 @@ describe('constants of rule v2', () => {
     assert.deepEqual(keyBounds(1, 'heritage'), { min: 4, max: 30 });
     assert.deepEqual(keyBounds(2, 'callers'), { min: 4, max: 60 });
     assert.deepEqual(keyBounds(2, 'references'), { min: 8, max: 60 });
-    assert.deepEqual(keyBounds(2, 'impact'), { min: 6, max: 80 });
+    assert.deepEqual(keyBounds(2, 'impact'), { min: 4, max: 80 });
     assert.deepEqual(keyBounds(2, 'heritage'), { min: 2, max: 30 });
     assert.equal(keyBounds(1, 'definition'), null);
   });
