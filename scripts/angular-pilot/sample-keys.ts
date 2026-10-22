@@ -12,7 +12,12 @@ import { parseArgs } from 'node:util';
 import { isPilotSource } from './census.ts';
 import { createPilotOracle } from './oracle-lib.ts';
 
-export type SampleKind = 'callers' | 'references' | 'heritage';
+/** The scope of a sample run: framework sources, spec and test files only when asked. */
+export function scopePredicate(withTests: boolean): (rel: string) => boolean {
+  return (rel) => isPilotSource(rel, { tests: withTests });
+}
+
+export type SampleKind ='callers' | 'references' | 'heritage';
 
 export function parseSampleSpec(spec: string): { kind: SampleKind; name: string; file: string } {
   const m = /^([a-z]+):([^@]+)@(.+)$/.exec(spec);
@@ -31,18 +36,22 @@ export function compareKeyToGrep(key: readonly string[], grep: readonly string[]
   };
 }
 
-function grepScope(repo: string, name: string): string[] {
+function grepScope(repo: string, name: string, inScope: (rel: string) => boolean): string[] {
   const r = spawnSync('git', ['-C', repo, 'grep', '-l', '-w', '-F', '-e', name, '--', 'packages'], { encoding: 'utf8', maxBuffer: 1 << 28 });
   if (r.status === 1) return [];
-  return r.stdout.split('\n').filter((l) => l !== '' && isPilotSource(l));
+  return r.stdout.split('\n').filter((l) => l !== '' && inScope(l));
 }
 
 function main(): void {
-  const { values, positionals } = parseArgs({ options: { repo: { type: 'string' }, out: { type: 'string' } }, allowPositionals: true });
-  if (values.repo === undefined || values.out === undefined || positionals.length === 0) throw new Error('usage: --repo R --out J spec...');
+  const { values, positionals } = parseArgs({
+    options: { repo: { type: 'string' }, out: { type: 'string' }, 'with-tests': { type: 'boolean' } },
+    allowPositionals: true,
+  });
+  if (values.repo === undefined || values.out === undefined || positionals.length === 0) throw new Error('usage: --repo R --out J [--with-tests] spec...');
   const repo = values.repo;
-  const tracked = spawnSync('git', ['-C', repo, 'ls-files', 'packages'], { encoding: 'utf8', maxBuffer: 1 << 28 }).stdout.split('\n').filter(isPilotSource);
-  const oracle = createPilotOracle({ root: repo, tsconfig: 'packages/tsconfig.json', include: isPilotSource, files: tracked });
+  const inScope = scopePredicate(values['with-tests'] === true);
+  const tracked = spawnSync('git', ['-C', repo, 'ls-files', 'packages'], { encoding: 'utf8', maxBuffer: 1 << 28 }).stdout.split('\n').filter(inScope);
+  const oracle = createPilotOracle({ root: repo, tsconfig: 'packages/tsconfig.json', include: inScope, files: tracked });
   const out = [];
   for (const spec of positionals) {
     const s = parseSampleSpec(spec);
@@ -61,7 +70,7 @@ function main(): void {
       key = [...new Set(subs.map((c) => c.file))].sort();
       detail = subs.map((c) => `${c.file}:${c.line} ${c.cls}`);
     }
-    const grep = grepScope(repo, s.name);
+    const grep = grepScope(repo, s.name, inScope);
     out.push({ spec, key, detail, grepFiles: grep.length, ...compareKeyToGrep(key, grep) });
   }
   fs.writeFileSync(values.out, `${JSON.stringify({ unresolved: oracle.unresolvedSpecifiers(), samples: out }, null, 1)}\n`);
