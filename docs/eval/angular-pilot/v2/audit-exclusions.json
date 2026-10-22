@@ -1,0 +1,17 @@
+[
+  {
+    "name": "Component",
+    "file": "packages/core/src/metadata/directives.ts",
+    "reason": "audit (first reader, before roles): key-likely-incomplete / ambiguous-wording; Component is one merged symbol, an interface (line 544) and a decorator constant (line 680); the oracle key lists 8 files and none of the hundreds of spec files that apply @Component(...), while a reader following 'uses of the declaration' would count them; no role can separate the interface from the const it is merged with"
+  },
+  {
+    "name": "NgModuleFactory",
+    "file": "packages/core/src/linker/ng_module_factory.ts",
+    "reason": "audit (first reader, before roles): ambiguous-wording, the same defect that excluded it from rule v1; one of the 2 key subtypes is a class of the same name in the same package (render3/ng_module_ref.ts) which a reader can take to be 'another declaration of the name' and drop, and a key of 2 is also not wide"
+  },
+  {
+    "name": "chain",
+    "file": "packages/core/src/resource/resource.ts",
+    "reason": "audit (first reader, after the first draw): key-likely-overinclusive; the function has no call expression anywhere (it appears only as the shorthand property {chain,} of paramsContext in its own file, and callers use the interface member ResourceParamsContext.chain), so the 11 key files (all under forms/signals, none containing the word) come from the module-level container and do not answer the wording"
+  }
+]

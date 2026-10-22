@@ -1,0 +1,6096 @@
+{
+  "oracleVersion": "angular-pilot-1",
+  "repoSha": "3cc1edf3210a9debb0be57a4e99e53a54505db32",
+  "preparedRecord": {
+    "corpusId": "angular",
+    "sha": "3cc1edf3210a9debb0be57a4e99e53a54505db32",
+    "npmCi": false,
+    "typescriptVersion": "6.0.3",
+    "lockSha256": null
+  },
+  "answers": [
+    {
+      "questionId": "p-301",
+      "kind": "callers",
+      "abstain": false,
+      "items": [
+        {
+          "file": "packages/common/http/src/backend.ts",
+          "line": 127,
+          "symbol": "handle"
+        },
+        {
+          "file": "packages/common/http/src/backend.ts",
+          "line": 131,
+          "symbol": "handle"
+        },
+        {
+          "file": "packages/common/src/pipes/async_pipe.ts",
+          "line": 47,
+          "symbol": "createSubscription"
+        },
+        {
+          "file": "packages/common/src/pipes/async_pipe.ts",
+          "line": 57,
+          "symbol": "dispose"
+        },
+        {
+          "file": "packages/core/rxjs-interop/src/to_observable.ts",
+          "line": 63,
+          "symbol": "toObservable"
+        },
+        {
+          "file": "packages/core/rxjs-interop/src/to_observable.ts",
+          "line": 66,
+          "symbol": "toObservable"
+        },
+        {
+          "file": "packages/core/src/render3/reactivity/linked_signal.ts",
+          "line": 109,
+          "symbol": "upgradeLinkedSignalGetter"
+        },
+        {
+          "file": "packages/core/src/resource/debounce.ts",
+          "line": 112,
+          "symbol": "debounced"
+        },
+        {
+          "file": "packages/core/src/resource/resource.ts",
+          "line": 142,
+          "symbol": "update"
+        },
+        {
+          "file": "packages/core/src/resource/resource.ts",
+          "line": 370,
+          "symbol": "set"
+        },
+        {
+          "file": "packages/core/src/resource/resource.ts",
+          "line": 371,
+          "symbol": "set"
+        },
+        {
+          "file": "packages/core/src/resource/resource.ts",
+          "line": 374,
+          "symbol": "set"
+        },
+        {
+          "file": "packages/core/src/resource/resource.ts",
+          "line": 401,
+          "symbol": "reload"
+        },
+        {
+          "file": "packages/core/src/resource/resource.ts",
+          "line": 431,
+          "symbol": "loadEffect"
+        },
+        {
+          "file": "packages/core/src/resource/resource.ts",
+          "line": 462,
+          "symbol": "loadEffect"
+        },
+        {
+          "file": "packages/core/src/resource/resource.ts",
+          "line": 474,
+          "symbol": "shouldDiscard"
+        },
+        {
+          "file": "packages/core/src/resource/resource.ts",
+          "line": 488,
+          "symbol": "loadEffect"
+        },
+        {
+          "file": "packages/core/src/resource/resource.ts",
+          "line": 506,
+          "symbol": "loadEffect"
+        },
+        {
+          "file": "packages/core/src/resource/resource.ts",
+          "line": 513,
+          "symbol": "loadEffect"
+        },
+        {
+          "file": "packages/core/src/resource/resource.ts",
+          "line": 534,
+          "symbol": "abortInProgressLoad"
+        },
+        {
+          "file": "packages/core/test/acceptance/foreign_component/foreign_component_spec.ts",
+          "line": 1030,
+          "symbol": "StaticIf"
+        },
+        {
+          "file": "packages/core/test/acceptance/foreign_component/foreign_component_spec.ts",
+          "line": 1121,
+          "symbol": "DynamicIf"
+        },
+        {
+          "file": "packages/core/test/render3/reactivity_spec.ts",
+          "line": 209,
+          "symbol": "Cmp"
+        },
+        {
+          "file": "packages/core/test/signals/non_reactive_spec.ts",
+          "line": 21,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/signals/non_reactive_spec.ts",
+          "line": 24,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/signals/non_reactive_spec.ts",
+          "line": 29,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/signals/non_reactive_spec.ts",
+          "line": 41,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/signals/non_reactive_spec.ts",
+          "line": 44,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/signals/non_reactive_spec.ts",
+          "line": 52,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/signals/non_reactive_spec.ts",
+          "line": 88,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/forms/signals/compat/src/compat_field_node.ts",
+          "line": 71,
+          "symbol": "computation"
+        },
+        {
+          "file": "packages/forms/signals/compat/src/signal_form_control/signal_form_control.ts",
+          "line": 121,
+          "symbol": "SignalFormControl"
+        },
+        {
+          "file": "packages/forms/signals/compat/src/signal_form_control/signal_form_control.ts",
+          "line": 134,
+          "symbol": "SignalFormControl"
+        },
+        {
+          "file": "packages/forms/signals/compat/src/signal_form_control/signal_form_control.ts",
+          "line": 146,
+          "symbol": "SignalFormControl"
+        },
+        {
+          "file": "packages/forms/signals/compat/src/signal_form_control/signal_form_control.ts",
+          "line": 209,
+          "symbol": "emitControlEvent"
+        },
+        {
+          "file": "packages/forms/signals/src/api/structure.ts",
+          "line": 467,
+          "symbol": "submit"
+        },
+        {
+          "file": "packages/forms/signals/src/api/structure.ts",
+          "line": 469,
+          "symbol": "submit"
+        },
+        {
+          "file": "packages/forms/signals/src/api/structure.ts",
+          "line": 501,
+          "symbol": "submit"
+        },
+        {
+          "file": "packages/forms/signals/src/api/structure.ts",
+          "line": 505,
+          "symbol": "submit"
+        },
+        {
+          "file": "packages/forms/signals/src/api/structure.ts",
+          "line": 536,
+          "symbol": "shouldRunAction"
+        },
+        {
+          "file": "packages/forms/signals/src/api/structure.ts",
+          "line": 538,
+          "symbol": "shouldRunAction"
+        },
+        {
+          "file": "packages/forms/signals/src/directive/control_cva.ts",
+          "line": 85,
+          "symbol": "reset"
+        },
+        {
+          "file": "packages/forms/signals/src/directive/control_cva.ts",
+          "line": 96,
+          "symbol": "cvaControlCreate"
+        },
+        {
+          "file": "packages/forms/signals/src/directive/control_cva.ts",
+          "line": 109,
+          "symbol": "cvaControlCreate"
+        },
+        {
+          "file": "packages/forms/signals/src/directive/form_field.ts",
+          "line": 189,
+          "symbol": "FormField"
+        },
+        {
+          "file": "packages/forms/signals/src/directive/form_root.ts",
+          "line": 48,
+          "symbol": "onSubmit"
+        },
+        {
+          "file": "packages/forms/signals/src/directive/native.ts",
+          "line": 60,
+          "symbol": "getNativeControlValue"
+        },
+        {
+          "file": "packages/forms/signals/src/directive/native.ts",
+          "line": 71,
+          "symbol": "getNativeControlValue"
+        },
+        {
+          "file": "packages/forms/signals/src/directive/native.ts",
+          "line": 82,
+          "symbol": "getNativeControlValue"
+        },
+        {
+          "file": "packages/forms/signals/src/field/context.ts",
+          "line": 139,
+          "symbol": "FieldNodeContext"
+        },
+        {
+          "file": "packages/forms/signals/src/field/manager.ts",
+          "line": 65,
+          "symbol": "createFieldManagementEffect"
+        },
+        {
+          "file": "packages/forms/signals/src/field/metadata.ts",
+          "line": 42,
+          "symbol": "runMetadataCreateLifecycle"
+        },
+        {
+          "file": "packages/forms/signals/src/field/node.ts",
+          "line": 276,
+          "symbol": "markAsTouched"
+        },
+        {
+          "file": "packages/forms/signals/src/field/node.ts",
+          "line": 327,
+          "symbol": "reset"
+        },
+        {
+          "file": "packages/forms/signals/src/field/node.ts",
+          "line": 359,
+          "symbol": "reloadValidation"
+        },
+        {
+          "file": "packages/forms/signals/src/field/node.ts",
+          "line": 430,
+          "symbol": "debounceSync"
+        },
+        {
+          "file": "packages/forms/signals/src/field/proxy.ts",
+          "line": 39,
+          "symbol": "get"
+        },
+        {
+          "file": "packages/forms/signals/src/field/proxy.ts",
+          "line": 81,
+          "symbol": "getOwnPropertyDescriptor"
+        },
+        {
+          "file": "packages/forms/signals/src/field/proxy.ts",
+          "line": 91,
+          "symbol": "ownKeys"
+        },
+        {
+          "file": "packages/forms/signals/src/field/structure.ts",
+          "line": 117,
+          "symbol": "children"
+        },
+        {
+          "file": "packages/forms/signals/src/field/structure.ts",
+          "line": 144,
+          "symbol": "_areChildrenMaterialized"
+        },
+        {
+          "file": "packages/forms/signals/src/field/structure.ts",
+          "line": 155,
+          "symbol": "ensureChildrenMap"
+        },
+        {
+          "file": "packages/forms/signals/src/field/structure.ts",
+          "line": 171,
+          "symbol": "getChild"
+        },
+        {
+          "file": "packages/forms/signals/src/field/structure.ts",
+          "line": 210,
+          "symbol": "reduceChildren"
+        },
+        {
+          "file": "packages/forms/signals/src/field/validation.ts",
+          "line": 283,
+          "symbol": "FieldValidationState"
+        },
+        {
+          "file": "packages/forms/signals/src/schema/logic.ts",
+          "line": 235,
+          "symbol": "wrapWithPredicates"
+        },
+        {
+          "file": "packages/forms/signals/src/util/deep_signal.ts",
+          "line": 30,
+          "symbol": "deepSignal"
+        },
+        {
+          "file": "packages/forms/signals/src/util/deep_signal.ts",
+          "line": 37,
+          "symbol": "deepSignal"
+        },
+        {
+          "file": "packages/forms/signals/src/webmcp/registration.ts",
+          "line": 31,
+          "symbol": "registerWebMcpForm"
+        },
+        {
+          "file": "packages/forms/signals/test/node/field_proxy.spec.ts",
+          "line": 94,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/forms/signals/test/node/field_proxy.spec.ts",
+          "line": 94,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/forms/src/directives/ng_form.ts",
+          "line": 133,
+          "symbol": "submitted"
+        },
+        {
+          "file": "packages/forms/src/directives/reactive_directives/abstract_form.directive.ts",
+          "line": 68,
+          "symbol": "submitted"
+        },
+        {
+          "file": "packages/forms/src/model/abstract_model.ts",
+          "line": 620,
+          "symbol": "status"
+        },
+        {
+          "file": "packages/forms/src/model/abstract_model.ts",
+          "line": 623,
+          "symbol": "status"
+        },
+        {
+          "file": "packages/forms/src/model/abstract_model.ts",
+          "line": 707,
+          "symbol": "pristine"
+        },
+        {
+          "file": "packages/forms/src/model/abstract_model.ts",
+          "line": 710,
+          "symbol": "pristine"
+        },
+        {
+          "file": "packages/forms/src/model/abstract_model.ts",
+          "line": 734,
+          "symbol": "touched"
+        },
+        {
+          "file": "packages/forms/src/model/abstract_model.ts",
+          "line": 737,
+          "symbol": "touched"
+        },
+        {
+          "file": "packages/forms/src/model/abstract_model.ts",
+          "line": 1807,
+          "symbol": "_updateHasRequiredValidator"
+        },
+        {
+          "file": "packages/forms/src/model/form_array.ts",
+          "line": 325,
+          "symbol": "setValue"
+        },
+        {
+          "file": "packages/forms/src/model/form_control.ts",
+          "line": 508,
+          "symbol": "setValue"
+        },
+        {
+          "file": "packages/forms/src/model/form_group.ts",
+          "line": 436,
+          "symbol": "setValue"
+        },
+        {
+          "file": "packages/router/src/directives/router_link.ts",
+          "line": 219,
+          "symbol": "href"
+        },
+        {
+          "file": "packages/router/src/directives/router_link.ts",
+          "line": 235,
+          "symbol": "target"
+        },
+        {
+          "file": "packages/router/src/directives/router_link.ts",
+          "line": 254,
+          "symbol": "queryParams"
+        },
+        {
+          "file": "packages/router/src/directives/router_link.ts",
+          "line": 269,
+          "symbol": "fragment"
+        },
+        {
+          "file": "packages/router/src/directives/router_link.ts",
+          "line": 282,
+          "symbol": "queryParamsHandling"
+        },
+        {
+          "file": "packages/router/src/directives/router_link.ts",
+          "line": 295,
+          "symbol": "state"
+        },
+        {
+          "file": "packages/router/src/directives/router_link.ts",
+          "line": 308,
+          "symbol": "info"
+        },
+        {
+          "file": "packages/router/src/directives/router_link.ts",
+          "line": 324,
+          "symbol": "relativeTo"
+        },
+        {
+          "file": "packages/router/src/directives/router_link.ts",
+          "line": 338,
+          "symbol": "preserveFragment"
+        },
+        {
+          "file": "packages/router/src/directives/router_link.ts",
+          "line": 352,
+          "symbol": "skipLocationChange"
+        },
+        {
+          "file": "packages/router/src/directives/router_link.ts",
+          "line": 366,
+          "symbol": "replaceUrl"
+        },
+        {
+          "file": "packages/router/src/directives/router_link.ts",
+          "line": 568,
+          "symbol": "urlTree"
+        },
+        {
+          "file": "packages/router/src/directives/router_link_active.ts",
+          "line": 288,
+          "symbol": "isLinkActive"
+        },
+        {
+          "file": "packages/router/src/navigation_transition.ts",
+          "line": 431,
+          "symbol": "handleNavigationRequest"
+        },
+        {
+          "file": "packages/router/src/navigation_transition.ts",
+          "line": 825,
+          "symbol": "setupNavigations"
+        },
+        {
+          "file": "packages/router/src/navigation_transition.ts",
+          "line": 1044,
+          "symbol": "isUpdatedBrowserUrl"
+        },
+        {
+          "file": "packages/router/src/router.ts",
+          "line": 197,
+          "symbol": "subscribeToNavigationEvents"
+        },
+        {
+          "file": "packages/router/src/router.ts",
+          "line": 371,
+          "symbol": "getCurrentNavigation"
+        },
+        {
+          "file": "packages/router/src/router_resource.ts",
+          "line": 204,
+          "symbol": "createResourceOutletBindingEffects"
+        },
+        {
+          "file": "packages/router/src/router_scroller.ts",
+          "line": 133,
+          "symbol": "scheduleScrollEvent"
+        }
+      ],
+      "granularity": "file",
+      "equality": "exact-set",
+      "needles": [
+        "untracked"
+      ],
+      "unexplained": [],
+      "notes": {
+        "sites": 103,
+        "riskSites": 0,
+        "tier": 2
+      },
+      "oracleVersion": "angular-pilot-1"
+    },
+    {
+      "questionId": "p-302",
+      "kind": "callers",
+      "abstain": false,
+      "items": [
+        {
+          "file": "packages/compiler/src/i18n/extractor_merger.ts",
+          "line": 149,
+          "symbol": "visitExpansionCase"
+        },
+        {
+          "file": "packages/compiler/src/i18n/extractor_merger.ts",
+          "line": 175,
+          "symbol": "visitExpansion"
+        },
+        {
+          "file": "packages/compiler/src/i18n/extractor_merger.ts",
+          "line": 235,
+          "symbol": "visitComment"
+        },
+        {
+          "file": "packages/compiler/src/i18n/extractor_merger.ts",
+          "line": 261,
+          "symbol": "visitBlock"
+        },
+        {
+          "file": "packages/compiler/src/i18n/extractor_merger.ts",
+          "line": 329,
+          "symbol": "_visitElementLike"
+        },
+        {
+          "file": "packages/compiler/src/i18n/extractor_merger.ts",
+          "line": 342,
+          "symbol": "_visitElementLike"
+        },
+        {
+          "file": "packages/compiler/src/i18n/i18n_parser.ts",
+          "line": 88,
+          "symbol": "toI18nMessage"
+        },
+        {
+          "file": "packages/compiler/src/i18n/i18n_parser.ts",
+          "line": 177,
+          "symbol": "visitBlock"
+        },
+        {
+          "file": "packages/compiler/src/i18n/i18n_parser.ts",
+          "line": 225,
+          "symbol": "_visitElementLike"
+        },
+        {
+          "file": "packages/compiler/src/i18n/serializers/xliff.ts",
+          "line": 232,
+          "symbol": "parse"
+        },
+        {
+          "file": "packages/compiler/src/i18n/serializers/xliff.ts",
+          "line": 253,
+          "symbol": "visitElement"
+        },
+        {
+          "file": "packages/compiler/src/i18n/serializers/xliff.ts",
+          "line": 282,
+          "symbol": "visitElement"
+        },
+        {
+          "file": "packages/compiler/src/i18n/serializers/xliff.ts",
+          "line": 288,
+          "symbol": "visitElement"
+        },
+        {
+          "file": "packages/compiler/src/i18n/serializers/xliff.ts",
+          "line": 329,
+          "symbol": "convert"
+        },
+        {
+          "file": "packages/compiler/src/i18n/serializers/xliff.ts",
+          "line": 353,
+          "symbol": "visitElement"
+        },
+        {
+          "file": "packages/compiler/src/i18n/serializers/xliff.ts",
+          "line": 363,
+          "symbol": "visitExpansion"
+        },
+        {
+          "file": "packages/compiler/src/i18n/serializers/xliff.ts",
+          "line": 373,
+          "symbol": "visitExpansionCase"
+        },
+        {
+          "file": "packages/compiler/src/i18n/serializers/xliff2.ts",
+          "line": 256,
+          "symbol": "parse"
+        },
+        {
+          "file": "packages/compiler/src/i18n/serializers/xliff2.ts",
+          "line": 277,
+          "symbol": "visitElement"
+        },
+        {
+          "file": "packages/compiler/src/i18n/serializers/xliff2.ts",
+          "line": 314,
+          "symbol": "visitElement"
+        },
+        {
+          "file": "packages/compiler/src/i18n/serializers/xliff2.ts",
+          "line": 319,
+          "symbol": "visitElement"
+        },
+        {
+          "file": "packages/compiler/src/i18n/serializers/xliff2.ts",
+          "line": 360,
+          "symbol": "convert"
+        },
+        {
+          "file": "packages/compiler/src/i18n/serializers/xliff2.ts",
+          "line": 404,
+          "symbol": "visitElement"
+        },
+        {
+          "file": "packages/compiler/src/i18n/serializers/xliff2.ts",
+          "line": 415,
+          "symbol": "visitExpansion"
+        },
+        {
+          "file": "packages/compiler/src/i18n/serializers/xliff2.ts",
+          "line": 425,
+          "symbol": "visitExpansionCase"
+        },
+        {
+          "file": "packages/compiler/src/i18n/serializers/xtb.ts",
+          "line": 100,
+          "symbol": "parse"
+        },
+        {
+          "file": "packages/compiler/src/i18n/serializers/xtb.ts",
+          "line": 120,
+          "symbol": "visitElement"
+        },
+        {
+          "file": "packages/compiler/src/i18n/serializers/xtb.ts",
+          "line": 188,
+          "symbol": "convert"
+        },
+        {
+          "file": "packages/compiler/src/i18n/serializers/xtb.ts",
+          "line": 203,
+          "symbol": "visitExpansion"
+        },
+        {
+          "file": "packages/compiler/src/i18n/serializers/xtb.ts",
+          "line": 213,
+          "symbol": "visitExpansionCase"
+        },
+        {
+          "file": "packages/compiler/src/ml_parser/ast.ts",
+          "line": 315,
+          "symbol": "visit"
+        },
+        {
+          "file": "packages/compiler/src/render3/r3_boundaries.ts",
+          "line": 122,
+          "symbol": "createBoundaryBlock"
+        },
+        {
+          "file": "packages/compiler/src/render3/r3_boundaries.ts",
+          "line": 166,
+          "symbol": "createBoundaryBlock"
+        },
+        {
+          "file": "packages/compiler/src/render3/r3_content_blocks.ts",
+          "line": 56,
+          "symbol": "createContentBlock"
+        },
+        {
+          "file": "packages/compiler/src/render3/r3_control_flow.ts",
+          "line": 67,
+          "symbol": "createIfBlock"
+        },
+        {
+          "file": "packages/compiler/src/render3/r3_control_flow.ts",
+          "line": 83,
+          "symbol": "createIfBlock"
+        },
+        {
+          "file": "packages/compiler/src/render3/r3_control_flow.ts",
+          "line": 98,
+          "symbol": "createIfBlock"
+        },
+        {
+          "file": "packages/compiler/src/render3/r3_control_flow.ts",
+          "line": 158,
+          "symbol": "createForLoop"
+        },
+        {
+          "file": "packages/compiler/src/render3/r3_control_flow.ts",
+          "line": 197,
+          "symbol": "createForLoop"
+        },
+        {
+          "file": "packages/compiler/src/render3/r3_control_flow.ts",
+          "line": 328,
+          "symbol": "createSwitchBlock"
+        },
+        {
+          "file": "packages/compiler/src/render3/r3_deferred_blocks.ts",
+          "line": 91,
+          "symbol": "createDeferredBlock"
+        },
+        {
+          "file": "packages/compiler/src/render3/r3_deferred_blocks.ts",
+          "line": 195,
+          "symbol": "parsePlaceholderBlock"
+        },
+        {
+          "file": "packages/compiler/src/render3/r3_deferred_blocks.ts",
+          "line": 244,
+          "symbol": "parseLoadingBlock"
+        },
+        {
+          "file": "packages/compiler/src/render3/r3_deferred_blocks.ts",
+          "line": 261,
+          "symbol": "parseErrorBlock"
+        },
+        {
+          "file": "packages/compiler/src/render3/r3_template_transform.ts",
+          "line": 99,
+          "symbol": "htmlAstToRender3Ast"
+        },
+        {
+          "file": "packages/compiler/src/render3/r3_template_transform.ts",
+          "line": 187,
+          "symbol": "visitElement"
+        },
+        {
+          "file": "packages/compiler/src/render3/r3_template_transform.ts",
+          "line": 189,
+          "symbol": "visitElement"
+        },
+        {
+          "file": "packages/compiler/src/render3/r3_template_transform.ts",
+          "line": 419,
+          "symbol": "visitComponent"
+        },
+        {
+          "file": "packages/compiler/src/render3/r3_template_transform.ts",
+          "line": 421,
+          "symbol": "visitComponent"
+        },
+        {
+          "file": "packages/compiler/src/render3/r3_template_transform.ts",
+          "line": 1206,
+          "symbol": "visitElement"
+        },
+        {
+          "file": "packages/compiler/src/render3/r3_template_transform.ts",
+          "line": 1209,
+          "symbol": "visitElement"
+        },
+        {
+          "file": "packages/compiler/src/render3/r3_template_transform.ts",
+          "line": 1255,
+          "symbol": "visitBlock"
+        },
+        {
+          "file": "packages/compiler/src/render3/r3_template_transform.ts",
+          "line": 1274,
+          "symbol": "visitComponent"
+        },
+        {
+          "file": "packages/compiler/src/render3/r3_template_transform.ts",
+          "line": 1277,
+          "symbol": "visitComponent"
+        },
+        {
+          "file": "packages/compiler/src/render3/view/i18n/meta.ts",
+          "line": 147,
+          "symbol": "visitBlock"
+        },
+        {
+          "file": "packages/compiler/src/render3/view/i18n/meta.ts",
+          "line": 242,
+          "symbol": "_visitElementLike"
+        },
+        {
+          "file": "packages/compiler/src/render3/view/template.ts",
+          "line": 230,
+          "symbol": "parseTemplate"
+        },
+        {
+          "file": "packages/compiler/src/render3/view/template.ts",
+          "line": 244,
+          "symbol": "parseTemplate"
+        },
+        {
+          "file": "packages/compiler/test/ml_parser/ast_spec_utils.ts",
+          "line": 28,
+          "symbol": "humanizeNodes"
+        },
+        {
+          "file": "packages/compiler/test/ml_parser/ast_spec_utils.ts",
+          "line": 52,
+          "symbol": "visitElement"
+        },
+        {
+          "file": "packages/compiler/test/ml_parser/ast_spec_utils.ts",
+          "line": 53,
+          "symbol": "visitElement"
+        },
+        {
+          "file": "packages/compiler/test/ml_parser/ast_spec_utils.ts",
+          "line": 54,
+          "symbol": "visitElement"
+        },
+        {
+          "file": "packages/compiler/test/ml_parser/ast_spec_utils.ts",
+          "line": 92,
+          "symbol": "visitExpansion"
+        },
+        {
+          "file": "packages/compiler/test/ml_parser/ast_spec_utils.ts",
+          "line": 112,
+          "symbol": "visitBlock"
+        },
+        {
+          "file": "packages/compiler/test/ml_parser/ast_spec_utils.ts",
+          "line": 113,
+          "symbol": "visitBlock"
+        },
+        {
+          "file": "packages/compiler/test/ml_parser/ast_spec_utils.ts",
+          "line": 147,
+          "symbol": "visitComponent"
+        },
+        {
+          "file": "packages/compiler/test/ml_parser/ast_spec_utils.ts",
+          "line": 148,
+          "symbol": "visitComponent"
+        },
+        {
+          "file": "packages/compiler/test/ml_parser/ast_spec_utils.ts",
+          "line": 149,
+          "symbol": "visitComponent"
+        },
+        {
+          "file": "packages/compiler/test/ml_parser/ast_spec_utils.ts",
+          "line": 159,
+          "symbol": "visitDirective"
+        },
+        {
+          "file": "packages/compiler/test/ml_parser/html_parser_spec.ts",
+          "line": 1908,
+          "symbol": "visitElement"
+        },
+        {
+          "file": "packages/compiler/test/ml_parser/html_parser_spec.ts",
+          "line": 1909,
+          "symbol": "visitElement"
+        },
+        {
+          "file": "packages/compiler/test/ml_parser/html_parser_spec.ts",
+          "line": 1910,
+          "symbol": "visitElement"
+        },
+        {
+          "file": "packages/compiler/test/ml_parser/html_parser_spec.ts",
+          "line": 1916,
+          "symbol": "visitExpansion"
+        },
+        {
+          "file": "packages/compiler/test/ml_parser/html_parser_spec.ts",
+          "line": 1920,
+          "symbol": "visitBlock"
+        },
+        {
+          "file": "packages/compiler/test/ml_parser/html_parser_spec.ts",
+          "line": 1921,
+          "symbol": "visitBlock"
+        },
+        {
+          "file": "packages/compiler/test/ml_parser/html_parser_spec.ts",
+          "line": 1926,
+          "symbol": "visitComponent"
+        },
+        {
+          "file": "packages/compiler/test/ml_parser/html_parser_spec.ts",
+          "line": 1927,
+          "symbol": "visitComponent"
+        },
+        {
+          "file": "packages/compiler/test/ml_parser/html_parser_spec.ts",
+          "line": 1928,
+          "symbol": "visitComponent"
+        },
+        {
+          "file": "packages/compiler/test/ml_parser/html_parser_spec.ts",
+          "line": 1931,
+          "symbol": "visitDirective"
+        },
+        {
+          "file": "packages/compiler/test/ml_parser/html_parser_spec.ts",
+          "line": 1935,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/compiler/test/ml_parser/html_parser_spec.ts",
+          "line": 1987,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/compiler/test/render3/view/util.ts",
+          "line": 197,
+          "symbol": "processI18nMeta"
+        },
+        {
+          "file": "packages/localize/tools/src/translate/translation_files/message_serialization/message_serializer.ts",
+          "line": 44,
+          "symbol": "serialize"
+        },
+        {
+          "file": "packages/localize/tools/src/translate/translation_files/message_serialization/message_serializer.ts",
+          "line": 64,
+          "symbol": "visitElement"
+        },
+        {
+          "file": "packages/localize/tools/src/translate/translation_files/message_serialization/message_serializer.ts",
+          "line": 77,
+          "symbol": "visitExpansion"
+        },
+        {
+          "file": "packages/localize/tools/src/translate/translation_files/message_serialization/message_serializer.ts",
+          "line": 84,
+          "symbol": "visitExpansionCase"
+        },
+        {
+          "file": "packages/localize/tools/src/translate/translation_files/message_serialization/message_serializer.ts",
+          "line": 91,
+          "symbol": "visitContainedNodes"
+        },
+        {
+          "file": "packages/localize/tools/src/translate/translation_files/translation_parsers/xliff1_translation_parser.ts",
+          "line": 87,
+          "symbol": "extractBundle"
+        },
+        {
+          "file": "packages/localize/tools/src/translate/translation_files/translation_parsers/xliff1_translation_parser.ts",
+          "line": 110,
+          "symbol": "visitElement"
+        },
+        {
+          "file": "packages/localize/tools/src/translate/translation_files/translation_parsers/xliff2_translation_parser.ts",
+          "line": 71,
+          "symbol": "extractBundle"
+        },
+        {
+          "file": "packages/localize/tools/src/translate/translation_files/translation_parsers/xliff2_translation_parser.ts",
+          "line": 89,
+          "symbol": "visitElement"
+        },
+        {
+          "file": "packages/localize/tools/src/translate/translation_files/translation_parsers/xliff2_translation_parser.ts",
+          "line": 117,
+          "symbol": "visitUnitElement"
+        },
+        {
+          "file": "packages/localize/tools/src/translate/translation_files/translation_parsers/xtb_translation_parser.ts",
+          "line": 62,
+          "symbol": "extractBundle"
+        }
+      ],
+      "granularity": "file",
+      "equality": "exact-set",
+      "needles": [
+        "visitAll"
+      ],
+      "unexplained": [],
+      "notes": {
+        "sites": 93,
+        "riskSites": 0,
+        "tier": 2
+      },
+      "oracleVersion": "angular-pilot-1"
+    },
+    {
+      "questionId": "p-303",
+      "kind": "callers",
+      "abstain": false,
+      "items": [
+        {
+          "file": "packages/compiler/src/i18n/serializers/xliff.ts",
+          "line": 137,
+          "symbol": "digest"
+        },
+        {
+          "file": "packages/compiler/test/i18n/digest_spec.ts",
+          "line": 15,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/compiler/test/i18n/extractor_merger_spec.ts",
+          "line": 540,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/compiler/test/i18n/extractor_merger_spec.ts",
+          "line": 610,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/compiler/test/i18n/extractor_merger_spec.ts",
+          "line": 672,
+          "symbol": "fakeTranslate"
+        },
+        {
+          "file": "packages/compiler/test/i18n/i18n_parser_spec.ts",
+          "line": 409,
+          "symbol": "_humanizePlaceholdersToMessage"
+        }
+      ],
+      "granularity": "file",
+      "equality": "exact-set",
+      "needles": [
+        "digest"
+      ],
+      "unexplained": [],
+      "notes": {
+        "sites": 6,
+        "riskSites": 0,
+        "tier": 2
+      },
+      "oracleVersion": "angular-pilot-1"
+    },
+    {
+      "questionId": "p-304",
+      "kind": "callers",
+      "abstain": false,
+      "items": [
+        {
+          "file": "packages/common/src/directives/ng_class.ts",
+          "line": 184,
+          "symbol": "_toggleClass"
+        },
+        {
+          "file": "packages/common/src/directives/ng_if.ts",
+          "line": 286,
+          "symbol": "assertTemplate"
+        },
+        {
+          "file": "packages/common/src/pipes/utils.ts",
+          "line": 21,
+          "symbol": "invalidPipeArgumentError"
+        },
+        {
+          "file": "packages/core/src/animation/utils.ts",
+          "line": 51,
+          "symbol": "assertAnimationTypes"
+        },
+        {
+          "file": "packages/core/src/animation/utils.ts",
+          "line": 63,
+          "symbol": "assertElementNodes"
+        },
+        {
+          "file": "packages/core/src/change_detection/differs/default_iterable_differ.ts",
+          "line": 169,
+          "symbol": "diff"
+        },
+        {
+          "file": "packages/core/src/change_detection/differs/default_keyvalue_differ.ts",
+          "line": 89,
+          "symbol": "diff"
+        },
+        {
+          "file": "packages/core/src/di/create_injector.ts",
+          "line": 52,
+          "symbol": "createInjectorWithoutInjectorInstances"
+        },
+        {
+          "file": "packages/core/src/di/forward_ref.ts",
+          "line": 73,
+          "symbol": "forwardRef"
+        },
+        {
+          "file": "packages/core/src/di/injector_compatibility.ts",
+          "line": 102,
+          "symbol": "injectInjectorOnly"
+        },
+        {
+          "file": "packages/core/src/di/null_injector.ts",
+          "line": 19,
+          "symbol": "get"
+        },
+        {
+          "file": "packages/core/src/di/provider_collection.ts",
+          "line": 270,
+          "symbol": "walkProviderTree"
+        },
+        {
+          "file": "packages/core/src/di/r3_injector.ts",
+          "line": 467,
+          "symbol": "toString"
+        },
+        {
+          "file": "packages/core/src/di/r3_injector.ts",
+          "line": 533,
+          "symbol": "hydrate"
+        },
+        {
+          "file": "packages/core/src/di/r3_injector.ts",
+          "line": 590,
+          "symbol": "injectableDefOrInjectorDefFactory"
+        },
+        {
+          "file": "packages/core/src/di/r3_injector.ts",
+          "line": 610,
+          "symbol": "getUndecoratedInjectableFactory"
+        },
+        {
+          "file": "packages/core/src/linker/ng_module_registration.ts",
+          "line": 31,
+          "symbol": "assertSameOrNotExisting"
+        },
+        {
+          "file": "packages/core/src/linker/ng_module_registration.ts",
+          "line": 31,
+          "symbol": "assertSameOrNotExisting"
+        },
+        {
+          "file": "packages/core/src/platform/bootstrap.ts",
+          "line": 202,
+          "symbol": "_moduleDoBootstrap"
+        },
+        {
+          "file": "packages/core/src/render3/def_getters.ts",
+          "line": 27,
+          "symbol": "getNgModuleDefOrThrow"
+        },
+        {
+          "file": "packages/core/src/render3/def_getters.ts",
+          "line": 50,
+          "symbol": "getDirectiveDefOrThrow"
+        },
+        {
+          "file": "packages/core/src/render3/definition_factory.ts",
+          "line": 34,
+          "symbol": "getFactoryDef"
+        },
+        {
+          "file": "packages/core/src/render3/errors_di.ts",
+          "line": 46,
+          "symbol": "throwInvalidProviderError"
+        },
+        {
+          "file": "packages/core/src/render3/instructions/shared.ts",
+          "line": 512,
+          "symbol": "findDirectiveDefMatches"
+        },
+        {
+          "file": "packages/core/src/render3/instructions/styling.ts",
+          "line": 261,
+          "symbol": "stringifyInvalidStylePropValue"
+        },
+        {
+          "file": "packages/core/src/render3/instructions/styling.ts",
+          "line": 1036,
+          "symbol": "normalizeSuffix"
+        },
+        {
+          "file": "packages/core/src/render3/ng_module_ref.ts",
+          "line": 59,
+          "symbol": "NgModuleRef"
+        },
+        {
+          "file": "packages/core/src/render3/ng_module_ref.ts",
+          "line": 67,
+          "symbol": "NgModuleRef"
+        },
+        {
+          "file": "packages/core/src/render3/queries/query.ts",
+          "line": 380,
+          "symbol": "createSpecialToken"
+        },
+        {
+          "file": "packages/core/src/util/assert.ts",
+          "line": 120,
+          "symbol": "assertDomNode"
+        },
+        {
+          "file": "packages/core/src/util/assert.ts",
+          "line": 126,
+          "symbol": "assertElement"
+        },
+        {
+          "file": "packages/core/test/change_detection/util.ts",
+          "line": 63,
+          "symbol": "icrAsString"
+        },
+        {
+          "file": "packages/core/test/change_detection/util.ts",
+          "line": 64,
+          "symbol": "icrAsString"
+        },
+        {
+          "file": "packages/core/test/change_detection/util.ts",
+          "line": 66,
+          "symbol": "icrAsString"
+        },
+        {
+          "file": "packages/core/test/change_detection/util.ts",
+          "line": 68,
+          "symbol": "icrAsString"
+        },
+        {
+          "file": "packages/core/test/change_detection/util.ts",
+          "line": 104,
+          "symbol": "kvcrAsString"
+        },
+        {
+          "file": "packages/core/test/change_detection/util.ts",
+          "line": 105,
+          "symbol": "kvcrAsString"
+        },
+        {
+          "file": "packages/core/test/change_detection/util.ts",
+          "line": 107,
+          "symbol": "kvcrAsString"
+        },
+        {
+          "file": "packages/core/test/change_detection/util.ts",
+          "line": 109,
+          "symbol": "kvcrAsString"
+        },
+        {
+          "file": "packages/core/test/linker/integration_spec.ts",
+          "line": 1530,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/linker/integration_spec.ts",
+          "line": 1594,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/linker/integration_spec.ts",
+          "line": 1620,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/linker/integration_spec.ts",
+          "line": 1631,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/linker/ng_module_integration_spec.ts",
+          "line": 152,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/linker/ng_module_integration_spec.ts",
+          "line": 152,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/linker/ng_module_integration_spec.ts",
+          "line": 163,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/linker/ng_module_integration_spec.ts",
+          "line": 163,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/linker/ng_module_integration_spec.ts",
+          "line": 179,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/linker/ng_module_integration_spec.ts",
+          "line": 179,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/linker/ng_module_integration_spec.ts",
+          "line": 181,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/linker/ng_module_integration_spec.ts",
+          "line": 182,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/linker/ng_module_integration_spec.ts",
+          "line": 184,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/linker/ng_module_integration_spec.ts",
+          "line": 184,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/linker/ng_module_integration_spec.ts",
+          "line": 185,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/linker/ng_module_integration_spec.ts",
+          "line": 187,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/linker/ng_module_integration_spec.ts",
+          "line": 187,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/linker/ng_module_integration_spec.ts",
+          "line": 199,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/linker/ng_module_integration_spec.ts",
+          "line": 199,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/linker/ng_module_integration_spec.ts",
+          "line": 201,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/linker/ng_module_integration_spec.ts",
+          "line": 202,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/linker/ng_module_integration_spec.ts",
+          "line": 204,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/linker/ng_module_integration_spec.ts",
+          "line": 204,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/linker/ng_module_integration_spec.ts",
+          "line": 205,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/linker/ng_module_integration_spec.ts",
+          "line": 207,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/linker/ng_module_integration_spec.ts",
+          "line": 207,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/linker/ng_module_integration_spec.ts",
+          "line": 221,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/linker/ng_module_integration_spec.ts",
+          "line": 221,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/linker/ng_module_integration_spec.ts",
+          "line": 223,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/linker/ng_module_integration_spec.ts",
+          "line": 224,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/linker/ng_module_integration_spec.ts",
+          "line": 226,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/linker/ng_module_integration_spec.ts",
+          "line": 226,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/linker/ng_module_integration_spec.ts",
+          "line": 227,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/linker/ng_module_integration_spec.ts",
+          "line": 229,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/linker/ng_module_integration_spec.ts",
+          "line": 229,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/linker/ng_module_integration_spec.ts",
+          "line": 241,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/linker/ng_module_integration_spec.ts",
+          "line": 241,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/linker/ng_module_integration_spec.ts",
+          "line": 243,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/linker/ng_module_integration_spec.ts",
+          "line": 244,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/linker/ng_module_integration_spec.ts",
+          "line": 246,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/linker/ng_module_integration_spec.ts",
+          "line": 246,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/linker/ng_module_integration_spec.ts",
+          "line": 247,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/linker/ng_module_integration_spec.ts",
+          "line": 249,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/linker/ng_module_integration_spec.ts",
+          "line": 249,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/linker/query_integration_spec.ts",
+          "line": 253,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/util/stringify_spec.ts",
+          "line": 12,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/util/stringify_spec.ts",
+          "line": 15,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/testing/src/metadata_overrider.ts",
+          "line": 37,
+          "symbol": "overrideMetadata"
+        },
+        {
+          "file": "packages/core/testing/src/metadata_overrider.ts",
+          "line": 122,
+          "symbol": "_serializeReference"
+        },
+        {
+          "file": "packages/core/testing/src/test_bed.ts",
+          "line": 714,
+          "symbol": "createComponent"
+        },
+        {
+          "file": "packages/core/testing/src/test_bed.ts",
+          "line": 737,
+          "symbol": "createDirective"
+        },
+        {
+          "file": "packages/core/testing/src/test_bed.ts",
+          "line": 754,
+          "symbol": "createDirective"
+        },
+        {
+          "file": "packages/core/testing/src/test_bed.ts",
+          "line": 768,
+          "symbol": "createDirective"
+        },
+        {
+          "file": "packages/core/testing/src/test_bed.ts",
+          "line": 769,
+          "symbol": "createDirective"
+        }
+      ],
+      "granularity": "file",
+      "equality": "exact-set",
+      "needles": [
+        "stringify"
+      ],
+      "unexplained": [],
+      "notes": {
+        "sites": 93,
+        "riskSites": 0,
+        "tier": 2
+      },
+      "oracleVersion": "angular-pilot-1"
+    },
+    {
+      "questionId": "p-305",
+      "kind": "references",
+      "abstain": false,
+      "items": [
+        {
+          "file": "packages/compiler-cli/preprocessor/language-service/src/completions.ts",
+          "line": 185,
+          "symbol": "isLetCompletion"
+        },
+        {
+          "file": "packages/compiler-cli/preprocessor/language-service/src/completions.ts",
+          "line": 190,
+          "symbol": "isBlockCompletion"
+        },
+        {
+          "file": "packages/compiler-cli/preprocessor/language-service/src/completions.ts",
+          "line": 369,
+          "symbol": "isElementTagCompletion"
+        },
+        {
+          "file": "packages/compiler-cli/preprocessor/language-service/src/completions.ts",
+          "line": 962,
+          "symbol": "getCompletionsAtPosition"
+        },
+        {
+          "file": "packages/compiler/src/combined_visitor.ts",
+          "line": 167,
+          "symbol": "visitText"
+        },
+        {
+          "file": "packages/compiler/src/render3/r3_ast.ts",
+          "line": 760,
+          "symbol": "Icu"
+        },
+        {
+          "file": "packages/compiler/src/render3/r3_ast.ts",
+          "line": 803,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/compiler/src/render3/r3_ast.ts",
+          "line": 912,
+          "symbol": "visitText"
+        },
+        {
+          "file": "packages/compiler/src/render3/r3_template_transform.ts",
+          "line": 322,
+          "symbol": "visitExpansion"
+        },
+        {
+          "file": "packages/compiler/src/render3/r3_template_transform.ts",
+          "line": 1096,
+          "symbol": "_visitTextWithInterpolation"
+        },
+        {
+          "file": "packages/compiler/src/render3/r3_template_transform.ts",
+          "line": 1099,
+          "symbol": "_visitTextWithInterpolation"
+        },
+        {
+          "file": "packages/compiler/src/render3/r3_template_transform.ts",
+          "line": 1238,
+          "symbol": "visitText"
+        },
+        {
+          "file": "packages/compiler/src/render3/r3_template_transform.ts",
+          "line": 1239,
+          "symbol": "visitText"
+        },
+        {
+          "file": "packages/compiler/src/render3/r3_template_transform.ts",
+          "line": 1254,
+          "symbol": "visitBlock"
+        },
+        {
+          "file": "packages/compiler/src/render3/r3_template_transform.ts",
+          "line": 1259,
+          "symbol": "visitBlock"
+        },
+        {
+          "file": "packages/compiler/src/render3/r3_template_transform.ts",
+          "line": 1270,
+          "symbol": "visitLetDeclaration"
+        },
+        {
+          "file": "packages/compiler/src/render3/view/t2_binder.ts",
+          "line": 484,
+          "symbol": "visitText"
+        },
+        {
+          "file": "packages/compiler/src/render3/view/t2_binder.ts",
+          "line": 989,
+          "symbol": "visitText"
+        },
+        {
+          "file": "packages/compiler/src/template/pipeline/src/ingest.ts",
+          "line": 298,
+          "symbol": "ingestNodes"
+        },
+        {
+          "file": "packages/compiler/src/template/pipeline/src/ingest.ts",
+          "line": 531,
+          "symbol": "ingestContent"
+        },
+        {
+          "file": "packages/compiler/src/template/pipeline/src/ingest.ts",
+          "line": 570,
+          "symbol": "ingestText"
+        },
+        {
+          "file": "packages/compiler/src/typecheck/ops/content_projection.ts",
+          "line": 157,
+          "symbol": "shouldCheck"
+        },
+        {
+          "file": "packages/compiler/src/typecheck/ops/scope.ts",
+          "line": 1063,
+          "symbol": "validateReferenceBasedDeferredTrigger"
+        },
+        {
+          "file": "packages/compiler/test/render3/r3_ast_spans_spec.ts",
+          "line": 114,
+          "symbol": "visitText"
+        },
+        {
+          "file": "packages/compiler/test/render3/r3_template_transform_spec.ts",
+          "line": 87,
+          "symbol": "visitText"
+        },
+        {
+          "file": "packages/compiler/test/render3/util/expression.ts",
+          "line": 173,
+          "symbol": "visitText"
+        },
+        {
+          "file": "packages/language-service/src/completions.ts",
+          "line": 223,
+          "symbol": "isBlockCompletion"
+        },
+        {
+          "file": "packages/language-service/src/completions.ts",
+          "line": 224,
+          "symbol": "isBlockCompletion"
+        },
+        {
+          "file": "packages/language-service/src/completions.ts",
+          "line": 232,
+          "symbol": "getBlockCompletions"
+        },
+        {
+          "file": "packages/language-service/src/completions.ts",
+          "line": 735,
+          "symbol": "isElementTagCompletion"
+        },
+        {
+          "file": "packages/language-service/src/completions.ts",
+          "line": 736,
+          "symbol": "isElementTagCompletion"
+        },
+        {
+          "file": "packages/language-service/src/completions.ts",
+          "line": 748,
+          "symbol": "getElementTagCompletion"
+        },
+        {
+          "file": "packages/language-service/src/completions.ts",
+          "line": 825,
+          "symbol": "getElementTagCompletionDetails"
+        },
+        {
+          "file": "packages/language-service/src/completions.ts",
+          "line": 898,
+          "symbol": "getElementTagCompletionSymbol"
+        },
+        {
+          "file": "packages/language-service/src/semantic_tokens.ts",
+          "line": 156,
+          "symbol": "visitText"
+        },
+        {
+          "file": "packages/language-service/src/template_target.ts",
+          "line": 620,
+          "symbol": "visitText"
+        }
+      ],
+      "granularity": "file",
+      "equality": "exact-set",
+      "needles": [
+        "Text",
+        "TmplAstText"
+      ],
+      "unexplained": [],
+      "notes": {
+        "sites": 36,
+        "riskSites": 0,
+        "tier": 1
+      },
+      "oracleVersion": "angular-pilot-1"
+    },
+    {
+      "questionId": "p-306",
+      "kind": "references",
+      "abstain": false,
+      "items": [
+        {
+          "file": "packages/platform-browser/animations/async/src/async_animation_renderer.ts",
+          "line": 93,
+          "symbol": "loadImpl"
+        },
+        {
+          "file": "packages/platform-browser/src/browser.ts",
+          "line": 309,
+          "symbol": "BrowserModule"
+        },
+        {
+          "file": "packages/platform-browser/src/browser/meta.ts",
+          "line": 193,
+          "symbol": "validateMetaDefinition"
+        },
+        {
+          "file": "packages/platform-browser/src/browser/testability.ts",
+          "line": 26,
+          "symbol": "addToWindow"
+        },
+        {
+          "file": "packages/platform-browser/src/dom/dom_renderer.ts",
+          "line": 363,
+          "symbol": "insertBefore"
+        },
+        {
+          "file": "packages/platform-browser/src/dom/dom_renderer.ts",
+          "line": 384,
+          "symbol": "selectRootElement"
+        },
+        {
+          "file": "packages/platform-browser/src/dom/dom_renderer.ts",
+          "line": 491,
+          "symbol": "listen"
+        },
+        {
+          "file": "packages/platform-browser/src/dom/dom_renderer.ts",
+          "line": 553,
+          "symbol": "checkNoSyntheticProp"
+        },
+        {
+          "file": "packages/platform-browser/src/dom/events/event_manager.ts",
+          "line": 105,
+          "symbol": "_findPluginFor"
+        },
+        {
+          "file": "packages/platform-browser/src/hydration.ts",
+          "line": 180,
+          "symbol": "useValue"
+        },
+        {
+          "file": "packages/platform-browser/src/hydration.ts",
+          "line": 265,
+          "symbol": "provideClientHydration"
+        },
+        {
+          "file": "packages/platform-browser/src/hydration.ts",
+          "line": 274,
+          "symbol": "provideClientHydration"
+        },
+        {
+          "file": "packages/platform-browser/src/security/dom_sanitization_service.ts",
+          "line": 189,
+          "symbol": "sanitize"
+        },
+        {
+          "file": "packages/platform-browser/src/security/dom_sanitization_service.ts",
+          "line": 203,
+          "symbol": "sanitize"
+        },
+        {
+          "file": "packages/platform-browser/src/security/dom_sanitization_service.ts",
+          "line": 209,
+          "symbol": "sanitize"
+        }
+      ],
+      "granularity": "file",
+      "equality": "exact-set",
+      "needles": [
+        "RuntimeErrorCode"
+      ],
+      "unexplained": [],
+      "notes": {
+        "sites": 15,
+        "riskSites": 0,
+        "tier": 1
+      },
+      "oracleVersion": "angular-pilot-1"
+    },
+    {
+      "questionId": "p-307",
+      "kind": "references",
+      "abstain": false,
+      "items": [
+        {
+          "file": "packages/compiler-cli/preprocessor/src/indexing/indexer.ts",
+          "line": 40,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/compiler-cli/preprocessor/src/oob.ts",
+          "line": 207,
+          "symbol": "missingRequiredInputs"
+        },
+        {
+          "file": "packages/compiler-cli/preprocessor/src/oob.ts",
+          "line": 329,
+          "symbol": "missingNamedTemplateDependency"
+        },
+        {
+          "file": "packages/compiler-cli/preprocessor/src/oob.ts",
+          "line": 340,
+          "symbol": "incorrectTemplateDependencyType"
+        },
+        {
+          "file": "packages/compiler-cli/preprocessor/src/oob.ts",
+          "line": 434,
+          "symbol": "conflictingHostDirectiveBinding"
+        },
+        {
+          "file": "packages/compiler-cli/preprocessor/src/oob.ts",
+          "line": 459,
+          "symbol": "getTagNameSpan"
+        },
+        {
+          "file": "packages/compiler-cli/preprocessor/src/oob.ts",
+          "line": 465,
+          "symbol": "getTagNameSpan"
+        },
+        {
+          "file": "packages/compiler-cli/preprocessor/src/selectorless.ts",
+          "line": 64,
+          "symbol": "visitComponent"
+        },
+        {
+          "file": "packages/compiler-cli/src/ngtsc/annotations/component/src/selectorless.ts",
+          "line": 53,
+          "symbol": "visitComponent"
+        },
+        {
+          "file": "packages/compiler-cli/src/ngtsc/typecheck/api/checker.ts",
+          "line": 176,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/compiler-cli/src/ngtsc/typecheck/api/symbols.ts",
+          "line": 266,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/compiler-cli/src/ngtsc/typecheck/src/checker.ts",
+          "line": 1118,
+          "symbol": "getSymbolOfNode"
+        },
+        {
+          "file": "packages/compiler-cli/src/ngtsc/typecheck/src/oob.ts",
+          "line": 374,
+          "symbol": "missingRequiredInputs"
+        },
+        {
+          "file": "packages/compiler-cli/src/ngtsc/typecheck/src/oob.ts",
+          "line": 561,
+          "symbol": "missingNamedTemplateDependency"
+        },
+        {
+          "file": "packages/compiler-cli/src/ngtsc/typecheck/src/oob.ts",
+          "line": 578,
+          "symbol": "incorrectTemplateDependencyType"
+        },
+        {
+          "file": "packages/compiler-cli/src/ngtsc/typecheck/src/oob.ts",
+          "line": 587,
+          "symbol": "incorrectTemplateDependencyType"
+        },
+        {
+          "file": "packages/compiler-cli/src/ngtsc/typecheck/src/oob.ts",
+          "line": 716,
+          "symbol": "conflictingHostDirectiveBinding"
+        },
+        {
+          "file": "packages/compiler-cli/src/ngtsc/typecheck/src/oob.ts",
+          "line": 740,
+          "symbol": "getTagNameSpan"
+        },
+        {
+          "file": "packages/compiler-cli/src/ngtsc/typecheck/src/oob.ts",
+          "line": 747,
+          "symbol": "getTagNameSpan"
+        },
+        {
+          "file": "packages/compiler-cli/src/ngtsc/typecheck/src/template_symbol_builder.ts",
+          "line": 111,
+          "symbol": "getSymbol"
+        },
+        {
+          "file": "packages/compiler-cli/src/ngtsc/typecheck/src/template_symbol_builder.ts",
+          "line": 128,
+          "symbol": "getSymbol"
+        },
+        {
+          "file": "packages/compiler-cli/src/ngtsc/typecheck/src/template_symbol_builder.ts",
+          "line": 183,
+          "symbol": "getSymbolOfSelectorlessComponent"
+        },
+        {
+          "file": "packages/compiler-cli/src/ngtsc/typecheck/src/template_symbol_builder.ts",
+          "line": 222,
+          "symbol": "getDirectivesOfNode"
+        },
+        {
+          "file": "packages/compiler-cli/src/ngtsc/typecheck/test/type_checker__get_symbol_of_template_node_spec.ts",
+          "line": 2510,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/compiler-cli/src/ngtsc/typecheck/test/type_checker__get_symbol_of_template_node_spec.ts",
+          "line": 2592,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/compiler-cli/src/ngtsc/typecheck/test/type_checker__get_symbol_of_template_node_spec.ts",
+          "line": 2650,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/compiler-cli/src/ngtsc/typecheck/test/type_checker__get_symbol_of_template_node_spec.ts",
+          "line": 2688,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/compiler-cli/src/ngtsc/typecheck/test/type_checker__get_symbol_of_template_node_spec.ts",
+          "line": 2726,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/compiler-cli/src/ngtsc/typecheck/test/type_checker__get_symbol_of_template_node_spec.ts",
+          "line": 2826,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/compiler-cli/src/ngtsc/typecheck/testing/index.ts",
+          "line": 862,
+          "symbol": "missingNamedTemplateDependency"
+        },
+        {
+          "file": "packages/compiler-cli/src/ngtsc/typecheck/testing/index.ts",
+          "line": 871,
+          "symbol": "incorrectTemplateDependencyType"
+        },
+        {
+          "file": "packages/compiler/src/combined_visitor.ts",
+          "line": 148,
+          "symbol": "visitComponent"
+        },
+        {
+          "file": "packages/compiler/src/indexer/api.ts",
+          "line": 205,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/compiler/src/indexer/api.ts",
+          "line": 210,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/compiler/src/indexer/api.ts",
+          "line": 213,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/compiler/src/indexer/template.ts",
+          "line": 45,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/compiler/src/indexer/template.ts",
+          "line": 120,
+          "symbol": "visitComponent"
+        },
+        {
+          "file": "packages/compiler/src/indexer/template.ts",
+          "line": 256,
+          "symbol": "directiveHostToIdentifier"
+        },
+        {
+          "file": "packages/compiler/src/indexer/template.ts",
+          "line": 342,
+          "symbol": "targetToIdentifier"
+        },
+        {
+          "file": "packages/compiler/src/render3/r3_ast.ts",
+          "line": 823,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/compiler/src/render3/r3_ast.ts",
+          "line": 893,
+          "symbol": "visitComponent"
+        },
+        {
+          "file": "packages/compiler/src/render3/r3_template_transform.ts",
+          "line": 430,
+          "symbol": "visitComponent"
+        },
+        {
+          "file": "packages/compiler/src/render3/r3_template_transform.ts",
+          "line": 430,
+          "symbol": "visitComponent"
+        },
+        {
+          "file": "packages/compiler/src/render3/r3_template_transform.ts",
+          "line": 1026,
+          "symbol": "wrapInTemplate"
+        },
+        {
+          "file": "packages/compiler/src/render3/r3_template_transform.ts",
+          "line": 1049,
+          "symbol": "wrapInTemplate"
+        },
+        {
+          "file": "packages/compiler/src/render3/r3_template_transform.ts",
+          "line": 1061,
+          "symbol": "wrapInTemplate"
+        },
+        {
+          "file": "packages/compiler/src/render3/view/t2_api.ts",
+          "line": 60,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/compiler/src/render3/view/t2_binder.ts",
+          "line": 471,
+          "symbol": "visitComponent"
+        },
+        {
+          "file": "packages/compiler/src/render3/view/t2_binder.ts",
+          "line": 490,
+          "symbol": "visitElementLike"
+        },
+        {
+          "file": "packages/compiler/src/render3/view/t2_binder.ts",
+          "line": 708,
+          "symbol": "visitComponent"
+        },
+        {
+          "file": "packages/compiler/src/render3/view/t2_binder.ts",
+          "line": 889,
+          "symbol": "trackSelectorlessMatchesAndDirectives"
+        },
+        {
+          "file": "packages/compiler/src/render3/view/t2_binder.ts",
+          "line": 1503,
+          "symbol": "referenceTargetToElement"
+        },
+        {
+          "file": "packages/compiler/src/template/pipeline/src/ingest.ts",
+          "line": 316,
+          "symbol": "ingestNodes"
+        },
+        {
+          "file": "packages/compiler/src/typecheck/oob.ts",
+          "line": 130,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/compiler/src/typecheck/oob.ts",
+          "line": 182,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/compiler/src/typecheck/oob.ts",
+          "line": 190,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/compiler/src/typecheck/oob.ts",
+          "line": 243,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/compiler/src/typecheck/ops/bindings.ts",
+          "line": 87,
+          "symbol": "getBoundAttributes"
+        },
+        {
+          "file": "packages/compiler/src/typecheck/ops/content_projection.ts",
+          "line": 47,
+          "symbol": "TcbControlFlowContentProjectionOp"
+        },
+        {
+          "file": "packages/compiler/src/typecheck/ops/inputs.ts",
+          "line": 54,
+          "symbol": "TcbDirectiveInputsOp"
+        },
+        {
+          "file": "packages/compiler/src/typecheck/ops/references.ts",
+          "line": 33,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/compiler/src/typecheck/ops/references.ts",
+          "line": 61,
+          "symbol": "TcbReferenceOp"
+        },
+        {
+          "file": "packages/compiler/src/typecheck/ops/schema.ts",
+          "line": 31,
+          "symbol": "TcbDomSchemaCheckerOp"
+        },
+        {
+          "file": "packages/compiler/src/typecheck/ops/schema.ts",
+          "line": 44,
+          "symbol": "execute"
+        },
+        {
+          "file": "packages/compiler/src/typecheck/ops/schema.ts",
+          "line": 94,
+          "symbol": "getTagName"
+        },
+        {
+          "file": "packages/compiler/src/typecheck/ops/scope.ts",
+          "line": 118,
+          "symbol": "Scope"
+        },
+        {
+          "file": "packages/compiler/src/typecheck/ops/scope.ts",
+          "line": 429,
+          "symbol": "resolveLocal"
+        },
+        {
+          "file": "packages/compiler/src/typecheck/ops/scope.ts",
+          "line": 441,
+          "symbol": "resolveLocal"
+        },
+        {
+          "file": "packages/compiler/src/typecheck/ops/scope.ts",
+          "line": 516,
+          "symbol": "appendNode"
+        },
+        {
+          "file": "packages/compiler/src/typecheck/ops/scope.ts",
+          "line": 553,
+          "symbol": "checkAndAppendReferencesOfNode"
+        },
+        {
+          "file": "packages/compiler/src/typecheck/ops/scope.ts",
+          "line": 731,
+          "symbol": "appendInputsOfSelectorlessNode"
+        },
+        {
+          "file": "packages/compiler/src/typecheck/ops/scope.ts",
+          "line": 773,
+          "symbol": "appendOutputsOfSelectorlessNode"
+        },
+        {
+          "file": "packages/compiler/src/typecheck/ops/scope.ts",
+          "line": 806,
+          "symbol": "appendDirectiveInputs"
+        },
+        {
+          "file": "packages/compiler/src/typecheck/ops/scope.ts",
+          "line": 857,
+          "symbol": "appendSelectorlessDirectives"
+        },
+        {
+          "file": "packages/compiler/src/typecheck/ops/scope.ts",
+          "line": 930,
+          "symbol": "appendContentProjectionCheckOp"
+        },
+        {
+          "file": "packages/compiler/src/typecheck/ops/scope.ts",
+          "line": 947,
+          "symbol": "appendComponentNode"
+        },
+        {
+          "file": "packages/compiler/src/typecheck/ops/scope.ts",
+          "line": 1101,
+          "symbol": "reportConflictingBindings"
+        },
+        {
+          "file": "packages/compiler/src/typecheck/ops/selectorless.ts",
+          "line": 18,
+          "symbol": "getComponentTagName"
+        },
+        {
+          "file": "packages/compiler/src/typecheck/ops/selectorless.ts",
+          "line": 33,
+          "symbol": "TcbComponentNodeOp"
+        },
+        {
+          "file": "packages/compiler/src/typecheck/ops/signal_forms.ts",
+          "line": 251,
+          "symbol": "expandBoundAttributesForField"
+        },
+        {
+          "file": "packages/compiler/test/render3/r3_ast_spans_spec.ts",
+          "line": 310,
+          "symbol": "visitComponent"
+        },
+        {
+          "file": "packages/compiler/test/render3/r3_template_transform_spec.ts",
+          "line": 226,
+          "symbol": "visitComponent"
+        },
+        {
+          "file": "packages/compiler/test/render3/util/expression.ts",
+          "line": 260,
+          "symbol": "visitComponent"
+        },
+        {
+          "file": "packages/compiler/test/render3/view/binding_spec.ts",
+          "line": 426,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/compiler/test/render3/view/binding_spec.ts",
+          "line": 1124,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/compiler/test/render3/view/binding_spec.ts",
+          "line": 1156,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/compiler/test/render3/view/binding_spec.ts",
+          "line": 1192,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/compiler/test/render3/view/binding_spec.ts",
+          "line": 1222,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/compiler/test/render3/view/binding_spec.ts",
+          "line": 1247,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/compiler/test/render3/view/util.ts",
+          "line": 107,
+          "symbol": "findExpressionInNode"
+        },
+        {
+          "file": "packages/language-service/src/document_symbols.ts",
+          "line": 604,
+          "symbol": "visitComponent"
+        },
+        {
+          "file": "packages/language-service/src/references_and_rename.ts",
+          "line": 535,
+          "symbol": "getSelectorlessRenameLocations"
+        },
+        {
+          "file": "packages/language-service/src/references_and_rename_utils.ts",
+          "line": 420,
+          "symbol": "getRenameTextAndSpanAtPosition"
+        },
+        {
+          "file": "packages/language-service/src/references_and_rename_utils.ts",
+          "line": 445,
+          "symbol": "SelectorlessCollector"
+        },
+        {
+          "file": "packages/language-service/src/references_and_rename_utils.ts",
+          "line": 447,
+          "symbol": "getSelectorlessNodes"
+        },
+        {
+          "file": "packages/language-service/src/references_and_rename_utils.ts",
+          "line": 454,
+          "symbol": "visit"
+        },
+        {
+          "file": "packages/language-service/src/semantic_tokens.ts",
+          "line": 226,
+          "symbol": "visitComponent"
+        },
+        {
+          "file": "packages/language-service/src/smart_selection.ts",
+          "line": 158,
+          "symbol": "visit"
+        },
+        {
+          "file": "packages/language-service/src/template_target.ts",
+          "line": 199,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/language-service/src/template_target.ts",
+          "line": 208,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/language-service/src/template_target.ts",
+          "line": 325,
+          "symbol": "getTargetAtPosition"
+        },
+        {
+          "file": "packages/language-service/src/template_target.ts",
+          "line": 537,
+          "symbol": "visitComponent"
+        },
+        {
+          "file": "packages/language-service/src/template_target.ts",
+          "line": 546,
+          "symbol": "visitDirectiveHost"
+        },
+        {
+          "file": "packages/language-service/src/template_target.ts",
+          "line": 803,
+          "symbol": "isWithinTagBody"
+        },
+        {
+          "file": "packages/language-service/src/template_target.ts",
+          "line": 805,
+          "symbol": "isWithinTagBody"
+        },
+        {
+          "file": "packages/language-service/test/legacy/template_target_spec.ts",
+          "line": 941,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/language-service/test/legacy/template_target_spec.ts",
+          "line": 949,
+          "symbol": "<module>"
+        }
+      ],
+      "granularity": "file",
+      "equality": "exact-set",
+      "needles": [
+        "Component",
+        "TmplAstComponent"
+      ],
+      "unexplained": [],
+      "notes": {
+        "sites": 107,
+        "riskSites": 0,
+        "tier": 1
+      },
+      "oracleVersion": "angular-pilot-1"
+    },
+    {
+      "questionId": "p-308",
+      "kind": "references",
+      "abstain": false,
+      "items": [
+        {
+          "file": "packages/common/test/directives/ng_optimized_image_spec.ts",
+          "line": 1333,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/common/test/directives/ng_optimized_image_spec.ts",
+          "line": 2690,
+          "symbol": "createTestComponent"
+        },
+        {
+          "file": "packages/common/test/pipes/json_pipe_spec.ts",
+          "line": 60,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/common/test/pipes/slice_pipe_spec.ts",
+          "line": 96,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/src/metadata/directives.ts",
+          "line": 556,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/src/metadata/directives.ts",
+          "line": 682,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/src/render3/definition.ts",
+          "line": 304,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/src/render3/definition.ts",
+          "line": 352,
+          "symbol": "ɵɵdefineComponent"
+        },
+        {
+          "file": "packages/core/src/render3/util/discovery_utils.ts",
+          "line": 252,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/src/render3/util/discovery_utils.ts",
+          "line": 324,
+          "symbol": "getDirectiveMetadata"
+        },
+        {
+          "file": "packages/core/src/render3/util/discovery_utils.ts",
+          "line": 325,
+          "symbol": "getDirectiveMetadata"
+        },
+        {
+          "file": "packages/core/test/acceptance/animation_spec.ts",
+          "line": 1803,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/animation_spec.ts",
+          "line": 2054,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/change_detection_signals_in_zones_spec.ts",
+          "line": 115,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/change_detection_signals_in_zones_spec.ts",
+          "line": 123,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/change_detection_signals_in_zones_spec.ts",
+          "line": 139,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/change_detection_signals_in_zones_spec.ts",
+          "line": 163,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/change_detection_signals_in_zones_spec.ts",
+          "line": 177,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/change_detection_spec.ts",
+          "line": 86,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/change_detection_spec.ts",
+          "line": 148,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/change_detection_spec.ts",
+          "line": 159,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/change_detection_spec.ts",
+          "line": 183,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/change_detection_spec.ts",
+          "line": 268,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/change_detection_spec.ts",
+          "line": 425,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/change_detection_spec.ts",
+          "line": 562,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/change_detection_spec.ts",
+          "line": 654,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/change_detection_spec.ts",
+          "line": 767,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/change_detection_spec.ts",
+          "line": 948,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/change_detection_spec.ts",
+          "line": 967,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/change_detection_spec.ts",
+          "line": 1021,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/change_detection_spec.ts",
+          "line": 1037,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/change_detection_spec.ts",
+          "line": 1151,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/change_detection_spec.ts",
+          "line": 1337,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/change_detection_spec.ts",
+          "line": 1365,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/change_detection_spec.ts",
+          "line": 1598,
+          "symbol": "createOnPushMarkForCheckTests"
+        },
+        {
+          "file": "packages/core/test/acceptance/change_detection_spec.ts",
+          "line": 1671,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/change_detection_transplanted_view_spec.ts",
+          "line": 104,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/change_detection_transplanted_view_spec.ts",
+          "line": 177,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/change_detection_transplanted_view_spec.ts",
+          "line": 503,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/change_detection_transplanted_view_spec.ts",
+          "line": 593,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/change_detection_transplanted_view_spec.ts",
+          "line": 640,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/change_detection_transplanted_view_spec.ts",
+          "line": 723,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/change_detection_transplanted_view_spec.ts",
+          "line": 743,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/change_detection_transplanted_view_spec.ts",
+          "line": 868,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/change_detection_transplanted_view_spec.ts",
+          "line": 891,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/control_flow_for_spec.ts",
+          "line": 312,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/control_flow_for_spec.ts",
+          "line": 348,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/control_flow_for_spec.ts",
+          "line": 392,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/defer_spec.ts",
+          "line": 200,
+          "symbol": "createFixture"
+        },
+        {
+          "file": "packages/core/test/acceptance/defer_spec.ts",
+          "line": 264,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/defer_spec.ts",
+          "line": 282,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/defer_spec.ts",
+          "line": 309,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/defer_spec.ts",
+          "line": 322,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/defer_spec.ts",
+          "line": 358,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/defer_spec.ts",
+          "line": 885,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/defer_spec.ts",
+          "line": 908,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/defer_spec.ts",
+          "line": 1084,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/defer_spec.ts",
+          "line": 1105,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/defer_spec.ts",
+          "line": 1152,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/defer_spec.ts",
+          "line": 1168,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/defer_spec.ts",
+          "line": 1223,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/defer_spec.ts",
+          "line": 1238,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/defer_spec.ts",
+          "line": 1289,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/defer_spec.ts",
+          "line": 1311,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/defer_spec.ts",
+          "line": 1376,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/defer_spec.ts",
+          "line": 1394,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/defer_spec.ts",
+          "line": 1458,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/defer_spec.ts",
+          "line": 1481,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/defer_spec.ts",
+          "line": 1524,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/defer_spec.ts",
+          "line": 1531,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/defer_spec.ts",
+          "line": 1538,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/defer_spec.ts",
+          "line": 1562,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/defer_spec.ts",
+          "line": 1583,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/defer_spec.ts",
+          "line": 1635,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/defer_spec.ts",
+          "line": 1642,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/defer_spec.ts",
+          "line": 1664,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/defer_spec.ts",
+          "line": 1861,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/defer_spec.ts",
+          "line": 1877,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/defer_spec.ts",
+          "line": 1942,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/defer_spec.ts",
+          "line": 1960,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/defer_spec.ts",
+          "line": 2022,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/defer_spec.ts",
+          "line": 2040,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/defer_spec.ts",
+          "line": 2090,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/defer_spec.ts",
+          "line": 2106,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/defer_spec.ts",
+          "line": 2193,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/defer_spec.ts",
+          "line": 2211,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/defer_spec.ts",
+          "line": 2274,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/defer_spec.ts",
+          "line": 2292,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/defer_spec.ts",
+          "line": 2366,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/defer_spec.ts",
+          "line": 2388,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/defer_spec.ts",
+          "line": 2520,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/defer_spec.ts",
+          "line": 2536,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/defer_spec.ts",
+          "line": 2601,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/defer_spec.ts",
+          "line": 2617,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/defer_spec.ts",
+          "line": 2846,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/defer_spec.ts",
+          "line": 3279,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/defer_spec.ts",
+          "line": 3310,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/defer_spec.ts",
+          "line": 3884,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/defer_spec.ts",
+          "line": 3902,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/defer_spec.ts",
+          "line": 3982,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/defer_spec.ts",
+          "line": 4258,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/defer_spec.ts",
+          "line": 4290,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/defer_spec.ts",
+          "line": 4677,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/defer_spec.ts",
+          "line": 4725,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/di_spec.ts",
+          "line": 6034,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/discover_utils_spec.ts",
+          "line": 108,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/discover_utils_spec.ts",
+          "line": 392,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/hmr_spec.ts",
+          "line": 61,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/hmr_spec.ts",
+          "line": 76,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/hmr_spec.ts",
+          "line": 274,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/hmr_spec.ts",
+          "line": 289,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/hmr_spec.ts",
+          "line": 337,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/hmr_spec.ts",
+          "line": 424,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/hmr_spec.ts",
+          "line": 503,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/hmr_spec.ts",
+          "line": 1095,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/hmr_spec.ts",
+          "line": 1109,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/hmr_spec.ts",
+          "line": 1123,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/hmr_spec.ts",
+          "line": 1200,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/hmr_spec.ts",
+          "line": 1699,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/hmr_spec.ts",
+          "line": 1755,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/hmr_spec.ts",
+          "line": 1802,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/hmr_spec.ts",
+          "line": 1925,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/hmr_spec.ts",
+          "line": 1940,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/hmr_spec.ts",
+          "line": 1989,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/hmr_spec.ts",
+          "line": 2033,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/hmr_spec.ts",
+          "line": 2048,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/hmr_spec.ts",
+          "line": 2099,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/host_binding_spec.ts",
+          "line": 645,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/host_binding_spec.ts",
+          "line": 729,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/host_binding_spec.ts",
+          "line": 743,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/host_binding_spec.ts",
+          "line": 767,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/host_binding_spec.ts",
+          "line": 780,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/host_binding_spec.ts",
+          "line": 820,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/host_binding_spec.ts",
+          "line": 841,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/host_binding_spec.ts",
+          "line": 872,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/host_binding_spec.ts",
+          "line": 903,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/host_binding_spec.ts",
+          "line": 984,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/host_binding_spec.ts",
+          "line": 993,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/host_binding_spec.ts",
+          "line": 1006,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/host_binding_spec.ts",
+          "line": 1041,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/host_binding_spec.ts",
+          "line": 1051,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/host_binding_spec.ts",
+          "line": 1067,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/host_binding_spec.ts",
+          "line": 1145,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/host_binding_spec.ts",
+          "line": 1163,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/host_binding_spec.ts",
+          "line": 1194,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/host_binding_spec.ts",
+          "line": 1207,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/host_binding_spec.ts",
+          "line": 1286,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/host_binding_spec.ts",
+          "line": 1403,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/host_binding_spec.ts",
+          "line": 1413,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/host_binding_spec.ts",
+          "line": 1452,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/host_binding_spec.ts",
+          "line": 1520,
+          "symbol": "verify"
+        },
+        {
+          "file": "packages/core/test/acceptance/host_binding_spec.ts",
+          "line": 1641,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/host_binding_spec.ts",
+          "line": 1673,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/i18n_spec.ts",
+          "line": 1438,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/i18n_spec.ts",
+          "line": 1448,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/i18n_spec.ts",
+          "line": 1517,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/i18n_spec.ts",
+          "line": 1530,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/i18n_spec.ts",
+          "line": 1579,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/i18n_spec.ts",
+          "line": 1618,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/i18n_spec.ts",
+          "line": 1697,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/i18n_spec.ts",
+          "line": 1753,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/i18n_spec.ts",
+          "line": 2250,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/i18n_spec.ts",
+          "line": 2421,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/i18n_spec.ts",
+          "line": 2435,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/i18n_spec.ts",
+          "line": 2571,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/i18n_spec.ts",
+          "line": 2579,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/i18n_spec.ts",
+          "line": 2694,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/i18n_spec.ts",
+          "line": 2704,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/i18n_spec.ts",
+          "line": 2769,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/i18n_spec.ts",
+          "line": 2777,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/i18n_spec.ts",
+          "line": 3381,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/i18n_spec.ts",
+          "line": 3452,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/integration_spec.ts",
+          "line": 92,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/integration_spec.ts",
+          "line": 116,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/integration_spec.ts",
+          "line": 395,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/integration_spec.ts",
+          "line": 415,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/integration_spec.ts",
+          "line": 545,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/integration_spec.ts",
+          "line": 567,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/integration_spec.ts",
+          "line": 589,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/integration_spec.ts",
+          "line": 611,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/integration_spec.ts",
+          "line": 635,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/integration_spec.ts",
+          "line": 659,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/integration_spec.ts",
+          "line": 713,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/integration_spec.ts",
+          "line": 723,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/integration_spec.ts",
+          "line": 781,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/integration_spec.ts",
+          "line": 791,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/integration_spec.ts",
+          "line": 816,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/integration_spec.ts",
+          "line": 842,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/integration_spec.ts",
+          "line": 874,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/integration_spec.ts",
+          "line": 944,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/integration_spec.ts",
+          "line": 990,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/integration_spec.ts",
+          "line": 1015,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/integration_spec.ts",
+          "line": 1040,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/integration_spec.ts",
+          "line": 1071,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/integration_spec.ts",
+          "line": 1110,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/integration_spec.ts",
+          "line": 1130,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/integration_spec.ts",
+          "line": 1138,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/integration_spec.ts",
+          "line": 1161,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/integration_spec.ts",
+          "line": 1180,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/integration_spec.ts",
+          "line": 1358,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/integration_spec.ts",
+          "line": 1418,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/integration_spec.ts",
+          "line": 1483,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/integration_spec.ts",
+          "line": 1874,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/integration_spec.ts",
+          "line": 1882,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/integration_spec.ts",
+          "line": 1944,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/integration_spec.ts",
+          "line": 1952,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/integration_spec.ts",
+          "line": 1978,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/integration_spec.ts",
+          "line": 1986,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/integration_spec.ts",
+          "line": 2430,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/integration_spec.ts",
+          "line": 2546,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/integration_spec.ts",
+          "line": 2573,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/integration_spec.ts",
+          "line": 2621,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/integration_spec.ts",
+          "line": 2641,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/integration_spec.ts",
+          "line": 2681,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/integration_spec.ts",
+          "line": 2699,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/integration_spec.ts",
+          "line": 2717,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/integration_spec.ts",
+          "line": 3041,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/integration_spec.ts",
+          "line": 3061,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/integration_spec.ts",
+          "line": 3104,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/integration_spec.ts",
+          "line": 3138,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/integration_spec.ts",
+          "line": 3181,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/integration_spec.ts",
+          "line": 3208,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/integration_spec.ts",
+          "line": 3407,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/integration_spec.ts",
+          "line": 3435,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/integration_spec.ts",
+          "line": 3529,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/integration_spec.ts",
+          "line": 3551,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/integration_spec.ts",
+          "line": 3574,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/integration_spec.ts",
+          "line": 3635,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/lifecycle_spec.ts",
+          "line": 45,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/lifecycle_spec.ts",
+          "line": 64,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/lifecycle_spec.ts",
+          "line": 99,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/lifecycle_spec.ts",
+          "line": 115,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/lifecycle_spec.ts",
+          "line": 160,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/lifecycle_spec.ts",
+          "line": 173,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/lifecycle_spec.ts",
+          "line": 187,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/lifecycle_spec.ts",
+          "line": 239,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/lifecycle_spec.ts",
+          "line": 254,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/lifecycle_spec.ts",
+          "line": 273,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/lifecycle_spec.ts",
+          "line": 351,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/lifecycle_spec.ts",
+          "line": 365,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/lifecycle_spec.ts",
+          "line": 410,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/lifecycle_spec.ts",
+          "line": 423,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/lifecycle_spec.ts",
+          "line": 437,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/lifecycle_spec.ts",
+          "line": 486,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/lifecycle_spec.ts",
+          "line": 501,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/lifecycle_spec.ts",
+          "line": 524,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/lifecycle_spec.ts",
+          "line": 613,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/lifecycle_spec.ts",
+          "line": 627,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/lifecycle_spec.ts",
+          "line": 688,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/lifecycle_spec.ts",
+          "line": 704,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/lifecycle_spec.ts",
+          "line": 823,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/lifecycle_spec.ts",
+          "line": 864,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/lifecycle_spec.ts",
+          "line": 884,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/lifecycle_spec.ts",
+          "line": 977,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/lifecycle_spec.ts",
+          "line": 994,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/lifecycle_spec.ts",
+          "line": 1014,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/lifecycle_spec.ts",
+          "line": 1444,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/lifecycle_spec.ts",
+          "line": 1622,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/lifecycle_spec.ts",
+          "line": 1634,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/lifecycle_spec.ts",
+          "line": 2404,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/lifecycle_spec.ts",
+          "line": 2416,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/lifecycle_spec.ts",
+          "line": 2853,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/lifecycle_spec.ts",
+          "line": 2865,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/lifecycle_spec.ts",
+          "line": 3258,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/lifecycle_spec.ts",
+          "line": 3270,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/lifecycle_spec.ts",
+          "line": 3316,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/lifecycle_spec.ts",
+          "line": 3329,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/lifecycle_spec.ts",
+          "line": 3503,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/lifecycle_spec.ts",
+          "line": 3515,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/lifecycle_spec.ts",
+          "line": 3548,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/lifecycle_spec.ts",
+          "line": 3567,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/lifecycle_spec.ts",
+          "line": 3590,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/lifecycle_spec.ts",
+          "line": 3605,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/lifecycle_spec.ts",
+          "line": 3623,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/lifecycle_spec.ts",
+          "line": 3646,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/lifecycle_spec.ts",
+          "line": 3661,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/lifecycle_spec.ts",
+          "line": 3675,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/lifecycle_spec.ts",
+          "line": 3693,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/lifecycle_spec.ts",
+          "line": 3723,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/lifecycle_spec.ts",
+          "line": 3736,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/lifecycle_spec.ts",
+          "line": 3759,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/lifecycle_spec.ts",
+          "line": 3782,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/lifecycle_spec.ts",
+          "line": 3802,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/lifecycle_spec.ts",
+          "line": 3838,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/lifecycle_spec.ts",
+          "line": 3856,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/lifecycle_spec.ts",
+          "line": 4030,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/lifecycle_spec.ts",
+          "line": 4049,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/lifecycle_spec.ts",
+          "line": 4082,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/lifecycle_spec.ts",
+          "line": 4114,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/lifecycle_spec.ts",
+          "line": 4161,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/lifecycle_spec.ts",
+          "line": 4170,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/lifecycle_spec.ts",
+          "line": 4221,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/lifecycle_spec.ts",
+          "line": 4313,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/lifecycle_spec.ts",
+          "line": 4433,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/query_spec.ts",
+          "line": 2129,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/query_spec.ts",
+          "line": 2229,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/query_spec.ts",
+          "line": 2299,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/view_container_ref_spec.ts",
+          "line": 1332,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/view_container_ref_spec.ts",
+          "line": 1378,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/view_container_ref_spec.ts",
+          "line": 1584,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/view_container_ref_spec.ts",
+          "line": 1596,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/view_container_ref_spec.ts",
+          "line": 1631,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/view_container_ref_spec.ts",
+          "line": 1643,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/view_container_ref_spec.ts",
+          "line": 1662,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/view_container_ref_spec.ts",
+          "line": 1815,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/view_container_ref_spec.ts",
+          "line": 1920,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/view_container_ref_spec.ts",
+          "line": 1937,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/view_container_ref_spec.ts",
+          "line": 1966,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/view_container_ref_spec.ts",
+          "line": 1988,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/view_container_ref_spec.ts",
+          "line": 2029,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/view_container_ref_spec.ts",
+          "line": 2070,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/view_container_ref_spec.ts",
+          "line": 2111,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/view_container_ref_spec.ts",
+          "line": 2154,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/view_container_ref_spec.ts",
+          "line": 2195,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/view_container_ref_spec.ts",
+          "line": 2235,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/view_container_ref_spec.ts",
+          "line": 2284,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/view_container_ref_spec.ts",
+          "line": 2421,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/view_container_ref_spec.ts",
+          "line": 2558,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/view_container_ref_spec.ts",
+          "line": 2568,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/view_container_ref_spec.ts",
+          "line": 2693,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/view_container_ref_spec.ts",
+          "line": 2706,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/view_container_ref_spec.ts",
+          "line": 2726,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/view_container_ref_spec.ts",
+          "line": 2873,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/view_container_ref_spec.ts",
+          "line": 2885,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/acceptance/view_container_ref_spec.ts",
+          "line": 2976,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/application_ref_integration_spec.ts",
+          "line": 33,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/application_ref_spec.ts",
+          "line": 793,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/application_ref_spec.ts",
+          "line": 807,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/application_ref_spec.ts",
+          "line": 821,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/application_ref_spec.ts",
+          "line": 838,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/bundling/image-directive/e2e/lcp-check/lcp-check.ts",
+          "line": 35,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/bundling/image-directive/index.ts",
+          "line": 41,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/component_fixture_spec.ts",
+          "line": 94,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/component_fixture_spec.ts",
+          "line": 110,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/component_fixture_spec.ts",
+          "line": 122,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/component_fixture_spec.ts",
+          "line": 136,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/component_fixture_spec.ts",
+          "line": 499,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/component_fixture_spec.ts",
+          "line": 522,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/component_fixture_spec.ts",
+          "line": 556,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/component_fixture_spec.ts",
+          "line": 607,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/directive_lifecycle_integration_spec.ts",
+          "line": 60,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/directive_lifecycle_integration_spec.ts",
+          "line": 107,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_integration_spec.ts",
+          "line": 113,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_integration_spec.ts",
+          "line": 126,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_integration_spec.ts",
+          "line": 178,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_integration_spec.ts",
+          "line": 211,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_integration_spec.ts",
+          "line": 256,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_integration_spec.ts",
+          "line": 293,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_integration_spec.ts",
+          "line": 329,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_integration_spec.ts",
+          "line": 367,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_integration_spec.ts",
+          "line": 418,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_integration_spec.ts",
+          "line": 455,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_integration_spec.ts",
+          "line": 504,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_integration_spec.ts",
+          "line": 542,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_integration_spec.ts",
+          "line": 581,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_integration_spec.ts",
+          "line": 669,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_integration_spec.ts",
+          "line": 710,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_integration_spec.ts",
+          "line": 851,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_integration_spec.ts",
+          "line": 905,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_integration_spec.ts",
+          "line": 947,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_integration_spec.ts",
+          "line": 997,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_integration_spec.ts",
+          "line": 1006,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_integration_spec.ts",
+          "line": 1022,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_integration_spec.ts",
+          "line": 1069,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_integration_spec.ts",
+          "line": 1079,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_integration_spec.ts",
+          "line": 1128,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_integration_spec.ts",
+          "line": 1138,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_integration_spec.ts",
+          "line": 1186,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_integration_spec.ts",
+          "line": 1200,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_integration_spec.ts",
+          "line": 1247,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_integration_spec.ts",
+          "line": 1262,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_integration_spec.ts",
+          "line": 1304,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_integration_spec.ts",
+          "line": 1322,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_integration_spec.ts",
+          "line": 1386,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_integration_spec.ts",
+          "line": 1396,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_integration_spec.ts",
+          "line": 1430,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_integration_spec.ts",
+          "line": 1440,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_integration_spec.ts",
+          "line": 1473,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_integration_spec.ts",
+          "line": 1529,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_integration_spec.ts",
+          "line": 1591,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_integration_spec.ts",
+          "line": 1655,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_integration_spec.ts",
+          "line": 1699,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_integration_spec.ts",
+          "line": 1748,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_integration_spec.ts",
+          "line": 1791,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_integration_spec.ts",
+          "line": 1822,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_integration_spec.ts",
+          "line": 1874,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_integration_spec.ts",
+          "line": 1935,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_integration_spec.ts",
+          "line": 2010,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_integration_spec.ts",
+          "line": 2077,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_integration_spec.ts",
+          "line": 2122,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_integration_spec.ts",
+          "line": 2160,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_integration_spec.ts",
+          "line": 2216,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_integration_spec.ts",
+          "line": 2277,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_integration_spec.ts",
+          "line": 2335,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_integration_spec.ts",
+          "line": 2395,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_integration_spec.ts",
+          "line": 2434,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_integration_spec.ts",
+          "line": 2472,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_integration_spec.ts",
+          "line": 2523,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_integration_spec.ts",
+          "line": 2570,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_integration_spec.ts",
+          "line": 2644,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_integration_spec.ts",
+          "line": 2716,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_integration_spec.ts",
+          "line": 2763,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_integration_spec.ts",
+          "line": 2792,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_integration_spec.ts",
+          "line": 2830,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_integration_spec.ts",
+          "line": 2869,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_integration_spec.ts",
+          "line": 2908,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_integration_spec.ts",
+          "line": 2973,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_integration_spec.ts",
+          "line": 2993,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_integration_spec.ts",
+          "line": 3035,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_integration_spec.ts",
+          "line": 3088,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_integration_spec.ts",
+          "line": 3152,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_integration_spec.ts",
+          "line": 3220,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_integration_spec.ts",
+          "line": 3264,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_integration_spec.ts",
+          "line": 3306,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_integration_spec.ts",
+          "line": 3347,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_integration_spec.ts",
+          "line": 3393,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_integration_spec.ts",
+          "line": 3478,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_integration_spec.ts",
+          "line": 3593,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_integration_spec.ts",
+          "line": 3637,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_integration_spec.ts",
+          "line": 3692,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_integration_spec.ts",
+          "line": 3733,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_integration_spec.ts",
+          "line": 3800,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_integration_spec.ts",
+          "line": 3831,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_integration_spec.ts",
+          "line": 3888,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_integration_spec.ts",
+          "line": 3903,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_integration_spec.ts",
+          "line": 3943,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_integration_spec.ts",
+          "line": 3975,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_integration_spec.ts",
+          "line": 4040,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_integration_spec.ts",
+          "line": 4086,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_integration_spec.ts",
+          "line": 4128,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_integration_spec.ts",
+          "line": 4155,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_integration_spec.ts",
+          "line": 4199,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_integration_spec.ts",
+          "line": 4243,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_integration_spec.ts",
+          "line": 4289,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_integration_spec.ts",
+          "line": 4343,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_integration_spec.ts",
+          "line": 4387,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_integration_spec.ts",
+          "line": 4432,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_integration_spec.ts",
+          "line": 4459,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_integration_spec.ts",
+          "line": 4525,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_integration_spec.ts",
+          "line": 4592,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_integration_spec.ts",
+          "line": 4607,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_integration_spec.ts",
+          "line": 4626,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_integration_spec.ts",
+          "line": 4641,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_integration_spec.ts",
+          "line": 4659,
+          "symbol": "buildAndAnimateSimpleTestComponent"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_query_integration_spec.ts",
+          "line": 102,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_query_integration_spec.ts",
+          "line": 159,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_query_integration_spec.ts",
+          "line": 233,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_query_integration_spec.ts",
+          "line": 300,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_query_integration_spec.ts",
+          "line": 355,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_query_integration_spec.ts",
+          "line": 437,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_query_integration_spec.ts",
+          "line": 551,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_query_integration_spec.ts",
+          "line": 620,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_query_integration_spec.ts",
+          "line": 671,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_query_integration_spec.ts",
+          "line": 747,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_query_integration_spec.ts",
+          "line": 792,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_query_integration_spec.ts",
+          "line": 847,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_query_integration_spec.ts",
+          "line": 905,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_query_integration_spec.ts",
+          "line": 955,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_query_integration_spec.ts",
+          "line": 1018,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_query_integration_spec.ts",
+          "line": 1076,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_query_integration_spec.ts",
+          "line": 1168,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_query_integration_spec.ts",
+          "line": 1240,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_query_integration_spec.ts",
+          "line": 1305,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_query_integration_spec.ts",
+          "line": 1377,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_query_integration_spec.ts",
+          "line": 1431,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_query_integration_spec.ts",
+          "line": 1493,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_query_integration_spec.ts",
+          "line": 1568,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_query_integration_spec.ts",
+          "line": 1625,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_query_integration_spec.ts",
+          "line": 1686,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_query_integration_spec.ts",
+          "line": 1702,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_query_integration_spec.ts",
+          "line": 1739,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_query_integration_spec.ts",
+          "line": 1755,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_query_integration_spec.ts",
+          "line": 1801,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_query_integration_spec.ts",
+          "line": 1843,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_query_integration_spec.ts",
+          "line": 1893,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_query_integration_spec.ts",
+          "line": 1984,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_query_integration_spec.ts",
+          "line": 2066,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_query_integration_spec.ts",
+          "line": 2121,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_query_integration_spec.ts",
+          "line": 2185,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_query_integration_spec.ts",
+          "line": 2251,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_query_integration_spec.ts",
+          "line": 2312,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_query_integration_spec.ts",
+          "line": 2365,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_query_integration_spec.ts",
+          "line": 2387,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_query_integration_spec.ts",
+          "line": 2432,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_query_integration_spec.ts",
+          "line": 2451,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_query_integration_spec.ts",
+          "line": 2501,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_query_integration_spec.ts",
+          "line": 2511,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_query_integration_spec.ts",
+          "line": 2528,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_query_integration_spec.ts",
+          "line": 2587,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_query_integration_spec.ts",
+          "line": 2635,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_query_integration_spec.ts",
+          "line": 2704,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_query_integration_spec.ts",
+          "line": 2830,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_query_integration_spec.ts",
+          "line": 2874,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_query_integration_spec.ts",
+          "line": 2889,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_query_integration_spec.ts",
+          "line": 2942,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_query_integration_spec.ts",
+          "line": 2970,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_query_integration_spec.ts",
+          "line": 3064,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_query_integration_spec.ts",
+          "line": 3116,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_query_integration_spec.ts",
+          "line": 3133,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_query_integration_spec.ts",
+          "line": 3191,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_query_integration_spec.ts",
+          "line": 3203,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_query_integration_spec.ts",
+          "line": 3221,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_query_integration_spec.ts",
+          "line": 3307,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_query_integration_spec.ts",
+          "line": 3371,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_query_integration_spec.ts",
+          "line": 3427,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_query_integration_spec.ts",
+          "line": 3477,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_query_integration_spec.ts",
+          "line": 3538,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_query_integration_spec.ts",
+          "line": 3598,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_query_integration_spec.ts",
+          "line": 3647,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animation_query_integration_spec.ts",
+          "line": 3700,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animations_with_web_animations_integration_spec.ts",
+          "line": 70,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animations_with_web_animations_integration_spec.ts",
+          "line": 190,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animations_with_web_animations_integration_spec.ts",
+          "line": 276,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animations_with_web_animations_integration_spec.ts",
+          "line": 363,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animations_with_web_animations_integration_spec.ts",
+          "line": 455,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animations_with_web_animations_integration_spec.ts",
+          "line": 511,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animations_with_web_animations_integration_spec.ts",
+          "line": 577,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animations_with_web_animations_integration_spec.ts",
+          "line": 622,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/legacy_animation/legacy_animations_with_web_animations_integration_spec.ts",
+          "line": 689,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/linker/change_detection_integration_spec.ts",
+          "line": 1383,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/linker/change_detection_integration_spec.ts",
+          "line": 1400,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/linker/change_detection_integration_spec.ts",
+          "line": 1419,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/linker/query_integration_spec.ts",
+          "line": 806,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/linker/query_integration_spec.ts",
+          "line": 876,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/linker/query_integration_spec.ts",
+          "line": 952,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/linker/query_integration_spec.ts",
+          "line": 978,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/linker/query_integration_spec.ts",
+          "line": 993,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/linker/query_integration_spec.ts",
+          "line": 1112,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/linker/view_injector_integration_spec.ts",
+          "line": 240,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/render3/integration_spec.ts",
+          "line": 612,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/render3/jit/declare_component_spec.ts",
+          "line": 38,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/render3/jit/declare_component_spec.ts",
+          "line": 52,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/render3/jit/declare_component_spec.ts",
+          "line": 72,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/render3/jit/declare_component_spec.ts",
+          "line": 99,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/render3/jit/declare_component_spec.ts",
+          "line": 122,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/render3/jit/declare_component_spec.ts",
+          "line": 136,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/render3/jit/declare_component_spec.ts",
+          "line": 151,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/render3/jit/declare_component_spec.ts",
+          "line": 180,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/render3/jit/declare_component_spec.ts",
+          "line": 217,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/render3/jit/declare_component_spec.ts",
+          "line": 253,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/render3/jit/declare_component_spec.ts",
+          "line": 282,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/render3/jit/declare_component_spec.ts",
+          "line": 296,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/render3/jit/declare_component_spec.ts",
+          "line": 309,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/render3/jit/declare_component_spec.ts",
+          "line": 323,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/render3/jit/declare_component_spec.ts",
+          "line": 339,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/render3/jit/declare_component_spec.ts",
+          "line": 354,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/render3/jit/declare_component_spec.ts",
+          "line": 371,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/render3/jit/declare_component_spec.ts",
+          "line": 377,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/render3/jit/declare_component_spec.ts",
+          "line": 411,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/render3/jit/declare_component_spec.ts",
+          "line": 432,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/render3/jit/declare_component_spec.ts",
+          "line": 451,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/render3/jit/declare_component_spec.ts",
+          "line": 476,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/render3/jit/declare_component_spec.ts",
+          "line": 497,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/render3/jit/declare_component_spec.ts",
+          "line": 528,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/render3/jit/declare_component_spec.ts",
+          "line": 550,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/render3/jit/declare_component_spec.ts",
+          "line": 568,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/render3/jit/declare_component_spec.ts",
+          "line": 593,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/test_bed_effect_spec.ts",
+          "line": 154,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/test_bed_spec.ts",
+          "line": 84,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/test_bed_spec.ts",
+          "line": 93,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/elements/test/component-factory-strategy_spec.ts",
+          "line": 380,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/forms/signals/test/web/form_field.spec.ts",
+          "line": 4583,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/forms/signals/test/web/form_field.spec.ts",
+          "line": 4697,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/platform-browser/test/browser/bootstrap_spec.ts",
+          "line": 228,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/platform-browser/test/browser/bootstrap_spec.ts",
+          "line": 237,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/platform-browser/test/browser/bootstrap_spec.ts",
+          "line": 255,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/platform-browser/test/browser/bootstrap_spec.ts",
+          "line": 842,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/platform-browser/test/browser/bootstrap_spec.ts",
+          "line": 861,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/router/src/components/empty_outlet.ts",
+          "line": 30,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/router/testing/src/router_testing_harness.ts",
+          "line": 48,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/upgrade/static/test/integration/change_detection_spec.ts",
+          "line": 44,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/upgrade/static/test/integration/change_detection_spec.ts",
+          "line": 126,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/upgrade/static/test/integration/change_detection_spec.ts",
+          "line": 164,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/upgrade/static/test/integration/change_detection_spec.ts",
+          "line": 177,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/upgrade/static/test/integration/downgrade_component_spec.ts",
+          "line": 75,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/upgrade/static/test/integration/downgrade_component_spec.ts",
+          "line": 187,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/upgrade/static/test/integration/downgrade_component_spec.ts",
+          "line": 230,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/upgrade/static/test/integration/downgrade_component_spec.ts",
+          "line": 271,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/upgrade/static/test/integration/downgrade_component_spec.ts",
+          "line": 316,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/upgrade/static/test/integration/downgrade_component_spec.ts",
+          "line": 358,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/upgrade/static/test/integration/downgrade_component_spec.ts",
+          "line": 406,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/upgrade/static/test/integration/downgrade_component_spec.ts",
+          "line": 477,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/upgrade/static/test/integration/downgrade_component_spec.ts",
+          "line": 545,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/upgrade/static/test/integration/downgrade_component_spec.ts",
+          "line": 582,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/upgrade/static/test/integration/downgrade_component_spec.ts",
+          "line": 646,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/upgrade/static/test/integration/downgrade_component_spec.ts",
+          "line": 711,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/upgrade/static/test/integration/downgrade_component_spec.ts",
+          "line": 772,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/upgrade/static/test/integration/downgrade_component_spec.ts",
+          "line": 782,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/upgrade/static/test/integration/downgrade_component_spec.ts",
+          "line": 831,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/upgrade/static/test/integration/downgrade_component_spec.ts",
+          "line": 894,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/upgrade/static/test/integration/downgrade_component_spec.ts",
+          "line": 939,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/upgrade/static/test/integration/downgrade_component_spec.ts",
+          "line": 963,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/upgrade/static/test/integration/downgrade_component_spec.ts",
+          "line": 971,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/upgrade/static/test/integration/downgrade_component_spec.ts",
+          "line": 1005,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/upgrade/static/test/integration/downgrade_component_spec.ts",
+          "line": 1042,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/upgrade/static/test/integration/downgrade_component_spec.ts",
+          "line": 1072,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/upgrade/static/test/integration/downgrade_component_spec.ts",
+          "line": 1091,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/upgrade/static/test/integration/downgrade_component_spec.ts",
+          "line": 1127,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/upgrade/static/test/integration/downgrade_component_spec.ts",
+          "line": 1169,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/upgrade/static/test/integration/downgrade_module_spec.ts",
+          "line": 1137,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/upgrade/static/test/integration/upgrade_component_spec.ts",
+          "line": 110,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/upgrade/static/test/integration/upgrade_component_spec.ts",
+          "line": 163,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/upgrade/static/test/integration/upgrade_component_spec.ts",
+          "line": 209,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/upgrade/static/test/integration/upgrade_component_spec.ts",
+          "line": 258,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/upgrade/static/test/integration/upgrade_component_spec.ts",
+          "line": 314,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/upgrade/static/test/integration/upgrade_component_spec.ts",
+          "line": 364,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/upgrade/static/test/integration/upgrade_component_spec.ts",
+          "line": 418,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/upgrade/static/test/integration/upgrade_component_spec.ts",
+          "line": 506,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/upgrade/static/test/integration/upgrade_component_spec.ts",
+          "line": 578,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/upgrade/static/test/integration/upgrade_component_spec.ts",
+          "line": 658,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/upgrade/static/test/integration/upgrade_component_spec.ts",
+          "line": 739,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/upgrade/static/test/integration/upgrade_component_spec.ts",
+          "line": 818,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/upgrade/static/test/integration/upgrade_component_spec.ts",
+          "line": 917,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/upgrade/static/test/integration/upgrade_component_spec.ts",
+          "line": 996,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/upgrade/static/test/integration/upgrade_component_spec.ts",
+          "line": 1090,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/upgrade/static/test/integration/upgrade_component_spec.ts",
+          "line": 1170,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/upgrade/static/test/integration/upgrade_component_spec.ts",
+          "line": 1229,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/upgrade/static/test/integration/upgrade_component_spec.ts",
+          "line": 1281,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/upgrade/static/test/integration/upgrade_component_spec.ts",
+          "line": 1335,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/upgrade/static/test/integration/upgrade_component_spec.ts",
+          "line": 1389,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/upgrade/static/test/integration/upgrade_component_spec.ts",
+          "line": 1447,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/upgrade/static/test/integration/upgrade_component_spec.ts",
+          "line": 1522,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/upgrade/static/test/integration/upgrade_component_spec.ts",
+          "line": 1599,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/upgrade/static/test/integration/upgrade_component_spec.ts",
+          "line": 1657,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/upgrade/static/test/integration/upgrade_component_spec.ts",
+          "line": 1713,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/upgrade/static/test/integration/upgrade_component_spec.ts",
+          "line": 1778,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/upgrade/static/test/integration/upgrade_component_spec.ts",
+          "line": 1842,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/upgrade/static/test/integration/upgrade_component_spec.ts",
+          "line": 1902,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/upgrade/static/test/integration/upgrade_component_spec.ts",
+          "line": 1971,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/upgrade/static/test/integration/upgrade_component_spec.ts",
+          "line": 1979,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/upgrade/static/test/integration/upgrade_component_spec.ts",
+          "line": 1987,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/upgrade/static/test/integration/upgrade_component_spec.ts",
+          "line": 2066,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/upgrade/static/test/integration/upgrade_component_spec.ts",
+          "line": 2151,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/upgrade/static/test/integration/upgrade_component_spec.ts",
+          "line": 2226,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/upgrade/static/test/integration/upgrade_component_spec.ts",
+          "line": 2291,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/upgrade/static/test/integration/upgrade_component_spec.ts",
+          "line": 2363,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/upgrade/static/test/integration/upgrade_component_spec.ts",
+          "line": 2420,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/upgrade/static/test/integration/upgrade_component_spec.ts",
+          "line": 2434,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/upgrade/static/test/integration/upgrade_component_spec.ts",
+          "line": 2508,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/upgrade/static/test/integration/upgrade_component_spec.ts",
+          "line": 2578,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/upgrade/static/test/integration/upgrade_component_spec.ts",
+          "line": 2663,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/upgrade/static/test/integration/upgrade_component_spec.ts",
+          "line": 2752,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/upgrade/static/test/integration/upgrade_component_spec.ts",
+          "line": 2824,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/upgrade/static/test/integration/upgrade_component_spec.ts",
+          "line": 2888,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/upgrade/static/test/integration/upgrade_component_spec.ts",
+          "line": 2997,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/upgrade/static/test/integration/upgrade_component_spec.ts",
+          "line": 3159,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/upgrade/static/test/integration/upgrade_component_spec.ts",
+          "line": 3308,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/upgrade/static/test/integration/upgrade_component_spec.ts",
+          "line": 3387,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/upgrade/static/test/integration/upgrade_component_spec.ts",
+          "line": 3467,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/upgrade/static/test/integration/upgrade_component_spec.ts",
+          "line": 3546,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/upgrade/static/test/integration/upgrade_component_spec.ts",
+          "line": 3624,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/upgrade/static/test/integration/upgrade_component_spec.ts",
+          "line": 3719,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/upgrade/static/test/integration/upgrade_component_spec.ts",
+          "line": 3810,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/upgrade/static/test/integration/upgrade_component_spec.ts",
+          "line": 3919,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/upgrade/static/test/integration/upgrade_component_spec.ts",
+          "line": 4012,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/upgrade/static/test/integration/upgrade_component_spec.ts",
+          "line": 4069,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/upgrade/static/test/integration/upgrade_component_spec.ts",
+          "line": 4083,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/upgrade/static/test/integration/upgrade_component_spec.ts",
+          "line": 4146,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/upgrade/static/test/integration/upgrade_component_spec.ts",
+          "line": 4160,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/upgrade/static/test/integration/upgrade_component_spec.ts",
+          "line": 4226,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/upgrade/static/test/integration/upgrade_component_spec.ts",
+          "line": 4240,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/upgrade/static/test/integration/upgrade_component_spec.ts",
+          "line": 4308,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/upgrade/static/test/integration/upgrade_component_spec.ts",
+          "line": 4322,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/upgrade/static/test/integration/upgrade_component_spec.ts",
+          "line": 4384,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/upgrade/static/test/integration/upgrade_component_spec.ts",
+          "line": 4454,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/upgrade/static/test/integration/upgrade_component_spec.ts",
+          "line": 4462,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/upgrade/static/test/integration/upgrade_component_spec.ts",
+          "line": 4557,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/upgrade/static/test/integration/upgrade_component_spec.ts",
+          "line": 4573,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/upgrade/static/test/integration/upgrade_component_spec.ts",
+          "line": 4744,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/upgrade/static/test/integration/upgrade_component_spec.ts",
+          "line": 4752,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/upgrade/static/test/integration/upgrade_component_spec.ts",
+          "line": 4800,
+          "symbol": "<module>"
+        }
+      ],
+      "granularity": "file",
+      "equality": "exact-set",
+      "needles": [
+        "ChangeDetectionStrategy"
+      ],
+      "unexplained": [],
+      "notes": {
+        "sites": 671,
+        "riskSites": 0,
+        "tier": 1
+      },
+      "oracleVersion": "angular-pilot-1"
+    },
+    {
+      "questionId": "p-309",
+      "kind": "heritage",
+      "abstain": false,
+      "items": [
+        {
+          "file": "packages/benchpress/src/validator/regression_slope_validator.ts",
+          "line": 19,
+          "symbol": "RegressionSlopeValidator"
+        },
+        {
+          "file": "packages/benchpress/src/validator/size_validator.ts",
+          "line": 17,
+          "symbol": "SizeValidator"
+        },
+        {
+          "file": "packages/benchpress/test/runner_spec.ts",
+          "line": 137,
+          "symbol": "MockValidator"
+        },
+        {
+          "file": "packages/benchpress/test/sampler_spec.ts",
+          "line": 259,
+          "symbol": "MockValidator"
+        }
+      ],
+      "granularity": "file+symbol",
+      "equality": "exact-set",
+      "needles": [
+        "Validator",
+        "MockValidator",
+        "RegressionSlopeValidator",
+        "SizeValidator"
+      ],
+      "unexplained": [],
+      "notes": {
+        "subtypes": 4,
+        "riskSites": 0,
+        "tier": 2
+      },
+      "oracleVersion": "angular-pilot-1"
+    },
+    {
+      "questionId": "p-310",
+      "kind": "heritage",
+      "abstain": false,
+      "items": [
+        {
+          "file": "packages/core/src/linker/ng_module_factory.ts",
+          "line": 41,
+          "symbol": "InternalNgModuleRef"
+        },
+        {
+          "file": "packages/core/src/render3/ng_module_ref.ts",
+          "line": 41,
+          "symbol": "NgModuleRef"
+        },
+        {
+          "file": "packages/core/src/render3/ng_module_ref.ts",
+          "line": 119,
+          "symbol": "EnvironmentNgModuleRefAdapter"
+        }
+      ],
+      "granularity": "file+symbol",
+      "equality": "exact-set",
+      "needles": [
+        "NgModuleRef",
+        "EnvironmentNgModuleRefAdapter",
+        "InternalNgModuleRef",
+        "viewEngine_NgModuleRef"
+      ],
+      "unexplained": [],
+      "notes": {
+        "subtypes": 3,
+        "riskSites": 0,
+        "tier": 2
+      },
+      "oracleVersion": "angular-pilot-1"
+    },
+    {
+      "questionId": "p-311",
+      "kind": "impact",
+      "abstain": false,
+      "items": [
+        {
+          "file": "packages/router/src/navigation_transition.ts"
+        },
+        {
+          "file": "packages/router/src/operators/recognize.ts"
+        },
+        {
+          "file": "packages/router/test/apply_redirects.spec.ts"
+        },
+        {
+          "file": "packages/router/test/create_router_state.spec.ts"
+        }
+      ],
+      "granularity": "file",
+      "equality": "exact-set",
+      "needles": [
+        "recognize"
+      ],
+      "unexplained": [],
+      "notes": {
+        "depth": 2,
+        "direct": 3,
+        "viaCallers": 1,
+        "riskSites": 0,
+        "tier": 2
+      },
+      "oracleVersion": "angular-pilot-1"
+    },
+    {
+      "questionId": "p-312",
+      "kind": "impact",
+      "abstain": false,
+      "items": [
+        {
+          "file": "packages/localize/src/translate.ts"
+        },
+        {
+          "file": "packages/localize/src/utils/test/translations_spec.ts"
+        },
+        {
+          "file": "packages/localize/tools/src/source_file_utils.ts"
+        },
+        {
+          "file": "packages/localize/tools/src/translate/source_files/es2015_translate_plugin.ts"
+        },
+        {
+          "file": "packages/localize/tools/src/translate/source_files/es5_translate_plugin.ts"
+        }
+      ],
+      "granularity": "file",
+      "equality": "exact-set",
+      "needles": [
+        "translate"
+      ],
+      "unexplained": [],
+      "notes": {
+        "depth": 2,
+        "direct": 3,
+        "viaCallers": 2,
+        "riskSites": 0,
+        "tier": 2
+      },
+      "oracleVersion": "angular-pilot-1"
+    },
+    {
+      "questionId": "p-313",
+      "kind": "impact",
+      "abstain": false,
+      "items": [
+        {
+          "file": "packages/forms/signals/compat/src/api/extract.ts"
+        },
+        {
+          "file": "packages/forms/signals/src/api/rules/validation/standard_schema.ts"
+        },
+        {
+          "file": "packages/forms/signals/src/api/rules/validation/validate.ts"
+        },
+        {
+          "file": "packages/forms/signals/src/api/rules/validation/validate_async.ts"
+        },
+        {
+          "file": "packages/forms/signals/src/api/rules/validation/validate_tree.ts"
+        },
+        {
+          "file": "packages/forms/signals/src/api/structure.ts"
+        },
+        {
+          "file": "packages/forms/signals/src/directive/form_root.ts"
+        },
+        {
+          "file": "packages/forms/signals/src/field/context.ts"
+        },
+        {
+          "file": "packages/forms/signals/src/field/node.ts"
+        },
+        {
+          "file": "packages/forms/signals/src/field/proxy.ts"
+        },
+        {
+          "file": "packages/forms/signals/src/field/structure.ts"
+        },
+        {
+          "file": "packages/forms/signals/src/field/validation.ts"
+        },
+        {
+          "file": "packages/forms/signals/src/schema/logic.ts"
+        },
+        {
+          "file": "packages/forms/signals/src/util/deep_signal.ts"
+        },
+        {
+          "file": "packages/forms/signals/src/webmcp/registration.ts"
+        },
+        {
+          "file": "packages/forms/signals/test/node/compat/compat.spec.ts"
+        },
+        {
+          "file": "packages/forms/signals/test/node/submit.spec.ts"
+        }
+      ],
+      "granularity": "file",
+      "equality": "exact-set",
+      "needles": [
+        "isArray"
+      ],
+      "unexplained": [],
+      "notes": {
+        "depth": 2,
+        "direct": 8,
+        "viaCallers": 9,
+        "riskSites": 0,
+        "tier": 2
+      },
+      "oracleVersion": "angular-pilot-1"
+    },
+    {
+      "questionId": "p-314",
+      "kind": "impact",
+      "abstain": false,
+      "items": [
+        {
+          "file": "packages/common/locales/closure-locale.ts"
+        },
+        {
+          "file": "packages/common/src/i18n/locale_data.ts"
+        },
+        {
+          "file": "packages/common/test/i18n/format_date_spec.ts"
+        },
+        {
+          "file": "packages/common/test/i18n/format_number_spec.ts"
+        },
+        {
+          "file": "packages/common/test/i18n/locale_data_api_spec.ts"
+        },
+        {
+          "file": "packages/common/test/i18n/localization_spec.ts"
+        },
+        {
+          "file": "packages/common/test/pipes/date_pipe_spec.ts"
+        },
+        {
+          "file": "packages/common/test/pipes/number_pipe_spec.ts"
+        },
+        {
+          "file": "packages/core/test/acceptance/i18n_spec.ts"
+        },
+        {
+          "file": "packages/core/test/i18n/locale_data_api_spec.ts"
+        }
+      ],
+      "granularity": "file",
+      "equality": "exact-set",
+      "needles": [
+        "registerLocaleData"
+      ],
+      "unexplained": [],
+      "notes": {
+        "depth": 2,
+        "direct": 8,
+        "viaCallers": 2,
+        "riskSites": 0,
+        "tier": 2
+      },
+      "oracleVersion": "angular-pilot-1"
+    },
+    {
+      "questionId": "p-315",
+      "kind": "definition",
+      "abstain": false,
+      "items": [
+        {
+          "file": "packages/compiler/src/util.ts",
+          "line": 118,
+          "symbol": "Version"
+        }
+      ],
+      "granularity": "file+line",
+      "equality": "exact-set",
+      "needles": [
+        "Version"
+      ],
+      "unexplained": [],
+      "notes": {
+        "useSites": 2,
+        "riskSites": 0,
+        "tier": 1
+      },
+      "oracleVersion": "angular-pilot-1"
+    },
+    {
+      "questionId": "p-316",
+      "kind": "abstain",
+      "abstain": true,
+      "items": [],
+      "granularity": "file",
+      "equality": "exact-set",
+      "needles": [],
+      "unexplained": [],
+      "notes": {
+        "treeWholeWordHits": 0
+      },
+      "oracleVersion": "angular-pilot-1"
+    }
+  ]
+}
