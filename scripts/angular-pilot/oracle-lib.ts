@@ -271,6 +271,20 @@ export function createPilotOracle(opts: PilotOracleOptions): PilotOracle {
     return sym;
   }
 
+  /**
+   * Same declared symbol. A member reached through an instantiated generic type (`Box<string>.get`, a subclass of
+   * `Box<number>`, an alias of `Box<string>`) is a transient symbol (CheckFlags.Instantiated) that is not `===` to the
+   * declared one but carries exactly the same declarations; ordinary symbols compare by identity as before.
+   */
+  function sameSymbol(a: ts.Symbol, b: ts.Symbol): boolean {
+    if (a === b) return true;
+    const da = a.declarations;
+    const db = b.declarations;
+    if (da === undefined || db === undefined || da.length === 0 || da.length !== db.length) return false;
+    if ((a.flags & ts.SymbolFlags.Transient) === 0 && (b.flags & ts.SymbolFlags.Transient) === 0) return false;
+    return da.every((d) => db.includes(d));
+  }
+
   function identifierAt(sf: ts.SourceFile, pos: number): ts.Identifier | undefined {
     const n = nodeAt(sf, pos);
     return ts.isIdentifier(n) && n.getStart(sf) === pos ? n : undefined;
@@ -333,7 +347,7 @@ export function createPilotOracle(opts: PilotOracleOptions): PilotOracle {
     if (ts.isExportSpecifier(p)) return { ...base, role: p.parent.parent.moduleSpecifier !== undefined ? 'reexport' : 'export', text };
     if (ts.isNamespaceExport(p)) return { ...base, role: 'reexport', text };
     const sym = symbolOf(id);
-    if (sym !== targetSym) return { ...base, role: 'other', text };
+    if (sym === undefined || !sameSymbol(sym, targetSym)) return { ...base, role: 'other', text };
     if (isDeclarationName(p, id)) return { ...base, role: 'definition', text };
     const typeOnly = inTypeNode(id);
     return { ...base, role: !typeOnly && isCallee(id) ? 'call' : 'use', typeOnly, enclosing: enclosingName(id), text };
