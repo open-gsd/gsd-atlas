@@ -40,7 +40,7 @@ const TIER_RULES: Readonly<Record<Tier, { minGrep: number; minOther: number; cha
 
 const KEY_BOUNDS: Readonly<Record<Tier, Readonly<Record<'callers' | 'references' | 'impact' | 'heritage', { min: number; max: number }>>>> = {
   1: { callers: { min: 8, max: 60 }, references: { min: 8, max: 60 }, impact: { min: 10, max: 80 }, heritage: { min: 4, max: 30 } },
-  2: { callers: { min: 4, max: 60 }, references: { min: 8, max: 60 }, impact: { min: 6, max: 80 }, heritage: { min: 2, max: 30 } },
+  2: { callers: { min: 4, max: 60 }, references: { min: 8, max: 60 }, impact: { min: 4, max: 80 }, heritage: { min: 2, max: 30 } },
 };
 
 /** Key-size bounds (files; named subtypes for heritage) of a category in a tier; `null` for definition and abstain. */
@@ -108,7 +108,7 @@ export function pickQuestionsV2<T>(
         left -= 1;
       }
     }
-    if (left > 0) throw new Error(`category ${category} cannot fill its quota (${String(left)} missing)`);
+    if (left > 0) throw Object.assign(new Error(`category ${category} cannot fill its quota (${String(left)} missing)`), { picked, skipped });
   }
   return { picked, skipped };
 }
