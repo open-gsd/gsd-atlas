@@ -9,8 +9,7 @@ import path from 'node:path';
 import { describe, it } from 'node:test';
 import { allowAll, createRealRunner, createRecordingRunner } from '../command-runner/index.ts';
 import type { RecordingRunner } from '../command-runner/index.ts';
-import { INDEX_DEFAULT_EXCLUDES } from '../source-tree/default-excludes.ts';
-import { createSourceTree } from '../source-tree/index.ts';
+import { INDEX_DEFAULT_EXCLUDES, createSourceTree } from '../source-tree/index.ts';
 import type { SourceTree } from '../source-tree/index.ts';
 import { createTempGitRepo, makeTempDir, realPath } from '../test-kit/index.ts';
 import type { TempGitRepo } from '../test-kit/index.ts';
@@ -230,7 +229,7 @@ describe('PathFilter.keep: built-in defaults and .atlasignore (quick task 261021
       runner: setupRunner,
       world: {
         committed: {
-          '.atlasignore': 'hidden.txt\n',
+          '.atlasignore': 'hidden.txt\nnew-hidden.txt\n',
           'sub/.atlasignore': 'nested.txt\n',
           'visible.ts': 'export const v = 1;\n',
           'hidden.txt': 'tracked and named by the root file\n',

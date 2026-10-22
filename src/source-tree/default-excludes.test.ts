@@ -9,7 +9,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { describe, it } from 'node:test';
 import { allowAll, createRealRunner } from '../command-runner/index.ts';
-import { REPO_CONFIG_MAX_BYTES } from '../tenant/repo-config.ts';
+import { REPO_CONFIG_MAX_BYTES } from '../tenant/index.ts';
 import { createTempGitRepo } from '../test-kit/index.ts';
 import { defaultSamples } from './contract.ts';
 import { ATLASIGNORE_FILE, ATLASIGNORE_MAX_BYTES, INDEX_DEFAULT_EXCLUDES, defaultPatterns } from './default-excludes.ts';
