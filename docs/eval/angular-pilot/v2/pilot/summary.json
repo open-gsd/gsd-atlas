@@ -1,0 +1,883 @@
+{
+ "sessions": 96,
+ "nonOk": [],
+ "premise": {
+  "gMean": 72661.8125,
+  "verdict": "passed"
+ },
+ "ratio": {
+  "A-ts": {
+   "r": 1.2158079940546487,
+   "lo": 1.0681611127404282,
+   "hi": 1.3726080982460551
+  },
+  "A-reg": {
+   "r": 2.2500578450337994,
+   "lo": 1.7298507645359749,
+   "hi": 2.913957249956076
+  }
+ },
+ "byCond": {
+  "G": {
+   "sessions": 32,
+   "billableMean": 72661.8125,
+   "billableMedian": 43639.5,
+   "billableMeanExactOnly": 48165.608695652176,
+   "exactSessions": 23,
+   "inputMean": 12.1875,
+   "cacheCreationMean": 11615.6875,
+   "cacheReadMean": 59125.75,
+   "outputMean": 1908.1875,
+   "firstRequestMean": 6609.6875,
+   "toolCallsMean": 5.125,
+   "correctness": 0.71875,
+   "adoption": 0,
+   "sessionsWithAtlasCall": 0,
+   "atlasCallsTotal": 0,
+   "toolSearchCalls": 0,
+   "skillLoaded": 0,
+   "matched": 393,
+   "missing": 99,
+   "extra": 81,
+   "wallSecMean": 19.8728125,
+   "costSum": 2.2874104
+  },
+  "A-ts": {
+   "sessions": 32,
+   "billableMean": 88342.8125,
+   "billableMedian": 56404,
+   "billableMeanExactOnly": 61812.86956521739,
+   "exactSessions": 23,
+   "inputMean": 13.1875,
+   "cacheCreationMean": 12872.46875,
+   "cacheReadMean": 73448.21875,
+   "outputMean": 2008.9375,
+   "firstRequestMean": 7667.6875,
+   "toolCallsMean": 5.8125,
+   "correctness": 0.71875,
+   "adoption": 0.0625,
+   "sessionsWithAtlasCall": 2,
+   "atlasCallsTotal": 4,
+   "toolSearchCalls": 2,
+   "skillLoaded": 0,
+   "matched": 459,
+   "missing": 33,
+   "extra": 17,
+   "wallSecMean": 21.327687499999996,
+   "costSum": 2.5264143
+  },
+  "A-reg": {
+   "sessions": 32,
+   "billableMean": 163493.28125,
+   "billableMedian": 103271.5,
+   "billableMeanExactOnly": 127839.29629629629,
+   "exactSessions": 27,
+   "inputMean": 14.6875,
+   "cacheCreationMean": 17288.59375,
+   "cacheReadMean": 143755.5625,
+   "outputMean": 2434.4375,
+   "firstRequestMean": 11393.6875,
+   "toolCallsMean": 6.5,
+   "correctness": 0.84375,
+   "adoption": 0.46875,
+   "sessionsWithAtlasCall": 15,
+   "atlasCallsTotal": 39,
+   "toolSearchCalls": 0,
+   "skillLoaded": 0,
+   "matched": 485,
+   "missing": 7,
+   "extra": 1,
+   "wallSecMean": 28.288625,
+   "costSum": 3.452917799999999
+  }
+ },
+ "byCategory": {
+  "callers": {
+   "questions": 4,
+   "G": {
+    "billableMean": 48224.375,
+    "ratioToG": 1,
+    "correctness": 0.75,
+    "adoption": null
+   },
+   "A-ts": {
+    "billableMean": 68358.5,
+    "ratioToG": 1.4175092989800282,
+    "correctness": 1,
+    "adoption": 0
+   },
+   "A-reg": {
+    "billableMean": 160117.375,
+    "ratioToG": 3.3202581681981362,
+    "correctness": 0.875,
+    "adoption": 0.125
+   }
+  },
+  "references": {
+   "questions": 4,
+   "G": {
+    "billableMean": 126407.5,
+    "ratioToG": 1,
+    "correctness": 0.5,
+    "adoption": null
+   },
+   "A-ts": {
+    "billableMean": 142320.125,
+    "ratioToG": 1.1258835512133378,
+    "correctness": 0.25,
+    "adoption": 0.125
+   },
+   "A-reg": {
+    "billableMean": 263630.5,
+    "ratioToG": 2.0855605877815795,
+    "correctness": 0.75,
+    "adoption": 0.5
+   }
+  },
+  "heritage": {
+   "questions": 2,
+   "G": {
+    "billableMean": 25228.5,
+    "ratioToG": 1,
+    "correctness": 1,
+    "adoption": null
+   },
+   "A-ts": {
+    "billableMean": 33308.25,
+    "ratioToG": 1.320262798026042,
+    "correctness": 1,
+    "adoption": 0
+   },
+   "A-reg": {
+    "billableMean": 35455.75,
+    "ratioToG": 1.4053847830826247,
+    "correctness": 1,
+    "adoption": 0
+   }
+  },
+  "impact": {
+   "questions": 4,
+   "G": {
+    "billableMean": 91374,
+    "ratioToG": 1,
+    "correctness": 0.625,
+    "adoption": null
+   },
+   "A-ts": {
+    "billableMean": 111518.25,
+    "ratioToG": 1.2204593210322412,
+    "correctness": 0.625,
+    "adoption": 0.125
+   },
+   "A-reg": {
+    "billableMean": 195115,
+    "ratioToG": 2.135344846455228,
+    "correctness": 0.75,
+    "adoption": 1
+   }
+  },
+  "definition": {
+   "questions": 1,
+   "G": {
+    "billableMean": 20147,
+    "ratioToG": 1,
+    "correctness": 1,
+    "adoption": null
+   },
+   "A-ts": {
+    "billableMean": 31427.5,
+    "ratioToG": 1.5599096639698218,
+    "correctness": 1,
+    "adoption": 0
+   },
+   "A-reg": {
+    "billableMean": 34709,
+    "ratioToG": 1.7227875117883555,
+    "correctness": 1,
+    "adoption": 0
+   }
+  },
+  "abstain": {
+   "questions": 1,
+   "G": {
+    "billableMean": 27961.5,
+    "ratioToG": 1,
+    "correctness": 1,
+    "adoption": null
+   },
+   "A-ts": {
+    "billableMean": 26653.5,
+    "ratioToG": 0.9532213937020546,
+    "correctness": 1,
+    "adoption": 0
+   },
+   "A-reg": {
+    "billableMean": 34820.5,
+    "ratioToG": 1.2453015753804337,
+    "correctness": 1,
+    "adoption": 1
+   }
+  }
+ },
+ "withVs": {
+  "A-ts": {
+   "withAtlasCall": {
+    "sessions": 2,
+    "billableMean": 259858.5,
+    "correctness": 0
+   },
+   "withoutAtlasCall": {
+    "sessions": 30,
+    "billableMean": 76908.43333333333,
+    "correctness": 0.7666666666666667
+   }
+  },
+  "A-reg": {
+   "withAtlasCall": {
+    "sessions": 15,
+    "billableMean": 235482.6,
+    "correctness": 0.7333333333333333
+   },
+   "withoutAtlasCall": {
+    "sessions": 17,
+    "billableMean": 99973.29411764706,
+    "correctness": 0.9411764705882353
+   }
+  },
+  "both": {
+   "withAtlasCall": {
+    "sessions": 17,
+    "billableMean": 238350.35294117648,
+    "correctness": 0.6470588235294118
+   },
+   "withoutAtlasCall": {
+    "sessions": 47,
+    "billableMean": 85251.0425531915,
+    "correctness": 0.8297872340425532
+   }
+  }
+ },
+ "matchedQuestions": [
+  {
+   "questionId": "p-304",
+   "called": 647896,
+   "notCalled": 96120.33333333333
+  },
+  {
+   "questionId": "p-305",
+   "called": 178346,
+   "notCalled": 123388.5
+  },
+  {
+   "questionId": "p-307",
+   "called": 448545,
+   "notCalled": 155142
+  },
+  {
+   "questionId": "p-308",
+   "called": 261811,
+   "notCalled": 288966.3333333333
+  },
+  {
+   "questionId": "p-311",
+   "called": 90371.5,
+   "notCalled": 84262.5
+  },
+  {
+   "questionId": "p-312",
+   "called": 187299,
+   "notCalled": 92594.5
+  },
+  {
+   "questionId": "p-313",
+   "called": 336538.6666666667,
+   "notCalled": 187095
+  },
+  {
+   "questionId": "p-314",
+   "called": 126934.5,
+   "notCalled": 46715.5
+  },
+  {
+   "questionId": "p-316",
+   "called": 34820.5,
+   "notCalled": 26653.5
+  }
+ ],
+ "calledVsMatchedG": {
+  "n": 17,
+  "calledMean": 238350.35294117648,
+  "matchedGMean": 103540.0294117647,
+  "atLeastAsMuch": true
+ },
+ "classification": {
+  "class": "stop and reconsider the token gate",
+  "premise": "passed",
+  "flags": [
+   "adoption below 20%",
+   "stop clause 1: both R at or above 1.10 with the premise passed",
+   "stop clause 2: atlas sessions with a call cost at least as much as G on the same questions"
+  ]
+ },
+ "keysChanged": 1,
+ "rate": {
+  "maxFiveHour": 0.23,
+  "maxSevenDay": 0.22,
+  "anyOverage": false,
+  "overageStatuses": [
+   "rejected"
+  ]
+ },
+ "versions": [
+  "2.1.305"
+ ],
+ "apiKeySources": [
+  "none"
+ ],
+ "costSum": 8.2667425,
+ "wallSecSum": 2223.6519999999996,
+ "notExact": [
+  {
+   "jobId": "ang-A-ts-p-314-r1",
+   "condition": "A-ts",
+   "questionId": "p-314",
+   "status": "ok",
+   "answered": "found",
+   "matched": 9,
+   "missing": 1,
+   "extra": 0,
+   "missingFiles": [
+    "packages/common/locales/closure-locale.ts"
+   ],
+   "extraFiles": []
+  },
+  {
+   "jobId": "ang-A-reg-p-306-r1",
+   "condition": "A-reg",
+   "questionId": "p-306",
+   "status": "ok",
+   "answered": "found",
+   "matched": 7,
+   "missing": 1,
+   "extra": 0,
+   "missingFiles": [
+    "packages/platform-browser/animations/async/src/async_animation_renderer.ts"
+   ],
+   "extraFiles": []
+  },
+  {
+   "jobId": "ang-G-p-313-r2",
+   "condition": "G",
+   "questionId": "p-313",
+   "status": "ok",
+   "answered": "found",
+   "matched": 17,
+   "missing": 2,
+   "extra": 0,
+   "missingFiles": [
+    "packages/forms/signals/src/field/state.ts",
+    "packages/forms/signals/test/node/logic_node.spec.ts"
+   ],
+   "extraFiles": []
+  },
+  {
+   "jobId": "ang-A-reg-p-313-r2",
+   "condition": "A-reg",
+   "questionId": "p-313",
+   "status": "ok",
+   "answered": "found",
+   "matched": 18,
+   "missing": 1,
+   "extra": 0,
+   "missingFiles": [
+    "packages/forms/signals/test/node/logic_node.spec.ts"
+   ],
+   "extraFiles": []
+  },
+  {
+   "jobId": "ang-A-reg-p-305-r2",
+   "condition": "A-reg",
+   "questionId": "p-305",
+   "status": "ok",
+   "answered": "found",
+   "matched": 10,
+   "missing": 4,
+   "extra": 0,
+   "missingFiles": [
+    "packages/compiler-cli/preprocessor/language-service/src/completions.ts",
+    "packages/language-service/src/completions.ts",
+    "packages/language-service/src/semantic_tokens.ts",
+    "packages/language-service/src/template_target.ts"
+   ],
+   "extraFiles": []
+  },
+  {
+   "jobId": "ang-A-ts-p-305-r2",
+   "condition": "A-ts",
+   "questionId": "p-305",
+   "status": "ok",
+   "answered": "found",
+   "matched": 0,
+   "missing": 14,
+   "extra": 14,
+   "missingFiles": [
+    "packages/compiler-cli/preprocessor/language-service/src/completions.ts",
+    "packages/compiler/src/combined_visitor.ts",
+    "packages/compiler/src/render3/r3_ast.ts",
+    "packages/compiler/src/render3/r3_template_transform.ts",
+    "packages/compiler/src/render3/view/t2_binder.ts",
+    "packages/compiler/src/template/pipeline/src/ingest.ts",
+    "packages/compiler/src/typecheck/ops/content_projection.ts",
+    "packages/compiler/src/typecheck/ops/scope.ts",
+    "packages/compiler/test/render3/r3_ast_spans_spec.ts",
+    "packages/compiler/test/render3/r3_template_transform_spec.ts",
+    "packages/compiler/test/render3/util/expression.ts",
+    "packages/language-service/src/completions.ts",
+    "packages/language-service/src/semantic_tokens.ts",
+    "packages/language-service/src/template_target.ts"
+   ],
+   "extraFiles": [
+    "compiler/src/render3/r3_ast.ts",
+    "compiler/src/combined_visitor.ts",
+    "compiler/src/render3/r3_template_transform.ts",
+    "compiler/src/render3/view/t2_binder.ts",
+    "compiler/src/template/pipeline/src/ingest.ts",
+    "compiler/src/typecheck/ops/content_projection.ts",
+    "compiler/src/typecheck/ops/scope.ts",
+    "compiler/test/render3/r3_ast_spans_spec.ts",
+    "compiler/test/render3/r3_template_transform_spec.ts",
+    "compiler/test/render3/util/expression.ts",
+    "language-service/src/completions.ts",
+    "language-service/src/semantic_tokens.ts",
+    "language-service/src/template_target.ts",
+    "compiler-cli/preprocessor/language-service/src/completions.ts"
+   ]
+  },
+  {
+   "jobId": "ang-G-p-307-r1",
+   "condition": "G",
+   "questionId": "p-307",
+   "status": "ok",
+   "answered": "found",
+   "matched": 0,
+   "missing": 40,
+   "extra": 26,
+   "missingFiles": [
+    "packages/compiler-cli/preprocessor/src/indexing/indexer.ts",
+    "packages/compiler-cli/preprocessor/src/oob.ts",
+    "packages/compiler-cli/preprocessor/src/selectorless.ts",
+    "packages/compiler-cli/src/ngtsc/annotations/component/src/selectorless.ts",
+    "packages/compiler-cli/src/ngtsc/typecheck/api/checker.ts",
+    "packages/compiler-cli/src/ngtsc/typecheck/api/symbols.ts",
+    "packages/compiler-cli/src/ngtsc/typecheck/src/checker.ts",
+    "packages/compiler-cli/src/ngtsc/typecheck/src/oob.ts",
+    "packages/compiler-cli/src/ngtsc/typecheck/src/template_symbol_builder.ts",
+    "packages/compiler-cli/src/ngtsc/typecheck/test/type_checker__get_symbol_of_template_node_spec.ts",
+    "packages/compiler-cli/src/ngtsc/typecheck/testing/index.ts",
+    "packages/compiler/src/combined_visitor.ts",
+    "packages/compiler/src/indexer/api.ts",
+    "packages/compiler/src/indexer/template.ts",
+    "packages/compiler/src/render3/r3_ast.ts",
+    "packages/compiler/src/render3/r3_template_transform.ts",
+    "packages/compiler/src/render3/view/t2_api.ts",
+    "packages/compiler/src/render3/view/t2_binder.ts",
+    "packages/compiler/src/template/pipeline/src/ingest.ts",
+    "packages/compiler/src/typecheck/oob.ts",
+    "packages/compiler/src/typecheck/ops/bindings.ts",
+    "packages/compiler/src/typecheck/ops/content_projection.ts",
+    "packages/compiler/src/typecheck/ops/inputs.ts",
+    "packages/compiler/src/typecheck/ops/references.ts",
+    "packages/compiler/src/typecheck/ops/schema.ts",
+    "packages/compiler/src/typecheck/ops/scope.ts",
+    "packages/compiler/src/typecheck/ops/selectorless.ts",
+    "packages/compiler/src/typecheck/ops/signal_forms.ts",
+    "packages/compiler/test/render3/r3_ast_spans_spec.ts",
+    "packages/compiler/test/render3/r3_template_transform_spec.ts",
+    "packages/compiler/test/render3/util/expression.ts",
+    "packages/compiler/test/render3/view/binding_spec.ts",
+    "packages/compiler/test/render3/view/util.ts",
+    "packages/language-service/src/document_symbols.ts",
+    "packages/language-service/src/references_and_rename.ts",
+    "packages/language-service/src/references_and_rename_utils.ts",
+    "packages/language-service/src/semantic_tokens.ts",
+    "packages/language-service/src/smart_selection.ts",
+    "packages/language-service/src/template_target.ts",
+    "packages/language-service/test/legacy/template_target_spec.ts"
+   ],
+   "extraFiles": [
+    "compiler/src/render3/r3_ast.ts",
+    "compiler/test/render3/r3_template_transform_spec.ts",
+    "compiler/test/render3/util/expression.ts",
+    "compiler/test/render3/r3_ast_spans_spec.ts",
+    "compiler/src/combined_visitor.ts",
+    "compiler/src/template/pipeline/src/ingest.ts",
+    "compiler/src/render3/r3_template_transform.ts",
+    "compiler/src/indexer/template.ts",
+    "compiler-cli/preprocessor/src/oob.ts",
+    "compiler-cli/preprocessor/src/selectorless.ts",
+    "compiler-cli/preprocessor/src/indexing/indexer.ts",
+    "compiler-cli/src/ngtsc/annotations/component/src/selectorless.ts",
+    "compiler-cli/src/ngtsc/typecheck/test/type_checker__get_symbol_of_template_node_spec.ts",
+    "compiler-cli/src/ngtsc/typecheck/testing/index.ts",
+    "compiler-cli/src/ngtsc/typecheck/api/symbols.ts",
+    "compiler-cli/src/ngtsc/typecheck/api/checker.ts",
+    "compiler-cli/src/ngtsc/typecheck/src/oob.ts",
+    "compiler-cli/src/ngtsc/typecheck/src/checker.ts",
+    "compiler-cli/src/ngtsc/typecheck/src/template_symbol_builder.ts",
+    "language-service/test/legacy/template_target_spec.ts",
+    "language-service/src/references_and_rename_utils.ts",
+    "language-service/src/template_target.ts",
+    "language-service/src/references_and_rename.ts",
+    "language-service/src/smart_selection.ts",
+    "language-service/src/document_symbols.ts",
+    "language-service/src/semantic_tokens.ts"
+   ]
+  },
+  {
+   "jobId": "ang-A-ts-p-307-r1",
+   "condition": "A-ts",
+   "questionId": "p-307",
+   "status": "ok",
+   "answered": "found",
+   "matched": 36,
+   "missing": 4,
+   "extra": 0,
+   "missingFiles": [
+    "packages/compiler-cli/src/ngtsc/typecheck/api/checker.ts",
+    "packages/compiler-cli/src/ngtsc/typecheck/src/checker.ts",
+    "packages/compiler/test/render3/view/binding_spec.ts",
+    "packages/compiler/test/render3/view/util.ts"
+   ],
+   "extraFiles": []
+  },
+  {
+   "jobId": "ang-A-ts-p-305-r1",
+   "condition": "A-ts",
+   "questionId": "p-305",
+   "status": "ok",
+   "answered": "found",
+   "matched": 11,
+   "missing": 3,
+   "extra": 0,
+   "missingFiles": [
+    "packages/compiler/src/render3/view/t2_binder.ts",
+    "packages/compiler/src/typecheck/ops/content_projection.ts",
+    "packages/compiler/src/typecheck/ops/scope.ts"
+   ],
+   "extraFiles": []
+  },
+  {
+   "jobId": "ang-G-p-305-r1",
+   "condition": "G",
+   "questionId": "p-305",
+   "status": "ok",
+   "answered": "found",
+   "matched": 0,
+   "missing": 14,
+   "extra": 11,
+   "missingFiles": [
+    "packages/compiler-cli/preprocessor/language-service/src/completions.ts",
+    "packages/compiler/src/combined_visitor.ts",
+    "packages/compiler/src/render3/r3_ast.ts",
+    "packages/compiler/src/render3/r3_template_transform.ts",
+    "packages/compiler/src/render3/view/t2_binder.ts",
+    "packages/compiler/src/template/pipeline/src/ingest.ts",
+    "packages/compiler/src/typecheck/ops/content_projection.ts",
+    "packages/compiler/src/typecheck/ops/scope.ts",
+    "packages/compiler/test/render3/r3_ast_spans_spec.ts",
+    "packages/compiler/test/render3/r3_template_transform_spec.ts",
+    "packages/compiler/test/render3/util/expression.ts",
+    "packages/language-service/src/completions.ts",
+    "packages/language-service/src/semantic_tokens.ts",
+    "packages/language-service/src/template_target.ts"
+   ],
+   "extraFiles": [
+    "compiler/src/render3/r3_ast.ts",
+    "compiler/src/render3/r3_template_transform.ts",
+    "compiler/src/combined_visitor.ts",
+    "compiler/src/template/pipeline/src/ingest.ts",
+    "compiler/test/render3/r3_template_transform_spec.ts",
+    "compiler/test/render3/r3_ast_spans_spec.ts",
+    "compiler/test/render3/util/expression.ts",
+    "language-service/src/completions.ts",
+    "language-service/src/template_target.ts",
+    "language-service/src/semantic_tokens.ts",
+    "compiler-cli/preprocessor/language-service/src/completions.ts"
+   ]
+  },
+  {
+   "jobId": "ang-A-reg-p-313-r1",
+   "condition": "A-reg",
+   "questionId": "p-313",
+   "status": "ok",
+   "answered": "found",
+   "matched": 19,
+   "missing": 0,
+   "extra": 1,
+   "missingFiles": [],
+   "extraFiles": [
+    "packages/forms/signals/src/field/field_adapter.ts"
+   ]
+  },
+  {
+   "jobId": "ang-G-p-313-r1",
+   "condition": "G",
+   "questionId": "p-313",
+   "status": "ok",
+   "answered": "found",
+   "matched": 17,
+   "missing": 2,
+   "extra": 1,
+   "missingFiles": [
+    "packages/forms/signals/src/field/state.ts",
+    "packages/forms/signals/test/node/logic_node.spec.ts"
+   ],
+   "extraFiles": [
+    "packages/forms/signals/test/node/deep_signal.spec.ts"
+   ]
+  },
+  {
+   "jobId": "ang-A-ts-p-313-r1",
+   "condition": "A-ts",
+   "questionId": "p-313",
+   "status": "ok",
+   "answered": "found",
+   "matched": 17,
+   "missing": 2,
+   "extra": 0,
+   "missingFiles": [
+    "packages/forms/signals/src/field/state.ts",
+    "packages/forms/signals/test/node/logic_node.spec.ts"
+   ],
+   "extraFiles": []
+  },
+  {
+   "jobId": "ang-G-p-304-r2",
+   "condition": "G",
+   "questionId": "p-304",
+   "status": "ok",
+   "answered": "found",
+   "matched": 29,
+   "missing": 0,
+   "extra": 1,
+   "missingFiles": [],
+   "extraFiles": [
+    "packages/core/src/util/stringify.ts"
+   ]
+  },
+  {
+   "jobId": "ang-A-reg-p-304-r2",
+   "condition": "A-reg",
+   "questionId": "p-304",
+   "status": "ok",
+   "answered": "found",
+   "matched": 28,
+   "missing": 1,
+   "extra": 0,
+   "missingFiles": [
+    "packages/core/test/util/stringify_spec.ts"
+   ],
+   "extraFiles": []
+  },
+  {
+   "jobId": "ang-A-ts-p-307-r2",
+   "condition": "A-ts",
+   "questionId": "p-307",
+   "status": "ok",
+   "answered": "found",
+   "matched": 31,
+   "missing": 9,
+   "extra": 0,
+   "missingFiles": [
+    "packages/compiler/src/indexer/api.ts",
+    "packages/compiler/src/render3/view/t2_api.ts",
+    "packages/compiler/src/typecheck/ops/bindings.ts",
+    "packages/compiler/src/typecheck/ops/content_projection.ts",
+    "packages/compiler/src/typecheck/ops/inputs.ts",
+    "packages/compiler/src/typecheck/ops/references.ts",
+    "packages/compiler/src/typecheck/ops/signal_forms.ts",
+    "packages/compiler/test/render3/view/binding_spec.ts",
+    "packages/compiler/test/render3/view/util.ts"
+   ],
+   "extraFiles": []
+  },
+  {
+   "jobId": "ang-G-p-307-r2",
+   "condition": "G",
+   "questionId": "p-307",
+   "status": "ok",
+   "answered": "found",
+   "matched": 0,
+   "missing": 40,
+   "extra": 40,
+   "missingFiles": [
+    "packages/compiler-cli/preprocessor/src/indexing/indexer.ts",
+    "packages/compiler-cli/preprocessor/src/oob.ts",
+    "packages/compiler-cli/preprocessor/src/selectorless.ts",
+    "packages/compiler-cli/src/ngtsc/annotations/component/src/selectorless.ts",
+    "packages/compiler-cli/src/ngtsc/typecheck/api/checker.ts",
+    "packages/compiler-cli/src/ngtsc/typecheck/api/symbols.ts",
+    "packages/compiler-cli/src/ngtsc/typecheck/src/checker.ts",
+    "packages/compiler-cli/src/ngtsc/typecheck/src/oob.ts",
+    "packages/compiler-cli/src/ngtsc/typecheck/src/template_symbol_builder.ts",
+    "packages/compiler-cli/src/ngtsc/typecheck/test/type_checker__get_symbol_of_template_node_spec.ts",
+    "packages/compiler-cli/src/ngtsc/typecheck/testing/index.ts",
+    "packages/compiler/src/combined_visitor.ts",
+    "packages/compiler/src/indexer/api.ts",
+    "packages/compiler/src/indexer/template.ts",
+    "packages/compiler/src/render3/r3_ast.ts",
+    "packages/compiler/src/render3/r3_template_transform.ts",
+    "packages/compiler/src/render3/view/t2_api.ts",
+    "packages/compiler/src/render3/view/t2_binder.ts",
+    "packages/compiler/src/template/pipeline/src/ingest.ts",
+    "packages/compiler/src/typecheck/oob.ts",
+    "packages/compiler/src/typecheck/ops/bindings.ts",
+    "packages/compiler/src/typecheck/ops/content_projection.ts",
+    "packages/compiler/src/typecheck/ops/inputs.ts",
+    "packages/compiler/src/typecheck/ops/references.ts",
+    "packages/compiler/src/typecheck/ops/schema.ts",
+    "packages/compiler/src/typecheck/ops/scope.ts",
+    "packages/compiler/src/typecheck/ops/selectorless.ts",
+    "packages/compiler/src/typecheck/ops/signal_forms.ts",
+    "packages/compiler/test/render3/r3_ast_spans_spec.ts",
+    "packages/compiler/test/render3/r3_template_transform_spec.ts",
+    "packages/compiler/test/render3/util/expression.ts",
+    "packages/compiler/test/render3/view/binding_spec.ts",
+    "packages/compiler/test/render3/view/util.ts",
+    "packages/language-service/src/document_symbols.ts",
+    "packages/language-service/src/references_and_rename.ts",
+    "packages/language-service/src/references_and_rename_utils.ts",
+    "packages/language-service/src/semantic_tokens.ts",
+    "packages/language-service/src/smart_selection.ts",
+    "packages/language-service/src/template_target.ts",
+    "packages/language-service/test/legacy/template_target_spec.ts"
+   ],
+   "extraFiles": [
+    "compiler/src/render3/r3_ast.ts",
+    "compiler/src/combined_visitor.ts",
+    "compiler/src/template/pipeline/src/ingest.ts",
+    "compiler/src/render3/r3_template_transform.ts",
+    "compiler/src/typecheck/ops/schema.ts",
+    "compiler/src/typecheck/ops/selectorless.ts",
+    "compiler/src/typecheck/ops/inputs.ts",
+    "compiler/src/typecheck/ops/signal_forms.ts",
+    "compiler/src/typecheck/ops/scope.ts",
+    "compiler/src/typecheck/ops/bindings.ts",
+    "compiler/src/typecheck/ops/references.ts",
+    "compiler/src/typecheck/ops/content_projection.ts",
+    "compiler/src/typecheck/oob.ts",
+    "compiler/src/indexer/template.ts",
+    "compiler/src/indexer/api.ts",
+    "compiler/src/render3/view/t2_binder.ts",
+    "compiler/src/render3/view/t2_api.ts",
+    "compiler/test/render3/r3_ast_spans_spec.ts",
+    "compiler/test/render3/r3_template_transform_spec.ts",
+    "compiler/test/render3/util/expression.ts",
+    "compiler/test/render3/view/binding_spec.ts",
+    "compiler/test/render3/view/util.ts",
+    "compiler-cli/preprocessor/src/oob.ts",
+    "compiler-cli/preprocessor/src/selectorless.ts",
+    "compiler-cli/preprocessor/src/indexing/indexer.ts",
+    "compiler-cli/src/ngtsc/annotations/component/src/selectorless.ts",
+    "compiler-cli/src/ngtsc/typecheck/test/type_checker__get_symbol_of_template_node_spec.ts",
+    "compiler-cli/src/ngtsc/typecheck/testing/index.ts",
+    "compiler-cli/src/ngtsc/typecheck/api/checker.ts",
+    "compiler-cli/src/ngtsc/typecheck/api/symbols.ts",
+    "compiler-cli/src/ngtsc/typecheck/src/checker.ts",
+    "compiler-cli/src/ngtsc/typecheck/src/oob.ts",
+    "compiler-cli/src/ngtsc/typecheck/src/template_symbol_builder.ts",
+    "language-service/test/legacy/template_target_spec.ts",
+    "language-service/src/document_symbols.ts",
+    "language-service/src/smart_selection.ts",
+    "language-service/src/references_and_rename.ts",
+    "language-service/src/references_and_rename_utils.ts",
+    "language-service/src/semantic_tokens.ts",
+    "language-service/src/template_target.ts"
+   ]
+  },
+  {
+   "jobId": "ang-A-ts-p-314-r2",
+   "condition": "A-ts",
+   "questionId": "p-314",
+   "status": "ok",
+   "answered": "found",
+   "matched": 10,
+   "missing": 0,
+   "extra": 1,
+   "missingFiles": [],
+   "extraFiles": [
+    "packages/common/locales/generate-locales-tool/closure-locale-file.ts"
+   ]
+  },
+  {
+   "jobId": "ang-G-p-301-r2",
+   "condition": "G",
+   "questionId": "p-301",
+   "status": "ok",
+   "answered": "found",
+   "matched": 38,
+   "missing": 1,
+   "extra": 0,
+   "missingFiles": [
+    "packages/router/src/directives/router_link_active.ts"
+   ],
+   "extraFiles": []
+  },
+  {
+   "jobId": "ang-A-ts-p-308-r2",
+   "condition": "A-ts",
+   "questionId": "p-308",
+   "status": "ok",
+   "answered": "found",
+   "matched": 46,
+   "missing": 0,
+   "extra": 1,
+   "missingFiles": [],
+   "extraFiles": [
+    "packages/router/test/integration/integration.spec.ts"
+   ]
+  },
+  {
+   "jobId": "ang-A-ts-p-308-r1",
+   "condition": "A-ts",
+   "questionId": "p-308",
+   "status": "ok",
+   "answered": "found",
+   "matched": 46,
+   "missing": 0,
+   "extra": 1,
+   "missingFiles": [],
+   "extraFiles": [
+    "packages/router/test/integration/integration.spec.ts"
+   ]
+  },
+  {
+   "jobId": "ang-G-p-308-r1",
+   "condition": "G",
+   "questionId": "p-308",
+   "status": "ok",
+   "answered": "found",
+   "matched": 46,
+   "missing": 0,
+   "extra": 1,
+   "missingFiles": [],
+   "extraFiles": [
+    "packages/router/test/integration/integration.spec.ts"
+   ]
+  },
+  {
+   "jobId": "ang-G-p-311-r2",
+   "condition": "G",
+   "questionId": "p-311",
+   "status": "ok",
+   "answered": "found",
+   "matched": 4,
+   "missing": 0,
+   "extra": 1,
+   "missingFiles": [],
+   "extraFiles": [
+    "packages/router/src/router.ts"
+   ]
+  }
+ ]
+}
