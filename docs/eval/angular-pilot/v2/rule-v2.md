@@ -44,3 +44,21 @@ For each selected question the selection log and key audit give: whole-word grep
 ## Pending
 
 A second reader (a different agent) for the v2 key audit and the owner's review of the 16 questions. No model session has been run for v2 and none is run by this work.
+
+## Amendment 1 (2026-10-21, committed before any generation): supply shortfall, two tiers
+
+**Finding (aggregate counts of the full census, with declaring-file dates from a full-history fetch; no names looked at).** Under the bounds above (grep files >= 60, >= 2 other declarations, file changed since 2026-01-01) the pool has 74 declarations of 17 distinct names in all, and per category: callers with a key of 8..60 files **0**; heritage with 4..30 subtypes **1**; impact pool (functions and constants with at least one call-site file) 11 declarations of 3 names; references and definition 17 names. Dropping only the date filter gives callers 8..60 = 1 and heritage 4..30 = 4 (2 names). The mix of 16 (callers 4, heritage 2, impact 4) cannot be met under the original bounds. Reason: functions with several same-named siblings are mostly small helpers with few callers; wide caller sets belong to names that are unique.
+
+**Amendment.** Each category is filled from **tier 1** (the bounds above, unchanged) first, in seeded order; if the tier-1 pool cannot fill the quota (after oracle evaluation, any-risk skip and audit), the remainder is filled from **tier 2**, in seeded order, with exactly these bounds and nothing looser:
+
+| | tier 1 (original) | tier 2 |
+| --- | --- | --- |
+| grep files (whole word, whole tree) | >= 60 | >= 30 |
+| other same-named declarations in other non-test files | >= 2 | >= 1 |
+| declaring file last changed | >= 2026-01-01 | no date condition |
+| callers key (files) | 8..60 | 4..60 |
+| references key (files) | 8..60 | 8..60 |
+| impact depth-two key (files) | 10..80 | 6..80 |
+| heritage key (named subtypes) | 4..30 | 2..30 |
+
+Tier-2 supply (aggregate): callers 4..60 = 12 declarations of 11 names; impact pool 47 declarations of 26 names; heritage 2..30 = 22 declarations of 14 names; any kind 268 declarations of 93 names. Every selected question is labelled with its tier in the selection log and the audit. The date condition (g) is dropped in tier 2 because tier 1 plus date cannot fill callers or heritage; the contamination control that remains is the closed-book result of the calibration batch (no memorised keys) and the wording change itself. If tier 2 cannot fill a category, the generator stops and reports the shortfall; no further relaxation is made without a new dated amendment committed before the regeneration. The processing order, seed, wording rules, exclusion rule and premise check are unchanged.
