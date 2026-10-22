@@ -3,7 +3,9 @@ import { describe, it } from 'node:test';
 
 import {
   classifyGrepOnlyFile,
+  declaresTopLevel,
   finalDeclarer,
+  namespaceMembers,
   heritageHits,
   importOrigin,
   lineKinds,
@@ -54,6 +56,29 @@ describe('lineKinds', () => {
       15: 'export-local',
       16: 'comment',
     });
+  });
+});
+
+describe('lineKinds in template literals', () => {
+  it('text inside a multi-line template literal is a string, an interpolation is code', () => {
+    const text = ['const t = `', '  <div>target</div>', '  <b>${target()}</b>', '`;', 'const u = `a ${`b target`} c`;'].join('\n');
+    const kinds = Object.fromEntries(lineKinds(text, 'target').map((k) => [k.line, k.kind]));
+    assert.deepEqual(kinds, { 2: 'string', 3: 'code', 5: 'string' });
+  });
+});
+
+describe('namespaceMembers', () => {
+  it('finds `ns.name` where ns is a namespace import whose module declares the name', () => {
+    const text = "import * as t from '@x/a';\nconst v = t.target(1);\nconst w = other.target(2);\n";
+    assert.deepEqual(namespaceMembers(text, 'packages/d/u.ts', 'target', view, { '@x/': 'packages/' }), [{ receiver: 't', line: 2, declarer: 'packages/a/src/util.ts' }]);
+  });
+});
+
+describe('declaresTopLevel', () => {
+  it('sees const enums and abstract classes', () => {
+    assert.equal(declaresTopLevel('export const enum TokenType {\n}', 'TokenType'), true);
+    assert.equal(declaresTopLevel('export abstract class Q {}', 'Q'), true);
+    assert.equal(declaresTopLevel('const x = TokenType.A;', 'TokenType'), false);
   });
 });
 

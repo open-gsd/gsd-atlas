@@ -1,0 +1,1191 @@
+{
+  "oracleVersion": "angular-pilot-1",
+  "repoSha": "3cc1edf3210a9debb0be57a4e99e53a54505db32",
+  "preparedRecord": {
+    "corpusId": "angular",
+    "sha": "3cc1edf3210a9debb0be57a4e99e53a54505db32",
+    "npmCi": false,
+    "typescriptVersion": "6.0.3",
+    "lockSha256": null
+  },
+  "answers": [
+    {
+      "questionId": "p-201",
+      "kind": "callers",
+      "abstain": false,
+      "items": [
+        {
+          "file": "packages/platform-server/test/event_replay_spec.ts",
+          "line": 112,
+          "symbol": "hydrationFeatures"
+        },
+        {
+          "file": "packages/platform-server/test/event_replay_spec.ts",
+          "line": 152,
+          "symbol": "hydrationFeatures"
+        },
+        {
+          "file": "packages/platform-server/test/event_replay_spec.ts",
+          "line": 186,
+          "symbol": "hydrationFeatures"
+        },
+        {
+          "file": "packages/platform-server/test/event_replay_spec.ts",
+          "line": 213,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/platform-server/test/event_replay_spec.ts",
+          "line": 236,
+          "symbol": "hydrationFeatures"
+        },
+        {
+          "file": "packages/platform-server/test/event_replay_spec.ts",
+          "line": 288,
+          "symbol": "hydrationFeatures"
+        },
+        {
+          "file": "packages/platform-server/test/event_replay_spec.ts",
+          "line": 327,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/platform-server/test/event_replay_spec.ts",
+          "line": 380,
+          "symbol": "hydrationFeatures"
+        },
+        {
+          "file": "packages/platform-server/test/event_replay_spec.ts",
+          "line": 420,
+          "symbol": "hydrationFeatures"
+        },
+        {
+          "file": "packages/platform-server/test/event_replay_spec.ts",
+          "line": 459,
+          "symbol": "hydrationFeatures"
+        },
+        {
+          "file": "packages/platform-server/test/event_replay_spec.ts",
+          "line": 498,
+          "symbol": "hydrationFeatures"
+        },
+        {
+          "file": "packages/platform-server/test/event_replay_spec.ts",
+          "line": 531,
+          "symbol": "hydrationFeatures"
+        },
+        {
+          "file": "packages/platform-server/test/event_replay_spec.ts",
+          "line": 557,
+          "symbol": "hydrationFeatures"
+        },
+        {
+          "file": "packages/platform-server/test/event_replay_spec.ts",
+          "line": 602,
+          "symbol": "hydrationFeatures"
+        },
+        {
+          "file": "packages/platform-server/test/event_replay_spec.ts",
+          "line": 642,
+          "symbol": "hydrationFeatures"
+        },
+        {
+          "file": "packages/platform-server/test/event_replay_spec.ts",
+          "line": 677,
+          "symbol": "hydrationFeatures"
+        },
+        {
+          "file": "packages/platform-server/test/event_replay_spec.ts",
+          "line": 713,
+          "symbol": "hydrationFeatures"
+        },
+        {
+          "file": "packages/platform-server/test/event_replay_spec.ts",
+          "line": 762,
+          "symbol": "hydrationFeatures"
+        },
+        {
+          "file": "packages/platform-server/test/event_replay_spec.ts",
+          "line": 791,
+          "symbol": "hydrationFeatures"
+        },
+        {
+          "file": "packages/platform-server/test/event_replay_spec.ts",
+          "line": 832,
+          "symbol": "hydrationFeatures"
+        },
+        {
+          "file": "packages/platform-server/test/event_replay_spec.ts",
+          "line": 861,
+          "symbol": "hydrationFeatures"
+        },
+        {
+          "file": "packages/platform-server/test/event_replay_spec.ts",
+          "line": 882,
+          "symbol": "hydrationFeatures"
+        },
+        {
+          "file": "packages/platform-server/test/event_replay_spec.ts",
+          "line": 913,
+          "symbol": "hydrationFeatures"
+        },
+        {
+          "file": "packages/platform-server/test/event_replay_spec.ts",
+          "line": 966,
+          "symbol": "hydrationFeatures"
+        },
+        {
+          "file": "packages/platform-server/test/incremental_hydration_spec.ts",
+          "line": 177,
+          "symbol": "hydrationFeatures"
+        },
+        {
+          "file": "packages/platform-server/test/incremental_hydration_spec.ts",
+          "line": 243,
+          "symbol": "hydrationFeatures"
+        },
+        {
+          "file": "packages/platform-server/test/incremental_hydration_spec.ts",
+          "line": 306,
+          "symbol": "hydrationFeatures"
+        },
+        {
+          "file": "packages/platform-server/test/transfer_state_spec.ts",
+          "line": 135,
+          "symbol": "hydrationFeatures"
+        }
+      ],
+      "granularity": "file",
+      "equality": "exact-set",
+      "needles": [
+        "withEventReplay"
+      ],
+      "unexplained": [],
+      "notes": {
+        "sites": 28,
+        "riskSites": 0
+      },
+      "oracleVersion": "angular-pilot-1"
+    },
+    {
+      "questionId": "p-202",
+      "kind": "callers",
+      "abstain": false,
+      "items": [
+        {
+          "file": "packages/core/test/change_detection_scheduler_spec.ts",
+          "line": 728,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/change_detection_scheduler_spec.ts",
+          "line": 759,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/change_detection_scheduler_spec.ts",
+          "line": 996,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/component_fixture_spec.ts",
+          "line": 380,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/fake_async_spec.ts",
+          "line": 180,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/fake_async_spec.ts",
+          "line": 195,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/fake_async_spec.ts",
+          "line": 198,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/fake_async_spec.ts",
+          "line": 214,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/fake_async_spec.ts",
+          "line": 230,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/fake_async_spec.ts",
+          "line": 247,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/fake_async_spec.ts",
+          "line": 250,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/fake_async_spec.ts",
+          "line": 253,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/fake_async_spec.ts",
+          "line": 269,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/fake_async_spec.ts",
+          "line": 312,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/fake_async_spec.ts",
+          "line": 315,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/fake_async_spec.ts",
+          "line": 318,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/fake_async_spec.ts",
+          "line": 335,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/fake_async_spec.ts",
+          "line": 351,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/fake_async_spec.ts",
+          "line": 354,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/fake_async_spec.ts",
+          "line": 369,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/fake_async_spec.ts",
+          "line": 375,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/fake_async_spec.ts",
+          "line": 378,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/fake_async_spec.ts",
+          "line": 399,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/fake_async_spec.ts",
+          "line": 424,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/fake_async_spec.ts",
+          "line": 429,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/fake_async_spec.ts",
+          "line": 509,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/platform-browser/test/testing_public_spec.ts",
+          "line": 260,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/platform-browser/test/testing_public_spec.ts",
+          "line": 298,
+          "symbol": "<module>"
+        }
+      ],
+      "granularity": "file",
+      "equality": "exact-set",
+      "needles": [
+        "tick"
+      ],
+      "unexplained": [],
+      "notes": {
+        "sites": 28,
+        "riskSites": 85
+      },
+      "oracleVersion": "angular-pilot-1"
+    },
+    {
+      "questionId": "p-203",
+      "kind": "callers",
+      "abstain": false,
+      "items": [
+        {
+          "file": "packages/forms/signals/src/directive/control_custom.ts",
+          "line": 34,
+          "symbol": "customControlCreate"
+        },
+        {
+          "file": "packages/forms/signals/src/directive/control_custom.ts",
+          "line": 46,
+          "symbol": "customControlCreate"
+        },
+        {
+          "file": "packages/forms/signals/src/directive/control_cva.ts",
+          "line": 93,
+          "symbol": "cvaControlCreate"
+        },
+        {
+          "file": "packages/forms/signals/src/directive/control_cva.ts",
+          "line": 101,
+          "symbol": "cvaControlCreate"
+        },
+        {
+          "file": "packages/forms/signals/src/directive/control_native.ts",
+          "line": 115,
+          "symbol": "nativeControlCreate"
+        },
+        {
+          "file": "packages/forms/signals/src/directive/control_native.ts",
+          "line": 131,
+          "symbol": "nativeControlCreate"
+        },
+        {
+          "file": "packages/forms/signals/src/directive/control_native.ts",
+          "line": 133,
+          "symbol": "nativeControlCreate"
+        },
+        {
+          "file": "packages/forms/signals/src/directive/form_field.ts",
+          "line": 271,
+          "symbol": "write"
+        }
+      ],
+      "granularity": "file",
+      "equality": "exact-set",
+      "needles": [
+        "bindingUpdated"
+      ],
+      "unexplained": [],
+      "notes": {
+        "sites": 8,
+        "riskSites": 0
+      },
+      "oracleVersion": "angular-pilot-1"
+    },
+    {
+      "questionId": "p-204",
+      "kind": "callers",
+      "abstain": false,
+      "items": [
+        {
+          "file": "packages/compiler-cli/preprocessor/language-service/src/references_and_rename.ts",
+          "line": 176,
+          "symbol": "getReferencesAtTypescriptPosition"
+        },
+        {
+          "file": "packages/compiler-cli/preprocessor/language-service/src/references_and_rename.ts",
+          "line": 444,
+          "symbol": "getRenameInfo"
+        },
+        {
+          "file": "packages/compiler-cli/preprocessor/language-service/src/references_and_rename.ts",
+          "line": 614,
+          "symbol": "findRenameLocationsFromTypescript"
+        },
+        {
+          "file": "packages/compiler-cli/preprocessor/language-service/src/references_and_rename_utils.ts",
+          "line": 69,
+          "symbol": "findTightestNode"
+        },
+        {
+          "file": "packages/compiler-cli/preprocessor/language-service/src/references_and_rename_utils.ts",
+          "line": 277,
+          "symbol": "getTargetDetailsAtTemplatePosition"
+        },
+        {
+          "file": "packages/compiler-cli/preprocessor/language-service/src/references_and_rename_utils.ts",
+          "line": 477,
+          "symbol": "convertToTemplateDocumentSpan"
+        },
+        {
+          "file": "packages/compiler-cli/preprocessor/language-service/src/signature_help.ts",
+          "line": 96,
+          "symbol": "getSignatureHelp"
+        }
+      ],
+      "granularity": "file",
+      "equality": "exact-set",
+      "needles": [
+        "findTightestNode"
+      ],
+      "unexplained": [],
+      "notes": {
+        "sites": 7,
+        "riskSites": 0
+      },
+      "oracleVersion": "angular-pilot-1"
+    },
+    {
+      "questionId": "p-205",
+      "kind": "callers",
+      "abstain": false,
+      "items": [
+        {
+          "file": "packages/core/test/change_detection_scheduler_spec.ts",
+          "line": 734,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/fake_async_spec.ts",
+          "line": 232,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/fake_async_spec.ts",
+          "line": 447,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/fake_async_spec.ts",
+          "line": 466,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/fake_async_spec.ts",
+          "line": 488,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/core/test/fake_async_spec.ts",
+          "line": 515,
+          "symbol": "<module>"
+        }
+      ],
+      "granularity": "file",
+      "equality": "exact-set",
+      "needles": [
+        "flush"
+      ],
+      "unexplained": [],
+      "notes": {
+        "sites": 6,
+        "riskSites": 19
+      },
+      "oracleVersion": "angular-pilot-1"
+    },
+    {
+      "questionId": "p-206",
+      "kind": "references",
+      "abstain": false,
+      "items": [
+        {
+          "file": "packages/compiler-cli/src/ngtsc/typecheck/extended/api/api.ts",
+          "line": 40,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/compiler-cli/src/ngtsc/typecheck/extended/api/api.ts",
+          "line": 105,
+          "symbol": "run"
+        },
+        {
+          "file": "packages/compiler-cli/src/ngtsc/typecheck/extended/api/api.ts",
+          "line": 118,
+          "symbol": "visitNode"
+        },
+        {
+          "file": "packages/compiler-cli/src/ngtsc/typecheck/extended/api/api.ts",
+          "line": 131,
+          "symbol": "TemplateVisitor"
+        },
+        {
+          "file": "packages/compiler-cli/src/ngtsc/typecheck/extended/checks/defer_trigger_misconfiguration/index.ts",
+          "line": 93,
+          "symbol": "visitNode"
+        },
+        {
+          "file": "packages/compiler-cli/src/ngtsc/typecheck/extended/checks/interpolated_signal_not_invoked/index.ts",
+          "line": 55,
+          "symbol": "visitNode"
+        },
+        {
+          "file": "packages/compiler-cli/src/ngtsc/typecheck/extended/checks/interpolated_signal_not_invoked/index.ts",
+          "line": 117,
+          "symbol": "checkBoundAttribute"
+        },
+        {
+          "file": "packages/compiler-cli/src/ngtsc/typecheck/extended/checks/interpolated_signal_not_invoked/index.ts",
+          "line": 199,
+          "symbol": "buildDiagnosticForSignal"
+        },
+        {
+          "file": "packages/compiler-cli/src/ngtsc/typecheck/extended/checks/invalid_banana_in_box/index.ts",
+          "line": 30,
+          "symbol": "visitNode"
+        },
+        {
+          "file": "packages/compiler-cli/src/ngtsc/typecheck/extended/checks/missing_control_flow_directive/index.ts",
+          "line": 51,
+          "symbol": "run"
+        },
+        {
+          "file": "packages/compiler-cli/src/ngtsc/typecheck/extended/checks/missing_control_flow_directive/index.ts",
+          "line": 64,
+          "symbol": "visitNode"
+        },
+        {
+          "file": "packages/compiler-cli/src/ngtsc/typecheck/extended/checks/missing_ngforof_let/index.ts",
+          "line": 29,
+          "symbol": "visitNode"
+        },
+        {
+          "file": "packages/compiler-cli/src/ngtsc/typecheck/extended/checks/missing_structural_directive/index.ts",
+          "line": 50,
+          "symbol": "run"
+        },
+        {
+          "file": "packages/compiler-cli/src/ngtsc/typecheck/extended/checks/missing_structural_directive/index.ts",
+          "line": 63,
+          "symbol": "visitNode"
+        },
+        {
+          "file": "packages/compiler-cli/src/ngtsc/typecheck/extended/checks/nullish_coalescing_not_nullable/index.ts",
+          "line": 37,
+          "symbol": "visitNode"
+        },
+        {
+          "file": "packages/compiler-cli/src/ngtsc/typecheck/extended/checks/numeric_css_property_requires_unit/index.ts",
+          "line": 190,
+          "symbol": "visitNode"
+        },
+        {
+          "file": "packages/compiler-cli/src/ngtsc/typecheck/extended/checks/optional_chain_not_nullable/index.ts",
+          "line": 44,
+          "symbol": "visitNode"
+        },
+        {
+          "file": "packages/compiler-cli/src/ngtsc/typecheck/extended/checks/skip_hydration_not_static/index.ts",
+          "line": 31,
+          "symbol": "visitNode"
+        },
+        {
+          "file": "packages/compiler-cli/src/ngtsc/typecheck/extended/checks/suffix_not_supported/index.ts",
+          "line": 36,
+          "symbol": "visitNode"
+        },
+        {
+          "file": "packages/compiler-cli/src/ngtsc/typecheck/extended/checks/text_attribute_not_binding/index.ts",
+          "line": 32,
+          "symbol": "visitNode"
+        },
+        {
+          "file": "packages/compiler-cli/src/ngtsc/typecheck/extended/checks/uninvoked_function_in_event_binding/index.ts",
+          "line": 43,
+          "symbol": "visitNode"
+        },
+        {
+          "file": "packages/compiler-cli/src/ngtsc/typecheck/extended/checks/uninvoked_function_in_event_binding/index.ts",
+          "line": 87,
+          "symbol": "assertExpressionInvoked"
+        },
+        {
+          "file": "packages/compiler-cli/src/ngtsc/typecheck/extended/checks/uninvoked_function_in_text_interpolation/index.ts",
+          "line": 24,
+          "symbol": "visitNode"
+        },
+        {
+          "file": "packages/compiler-cli/src/ngtsc/typecheck/extended/checks/uninvoked_function_in_text_interpolation/index.ts",
+          "line": 39,
+          "symbol": "assertExpressionInvoked"
+        },
+        {
+          "file": "packages/compiler-cli/src/ngtsc/typecheck/extended/checks/uninvoked_track_function/index.ts",
+          "line": 37,
+          "symbol": "visitNode"
+        },
+        {
+          "file": "packages/compiler-cli/src/ngtsc/typecheck/extended/checks/unparenthesized_nullish_coalescing/index.ts",
+          "line": 28,
+          "symbol": "visitNode"
+        },
+        {
+          "file": "packages/compiler-cli/src/ngtsc/typecheck/extended/checks/unused_let_declaration/index.ts",
+          "line": 34,
+          "symbol": "run"
+        },
+        {
+          "file": "packages/compiler-cli/src/ngtsc/typecheck/extended/checks/unused_let_declaration/index.ts",
+          "line": 62,
+          "symbol": "visitNode"
+        },
+        {
+          "file": "packages/compiler-cli/src/ngtsc/typecheck/extended/src/extended_template_checker.ts",
+          "line": 23,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/compiler-cli/src/ngtsc/typecheck/extended/src/extended_template_checker.ts",
+          "line": 77,
+          "symbol": "getDiagnosticsForComponent"
+        }
+      ],
+      "granularity": "file",
+      "equality": "exact-set",
+      "needles": [
+        "TemplateContext"
+      ],
+      "unexplained": [],
+      "notes": {
+        "sites": 30,
+        "riskSites": 0
+      },
+      "oracleVersion": "angular-pilot-1"
+    },
+    {
+      "questionId": "p-207",
+      "kind": "references",
+      "abstain": false,
+      "items": [
+        {
+          "file": "packages/compiler-cli/preprocessor/src/compiler-utils.ts",
+          "line": 759,
+          "symbol": "createForeignComponentMatcher"
+        },
+        {
+          "file": "packages/compiler-cli/preprocessor/src/compiler-utils.ts",
+          "line": 763,
+          "symbol": "createForeignComponentMatcher"
+        },
+        {
+          "file": "packages/compiler-cli/src/ngtsc/metadata/src/api.ts",
+          "line": 27,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/compiler-cli/src/ngtsc/typecheck/api/checker.ts",
+          "line": 344,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/compiler-cli/src/ngtsc/typecheck/src/checker.ts",
+          "line": 474,
+          "symbol": "getForeignComponent"
+        },
+        {
+          "file": "packages/compiler-cli/src/ngtsc/typecheck/testing/index.ts",
+          "line": 610,
+          "symbol": "prepareDeclarations"
+        },
+        {
+          "file": "packages/compiler-cli/src/ngtsc/typecheck/testing/index.ts",
+          "line": 614,
+          "symbol": "prepareDeclarations"
+        },
+        {
+          "file": "packages/compiler/src/render3/view/t2_api.ts",
+          "line": 230,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/compiler/src/render3/view/t2_binder.ts",
+          "line": 178,
+          "symbol": "R3TargetBinder"
+        },
+        {
+          "file": "packages/compiler/src/render3/view/t2_binder.ts",
+          "line": 191,
+          "symbol": "bind"
+        },
+        {
+          "file": "packages/compiler/src/render3/view/t2_binder.ts",
+          "line": 568,
+          "symbol": "DirectiveBinder"
+        },
+        {
+          "file": "packages/compiler/src/render3/view/t2_binder.ts",
+          "line": 570,
+          "symbol": "DirectiveBinder"
+        },
+        {
+          "file": "packages/compiler/src/render3/view/t2_binder.ts",
+          "line": 596,
+          "symbol": "apply"
+        },
+        {
+          "file": "packages/compiler/src/render3/view/t2_binder.ts",
+          "line": 598,
+          "symbol": "apply"
+        },
+        {
+          "file": "packages/compiler/src/render3/view/t2_binder.ts",
+          "line": 1292,
+          "symbol": "R3BoundTarget"
+        },
+        {
+          "file": "packages/compiler/src/render3/view/t2_binder.ts",
+          "line": 1322,
+          "symbol": "getForeignComponent"
+        },
+        {
+          "file": "packages/compiler/test/render3/view/binding_spec.ts",
+          "line": 1691,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/compiler/test/render3/view/binding_spec.ts",
+          "line": 1706,
+          "symbol": "<module>"
+        }
+      ],
+      "granularity": "file",
+      "equality": "exact-set",
+      "needles": [
+        "ForeignComponentMeta",
+        "T2ForeignComponentMeta"
+      ],
+      "unexplained": [],
+      "notes": {
+        "sites": 18,
+        "riskSites": 0
+      },
+      "oracleVersion": "angular-pilot-1"
+    },
+    {
+      "questionId": "p-208",
+      "kind": "references",
+      "abstain": false,
+      "items": [
+        {
+          "file": "packages/language-service/src/semantic_tokens.ts",
+          "line": 130,
+          "symbol": "visitElement"
+        },
+        {
+          "file": "packages/language-service/src/semantic_tokens.ts",
+          "line": 241,
+          "symbol": "classifyAs"
+        },
+        {
+          "file": "packages/language-service/test/semantic_tokens_spec.ts",
+          "line": 349,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/language-service/test/semantic_tokens_spec.ts",
+          "line": 350,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/language-service/test/semantic_tokens_spec.ts",
+          "line": 351,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/language-service/test/semantic_tokens_spec.ts",
+          "line": 352,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/language-service/test/semantic_tokens_spec.ts",
+          "line": 353,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/language-service/test/semantic_tokens_spec.ts",
+          "line": 354,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/language-service/test/semantic_tokens_spec.ts",
+          "line": 355,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/language-service/test/semantic_tokens_spec.ts",
+          "line": 356,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/language-service/test/semantic_tokens_spec.ts",
+          "line": 357,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/language-service/test/semantic_tokens_spec.ts",
+          "line": 358,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/language-service/test/semantic_tokens_spec.ts",
+          "line": 359,
+          "symbol": "<module>"
+        },
+        {
+          "file": "packages/language-service/test/semantic_tokens_spec.ts",
+          "line": 360,
+          "symbol": "<module>"
+        }
+      ],
+      "granularity": "file",
+      "equality": "exact-set",
+      "needles": [
+        "TokenType"
+      ],
+      "unexplained": [],
+      "notes": {
+        "sites": 14,
+        "riskSites": 0
+      },
+      "oracleVersion": "angular-pilot-1"
+    },
+    {
+      "questionId": "p-209",
+      "kind": "heritage",
+      "abstain": false,
+      "items": [
+        {
+          "file": "packages/forms/signals/test/web/interop.spec.ts",
+          "line": 174,
+          "symbol": "LegacyControlWithValidators"
+        },
+        {
+          "file": "packages/forms/signals/test/web/interop.spec.ts",
+          "line": 233,
+          "symbol": "LegacyControlWithOnValidatorChange"
+        },
+        {
+          "file": "packages/forms/src/directives/validators.ts",
+          "line": 118,
+          "symbol": "AbstractValidatorDirective"
+        },
+        {
+          "file": "packages/forms/src/directives/validators.ts",
+          "line": 325,
+          "symbol": "AsyncValidator"
+        },
+        {
+          "file": "packages/forms/test/directives_spec.ts",
+          "line": 56,
+          "symbol": "CustomValidatorDirective"
+        },
+        {
+          "file": "packages/forms/test/reactive_integration_spec.ts",
+          "line": 75,
+          "symbol": "CustomValidator"
+        },
+        {
+          "file": "packages/forms/test/reactive_integration_spec.ts",
+          "line": 4108,
+          "symbol": "NoOpValidator"
+        },
+        {
+          "file": "packages/forms/test/template_integration_spec.ts",
+          "line": 2441,
+          "symbol": "NoOpValidator"
+        }
+      ],
+      "granularity": "file+symbol",
+      "equality": "exact-set",
+      "needles": [
+        "Validator",
+        "AbstractValidatorDirective",
+        "AsyncValidator",
+        "CustomValidator",
+        "CustomValidatorDirective",
+        "LegacyControlWithOnValidatorChange",
+        "LegacyControlWithValidators",
+        "NoOpValidator"
+      ],
+      "unexplained": [],
+      "notes": {
+        "subtypes": 8,
+        "riskSites": 0
+      },
+      "oracleVersion": "angular-pilot-1"
+    },
+    {
+      "questionId": "p-210",
+      "kind": "heritage",
+      "abstain": false,
+      "items": [
+        {
+          "file": "packages/compiler-cli/preprocessor/src/selectorless.ts",
+          "line": 22,
+          "symbol": "SelectorlessPipeAnalyzer"
+        },
+        {
+          "file": "packages/compiler-cli/preprocessor/src/template_semantics.ts",
+          "line": 63,
+          "symbol": "ExpressionsSemanticsVisitor"
+        },
+        {
+          "file": "packages/compiler-cli/src/ngtsc/typecheck/template_semantics/src/template_semantics_checker.ts",
+          "line": 73,
+          "symbol": "ExpressionsSemanticsVisitor"
+        },
+        {
+          "file": "packages/compiler/src/combined_visitor.ts",
+          "line": 16,
+          "symbol": "CombinedRecursiveAstVisitor"
+        },
+        {
+          "file": "packages/compiler/src/expression_parser/parser.ts",
+          "line": 1952,
+          "symbol": "SimpleExpressionChecker"
+        },
+        {
+          "file": "packages/compiler/src/render3/r3_control_flow.ts",
+          "line": 739,
+          "symbol": "PipeVisitor"
+        },
+        {
+          "file": "packages/compiler/src/render3/r3_deferred_triggers.ts",
+          "line": 753,
+          "symbol": "DynamicAstValidator"
+        },
+        {
+          "file": "packages/compiler/src/typecheck/host_bindings.ts",
+          "line": 493,
+          "symbol": "ReplaceSpanVisitor"
+        },
+        {
+          "file": "packages/compiler/test/expression_parser/ast_spec.ts",
+          "line": 34,
+          "symbol": "Visitor"
+        },
+        {
+          "file": "packages/compiler/test/expression_parser/utils/validator.ts",
+          "line": 43,
+          "symbol": "ASTValidator"
+        },
+        {
+          "file": "packages/compiler/test/render3/util/expression.ts",
+          "line": 16,
+          "symbol": "ExpressionSourceHumanizer"
+        },
+        {
+          "file": "packages/compiler/test/render3/view/binding_spec.ts",
+          "line": 707,
+          "symbol": "AstVisitor"
+        },
+        {
+          "file": "packages/language-service/src/inlay_hints.ts",
+          "line": 983,
+          "symbol": "PipeExpressionVisitor"
+        },
+        {
+          "file": "packages/language-service/src/inlay_hints.ts",
+          "line": 1169,
+          "symbol": "FunctionArgumentVisitor"
+        },
+        {
+          "file": "packages/language-service/src/inlay_hints.ts",
+          "line": 1798,
+          "symbol": "EventTypeVisitor"
+        },
+        {
+          "file": "packages/language-service/src/smart_selection.ts",
+          "line": 204,
+          "symbol": "ExpressionSpanVisitor"
+        },
+        {
+          "file": "packages/language-service/src/template_target.ts",
+          "line": 735,
+          "symbol": "ExpressionVisitor"
+        }
+      ],
+      "granularity": "file+symbol",
+      "equality": "exact-set",
+      "needles": [
+        "RecursiveAstVisitor",
+        "ASTValidator",
+        "AstVisitor",
+        "CombinedRecursiveAstVisitor",
+        "DynamicAstValidator",
+        "EventTypeVisitor",
+        "ExpressionSourceHumanizer",
+        "ExpressionSpanVisitor",
+        "ExpressionVisitor",
+        "ExpressionsSemanticsVisitor",
+        "FunctionArgumentVisitor",
+        "PipeExpressionVisitor",
+        "PipeVisitor",
+        "ReplaceSpanVisitor",
+        "SelectorlessPipeAnalyzer",
+        "SimpleExpressionChecker",
+        "Visitor"
+      ],
+      "unexplained": [],
+      "notes": {
+        "subtypes": 17,
+        "riskSites": 0
+      },
+      "oracleVersion": "angular-pilot-1"
+    },
+    {
+      "questionId": "p-211",
+      "kind": "heritage",
+      "abstain": false,
+      "items": [
+        {
+          "file": "packages/core/src/resource/api.ts",
+          "line": 134,
+          "symbol": "WritableResource"
+        },
+        {
+          "file": "packages/core/src/resource/from_snapshots.ts",
+          "line": 25,
+          "symbol": "SnapshotResource"
+        },
+        {
+          "file": "packages/router/src/router_resource.ts",
+          "line": 47,
+          "symbol": "InternalRouterResource"
+        }
+      ],
+      "granularity": "file+symbol",
+      "equality": "exact-set",
+      "needles": [
+        "Resource",
+        "InternalRouterResource",
+        "SnapshotResource",
+        "WritableResource"
+      ],
+      "unexplained": [],
+      "notes": {
+        "subtypes": 3,
+        "riskSites": 0
+      },
+      "oracleVersion": "angular-pilot-1"
+    },
+    {
+      "questionId": "p-212",
+      "kind": "impact",
+      "abstain": false,
+      "items": [
+        {
+          "file": "packages/zone.js/lib/browser/browser.ts"
+        },
+        {
+          "file": "packages/zone.js/lib/common/timers.ts"
+        },
+        {
+          "file": "packages/zone.js/lib/node/node.ts"
+        },
+        {
+          "file": "packages/zone.js/test/common/setTimeout.spec.ts"
+        }
+      ],
+      "granularity": "file",
+      "equality": "exact-set",
+      "needles": [
+        "isFunction"
+      ],
+      "unexplained": [],
+      "notes": {
+        "depth": 2,
+        "direct": 1,
+        "viaCallers": 3,
+        "riskSites": 2
+      },
+      "oracleVersion": "angular-pilot-1"
+    },
+    {
+      "questionId": "p-213",
+      "kind": "impact",
+      "abstain": false,
+      "items": [
+        {
+          "file": "packages/language-service/src/template_target.ts"
+        },
+        {
+          "file": "packages/language-service/test/legacy/template_target_spec.ts"
+        }
+      ],
+      "granularity": "file",
+      "equality": "exact-set",
+      "needles": [
+        "isTemplateNode"
+      ],
+      "unexplained": [],
+      "notes": {
+        "depth": 2,
+        "direct": 1,
+        "viaCallers": 1,
+        "riskSites": 0
+      },
+      "oracleVersion": "angular-pilot-1"
+    },
+    {
+      "questionId": "p-214",
+      "kind": "definition",
+      "abstain": false,
+      "items": [
+        {
+          "file": "packages/core/src/sanitization/dom_security_schema.ts",
+          "line": 18,
+          "symbol": "SecurityContext"
+        }
+      ],
+      "granularity": "file+line",
+      "equality": "exact-set",
+      "needles": [
+        "SecurityContext"
+      ],
+      "unexplained": [],
+      "notes": {
+        "useSites": 48,
+        "riskSites": 0
+      },
+      "oracleVersion": "angular-pilot-1"
+    },
+    {
+      "questionId": "p-215",
+      "kind": "definition",
+      "abstain": false,
+      "items": [
+        {
+          "file": "packages/router/src/utils/preactivation.ts",
+          "line": 35,
+          "symbol": "CanDeactivate"
+        }
+      ],
+      "granularity": "file+line",
+      "equality": "exact-set",
+      "needles": [
+        "CanDeactivate"
+      ],
+      "unexplained": [],
+      "notes": {
+        "useSites": 6,
+        "riskSites": 0
+      },
+      "oracleVersion": "angular-pilot-1"
+    },
+    {
+      "questionId": "p-216",
+      "kind": "abstain",
+      "abstain": true,
+      "items": [],
+      "granularity": "file",
+      "equality": "exact-set",
+      "needles": [],
+      "unexplained": [],
+      "notes": {
+        "treeWholeWordHits": 0
+      },
+      "oracleVersion": "angular-pilot-1"
+    }
+  ]
+}

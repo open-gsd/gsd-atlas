@@ -42,96 +42,122 @@ function statementRanges(text: string): { start: number; end: number; kind: 'imp
   return out;
 }
 
+/** Per character: 0 code, 1 comment, 2 string (template interpolations are code). */
+function charClasses(text: string): Uint8Array {
+  const cls = new Uint8Array(text.length);
+  type Ctx = { kind: 'tpl' } | { kind: 'expr'; depth: number };
+  const stack: Ctx[] = [];
+  let i = 0;
+  const n = text.length;
+  while (i < n) {
+    const top = stack[stack.length - 1];
+    if (top?.kind === 'tpl') {
+      const ch = text[i]!;
+      if (ch === '\\') {
+        cls[i] = 2;
+        if (i + 1 < n) cls[i + 1] = 2;
+        i += 2;
+      } else if (ch === '`') {
+        cls[i] = 2;
+        stack.pop();
+        i += 1;
+      } else if (ch === '$' && text[i + 1] === '{') {
+        cls[i] = 2;
+        cls[i + 1] = 2;
+        stack.push({ kind: 'expr', depth: 0 });
+        i += 2;
+      } else {
+        cls[i] = 2;
+        i += 1;
+      }
+      continue;
+    }
+    const ch = text[i]!;
+    if (ch === '/' && text[i + 1] === '/') {
+      while (i < n && text[i] !== '\n') {
+        cls[i] = 1;
+        i += 1;
+      }
+    } else if (ch === '/' && text[i + 1] === '*') {
+      const end = text.indexOf('*/', i + 2);
+      const stop = end < 0 ? n : end + 2;
+      while (i < stop) {
+        cls[i] = 1;
+        i += 1;
+      }
+    } else if (ch === "'" || ch === '"') {
+      cls[i] = 2;
+      i += 1;
+      while (i < n && text[i] !== ch && text[i] !== '\n') {
+        cls[i] = 2;
+        i += text[i] === '\\' ? 2 : 1;
+      }
+      if (i < n) cls[i] = 2;
+      i += 1;
+    } else if (ch === '`') {
+      cls[i] = 2;
+      stack.push({ kind: 'tpl' });
+      i += 1;
+    } else {
+      if (top?.kind === 'expr') {
+        if (ch === '{') top.depth += 1;
+        else if (ch === '}') {
+          if (top.depth === 0) {
+            stack.pop();
+            cls[i] = 2;
+            i += 1;
+            continue;
+          }
+          top.depth -= 1;
+        }
+      }
+      i += 1;
+    }
+  }
+  return cls;
+}
+
 /** Every line that spells `name` as a whole word, with what kind of mention it is (text level only). */
 export function lineKinds(text: string, name: string): KindedLine[] {
-  const lines = text.split('\n');
+  const cls = charClasses(text);
   const ranges = statementRanges(text);
-  const re = wordRe(name);
-  const out: KindedLine[] = [];
-  let inBlock = false;
-  lines.forEach((raw, i) => {
-    const lineNo = i + 1;
-    const startedInBlock = inBlock;
-    // comment state at the end of this line, and the index where code starts on it
-    let codeFrom = 0;
-    let probe = startedInBlock;
-    let idx = 0;
-    const commentSpans: [number, number][] = [];
-    let spanStart = startedInBlock ? 0 : -1;
-    while (idx < raw.length) {
-      if (probe) {
-        const end = raw.indexOf('*/', idx);
-        if (end < 0) {
-          idx = raw.length;
-        } else {
-          commentSpans.push([spanStart, end + 2]);
-          spanStart = -1;
-          idx = end + 2;
-          probe = false;
-        }
-      } else if (raw.startsWith('/*', idx)) {
-        probe = true;
-        spanStart = idx;
-        idx += 2;
-      } else if (raw.startsWith('//', idx)) {
-        commentSpans.push([idx, raw.length]);
-        idx = raw.length;
-      } else if (raw[idx] === "'" || raw[idx] === '"' || raw[idx] === '`') {
-        const q = raw[idx]!;
-        idx += 1;
-        while (idx < raw.length && raw[idx] !== q) idx += raw[idx] === '\\' ? 2 : 1;
-        idx += 1;
-      } else {
-        idx += 1;
-      }
+  const starts: number[] = [0];
+  for (let i = 0; i < text.length; i += 1) if (text[i] === '\n') starts.push(i + 1);
+  const lineAt = (index: number): number => {
+    let lo = 0;
+    let hi = starts.length - 1;
+    while (lo < hi) {
+      const mid = (lo + hi + 1) >> 1;
+      if (starts[mid]! <= index) lo = mid;
+      else hi = mid - 1;
     }
-    if (probe) commentSpans.push([spanStart < 0 ? 0 : spanStart, raw.length]);
-    inBlock = probe;
-    void codeFrom;
-    codeFrom = 0;
-    re.lastIndex = 0;
-    let m: RegExpExecArray | null;
-    let kind: LineKind | undefined;
-    while ((m = re.exec(raw)) !== null) {
-      const at = m.index;
-      const inComment = commentSpans.some(([a, b]) => at >= a && at < b);
-      if (inComment) {
-        kind ??= 'comment';
-        continue;
-      }
-      // inside a quote?
-      let q: string | null = null;
-      for (let k = 0; k < at; k += 1) {
-        const ch = raw[k]!;
-        if (q === null && (ch === "'" || ch === '"' || ch === '`')) q = ch;
-        else if (q !== null && ch === q && raw[k - 1] !== '\\') q = null;
-      }
-      if (q !== null) {
-        kind ??= 'string';
-        continue;
-      }
+    return lo + 1;
+  };
+  const byLine = new Map<number, LineKind>();
+  for (const m of text.matchAll(wordRe(name))) {
+    const at = m.index;
+    const lineNo = lineAt(at);
+    const prior = byLine.get(lineNo);
+    if (prior !== undefined && prior !== 'comment' && prior !== 'string') continue;
+    let kind: LineKind;
+    if (cls[at] === 1) kind = 'comment';
+    else if (cls[at] === 2) kind = 'string';
+    else {
       const range = ranges.find((r) => r.start <= lineNo && r.end >= lineNo);
-      if (range !== undefined) {
-        kind = range.kind;
-        break;
+      if (range !== undefined) kind = range.kind;
+      else {
+        const before = text.slice(starts[lineNo - 1]!, at).trimEnd();
+        const prev = before.slice(-1);
+        const after = text.slice(at + name.length, text.indexOf('\n', at) < 0 ? text.length : text.indexOf('\n', at));
+        if (before.endsWith('.') || before.endsWith('?.')) kind = 'member';
+        else if (/^\s*\??:/.test(after) && (prev === '' || prev === '{' || prev === ',' || prev === '(' || prev === ';')) kind = 'key';
+        else kind = 'code';
       }
-      const before = raw.slice(0, at).trimEnd();
-      const prev = before.slice(-1);
-      if (before.endsWith('.') || before.endsWith('?.')) {
-        kind = 'member';
-        break;
-      }
-      const after = raw.slice(at + name.length);
-      if (/^\s*\??:/.test(after) && (prev === '' || prev === '{' || prev === ',' || prev === '(' || prev === ';')) {
-        kind = 'key';
-        break;
-      }
-      kind = 'code';
-      break;
     }
-    if (kind !== undefined) out.push({ line: lineNo, kind, text: raw.trim() });
-  });
-  return out;
+    byLine.set(lineNo, kind);
+  }
+  const lines = text.split('\n');
+  return [...byLine.entries()].sort((a, b) => a[0] - b[0]).map(([line, kind]) => ({ line, kind, text: (lines[line - 1] ?? '').trim() }));
 }
 
 const ALIAS_NONE: Readonly<Record<string, string>> = {};
@@ -149,7 +175,7 @@ export function resolveSpecifier(from: string, spec: string, view: FileView, ali
 }
 
 const DECLARES = (name: string): RegExp =>
-  new RegExp(`^(?:export\\s+)?(?:declare\\s+)?(?:default\\s+)?(?:abstract\\s+)?(?:async\\s+)?(?:function\\*?|class|interface|enum|const|let|var|type|namespace)\\s+${escapeRe(name)}(?![\\w$])`, 'm');
+  new RegExp(`^(?:export\\s+)?(?:declare\\s+)?(?:default\\s+)?(?:abstract\\s+)?(?:async\\s+)?(?:function\\*?|class|interface|(?:const\\s+)?enum|const|let|var|type|namespace)\\s+${escapeRe(name)}(?![\\w$])`, 'm');
 
 export function declaresTopLevel(text: string, name: string): boolean {
   return DECLARES(name).test(text);
@@ -207,6 +233,20 @@ export function importOrigin(text: string, file: string, name: string, view: Fil
   return undefined;
 }
 
+/** `ns.name` member accesses where `ns` is a namespace import whose module chain declares `name`. */
+export function namespaceMembers(text: string, file: string, name: string, view: FileView, aliases: Readonly<Record<string, string>> = ALIAS_NONE): { receiver: string; line: number; declarer: string | undefined }[] {
+  const out: { receiver: string; line: number; declarer: string | undefined }[] = [];
+  for (const m of text.matchAll(/import\s+\*\s+as\s+([\w$]+)\s+from\s*['"]([^'"]+)['"]/g)) {
+    const receiver = m[1]!;
+    const target = resolveSpecifier(file, m[2]!, view, aliases);
+    const declarer = target === undefined ? undefined : finalDeclarer(target, name, view, aliases);
+    if (declarer === undefined) continue;
+    const re = new RegExp(`(?<![\\w$.])${escapeRe(receiver)}\\.${escapeRe(name)}(?![\\w$])`, 'g');
+    for (const k of lineKinds(text, name)) if (k.kind === 'member' && re.test(k.text)) out.push({ receiver, line: k.line, declarer });
+  }
+  return out;
+}
+
 export type GrepOnlyClass = 'comment-or-string' | 'reexport-or-import-only' | 'different-symbol' | 'refers-to-target' | 'declaring-file' | 'manual';
 export interface GrepOnlyResult {
   klass: GrepOnlyClass;
@@ -244,6 +284,8 @@ export function classifyGrepOnlyFile(input: {
       ? { klass: 'refers-to-target', note: `imports the name from a chain that ends at ${targetFile}`, lines }
       : { klass: 'different-symbol', note: `imports the name from a chain that ends at ${origin.declarer}`, lines };
   }
+  const nsHit = namespaceMembers(text, file, name, view, aliases)[0];
+  if (nsHit !== undefined) return { klass: nsHit.declarer === targetFile ? 'refers-to-target' : 'different-symbol', note: `namespace member ${nsHit.receiver}.${name} at line ${String(nsHit.line)}, declarer ${nsHit.declarer ?? '?'}`, lines };
   return { klass: 'manual', note: origin === undefined ? 'no import of the name and no own declaration (member access or global); read the lines' : 'import from an external or unresolved module', lines };
 }
 

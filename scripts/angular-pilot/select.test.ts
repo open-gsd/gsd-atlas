@@ -111,6 +111,7 @@ describe('questionText', () => {
     assert.ok(h.includes('directly extend or implement'));
     assert.ok(h.includes(SCOPE_RULE));
     assert.ok(h.includes('Give the file and the name of each'));
+    assert.match(h, /anonymous class expression/);
   });
   it('fixes the meaning of a call and of depth two', () => {
     const c = questionText({ ...base, category: 'callers' });

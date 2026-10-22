@@ -1,0 +1,12 @@
+[
+  {
+    "name": "NgModuleFactory",
+    "file": "packages/core/src/linker/ng_module_factory.ts",
+    "reason": "audit: ambiguous-wording; the only in-tree subclass is a class with the same name (packages/core/src/render3/ng_module_ref.ts) that the wording's 'another class of the same name, its subtypes do not count' sentence could be read to exclude"
+  },
+  {
+    "name": "getLocalePluralCase",
+    "file": "packages/common/src/i18n/locale_data_api.ts",
+    "reason": "audit: key-likely-incomplete under polymorphic dispatch; the direct call sits in an override (NgLocaleLocalization.getPluralCategory) whose abstract base method is called by getPluralCategory() callers (ng_plural.ts, i18n_plural_pipe.ts) that the compiler key leaves out"
+  }
+]
