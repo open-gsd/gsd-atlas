@@ -148,6 +148,17 @@ describe('questionTextV2', () => {
     assert.match(text, /leave out the declaring file/);
   });
 
+  it('adds "a call in a class field initializer counts for the class" only to an impact question that asks for it', () => {
+    const sentence = 'a call in a class field initializer counts for the class';
+    const plain = questionTextV2({ category: 'impact', ...base, kind: 'function', role: 'the function that checks a value' });
+    const asked = questionTextV2({ category: 'impact', ...base, kind: 'function', role: 'the function that checks a value', classFieldRule: true });
+    assert.ok(!plain.includes(sentence));
+    assert.ok(asked.includes(sentence));
+    // the only difference is the inserted sentence, placed inside the nested-call clause
+    assert.equal(asked.replace(`${sentence}, `, ''), plain);
+    assert.match(asked, /counts for the nearest enclosing declaration that has a name, a call in a class field initializer counts for the class, and a function that is only passed as a value has no callers/);
+  });
+
   it('keeps definition and abstain without a role and without the declaring file', () => {
     const def = questionTextV2({ category: 'definition', ...base, kind: 'enum', useSite: { file: 'packages/core/src/a.ts', line: 12 } });
     assert.match(def, /In `packages\/core\/src\/a.ts`, line 12/);
@@ -184,5 +195,13 @@ describe('buildFilesV2', () => {
     AnswerFileSchema.parse(answers);
     assert.deepEqual(q.questions.map((x) => x.id), ['p-301', 'p-302']);
     assert.ok(!q.questions[0]!.text.includes('b.ts'));
+  });
+
+  it('carries the class-field sentence into the generated text of an entry that sets classFieldRule, and only that entry', () => {
+    const impact = (id: string, over: Partial<EntryV2>): EntryV2 => ({ id, category: 'impact', name: 'g', kind: 'function', file: 'packages/a/d.ts', role: 'the function that adds two', otherDeclFiles: 1, otherKinds: ['function'], items: [{ file: 'packages/a/c.ts' }], needles: ['g'], notes: {}, ...over });
+    const { questions } = buildFilesV2({ sha: '3cc1edf3210a9debb0be57a4e99e53a54505db32', oracleVersion: 'angular-pilot-1', typescriptVersion: '6.0.3', entries: [impact('p-311', {}), impact('p-313', { classFieldRule: true })] });
+    const q = QuestionFileSchema.parse(questions).questions;
+    assert.ok(!q[0]!.text.includes('a call in a class field initializer counts for the class'));
+    assert.ok(q[1]!.text.includes('a call in a class field initializer counts for the class'));
   });
 });
