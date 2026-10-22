@@ -2,7 +2,7 @@
  * Plan 02-46, option 2: `check-attr` runs beside the clean-filter enumeration. These tests drive the real Indexer
  * over a real temporary repository through a gate that withholds every process result until the test releases it,
  * so the number of SEQUENTIAL stages is counted without reading a clock: an edit is 2 stages (3 spawns), a new file
- * 3 (4 spawns). They also pin the error semantics of the two concurrent calls and the T-01-50 rule that the filter
+ * 3 (5 spawns). They also pin the error semantics of the two concurrent calls and the T-01-50 rule that the filter
  * list is enumerated on every hash and never cached.
  */
 import assert from 'node:assert/strict';
@@ -135,9 +135,10 @@ describe('sequential spawn stages per save (plan 02-46)', () => {
     const { world, stagesOf, starts } = await rig(t);
     world.repo.write('d.toy', 'fn brand_new {\n}\n');
     const stages = await stagesOf(() => world.indexer.ensureFresh(world.dir, ['d.toy']));
-    // The ignore listing first, then config with check-attr, then hash-object: four spawns in three stages.
-    assert.deepEqual(stages, [['ls-files'], ['check-attr', 'config'], ['hash-object']]);
-    assert.equal(starts().length, 4);
+    // Changed on purpose by quick task 261021-re7: the ignore verdict is two concurrent listings, then config with
+    // check-attr, then hash-object: five spawns in three stages.
+    assert.deepEqual(stages, [['ls-files', 'ls-files'], ['check-attr', 'config'], ['hash-object']]);
+    assert.equal(starts().length, 5);
     assert.equal((await world.reader.find('brand_new')).data.length, 1, 'the facts were committed');
   });
 

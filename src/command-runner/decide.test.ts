@@ -47,8 +47,8 @@ const withEnv = (name: string, value: string | undefined, ...args: string[]): Co
   return { ...safeGit(...args), env };
 };
 
-function assertDenied(d: Decision): asserts d is Extract<Decision, { allowed: false }> {
-  assert.equal(d.allowed, false, 'expected a denial');
+function assertDenied(d: Decision, label = 'expected a denial'): asserts d is Extract<Decision, { allowed: false }> {
+  assert.equal(d.allowed, false, label);
 }
 
 describe('decide: first-party git built-in', () => {
@@ -109,6 +109,9 @@ describe('decide: first-party git built-in', () => {
     const shapes: ReadonlyArray<readonly string[]> = [
       ['ls-files', '-z', '-s'],
       ['ls-files', '-z', '--others', '--exclude-standard'],
+      ['ls-files', '-z', '--others', '--exclude-standard', '--exclude', 'node_modules/', '--exclude', '*.min.js'],
+      ['ls-files', '-z', '--cached', '--ignored', '--exclude', 'coverage/'],
+      ['ls-files', '-z', '--others', '--exclude-per-directory=.atlasignore', '--exclude', 'dist/'],
       ['hash-object', '--stdin-paths'],
       ['check-attr', '-z', '--stdin', 'filter', 'text', 'eol'],
       ['check-attr', '-a', 'a.txt'],
@@ -191,7 +194,8 @@ describe('decide: git denials', () => {
     ['cat-file --textconv x', safeGit('cat-file', '--textconv', 'x')],
     ['cat-file --filters x', safeGit('cat-file', '--filters', 'x')],
     ['ls-files --help', safeGit('ls-files', '--help')],
-    ['an extra option on an allowed shape: ls-files --ignored', safeGit('ls-files', '-z', '--others', '--exclude-standard', '--ignored')],
+    // Changed on purpose by quick task 261021-re7: `--ignored` is now one of the three added ls-files tokens, so the neighbour here is `--deleted`.
+    ['an extra option on an allowed shape: ls-files --deleted', safeGit('ls-files', '-z', '--others', '--exclude-standard', '--deleted')],
     ['rev-list --max-parents=1 (value outside the set)', safeGit('rev-list', '--max-parents=1', 'HEAD')],
     ['rev-list --max-parents without the value', safeGit('rev-list', '--max-parents', 'HEAD')],
     ['an extra rev-parse option: --show-toplevel', safeGit('rev-parse', '--git-common-dir', '--show-toplevel')],
@@ -222,7 +226,7 @@ describe('decide: git denials', () => {
       ['a lone -- as the only argument', safeGit('ls-files', '--')],
       ['the neighbouring option --directory', safeGit('ls-files', ...listing, '--directory')],
       ['the neighbouring option --recurse-submodules', safeGit('ls-files', ...listing, '--recurse-submodules')],
-      ['the neighbouring option --ignored', safeGit('ls-files', ...listing, '--ignored')],
+      ['the neighbouring option --modified', safeGit('ls-files', ...listing, '--modified')],
       ['the neighbouring option --deleted', safeGit('ls-files', ...listing, '--deleted')],
       ['the neighbouring option --error-unmatch', safeGit('ls-files', ...listing, '--error-unmatch')],
       ['the neighbouring option --format=%(path)', safeGit('ls-files', ...listing, '--format=%(path)')],
@@ -666,5 +670,67 @@ describe('decide: the injected built-in shape table (plan 03-19)', () => {
 describe('allowAll (test-only)', () => {
   it('allows anything', () => {
     assert.equal(allowAll({ executable: 'whatever', args: [] }, {}).allowed, true);
+  });
+});
+
+describe('decide: the three ls-files tokens of the index exclusions (quick task 261021-re7, command-runner amendment 2026-10-21)', () => {
+  const PER_DIRECTORY = '--exclude-per-directory=.atlasignore';
+
+  it('allows exactly the listing shapes Source Tree sends, defaults as repeated --exclude <pattern> pairs', () => {
+    const shapes: ReadonlyArray<readonly string[]> = [
+      ['ls-files', '-z', '--others', '--exclude-standard', '--exclude', 'node_modules/', '--exclude', '*.min.js', '--exclude', '.yarn/cache/'],
+      ['ls-files', '-z', '--cached', '--others', '--exclude-standard', '--exclude', 'dist/'],
+      ['ls-files', '-z', '--cached', '--ignored', '--exclude', 'coverage/', '--exclude', '*.egg-info/'],
+      ['ls-files', '-z', '--others', PER_DIRECTORY, '--exclude', 'node_modules/'],
+      ['ls-files', '-z', '--cached', '--others', PER_DIRECTORY, '--exclude', 'node_modules/'],
+      ['ls-files', '-z', '--cached', '--ignored', PER_DIRECTORY, '--exclude', 'coverage/'],
+    ];
+    for (const shape of shapes) assert.equal(decide(safeGit(...shape)).allowed, true, shape.join(' '));
+  });
+
+  it('denies every neighbouring spelling of the three tokens', () => {
+    const base = ['ls-files', '-z', '--others'];
+    const cases: Array<[string, readonly string[]]> = [
+      ['--exclude=<pattern> as one token', [...base, '--exclude=node_modules/']],
+      ['-x <pattern>', [...base, '-x', 'node_modules/']],
+      ['-x with an attached pattern', [...base, '-xnode_modules/']],
+      ['-i for --ignored', ['ls-files', '-z', '--cached', '-i', '--exclude', 'dist/']],
+      ['--exclude-from', [...base, '--exclude-from', 'rules.txt']],
+      ['--exclude-from=<file>', [...base, '--exclude-from=rules.txt']],
+      ['-X <file>', [...base, '-X', 'rules.txt']],
+      ['--exclude-per-directory as two tokens', [...base, '--exclude-per-directory', '.atlasignore']],
+      ['--exclude-per-directory with another file name', [...base, '--exclude-per-directory=.gitignore']],
+      ['--exclude-per-directory with a path', [...base, '--exclude-per-directory=sub/.atlasignore']],
+      ['--exclude-per-directory with a parent path', [...base, '--exclude-per-directory=../.atlasignore']],
+      ['--exclude-per-directory with a different case', [...base, '--exclude-per-directory=.Atlasignore']],
+      ['--exclude-per-directory with a trailing space', [...base, '--exclude-per-directory=.atlasignore ']],
+      ['--exclude-per-directory with an empty value', [...base, '--exclude-per-directory=']],
+      ['--exclude with no value', [...base, '--exclude']],
+      ['--exclude with an empty value', [...base, '--exclude', '']],
+      ['--exclude whose value starts with a dash', [...base, '--exclude', '-x']],
+      ['--exclude whose value is another allowed option', [...base, '--exclude', '--exclude-standard']],
+      ['--exclude whose value is --others', ['ls-files', '-z', '--exclude', '--others']],
+      ['--exclude followed by the option --', [...base, '--exclude', '--']],
+      ['an abbreviated --exclude-per', [...base, '--exclude-per=.atlasignore']],
+      ['an abbreviated --ignore', ['ls-files', '-z', '--cached', '--ignore', '--exclude', 'dist/']],
+    ];
+    for (const [name, rest] of cases) assertDenied(decide(safeGit(...rest)), name);
+  });
+
+  it('denies the three tokens on every other subcommand', () => {
+    for (const sub of ['ls-tree', 'hash-object', 'cat-file', 'rev-parse', 'rev-list', 'check-attr']) {
+      for (const rest of [['--exclude', 'dist/'], ['--ignored'], [PER_DIRECTORY]]) {
+        assertDenied(decide(safeGit(sub, ...rest)), `${sub} ${rest.join(' ')}`);
+      }
+    }
+  });
+
+  it('a pathspec stays impossible beside the new tokens', () => {
+    for (const rest of [
+      ['ls-files', '-z', '--others', '--exclude', 'dist/', '--', 'src'],
+      ['ls-files', '-z', '--others', '--exclude', 'dist/', '--pathspec-from-file=-'],
+    ]) {
+      assertDenied(decide(safeGit(...rest)), rest.join(' '));
+    }
   });
 });

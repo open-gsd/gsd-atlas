@@ -2,8 +2,11 @@
  * Dropping ignored watcher paths (T-02-14). `SourceTree.hashPaths` hashes what it is asked and does not consult
  * ignore rules, and git's `check-ignore` is not in the CommandRunner allowlist, so the Indexer decides for itself
  * which event paths git would ignore, using the one thing Source Tree answers for this: `unignoredPaths`, which is
- * ONE pathspec-free `ls-files` listing (tracked, plus untracked and not ignored) filtered by exact name in process.
- * No name a watcher supplied reaches git, and nothing is hashed to get the verdict (plan 02-46).
+ * pathspec-free `ls-files` listings (tracked, plus untracked and not ignored, less the built-in tooling and build-output
+ * defaults and what a `.atlasignore` removes) filtered by exact name in process. No name a watcher supplied reaches git,
+ * and nothing is hashed to get the verdict (plan 02-46; the index exclusions are quick task 261021-re7, described in the
+ * trust-boundaries ADR and ADR 5 amendments of 2026-10-21). The same verdicts hold for the snapshot, so a path the
+ * snapshot leaves out is dropped here too.
  *
  * - A path seen listed (a build, or an earlier verdict) is known not to be ignored.
  * - A path that no longer exists is kept: hashing reports it missing and the overlay forgets it.
@@ -12,11 +15,12 @@
  * - Any other path is new to us. One listing per call settles every such path at once: listed means not ignored,
  *   absent means ignored. Verdicts are remembered, so a noisy ignored directory costs one listing, not one per
  *   event. A failed listing leaves the memory exactly as it was.
- * - A change to a `.gitignore` file invalidates what was remembered for the worktree. Paths whose status the
- *   new rules change are repaired by Reconcile (plan 02-17), not here.
+ * - A change to a `.gitignore` or `.atlasignore` file invalidates what was remembered for the worktree. Paths whose
+ *   status the new rules change are repaired by Reconcile (plan 02-17), not here.
  */
 import fs from 'node:fs';
 import path from 'node:path';
+import { ATLASIGNORE_FILE } from '../source-tree/index.ts';
 import type { SourceTree } from '../source-tree/index.ts';
 import { isRepoRelative } from './paths.ts';
 
@@ -31,6 +35,9 @@ export interface PathFilter {
 }
 
 const baseName = (rel: string): string => rel.slice(rel.lastIndexOf('/') + 1);
+
+/** The names of the ignore files whose change invalidates the remembered verdicts. */
+const IGNORE_FILES: ReadonlySet<string> = new Set(['.gitignore', ATLASIGNORE_FILE]);
 
 /** What `lstat` finds at `rel`: nothing, a regular file, or anything else (a link, a directory, a device). */
 type Kind = 'missing' | 'file' | 'other';
@@ -62,7 +69,7 @@ export function createPathFilter(tree: SourceTree): PathFilter {
     },
 
     async keep(worktree, paths) {
-      if (paths.some((rel) => baseName(rel) === '.gitignore')) {
+      if (paths.some((rel) => IGNORE_FILES.has(baseName(rel)))) {
         known.delete(worktree);
         ignored.delete(worktree);
       }

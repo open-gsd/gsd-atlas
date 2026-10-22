@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { describe, it } from 'node:test';
-import { createSourceTree } from '../source-tree/index.ts';
+import { createSourceTree, defaultPatterns } from '../source-tree/index.ts';
 import { createTempGitRepo } from '../test-kit/index.ts';
 import type { TempGitRepo } from '../test-kit/index.ts';
 import { allowAll, createRealRunner, gitSpec } from './index.ts';
@@ -99,6 +99,21 @@ function capturing(inner: CommandRunner): CommandRunner & { readonly runs: Captu
   };
 }
 
+/** The `--exclude <pattern>` pairs of a scope, as one string. */
+const excludes = (scope: 'all' | 'tracked'): string => defaultPatterns(scope).flatMap((p) => ['--exclude', p]).join(' ');
+
+/** Each distinct `ls-files ...` argument list the runner saw, with its exit code, sorted. Fails on a denial. */
+function shapesOf(production: { readonly runs: readonly CapturedRun[] }): Array<[string, number | null]> {
+  const shapes = new Map<string, number | null>();
+  for (const { spec, result } of production.runs) {
+    const at = spec.args.indexOf('ls-files');
+    if (at === -1) continue;
+    assert.equal(result.denied, undefined, spec.args.join(' '));
+    shapes.set(spec.args.slice(at).join(' '), result.exitCode);
+  }
+  return [...shapes].sort(([a], [b]) => (a < b ? -1 : 1));
+}
+
 const names = (stdout: Uint8Array): string[] => decoder.decode(stdout).split('\0').filter((entry) => entry !== '').sort();
 
 describe('production git rule: the ls-files shapes of Source Tree against the installed git (plan 02-46)', () => {
@@ -117,6 +132,9 @@ describe('production git rule: the ls-files shapes of Source Tree against the in
     assert.deepEqual(names(result.stdout), ['nested/', 'tracked.ts', 'untracked.ts', 'vendor/sub']);
   });
 
+  // Changed on purpose by quick task 261021-re7: the listings now carry the built-in defaults as constant
+  // `--exclude <pattern>` pairs, and two more listings exist (the tracked paths the tracked defaults remove, and the
+  // untracked files without the defaults, which only counts what they removed).
   it('every ls-files shape Source Tree sends is accepted by installed git', async (t) => {
     const repo = await listingRepo(t);
     const production = capturing(createRealRunner());
@@ -127,20 +145,32 @@ describe('production git rule: the ls-files shapes of Source Tree against the in
     const listed = await tree.unignoredPaths(repo.dir, ['tracked.ts', 'untracked.ts', 'ignored.log']);
     assert.deepEqual([...listed].sort(), ['tracked.ts', 'untracked.ts']);
 
-    const shapes = new Map<string, number | null>();
-    for (const { spec, result } of production.runs) {
-      const at = spec.args.indexOf('ls-files');
-      if (at === -1) continue;
-      assert.equal(result.denied, undefined, spec.args.join(' '));
-      shapes.set(spec.args.slice(at).join(' '), result.exitCode);
-    }
-    assert.deepEqual(
-      [...shapes].sort(([a], [b]) => (a < b ? -1 : 1)),
-      [
-        ['ls-files -z --cached --others --exclude-standard', 0],
-        ['ls-files -z --others --exclude-standard', 0],
-        ['ls-files -z -s', 0],
-      ],
-    );
+    assert.deepEqual(shapesOf(production), [
+      [`ls-files -z --cached --ignored ${excludes('tracked')}`, 0],
+      [`ls-files -z --cached --others --exclude-standard ${excludes('all')}`, 0],
+      ['ls-files -z --others --exclude-standard', 0],
+      [`ls-files -z --others --exclude-standard ${excludes('all')}`, 0],
+      ['ls-files -z -s', 0],
+    ]);
+  });
+
+  it('with a .atlasignore the second-stage shapes are accepted by installed git too, and git reads the file', async (t) => {
+    const repo = await listingRepo(t);
+    repo.write('.atlasignore', 'untracked.ts\n');
+    const production = capturing(createRealRunner());
+    const tree = createSourceTree({ runner: production, repoDir: repo.dir, envOverlay: repo.envOverlay });
+
+    const snapshot = await tree.snapshot(repo.dir);
+    assert.ok(!snapshot.files.has('untracked.ts'), 'git evaluated the file');
+    const listed = await tree.unignoredPaths(repo.dir, ['tracked.ts', 'untracked.ts', 'ignored.log']);
+    assert.deepEqual([...listed].sort(), ['tracked.ts']);
+
+    const flag = '--exclude-per-directory=.atlasignore';
+    const second = shapesOf(production).filter(([shape]) => shape.includes(flag));
+    assert.deepEqual(second, [
+      [`ls-files -z --cached --ignored ${flag} ${excludes('tracked')}`, 0],
+      [`ls-files -z --cached --others ${flag} ${excludes('all')}`, 0],
+      [`ls-files -z --others ${flag} ${excludes('all')}`, 0],
+    ]);
   });
 });

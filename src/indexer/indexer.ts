@@ -345,7 +345,7 @@ export function createIndexer(deps: IndexerDeps): Indexer {
           for (const rel of departed) failures.delete(keyOf(worktree, rel));
         },
       });
-      lastReconcile = { at: deps.clock.now(), changed: report.changed, durationMs: report.durationMs };
+      lastReconcile = { at: deps.clock.now(), changed: report.changed, durationMs: report.durationMs, excluded: report.excluded };
       return {
         changed: report.changed,
         parsed: report.parsed,

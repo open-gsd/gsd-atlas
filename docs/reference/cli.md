@@ -212,7 +212,7 @@ gsd-atlas build [--repo <dir>] [--cwd <dir>]   (index the repository; the only w
 - Result schema: `gsd-atlas.build/1`.
 - `data`: `worktree`, `files` (files in the source set), `parsed` (files whose facts were extracted), `linked` (files attached to facts the store already held), `removed` (paths that left the index), `skipped` (count of skipped items), `failed` (count of files that failed), `failedCodes` (failure code to count). `skipped` is still a count; the keys and their types do not change.
 - After the index is built, a repository with a precise tier (the TypeScript compiler) gets one more pass before the command returns: the compiler is asked about every reference site of the indexed files, in batches, and the answers are stored, so the first `refs` after a build is answered from the store and not from a cold compiler. The pass has a time bound (25 seconds, `precise.requestTimeoutMs`). A pass that does not finish leaves the build successful, with a `resolver_timeout` note in `diagnostics`; `gsd-atlas maintain resolve` continues it.
-- `diagnostics` (the envelope field, not `data`): `[]` for a build that left nothing out. Otherwise it lists the notes of the build, in this order: `emit_output_not_indexed` (some files are the emit output of an included source and are not indexed), `citation_comment_too_long` (some files have ADR mentions that are not indexed, a comment over the comment size bound or more than 200 mentions in one file, so citations from them are missing; the count is read from the store, so a build that parses nothing repeats it), then `resolver_timeout` (the compiler pass above did not finish). Each is an `info` diagnostic with fixed text and a count, and carries no file path and no repository text. They are diagnostics, not degraded codes: a build sets no `degraded`. Any other note the build collects (for example files no language module claims) is counted in `skipped` and goes no further.
+- `diagnostics` (the envelope field, not `data`): `[]` for a build that left nothing out. Otherwise it lists the notes of the build, in this order: the index-exclusion notes `index_excluded_by_defaults`, `index_excluded_by_atlasignore` and `atlasignore_unusable` (files left out by the built-in exclusions or by `.atlasignore`, and a `.atlasignore` that was not used; see [the index exclusions reference](index-exclusions.md)), `emit_output_not_indexed` (some files are the emit output of an included source and are not indexed), `citation_comment_too_long` (some files have ADR mentions that are not indexed, a comment over the comment size bound or more than 200 mentions in one file, so citations from them are missing; the count is read from the store, so a build that parses nothing repeats it), then `resolver_timeout` (the compiler pass above did not finish). Each is an `info` diagnostic with fixed text and a count, and carries no file path and no repository text. They are diagnostics, not degraded codes: a build sets no `degraded`. Any other note the build collects (for example files no language module claims) is counted in `skipped` and goes no further.
 - Errors: `not_a_repo`, `lease_held` (exit 3), `store_unavailable`, `schema_too_new`.
 
 ### gsd-atlas maintain
@@ -484,6 +484,9 @@ Sample (a `find` answer; the `nonce` differs on every answer, and a `build` or `
 | `compiler_fallback` | info | A compiler other than the project's own did the resolving; the text names the case. | 0 |
 | `diagnostics_off` | info | `diagnostics preview` while diagnostics are off. | 0 |
 | `history_truncated` | warning | A commit has more than 2000 source files. | 0 |
+| `index_excluded_by_defaults` | info | A build left files out of the index because of the built-in exclusions; the text gives the count. | 0 |
+| `index_excluded_by_atlasignore` | info | A build left files out of the index because of `.atlasignore`; the text gives the count. | 0 |
+| `atlasignore_unusable` | warning | A `.atlasignore` was not used: it is over 64 KiB in total, is not valid text, or is not a regular file. | 0 |
 | `user_config_ignored` | warning | The user configuration file, or `GSD_ATLAS_STORE_DIR`, was ignored. | 0 |
 
 ## Degraded codes
@@ -552,12 +555,14 @@ The store moves to `<cache root>/gsd-atlas/<store id>` when the git common direc
 - [How to contribute a change](../how-to/contribute-a-change.md)
 - [How to see why atlas gave an answer](../how-to/see-why-atlas-gave-an-answer.md)
 - [How to find the code that cites an ADR](../how-to/find-the-code-that-cites-an-adr.md)
+- [How to exclude files from the index](../how-to/exclude-files-from-the-index.md)
 - [How to approve a precise command for one repository](../how-to/approve-a-precise-command.md)
 - [How to install the gsd-atlas skills](../how-to/install-the-skills.md)
 - [How to rate an answer, a feature or a session](../how-to/rate-an-answer.md)
 - [How to report a bug](../how-to/report-a-bug.md)
 - [How to turn diagnostics on and off](../how-to/turn-diagnostics-on-and-off.md)
 - [gsd-atlas MCP reference](mcp.md)
+- [gsd-atlas index exclusions reference](index-exclusions.md)
 - [gsd-atlas TypeScript support reference](typescript-support.md)
 - [gsd-atlas ADR citations reference](adr-citations.md)
 - [gsd-atlas alpha limitations reference](alpha-limitations.md)

@@ -4,7 +4,7 @@
  */
 export { DEFAULT_ADR_DIRS, chooseAdrDirs, createAdrDirectory, parseAdrFileName } from './adr.ts';
 export type { AdrDirectory, AdrDirectoryDeps, AdrDirectoryState, AdrDirs, AdrIndex } from './adr.ts';
-export { REPO_CONFIG_FILE, REPO_CONFIG_IGNORED, readRepoConfig } from './repo-config.ts';
+export { REPO_CONFIG_FILE, REPO_CONFIG_IGNORED, REPO_CONFIG_MAX_BYTES, readRepoConfig } from './repo-config.ts';
 export type { RepoConfig } from './repo-config.ts';
 export { createTenant } from './create.ts';
 export { DEFAULT_TENANT_TUNING } from './defaults.ts';

@@ -8,7 +8,7 @@ import type { DegradedCode, Envelope } from '../facts/index.ts';
 import { okEnvelope } from '../facts/index.ts';
 import { cleanField } from './cite.ts';
 import { ATLAS_STATUS_SCHEMA, errorEnvelope, withDegraded } from './envelope.ts';
-import type { PolicyMode, StatusPort } from './types.ts';
+import type { IndexerStatusLike, PolicyMode, StatusPort } from './types.ts';
 
 /**
  * The policy mode until the Policy module lands in Phase 7 (the module does not exist yet). The Host's status port
@@ -58,6 +58,12 @@ export interface StatusSnapshot {
     readonly reconciling: boolean;
     readonly lastReconcileAt: number | null;
     readonly lastIndexedAt: number | null;
+    /**
+     * How many files the last Reconcile left out of the index (quick task 261021-re7): by the built-in tooling and
+     * build-output defaults and by the repository's `.atlasignore`. Null before any Reconcile recorded it. Counts only: no
+     * health reason and no degraded code, so a repository that hides many files stays `ok`.
+     */
+    readonly excluded: { readonly byDefaults: number; readonly byAtlasignore: number } | null;
   } | null;
   readonly governor: { readonly queued: number; readonly running: number; readonly leases: number };
   /**
@@ -117,6 +123,7 @@ export async function runStatus(ports: StatusPort | undefined, repo: string | un
               reconciling: indexer.reconciling,
               lastReconcileAt: indexer.lastReconcile === null ? null : indexer.lastReconcile.at,
               lastIndexedAt: indexer.lastIndexedAt,
+              excluded: excludedOf(indexer.lastReconcile),
             },
       governor: { queued: governor.queued, running: governor.running, leases: governor.leases },
       citations: { filesWithGaps: store.worktrees.reduce((sum, entry) => sum + entry.citationGapFiles, 0) },
@@ -142,6 +149,12 @@ export async function runStatus(ports: StatusPort | undefined, repo: string | un
     if (code !== undefined) codes.push(code);
   }
   return withDegraded(okEnvelope(ATLAS_STATUS_SCHEMA, snapshot, [], hinted ? { hints: [BUG_HINT] } : undefined), codes);
+}
+
+/** The exclusion counts of the last Reconcile as two plain numbers, or null when none were recorded (nothing else is copied). */
+function excludedOf(last: IndexerStatusLike['lastReconcile']): { readonly byDefaults: number; readonly byAtlasignore: number } | null {
+  const counts = last?.excluded;
+  return counts === undefined ? null : { byDefaults: counts.byDefaults, byAtlasignore: counts.byAtlasignore };
 }
 
 /** True when the recorder port says a recent answer was an internal error. A port that throws, or none, says no. */

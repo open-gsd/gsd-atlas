@@ -3,9 +3,13 @@
  * (FND-06). No process module is imported here; every git command is built by `gitSpec`, which switches
  * off every repo-controlled execution path (filter drivers, fsmonitor, hooks).
  *
- * A snapshot costs four git starts however large the tree is: enumerate filter drivers, list tracked
- * files, list untracked-not-ignored files, and ONE batched `hash-object --stdin-paths` over all of them. The
- * ignore check for single saved paths (`unignoredPaths`) costs one git start and hashes nothing.
+ * A snapshot costs six git starts however large the tree is: enumerate filter drivers, four listings that run at
+ * once (tracked files, untracked-not-ignored files with the built-in defaults left out, the tracked files the
+ * tracked defaults remove, and untracked files without the defaults, which only counts what they removed) and ONE
+ * batched `hash-object --stdin-paths` over what is left. A repository with a usable `.atlasignore` adds two more
+ * listings that apply it (quick task 261021-re7; the trust-boundaries ADR and ADR 5 amendments of 2026-10-21). The
+ * ignore check for single saved paths (`unignoredPaths`) costs two listings (four with a usable `.atlasignore`) and
+ * hashes nothing. Everything git is told is a constant: the built-in patterns and three fixed option tokens.
  */
 import { createHash } from 'node:crypto';
 import fs from 'node:fs';
@@ -14,6 +18,9 @@ import { gitSpec, listFilterNames } from '../command-runner/index.ts';
 import type { CommandRunner, CommandSpec, RunContext } from '../command-runner/index.ts';
 import { diagnostic } from '../facts/index.ts';
 import type { Diagnostic } from '../facts/index.ts';
+import { exclusionNotes, vetAtlasignore } from './atlasignore.ts';
+import type { ListedPath } from './atlasignore.ts';
+import { ATLASIGNORE_FILE, defaultPatterns } from './default-excludes.ts';
 import { SOURCE_TREE_CODES, SourceTreeError } from './types.ts';
 import { assertReadArguments, assertRepoRelative, assertRevision, batchPathReason, isObjectId, unhashableReason } from './validate.ts';
 import { pickRootCommit } from './identity.ts';
@@ -69,6 +76,28 @@ const decoder = new TextDecoder();
 
 const compareCodeUnits = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
 
+/** The git option that makes it read the repository's `.atlasignore` files; one exact token, never built from repository text. */
+const ATLASIGNORE_FLAG = `--exclude-per-directory=${ATLASIGNORE_FILE}`;
+
+/** The built-in patterns as repeated `--exclude <pattern>` pairs: constants of this program, in two scopes. */
+const excludeArgs = (patterns: readonly string[]): string[] => patterns.flatMap((pattern) => ['--exclude', pattern]);
+const ALL_EXCLUDES: readonly string[] = excludeArgs(defaultPatterns('all'));
+const TRACKED_EXCLUDES: readonly string[] = excludeArgs(defaultPatterns('tracked'));
+
+/** The entries of NUL-separated `ls-files -z` output. */
+const entriesOf = (text: string): string[] => text.split('\0').filter((entry) => entry !== '');
+
+/** A cheap prefilter for the vetting: only a path that mentions the file name can be (or sit below) a `.atlasignore`. */
+const mentionsAtlasignore = (rel: string): boolean => rel.includes(ATLASIGNORE_FILE);
+
+/** What the two listings that apply a vetted `.atlasignore` found. */
+interface SecondStage {
+  /** Untracked (or, for the verdict listing, tracked and untracked) paths git lists with the file applied. */
+  readonly listed: ReadonlySet<string>;
+  /** Tracked paths that the file (or a tracked default) removes. */
+  readonly droppedTracked: ReadonlySet<string>;
+}
+
 export function createSourceTree(options: SourceTreeOptions): SourceTree {
   const { runner, repoDir } = options;
   const env = options.envOverlay;
@@ -86,6 +115,33 @@ export function createSourceTree(options: SourceTreeOptions): SourceTree {
     return decoder.decode(result.stdout);
   }
 
+  /** One `git ls-files -z <args>` run: no pathspec, nothing on stdin, a bounded timeout. Returns its NUL-separated output. */
+  const listing = (worktree: string, args: readonly string[], label: string): Promise<string> =>
+    gitText(spec(['ls-files', '-z', ...args], worktree, { maxStdoutBytes: BIG_OUTPUT_BYTES, timeoutMs: GIT_TIMEOUT_MS }), label);
+
+  /** The tracked paths the tracked defaults remove. No run at all when no default applies to tracked files. */
+  const droppedByTrackedDefaults = (worktree: string): Promise<string> =>
+    TRACKED_EXCLUDES.length === 0 ? Promise.resolve('') : listing(worktree, ['--cached', '--ignored', ...TRACKED_EXCLUDES], 'ls-files --ignored');
+
+  /**
+   * The second stage: the two listings that apply a vetted `.atlasignore` (git reads the per-directory files itself, and
+   * `--exclude-standard` cannot be given beside the flag, so `.gitignore` is applied by the first stage and the two
+   * answers are intersected by the caller). `null` when git failed or timed out: the caller keeps the first stage's
+   * answer and reports the file as not used.
+   */
+  async function applyAtlasignore(worktree: string, listed: readonly string[]): Promise<SecondStage | null> {
+    try {
+      const [others, dropped] = await Promise.all([
+        listing(worktree, [...listed, ATLASIGNORE_FLAG, ...ALL_EXCLUDES], 'ls-files (.atlasignore)'),
+        listing(worktree, ['--cached', '--ignored', ATLASIGNORE_FLAG, ...TRACKED_EXCLUDES], 'ls-files --ignored (.atlasignore)'),
+      ]);
+      return { listed: new Set(entriesOf(others)), droppedTracked: new Set(entriesOf(dropped)) };
+    } catch (error) {
+      if (error instanceof SourceTreeError) return null;
+      throw error;
+    }
+  }
+
   async function snapshot(worktree: string): Promise<SnapshotResult> {
     const diagnostics: Diagnostic[] = [];
     const skip = (code: string, severity: Diagnostic['severity'], message: string, subject: string): void => {
@@ -95,33 +151,61 @@ export function createSourceTree(options: SourceTreeOptions): SourceTree {
     // 1. Every configured filter driver, so the hash call can neutralise each of them.
     const filterNames = await listFilterNames(runner, worktree, ctx, env, GIT_TIMEOUT_MS);
 
-    // 2. Tracked entries: "<mode> <hash> <stage>\t<path>" separated by NUL. The index hash is not used:
-    //    the working-tree content is what gets hashed, so an edited file is reported as edited.
-    const candidates = new Set<string>();
-    const tracked = await gitText(
-      spec(['ls-files', '-z', '-s'], worktree, { maxStdoutBytes: BIG_OUTPUT_BYTES, timeoutMs: GIT_TIMEOUT_MS }),
-      'ls-files -s',
-    );
-    for (const entry of tracked.split('\0')) {
+    // 2. First stage, four listings at once: tracked entries ("<mode> <hash> <stage>\t<path>" separated by NUL; the index
+    //    hash is not used, the working-tree content is what gets hashed, so an edited file is reported as edited),
+    //    untracked files git does not ignore with the built-in defaults left out (a nested repository shows up as
+    //    "dir/"), the tracked paths the tracked defaults remove, and untracked files without the defaults (only to count
+    //    what the defaults removed).
+    const [trackedText, untrackedText, droppedText, plainText] = await Promise.all([
+      listing(worktree, ['-s'], 'ls-files -s'),
+      listing(worktree, ['--others', '--exclude-standard', ...ALL_EXCLUDES], 'ls-files --others'),
+      droppedByTrackedDefaults(worktree),
+      listing(worktree, ['--others', '--exclude-standard'], 'ls-files --others (counting)'),
+    ]);
+    let byDefaults = 0;
+    let byAtlasignore = 0;
+    const droppedByDefaults = new Set(entriesOf(droppedText));
+    const tracked = new Set<string>();
+    const named: ListedPath[] = [];
+    for (const entry of trackedText.split('\0')) {
       if (entry === '') continue;
       const tab = entry.indexOf('\t');
       if (tab === -1) continue;
       const mode = entry.slice(0, entry.indexOf(' '));
       const rel = entry.slice(tab + 1);
+      if (mentionsAtlasignore(rel)) named.push({ path: rel, mode });
+      if (droppedByDefaults.has(rel)) {
+        if (mode !== '160000') byDefaults += 1;
+        continue;
+      }
       if (mode === '160000') {
         skip(SOURCE_TREE_CODES.gitlinkSkipped, 'info', 'a submodule entry is not hashed as a file', rel);
         continue;
       }
-      candidates.add(rel);
+      tracked.add(rel);
     }
+    const untracked = entriesOf(untrackedText);
+    const kept = new Set(untracked);
+    byDefaults += entriesOf(plainText).filter((rel) => !rel.endsWith('/') && !kept.has(rel)).length;
+    for (const rel of untracked) if (!rel.endsWith('/') && mentionsAtlasignore(rel)) named.push({ path: rel });
 
-    // 3. Untracked files git does not ignore. A nested repository shows up as "dir/".
-    const untracked = await gitText(
-      spec(['ls-files', '-z', '--others', '--exclude-standard'], worktree, { maxStdoutBytes: BIG_OUTPUT_BYTES, timeoutMs: GIT_TIMEOUT_MS }),
-      'ls-files --others',
-    );
-    for (const rel of untracked.split('\0')) {
-      if (rel === '') continue;
+    // 3. Second stage, only when every listed `.atlasignore` passed the vetting (a repository-supplied file is untrusted).
+    const verdict = await vetAtlasignore(worktree, named);
+    let unusable = verdict === 'unusable';
+    const second = verdict === 'usable' ? await applyAtlasignore(worktree, ['--others']) : null;
+    if (verdict === 'usable' && second === null) unusable = true;
+
+    // 4. What is left: git's own list less the tracked paths and the untracked paths the file removes.
+    const candidates = new Set<string>();
+    for (const rel of tracked) {
+      if (second?.droppedTracked.has(rel) === true) byAtlasignore += 1;
+      else candidates.add(rel);
+    }
+    for (const rel of untracked) {
+      if (second !== null && !second.listed.has(rel)) {
+        if (!rel.endsWith('/')) byAtlasignore += 1;
+        continue;
+      }
       if (rel.endsWith('/')) {
         skip(SOURCE_TREE_CODES.gitlinkSkipped, 'info', 'a nested repository is not hashed as a file', rel.slice(0, -1));
         continue;
@@ -129,31 +213,41 @@ export function createSourceTree(options: SourceTreeOptions): SourceTree {
       candidates.add(rel);
     }
 
-    // 4. Keep only what can be hashed safely: skip, with a diagnostic, instead of failing the batch.
+    // 5. Keep only what can be hashed safely: skip, with a diagnostic, instead of failing the batch.
     const hashable = await vetPaths(worktree, [...candidates].sort(compareCodeUnits), diagnostics);
 
-    // 5. One batched hash over everything that is left.
+    // 6. One batched hash over everything that is left.
     const files = await hashBatch(worktree, hashable, filterNames);
-    return { files, diagnostics };
+    const excluded = { byDefaults, byAtlasignore };
+    diagnostics.push(...exclusionNotes(excluded, unusable));
+    return { files, diagnostics, excluded };
   }
 
   /**
-   * The ignore oracle (plan 02-46): ONE `ls-files -z --cached --others --exclude-standard` with no pathspec and nothing
-   * on stdin, filtered here by exact string equality against the requested names. Nothing a watcher or a repository
-   * supplied reaches git, so no name can be read as an option, a pattern or a magic pathspec. The cost is the listing
-   * of the tree once per call, without hashing a single file (the snapshot listed twice and hashed everything).
+   * The ignore oracle (plan 02-46, extended by quick task 261021-re7): two concurrent pathspec-free listings with nothing on
+   * stdin, filtered here by exact string equality against the requested names. The first is git's own list (tracked, plus
+   * untracked and not ignored) with the built-in defaults left out, the second the tracked paths the tracked defaults
+   * remove. A usable `.atlasignore` adds two more that apply it, and a path is listed only if all the answers agree.
+   * Nothing a watcher or a repository supplied reaches git, so no name can be read as an option, a pattern or a magic
+   * pathspec. The cost is the listing of the tree once per call, without hashing a single file.
    */
   async function unignoredPaths(worktree: string, paths: readonly string[]): Promise<ReadonlySet<string>> {
     assertRepoRelative(paths);
     const asked = new Set(paths);
     if (asked.size === 0) return new Set();
-    const listing = await gitText(
-      spec(['ls-files', '-z', '--cached', '--others', '--exclude-standard'], worktree, { maxStdoutBytes: BIG_OUTPUT_BYTES, timeoutMs: GIT_TIMEOUT_MS }),
-      'ls-files --cached --others',
-    );
+    const [listedText, droppedText] = await Promise.all([
+      listing(worktree, ['--cached', '--others', '--exclude-standard', ...ALL_EXCLUDES], 'ls-files --cached --others'),
+      droppedByTrackedDefaults(worktree),
+    ]);
+    const listed = entriesOf(listedText);
+    const dropped = new Set(entriesOf(droppedText));
+    const verdict = await vetAtlasignore(worktree, listed.filter(mentionsAtlasignore).map((path) => ({ path })));
+    const second = verdict === 'usable' ? await applyAtlasignore(worktree, ['--cached', '--others']) : null;
     const found = new Set<string>();
-    for (const entry of listing.split('\0')) {
-      if (entry !== '' && asked.has(entry)) found.add(entry);
+    for (const entry of listed) {
+      if (!asked.has(entry) || dropped.has(entry)) continue;
+      if (second !== null && (!second.listed.has(entry) || second.droppedTracked.has(entry))) continue;
+      found.add(entry);
     }
     return found;
   }

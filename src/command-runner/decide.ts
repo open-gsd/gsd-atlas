@@ -64,13 +64,22 @@ const GIT_FILTER_KEY = /^filter\.[^=\s]+\.(clean|smudge|process|required)$/;
  * spellings of `--cached` and `--others`, and a `-c` after the subcommand must never read like the global
  * `-c key=value` config override. No pathspec option is allowed anywhere (`--`, `--pathspec-from-file`,
  * `--pathspec-file-nul`, and the global `--literal-pathspecs` family are all outside every set): the ignore check
- * sends git no name at all, it runs one fixed `ls-files -z --cached --others --exclude-standard` and filters the
- * listing in process (plan 02-46). `git ls-files` has no `--pathspec-from-file` in any case.
+ * sends git no name at all, it runs fixed listings and filters them in process (plan 02-46). `git ls-files` has no
+ * `--pathspec-from-file` in any case.
  *
- * Adding an option here is a reviewed change; the command-runner ADR amendment records the sets.
+ * Quick task 261021-re7 (command-runner ADR amendment of 2026-10-21) added exactly three tokens to `ls-files`:
+ *   - `--exclude`: always followed by one pattern, a constant of Source Tree (a built-in default); {@link matchGit}
+ *     requires the next token to exist, to be non-empty and not to start with a dash, so it can never swallow an option;
+ *   - `--ignored`: with `--cached` it lists the tracked paths those patterns match (the only way to drop tracked paths);
+ *   - `--exclude-per-directory=.atlasignore`: one exact token, so git reads the repository's `.atlasignore` files and no
+ *     other file; `--exclude-from`, `-x`, `-X`, `-i` and every other spelling stay denied.
+ * None of them takes a name from the repository or from a watcher; Source Tree vets every `.atlasignore` before it is
+ * allowed to send the third.
+ *
+ * Adding an option here is a reviewed change; the command-runner ADR amendments record the sets.
  */
 const GIT_ALLOWED_OPTIONS: ReadonlyMap<string, ReadonlySet<string>> = new Map([
-  ['ls-files', new Set(['-z', '-s', '--others', '--exclude-standard', '--cached'])],
+  ['ls-files', new Set(['-z', '-s', '--others', '--exclude-standard', '--cached', '--exclude', '--ignored', '--exclude-per-directory=.atlasignore'])],
   ['ls-tree', new Set(['-r', '-z', '--full-tree', '--name-only'])],
   ['hash-object', new Set(['--stdin-paths'])],
   ['cat-file', new Set(['-e', '--batch', '--batch-check'])],
@@ -228,7 +237,19 @@ function matchGit(spec: CommandSpec): boolean {
   }
   const allowedOptions = GIT_ALLOWED_OPTIONS.get(sub);
   if (allowedOptions === undefined) return false; // a subcommand with no entry is denied
-  return rest.every((token) => !token.startsWith('-') || allowedOptions.has(token));
+  for (let at = 0; at < rest.length; at += 1) {
+    const token = rest[at] as string;
+    if (!token.startsWith('-')) continue;
+    if (!allowedOptions.has(token)) return false;
+    // `ls-files --exclude <pattern>`: the value is consumed here and must not look like an option (it would otherwise be
+    // read by git as the pattern while the check above took it for a second allowed option).
+    if (sub === 'ls-files' && token === '--exclude') {
+      const value = rest[at + 1];
+      if (value === undefined || value === '' || value.startsWith('-')) return false;
+      at += 1;
+    }
+  }
+  return true;
 }
 
 /** The first-party built-in table. Adding an entry is a reviewed change (ADR consequences). */

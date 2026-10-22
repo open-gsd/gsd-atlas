@@ -4,9 +4,11 @@
  */
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
+import { diagnostic } from '../facts/index.ts';
 import type { Envelope } from '../facts/index.ts';
 import { find, makeTenantWorld } from './harness.test.ts';
 import { leaseHeldEnvelope, notIndexedEnvelope, notIndexedNoStore, storeUnavailableEnvelope } from './index.ts';
+import { BUILD_NOTE_CODES, buildNotes } from './messages.ts';
 
 const first = (envelope: Envelope): { readonly code: string; readonly message: string } => {
   const diagnostic = envelope.diagnostics?.[0];
@@ -97,6 +99,51 @@ describe('tenant messages', () => {
       assert.equal(/[\\/]/.test(message), false, `no path separator in: ${message}`);
       assert.equal(message.includes(world.repo.dir), false);
       assert.equal(message.includes(world.storeDir), false);
+    }
+  });
+});
+
+describe('buildNotes: the exclusion notes of a build (quick task 261021-re7, D-03)', () => {
+  const defaults = diagnostic('index_excluded_by_defaults', 'info', '3 files were left out of the index by the built-in tooling and build-output exclusions');
+  const atlas = diagnostic('index_excluded_by_atlasignore', 'info', '2 files were left out of the index by .atlasignore');
+  const unusable = diagnostic('atlasignore_unusable', 'warning', 'a .atlasignore file was not used: it is larger than 64 KiB in total, is not valid text, or is not a regular file');
+
+  it('the allow-list holds the three pathless exclusion codes', () => {
+    for (const code of ['index_excluded_by_defaults', 'index_excluded_by_atlasignore', 'atlasignore_unusable']) {
+      assert.ok(BUILD_NOTE_CODES.includes(code), code);
+    }
+  });
+
+  it('copies the three notes in the order the build reported them, and nothing that has a subject or another code', () => {
+    const skipped = [
+      defaults,
+      diagnostic('index_excluded_by_defaults', 'info', 'with a subject', 'secret/path.ts'),
+      diagnostic('gitlink_skipped', 'info', 'a submodule entry is not hashed as a file', 'vendor/sub'),
+      atlas,
+      unusable,
+    ];
+    assert.deepEqual(buildNotes(skipped, false), [defaults, atlas, unusable]);
+    assert.deepEqual(buildNotes([], false), []);
+  });
+
+  it('puts the resolver note after them when the compiler pass ran out of its bound', () => {
+    assert.deepEqual(buildNotes([defaults, atlas], true).map((d) => d.code), ['index_excluded_by_defaults', 'index_excluded_by_atlasignore', 'resolver_timeout']);
+  });
+
+  it('a build through the Tenant carries the notes in its envelope and no path', async (t) => {
+    const world = await makeTenantWorld(t);
+    world.repo.write('.atlasignore', 'ignored-by-atlas.txt\n');
+    world.repo.write('ignored-by-atlas.txt', 'x\n');
+    world.repo.write('node_modules/pkg/index.ts', 'export const dep = 1;\n');
+    const leader = await world.open({ metrics: false });
+    const reply = await leader.build(world.repo.dir);
+    assert.equal(reply.ok, true, JSON.stringify(reply.diagnostics));
+    const codes = (reply.diagnostics ?? []).map((d) => d.code);
+    assert.ok(codes.includes('index_excluded_by_defaults'), codes.join(','));
+    assert.ok(codes.includes('index_excluded_by_atlasignore'), codes.join(','));
+    for (const d of reply.diagnostics ?? []) {
+      assert.equal(d.subject, undefined);
+      assert.equal(d.message.includes('node_modules') || d.message.includes('ignored-by-atlas'), false, d.message);
     }
   });
 });

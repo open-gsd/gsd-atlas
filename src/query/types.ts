@@ -76,7 +76,14 @@ export interface IndexerStatusLike {
   /** How file events arrive: `native`, `poll` or `reconcile-only`. */
   readonly watchMode: string;
   readonly reconciling: boolean;
-  readonly lastReconcile: { readonly at: number } | null;
+  /**
+   * The last completed Reconcile. `excluded` (quick task 261021-re7) is how many files its snapshot left out of the index,
+   * by the built-in tooling and build-output defaults and by the repository's `.atlasignore`: counts only.
+   */
+  readonly lastReconcile: {
+    readonly at: number;
+    readonly excluded?: { readonly byDefaults: number; readonly byAtlasignore: number };
+  } | null;
 }
 
 /** One tier of one language module and whether it is active. */
