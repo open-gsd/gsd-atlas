@@ -107,13 +107,25 @@ export function verdictCounts(v: readonly VerdictEntry[]): Record<Verdict, numbe
   return out;
 }
 
-/** Problems: every missing and extra file of the not-exact sessions needs a verdict (a prefix-less path is covered by its prefixed file). */
-export function validateVerdicts(verdicts: readonly VerdictEntry[], notExact: readonly NotExact[]): string[] {
+/** Files a path-format session still lacks once the leading packages/ is restored on what it answered. */
+function residualMissing(n: NotExact): string[] {
+  const answered = new Set(n.extraFiles.map(normalizePath));
+  return n.missingFiles.filter((f) => !answered.has(f));
+}
+
+/**
+ * Problems: every missing and extra file of the not-exact sessions needs a verdict (a prefix-less path is covered by its
+ * prefixed file). For the sessions in `pathFormat` only the files still missing after the prefix is restored need one;
+ * the rest of such a session is a path-format artifact as a whole.
+ */
+export function validateVerdicts(verdicts: readonly VerdictEntry[], notExact: readonly NotExact[], pathFormat: readonly string[] = []): string[] {
   const problems: string[] = [];
   const has = (q: string, f: string): boolean => verdicts.some((e) => e.questionId === q && (e.file === f || e.file === normalizePath(f)));
   const seen = new Set<string>();
   for (const n of notExact) {
-    for (const [side, files] of [['missing', n.missingFiles], ['extra', n.extraFiles]] as const) {
+    const pf = pathFormat.includes(n.jobId);
+    const sides: (readonly [string, readonly string[]])[] = pf ? [['missing', residualMissing(n)]] : [['missing', n.missingFiles], ['extra', n.extraFiles]];
+    for (const [side, files] of sides) {
       for (const f of files) {
         const k = `${n.questionId} ${side} ${f}`;
         if (seen.has(k)) continue;
@@ -123,4 +135,31 @@ export function validateVerdicts(verdicts: readonly VerdictEntry[], notExact: re
     }
   }
   return problems;
+}
+
+/** Verdict per missing or extra instance (one per session and file); a path-format session counts d for everything the prefix explains. */
+export function instanceCounts(verdicts: readonly VerdictEntry[], notExact: readonly NotExact[], pathFormat: readonly string[] = []): Record<Verdict, number> {
+  const out: Record<Verdict, number> = { a: 0, b: 0, c: 0, d: 0 };
+  const find = (q: string, f: string, side: 'missing' | 'extra'): Verdict => {
+    const e = verdicts.find((x) => x.questionId === q && x.side === side && (x.file === f || x.file === normalizePath(f)));
+    if (e === undefined) throw new Error(`no verdict for ${q} ${side} ${f}`);
+    return e.verdict;
+  };
+  for (const n of notExact) {
+    if (pathFormat.includes(n.jobId)) {
+      const residual = residualMissing(n);
+      out.d += n.extraFiles.length + n.missingFiles.length - residual.length;
+      for (const f of residual) out[find(n.questionId, f, 'missing')] += 1;
+      continue;
+    }
+    for (const f of n.missingFiles) out[find(n.questionId, f, 'missing')] += 1;
+    for (const f of n.extraFiles) out[find(n.questionId, f, 'extra')] += 1;
+  }
+  return out;
+}
+
+/** The (question, normalised file) pairs whose oracle evidence is needed, unique and sorted. */
+export function evidencePlan(verdicts: readonly VerdictEntry[]): { questionId: string; file: string }[] {
+  const keys = new Set(verdicts.map((v) => `${v.questionId}\u0000${normalizePath(v.file)}`));
+  return [...keys].sort().map((k) => { const [questionId, file] = k.split('\u0000'); return { questionId: questionId!, file: file! }; });
 }

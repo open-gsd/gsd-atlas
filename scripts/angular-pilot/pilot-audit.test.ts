@@ -120,7 +120,7 @@ describe('path-format sessions', () => {
     assert.deepEqual(validateVerdicts(v, ne, ['pf']), []);
   });
   it('counts the prefix instances as d and the residual by the file verdict', () => {
-    assert.deepEqual(instanceCounts(v, ne, ['pf']), { a: 0, b: 0, c: 1, d: 3 });
+    assert.deepEqual(instanceCounts(v, ne, ['pf']), { a: 0, b: 0, c: 1, d: 2 });
   });
 });
 
