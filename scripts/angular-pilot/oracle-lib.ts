@@ -97,10 +97,45 @@ export interface PilotOracleOptions {
   files?: readonly string[];
 }
 
+export type RefRole = 'definition' | 'import' | 'export' | 'reexport' | 'call' | 'use' | 'doc' | 'other';
+
+export interface ClassifiedRef extends Ref {
+  role: RefRole;
+  /** The occurrence sits inside a type node (annotation, generic argument, `implements`, `typeof` in a type). */
+  typeOnly: boolean;
+  /** Name of the nearest enclosing named function, method or class (constructor), or `<module>`. */
+  enclosing: string;
+  /** The identifier text at the reference (differs from the declared name for an alias). */
+  text: string;
+}
+
+export interface ImpactResult {
+  /** Files with a direct call, without the target's own file. */
+  direct: string[];
+  /** Files calling a function, method or class whose body holds a direct call (not already in `direct`, not the target file). */
+  viaCallers: string[];
+  /** direct plus viaCallers. */
+  files: string[];
+}
+
+export interface AnyRiskSite {
+  file: string;
+  line: number;
+  text: string;
+}
+
 export interface PilotOracle {
   files: readonly string[];
   references(file: string, name: string): Ref[];
-  callSites(file: string, name: string): Ref[];
+  /** Every compiler reference with a role; roles `call` and `use` are the uses the counting rules accept. */
+  classifiedReferences(file: string, name: string): ClassifiedRef[];
+  /** Uses (role `use` or `call`) of the declared symbol, through aliases; declaration, import/export specifiers and re-exports left out. */
+  referenceSites(file: string, name: string): ClassifiedRef[];
+  callSites(file: string, name: string): ClassifiedRef[];
+  impactDepthTwo(file: string, name: string): ImpactResult;
+  definitionOf(file: string, name: string): { file: string; line: number };
+  /** Identifiers spelled `name` that the compiler could not bind to any symbol (typed `any` or from an unresolved module). */
+  anyRiskSites(file: string, name: string): AnyRiskSite[];
   directSubtypes(file: string, name: string): HeritageRow[];
   unresolvedSpecifiers(): { specifier: string; files: number }[];
   dispose(): void;
@@ -206,18 +241,179 @@ export function createPilotOracle(opts: PilotOracleOptions): PilotOracle {
   function isCallee(node: ts.Node): boolean {
     let n: ts.Node = node;
     if (n.parent !== undefined && ts.isPropertyAccessExpression(n.parent) && n.parent.name === n) n = n.parent;
+    while (
+      n.parent !== undefined &&
+      (ts.isParenthesizedExpression(n.parent) || ts.isNonNullExpression(n.parent) || ts.isAsExpression(n.parent) || ts.isTypeAssertionExpression(n.parent) || ts.isSatisfiesExpression(n.parent))
+    ) {
+      n = n.parent;
+    }
     const p = n.parent;
     if (p === undefined) return false;
-    return ((ts.isCallExpression(p) || ts.isNewExpression(p)) && p.expression === n) || (ts.isTaggedTemplateExpression(p) && p.tag === n);
+    return ((ts.isCallExpression(p) || ts.isNewExpression(p)) && p.expression === n) || (ts.isTaggedTemplateExpression(p) && p.tag === n) || (ts.isDecorator(p) && p.expression === n);
   }
 
-  function callSites(file: string, name: string): Ref[] {
-    return references(file, name).filter((r) => {
-      if (r.isDefinition) return false;
-      const sf = program!.getSourceFile(path.join(root, r.file))!;
-      const node = nodeAt(sf, r.pos);
-      return ts.isIdentifier(node) && isCallee(node);
-    });
+  /** The symbol an identifier denotes, with import/export aliases followed; undefined when unbound or unresolved. */
+  function symbolOf(id: ts.Node): ts.Symbol | undefined {
+    let sym: ts.Symbol | undefined;
+    if (ts.isIdentifier(id) && id.parent !== undefined && ts.isShorthandPropertyAssignment(id.parent) && id.parent.name === id) {
+      sym = checker.getShorthandAssignmentValueSymbol(id.parent);
+    } else {
+      sym = checker.getSymbolAtLocation(id);
+    }
+    if (sym !== undefined && (sym.flags & ts.SymbolFlags.Alias) !== 0) {
+      try {
+        sym = checker.getAliasedSymbol(sym);
+      } catch {
+        return undefined;
+      }
+    }
+    if (sym !== undefined && sym.declarations === undefined && String(sym.escapedName) === 'unknown') return undefined;
+    return sym;
+  }
+
+  function identifierAt(sf: ts.SourceFile, pos: number): ts.Identifier | undefined {
+    const n = nodeAt(sf, pos);
+    return ts.isIdentifier(n) && n.getStart(sf) === pos ? n : undefined;
+  }
+
+  const isDeclarationName = (p: ts.Node, id: ts.Node): boolean =>
+    (ts.isClassDeclaration(p) || ts.isClassExpression(p) || ts.isInterfaceDeclaration(p) || ts.isFunctionDeclaration(p) || ts.isFunctionExpression(p) || ts.isTypeAliasDeclaration(p) || ts.isEnumDeclaration(p) || ts.isVariableDeclaration(p)) && p.name === id;
+
+  function inTypeNode(id: ts.Node): boolean {
+    for (let n: ts.Node | undefined = id.parent; n !== undefined; n = n.parent) {
+      if (ts.isExpressionWithTypeArguments(n)) return n.parent !== undefined && ts.isHeritageClause(n.parent) && n.parent.token === ts.SyntaxKind.ImplementsKeyword;
+      if (ts.isTypeNode(n)) return true;
+      if (ts.isStatement(n)) return false;
+      if (ts.isExpression(n) && !ts.isIdentifier(n) && !ts.isPropertyAccessExpression(n)) return false;
+    }
+    return false;
+  }
+
+  interface Unit {
+    name: string;
+    sym: ts.Symbol;
+    fileName: string;
+    pos: number;
+  }
+
+  /** The nearest enclosing named function, method, accessor, arrow/function bound to a name, or class (for a constructor or field initializer). */
+  function enclosingUnit(node: ts.Node): Unit | undefined {
+    const make = (nameNode: ts.Node | undefined): Unit | undefined => {
+      if (nameNode === undefined || !ts.isIdentifier(nameNode)) return undefined;
+      const sym = checker.getSymbolAtLocation(nameNode);
+      if (sym === undefined) return undefined;
+      const sf = nameNode.getSourceFile();
+      return { name: nameNode.text, sym, fileName: sf.fileName, pos: nameNode.getStart(sf) };
+    };
+    for (let n: ts.Node | undefined = node.parent; n !== undefined; n = n.parent) {
+      if (ts.isFunctionDeclaration(n) && n.name !== undefined) return make(n.name);
+      if ((ts.isMethodDeclaration(n) || ts.isGetAccessorDeclaration(n) || ts.isSetAccessorDeclaration(n)) && ts.isIdentifier(n.name)) return make(n.name);
+      if (ts.isConstructorDeclaration(n) || ts.isClassStaticBlockDeclaration(n)) return ts.isClassLike(n.parent) ? make(n.parent.name) : undefined;
+      if (ts.isArrowFunction(n) || ts.isFunctionExpression(n)) {
+        const p: ts.Node | undefined = n.parent;
+        if (ts.isFunctionExpression(n) && n.name !== undefined) return make(n.name);
+        if (p !== undefined && (ts.isVariableDeclaration(p) || ts.isPropertyDeclaration(p) || ts.isPropertyAssignment(p)) && p.initializer === n) return make(p.name);
+        continue;
+      }
+      if (ts.isPropertyDeclaration(n) && n.initializer !== undefined && ts.isClassLike(n.parent)) return make(n.parent.name);
+    }
+    return undefined;
+  }
+
+  const enclosingName = (id: ts.Node): string => enclosingUnit(id)?.name ?? '<module>';
+
+  function classify(ref: Ref, targetSym: ts.Symbol): ClassifiedRef {
+    const sf = program!.getSourceFile(path.join(root, ref.file))!;
+    const base = { ...ref, typeOnly: false, enclosing: '<module>', text: '' };
+    const id = identifierAt(sf, ref.pos);
+    if (id === undefined) return { ...base, role: 'doc' };
+    const p = id.parent;
+    const text = id.text;
+    if (ts.isImportSpecifier(p) || ts.isImportClause(p) || ts.isNamespaceImport(p) || (ts.isImportEqualsDeclaration(p) && p.name === id)) return { ...base, role: 'import', text };
+    if (ts.isExportSpecifier(p)) return { ...base, role: p.parent.parent.moduleSpecifier !== undefined ? 'reexport' : 'export', text };
+    if (ts.isNamespaceExport(p)) return { ...base, role: 'reexport', text };
+    const sym = symbolOf(id);
+    if (sym !== targetSym) return { ...base, role: 'other', text };
+    if (isDeclarationName(p, id)) return { ...base, role: 'definition', text };
+    const typeOnly = inTypeNode(id);
+    return { ...base, role: !typeOnly && isCallee(id) ? 'call' : 'use', typeOnly, enclosing: enclosingName(id), text };
+  }
+
+  function classifiedAt(fileName: string, pos: number, targetSym: ts.Symbol): ClassifiedRef[] {
+    const seen = new Map<string, ClassifiedRef>();
+    for (const group of ls.findReferences(fileName, pos) ?? []) {
+      for (const r of group.references) {
+        if (!inSet.has(r.fileName)) continue;
+        const rsf = program!.getSourceFile(r.fileName)!;
+        const line = rsf.getLineAndCharacterOfPosition(r.textSpan.start).line + 1;
+        const c = classify({ file: relOf(r.fileName), line, isDefinition: r.isDefinition === true, pos: r.textSpan.start }, targetSym);
+        seen.set(`${c.file}:${c.pos}`, c);
+      }
+    }
+    return [...seen.values()].sort((a, b) => (a.file === b.file ? a.pos - b.pos : a.file < b.file ? -1 : 1));
+  }
+
+  function targetOf(file: string, name: string): { sf: ts.SourceFile; id: ts.Identifier; sym: ts.Symbol } {
+    const { sf, id } = locate(file, name);
+    const sym = symbolOf(id);
+    if (sym === undefined) throw new Error(`${name} in ${file} has no symbol`);
+    return { sf, id, sym };
+  }
+
+  function classifiedReferences(file: string, name: string): ClassifiedRef[] {
+    const t = targetOf(file, name);
+    return classifiedAt(t.sf.fileName, t.id.getStart(t.sf), t.sym);
+  }
+
+  const referenceSites = (file: string, name: string): ClassifiedRef[] => classifiedReferences(file, name).filter((r) => r.role === 'use' || r.role === 'call');
+  const callSites = (file: string, name: string): ClassifiedRef[] => classifiedReferences(file, name).filter((r) => r.role === 'call');
+
+  function impactDepthTwo(file: string, name: string): ImpactResult {
+    const direct = callSites(file, name);
+    const directFiles = new Set(direct.map((c) => c.file));
+    const via = new Set<string>();
+    const seen = new Set<string>();
+    for (const c of direct) {
+      const sf = program!.getSourceFile(path.join(root, c.file))!;
+      const id = identifierAt(sf, c.pos);
+      if (id === undefined) continue;
+      const unit = enclosingUnit(id);
+      if (unit === undefined) continue;
+      const key = `${unit.fileName}:${unit.pos}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      for (const r of classifiedAt(unit.fileName, unit.pos, unit.sym)) if (r.role === 'call') via.add(r.file);
+    }
+    const sort = (xs: Iterable<string>): string[] => [...xs].sort();
+    const d = sort([...directFiles].filter((f) => f !== file));
+    const v = sort([...via].filter((f) => f !== file && !directFiles.has(f)));
+    return { direct: d, viaCallers: v, files: sort([...d, ...v]) };
+  }
+
+  function definitionOf(file: string, name: string): { file: string; line: number } {
+    const { sf, id } = locate(file, name);
+    return { file, line: sf.getLineAndCharacterOfPosition(id.getStart(sf)).line + 1 };
+  }
+
+  function anyRiskSites(file: string, name: string): AnyRiskSite[] {
+    targetOf(file, name);
+    const sites: AnyRiskSite[] = [];
+    for (const sf of program!.getSourceFiles()) {
+      if (!inSet.has(sf.fileName) || !sf.text.includes(name)) continue;
+      const visit = (n: ts.Node): void => {
+        if (ts.isIdentifier(n) && n.text === name) {
+          const p = n.parent;
+          const skip = ts.isImportSpecifier(p) || ts.isExportSpecifier(p) || ts.isImportClause(p) || ts.isNamespaceImport(p) || ts.isNamespaceExport(p) || ts.isImportEqualsDeclaration(p);
+          if (!skip && symbolOf(n) === undefined) {
+            const line = sf.getLineAndCharacterOfPosition(n.getStart(sf)).line + 1;
+            sites.push({ file: relOf(sf.fileName), line, text: sf.text.split('\n')[line - 1]?.trim() ?? '' });
+          }
+        }
+        ts.forEachChild(n, visit);
+      };
+      visit(sf);
+    }
+    return sites.sort((a, b) => (a.file === b.file ? a.line - b.line : a.file < b.file ? -1 : 1));
   }
 
   function resolved(expr: ts.Expression): ts.Symbol | undefined {
@@ -276,5 +472,5 @@ export function createPilotOracle(opts: PilotOracleOptions): PilotOracle {
     return [...counts.entries()].map(([specifier, f]) => ({ specifier, files: f.size })).sort((a, b) => b.files - a.files || (a.specifier < b.specifier ? -1 : 1));
   }
 
-  return { files: rels, references, callSites, directSubtypes, unresolvedSpecifiers, dispose: () => ls.dispose() };
+  return { files: rels, references, classifiedReferences, referenceSites, callSites, impactDepthTwo, definitionOf, anyRiskSites, directSubtypes, unresolvedSpecifiers, dispose: () => ls.dispose() };
 }
