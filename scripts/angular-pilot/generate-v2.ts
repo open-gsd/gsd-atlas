@@ -101,6 +101,9 @@ function treeHits(repo: string, name: string): number {
 
 const CATEGORY_ORDER: readonly PilotCategory[] = ['callers', 'references', 'heritage', 'impact', 'definition'];
 
+/** Impact questions whose text gets the class-field-initializer sentence (p-313; second reader, see wording-log.md). Text only: keys and answers are unchanged. */
+export const CLASS_FIELD_RULE_FOR: ReadonlySet<string> = new Set(['isArray@packages/forms/signals/src/util/type_guards.ts']);
+
 function main(): void {
   const { values } = parseArgs({ options: { repo: { type: 'string' }, out: { type: 'string' }, exclusions: { type: 'string' }, roles: { type: 'string' } } });
   if (values.repo === undefined || values.out === undefined) throw new Error('usage: --repo <clone> --out <dir> [--exclusions <json>] [--roles <json>]');
@@ -136,7 +139,7 @@ function main(): void {
       const key = `${p.row.name}@${p.row.file}`;
       const role = roles[key] ?? '';
       if (role === '' && category !== 'definition') needed.push({ key, category, kind: p.row.kind, otherKinds: p.row.otherKinds, keySize: p.value.keySize });
-      entries.push({ id, ...p.value.entry, role });
+      entries.push({ id, ...p.value.entry, role, ...(CLASS_FIELD_RULE_FOR.has(key) ? { classFieldRule: true } : {}) });
       meta.push({ id, category, tier: p.tier, name: p.row.name, file: p.row.file, keySize: p.value.keySize, grep: p.row.grepFiles, other: p.row.otherDeclFiles, changed: p.row.fileLastChanged });
     }
   }

@@ -124,8 +124,11 @@ export function packageLabel(file: string): string {
 
 const KIND_WORD: Readonly<Record<CensusKind, string>> = { function: 'function', const: 'constant', class: 'class', interface: 'interface', type: 'type alias', enum: 'enum' };
 
-const NESTED_CALL_RULE =
-  'plus files that call any named function, method or class (by `new`) in whose body a direct call to it appears; a call inside a nested function, a callback or an unnamed arrow function counts for the nearest enclosing declaration that has a name, and a function that is only passed as a value has no callers';
+const CLASS_FIELD_SENTENCE = 'a call in a class field initializer counts for the class';
+/** The nested-call clause; `classFieldRule` inserts the class-field sentence (wording-log.md), asked for per question. */
+function nestedCallRule(classFieldRule: boolean): string {
+  return `plus files that call any named function, method or class (by \`new\`) in whose body a direct call to it appears; a call inside a nested function, a callback or an unnamed arrow function counts for the nearest enclosing declaration that has a name, ${classFieldRule ? `${CLASS_FIELD_SENTENCE}, ` : ''}and a function that is only passed as a value has no callers`;
+}
 const LINE_RULE = 'Give the line that holds the declared name (for a function the `export function` line, for a class the `export class` line, for an enum the `export enum` line).';
 
 /** Throws when a role description would hand over the declaring file, or does not read as one line of the form the rule asks for. */
@@ -149,6 +152,8 @@ export interface TextSpecV2 {
   otherDeclFiles: number;
   otherKinds: readonly string[];
   useSite?: { file: string; line: number };
+  /** Impact only: add the class-field-initializer sentence to the nested-call clause. */
+  classFieldRule?: boolean;
 }
 
 function tellApart(spec: TextSpecV2): string {
@@ -178,7 +183,7 @@ export function questionTextV2(spec: TextSpecV2): string {
     case 'heritage':
       return `Which interfaces or classes directly extend or implement ${target}? Give the file and the name of each. Only direct subtypes count, not a subtype of a subtype, and only named classes and interfaces (an anonymous class expression does not count); a heritage clause that names it through an alias counts, and declarations in spec and test files count. A subtype counts even when it has the same name as the target, as long as its heritage clause refers to the target. ${tell} ${SCOPE_RULE} ${FORM}`;
     case 'impact':
-      return `List the files affected if the signature of ${target} changed, to depth two: files that call it directly, ${NESTED_CALL_RULE}, with calls resolved to the exact declaration through aliases and re-exports. A call is a call expression, a \`new\` expression, a tagged template or a decorator use. Include spec and test files; leave out the declaring file of the target. ${tell} ${USE_RULES} ${SCOPE_RULE} List each file once. ${FORM}`;
+      return `List the files affected if the signature of ${target} changed, to depth two: files that call it directly, ${nestedCallRule(spec.classFieldRule === true)}, with calls resolved to the exact declaration through aliases and re-exports. A call is a call expression, a \`new\` expression, a tagged template or a decorator use. Include spec and test files; leave out the declaring file of the target. ${tell} ${USE_RULES} ${SCOPE_RULE} List each file once. ${FORM}`;
   }
 }
 
@@ -198,6 +203,8 @@ export interface EntryV2 {
   needles: string[];
   notes: Record<string, number | string>;
   useSite?: { file: string; line: number };
+  /** Impact only: the question text carries the class-field-initializer sentence. Not part of any key or answer. */
+  classFieldRule?: boolean;
 }
 
 const GRANULARITY: Readonly<Record<AnyCategory, 'file' | 'file+symbol' | 'file+line'>> = {
@@ -228,7 +235,7 @@ function keyOf(entry: EntryV2): Record<string, unknown> {
 
 function textOf(e: EntryV2): string {
   if (e.category !== 'abstain' && e.category !== 'definition') assertRoleDoesNotLeak(e.role, e.kind, e.file);
-  const text = questionTextV2({ category: e.category, name: e.name, kind: e.kind, file: e.file, role: e.role, otherDeclFiles: e.otherDeclFiles, otherKinds: e.otherKinds, ...(e.useSite === undefined ? {} : { useSite: e.useSite }) });
+  const text = questionTextV2({ category: e.category, name: e.name, kind: e.kind, file: e.file, role: e.role, otherDeclFiles: e.otherDeclFiles, otherKinds: e.otherKinds, ...(e.useSite === undefined ? {} : { useSite: e.useSite }), ...(e.classFieldRule === true ? { classFieldRule: true } : {}) });
   if (e.file !== '' && text.includes(e.file)) throw new Error(`question ${e.id} names the declaring file`);
   return text;
 }
