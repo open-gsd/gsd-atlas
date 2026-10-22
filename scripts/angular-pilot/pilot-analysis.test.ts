@@ -30,9 +30,9 @@ describe('mulberry32', () => {
     const xs = Array.from({ length: 1000 }, () => a());
     assert.deepEqual(xs, Array.from({ length: 1000 }, () => b()));
     assert.ok(xs.every((x) => x >= 0 && x < 1));
-    // the reference values of the published mulberry32 for seed 1
+    // first output of the standard mulberry32 for seed 1 (0.6270739405881613)
     const c = mulberry32(1);
-    assert.equal(Math.round(c() * 1e9), 627_073_850);
+    assert.equal(Math.round(c() * 1e9), 627_073_941);
   });
 });
 
