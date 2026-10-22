@@ -9,6 +9,8 @@ import {
   normalizePath,
   rescoreRows,
   scenarioSummary,
+  evidencePlan,
+  instanceCounts,
   verdictCounts,
   validateVerdicts,
   type Keys,
@@ -106,6 +108,30 @@ describe('verdicts', () => {
   it('treats a prefix-less path as covered by the verdict of its prefixed file', () => {
     const ne: NotExact[] = [{ jobId: 'j', questionId: 'p-1', missingFiles: [], extraFiles: ['a.ts'] }];
     assert.deepEqual(validateVerdicts(v, ne), []);
+  });
+});
+
+describe('path-format sessions', () => {
+  const v: VerdictEntry[] = [{ questionId: 'p-1', file: 'packages/b.ts', side: 'missing', verdict: 'c', reason: 'genuine omission', evidence: 'oracle' }];
+  // a session that answered 'a.ts' and 'x.ts' for the key a.ts, b.ts: both extras are the prefix-less key files, b is a real omission
+  const ne: NotExact[] = [{ jobId: 'pf', questionId: 'p-1', missingFiles: ['packages/a.ts', 'packages/b.ts'], extraFiles: ['a.ts'] }];
+  it('needs verdicts only for what is still missing after the prefix is restored', () => {
+    assert.deepEqual(validateVerdicts([], ne, ['pf']), ['p-1 missing packages/b.ts has no verdict']);
+    assert.deepEqual(validateVerdicts(v, ne, ['pf']), []);
+  });
+  it('counts the prefix instances as d and the residual by the file verdict', () => {
+    assert.deepEqual(instanceCounts(v, ne, ['pf']), { a: 0, b: 0, c: 1, d: 3 });
+  });
+});
+
+describe('evidencePlan', () => {
+  it('lists each question and normalised file once, sorted', () => {
+    const v: VerdictEntry[] = [
+      { questionId: 'p-2', file: 'packages/z.ts', side: 'extra', verdict: 'a', reason: '', evidence: '' },
+      { questionId: 'p-1', file: 'packages/b.ts', side: 'missing', verdict: 'c', reason: '', evidence: '' },
+      { questionId: 'p-1', file: 'packages/b.ts', side: 'missing', verdict: 'c', reason: '', evidence: '' },
+    ];
+    assert.deepEqual(evidencePlan(v), [{ questionId: 'p-1', file: 'packages/b.ts' }, { questionId: 'p-2', file: 'packages/z.ts' }]);
   });
 });
 
