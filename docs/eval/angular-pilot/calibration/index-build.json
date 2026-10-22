@@ -1,0 +1,9 @@
+{
+  "sha": "3cc1edf3210a9debb0be57a4e99e53a54505db32",
+  "preparedFileCount": 11629,
+  "manifestSha256": "66bafd82209f11ca3d00bd3bca21f8781f1a11781bd964a3ebfa7d5694e30257",
+  "build": { "wallSeconds": 37.11, "maxRssBytes": 5986254848, "files": 6924, "parsed": 6367, "linked": 557, "skipped": 2, "failed": 1, "failedCodes": { "source_too_large": 1 }, "diagnostics": ["emit_output_not_indexed (385 files)", "resolver_timeout"] },
+  "resolve": { "wallSeconds": 36.34, "maxRssBytes": 4600971264, "processed": 285497, "answered": 204793, "complete": true },
+  "status": { "files": 6925, "errorFiles": 1, "staleFiles": 1, "storeSizeBytes": 193380352 },
+  "filesByExtension": { ".ts": 6191, ".md": 1458, ".js": 908, ".bazel": 728, ".json": 566, ".html": 453, ".css": 321, ".mts": 180, ".scss": 146, ".png": 140, ".svg": 102, ".rs": 70 }
+}
