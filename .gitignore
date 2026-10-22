@@ -3,3 +3,7 @@ dist/
 coverage/
 *.tgz
 .tmp/
+.codegraph/
+.memdb/
+.planning/milestone.lock
+.planning/state.json
