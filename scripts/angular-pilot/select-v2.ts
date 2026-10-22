@@ -131,7 +131,7 @@ const LINE_RULE = 'Give the line that holds the declared name (for a function th
 /** Throws when a role description would hand over the declaring file, or does not read as one line of the form the rule asks for. */
 export function assertRoleDoesNotLeak(role: string, kind: CensusKind, file: string): void {
   const word = KIND_WORD[kind];
-  if (!role.startsWith(`the ${word} `)) throw new Error(`role must begin with "the ${word} ": ${role}`);
+  if (!new RegExp(`^the (\\w+ ){0,2}${word} `).test(role)) throw new Error(`role must begin with "the ${word} " (up to two adjectives allowed before the kind): ${role}`);
   if (role.split(/\s+/).filter((w) => w !== '').length > 30) throw new Error(`role is longer than 30 words: ${role}`);
   if (/[\\/]/.test(role)) throw new Error(`role contains a path separator: ${role}`);
   if (/\.(ts|d\.ts|js)\b/.test(role)) throw new Error(`role contains a file name: ${role}`);
