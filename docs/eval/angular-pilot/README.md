@@ -20,3 +20,10 @@ Pending:
 - the first model session of any kind: closed-book control, then the 12-session calibration batch, then the owner's confirmation of the cost cap;
 - an atlas build of the prepared checkout with the merged indexer ignore rules (28f3952) before any atlas session;
 - the analysis against the decision rules of the plan (section 6).
+
+## Wording changes after the second reader (2026-10-21)
+
+Two wording changes from `second-reader-audit.md`, made in `scripts/angular-pilot/select.ts` and carried into `pilot-questions.json`. No key changed; `pilot-answers.json` is byte-identical.
+
+- p-212 (impact depth two, `isFunction`): the question now says that a call inside a nested function, a callback or an unnamed arrow function counts for the nearest enclosing declaration that has a name, and that a function that is only passed as a value has no callers. Key unchanged (4 files). p-213 keeps its wording.
+- p-215 (definition, `CanDeactivate`): "Another class named `CanDeactivate`" became "Another declaration named `CanDeactivate` (an interface)". The line rule of the definition questions now also says that for an enum the `export enum` line is the declared-name line; this is shared text, so p-214 and p-215 both carry it. Keys unchanged.
