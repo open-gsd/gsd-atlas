@@ -1,0 +1,16 @@
+{
+  "untracked@packages/core/src/render3/reactivity/untracked.ts": "the function that is the public API wrapper which runs a callback without dependency tracking by delegating to the lower-level signals primitive",
+  "visitAll@packages/compiler/src/ml_parser/ast.ts": "the function that applies a visitor with an optional context argument to a list of markup parser nodes and collects the non-empty results",
+  "digest@packages/compiler/src/i18n/digest.ts": "the function that returns the id of an i18n message, computing it with the XLIFF 1 fingerprint algorithm when the message carries no custom id",
+  "stringify@packages/core/src/util/stringify.ts": "the function that turns a token such as a function, class, string or array into a readable name for messages",
+  "Text@packages/compiler/src/render3/r3_ast.ts": "the class that is a literal text node of the Ivy template syntax tree, holding a string value and a source span",
+  "RuntimeErrorCode@packages/platform-browser/src/errors.ts": "the enum that lists the numeric runtime error codes of the browser platform, such as hydration, event plugin and sanitization codes",
+  "Component@packages/compiler/src/render3/r3_ast.ts": "the class that is a selectorless component node of the Ivy template syntax tree, with a component name, tag name, inputs, outputs and child nodes",
+  "ChangeDetectionStrategy@packages/core/src/change_detection/constants.ts": "the enum that selects how a component is checked by change detection, with the members OnPush and Default",
+  "Validator@packages/benchpress/src/validator.ts": "the abstract class that calculates a valid sample out of the complete sample of benchmark measurements and describes its own properties",
+  "NgModuleRef@packages/core/src/linker/ng_module_factory.ts": "the abstract class that gives access to an NgModule instance, its injector and its destroy callbacks",
+  "recognize@packages/router/src/recognize.ts": "the asynchronous function that matches a URL tree against the route configuration and resolves to the router state snapshot tree and the URL after redirects",
+  "translate@packages/localize/src/utils/src/translations.ts": "the function that translates the parts of a `$localize` tagged message using a record of parsed translation entries passed as its first argument, and throws if none matches",
+  "isArray@packages/forms/signals/src/util/type_guards.ts": "the function that is a type guard narrowing an unknown value to an array or readonly array, used by the signal forms code",
+  "registerLocaleData@packages/core/src/i18n/locale_data_api.ts": "the function that stores the given locale data in the internal registry under its lower-cased locale id, reading the id from the data when none is passed"
+}
