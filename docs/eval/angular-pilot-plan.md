@@ -186,3 +186,13 @@ Oracle effort: `corpus-candidates.md` guessed 1 to 3 days. With the prototype do
 6. Strip list for agent-config files (section 4), including the root `skills/` directory.
 7. Whether to spend the closed-book control (about 0.5 USD) and the 12-session calibration batch before the pilot (recommended: yes).
 8. Whether a later registration would widen beyond `packages/` or add methods to reach 50 callers; that is a design decision for after the pilot.
+
+## 10. Decisions taken (2026-10-21, by the owner)
+
+1. Decision rules adopted as proposed in section 6: worth registering an angular run if R <= 0.85, correctness >= grep minus 0.10 and atlas adoption >= 50%; reconsider the token gate if R >= 1.10 for both atlas conditions; premise holds only if the grep mean is >= 68k billable tokens (below 55k it failed); everything else inconclusive.
+2. Spec/test files are in scope for the questions.
+3. Three conditions (G, A-ts, A-reg), 96 sessions, on the installed Claude Code 2.1.305; the pilot's numbers are never compared with the registered run's absolute numbers.
+4. The 12-session calibration batch and the closed-book control are both run before the pilot.
+5. Not chosen explicitly: the notional cap. The Max-allowance stop at 0.60 (five-hour and seven-day), overage off, no API key, and the sequential/nice rules stay as standing safeguards (as in the probes); the 30 USD cap is a ceiling the owner confirms before the full pilot runs, after the calibration batch has measured the real grep cost.
+6. Not decided yet, taken at the plan's recommendation until changed: the strip list of agent-config files (section 4); widening beyond `packages/` or adding methods is a design decision for after the pilot (section 9, item 8).
+7. Ordering: the pilot's atlas arm runs only after the indexer ignore-rules quick task (261021-re7) has merged, so that the file set indexed for angular is the one a user would get; no model session is run before then.
