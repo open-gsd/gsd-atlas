@@ -83,22 +83,23 @@ describe('pickQuestionsV2', () => {
       row('c', 'p/c.ts', { grepFiles: 35, otherDeclFiles: 1, fileLastChanged: '2020-01-01' }),
       row('d', 'p/d.ts', { grepFiles: 35, otherDeclFiles: 1, fileLastChanged: '2020-01-01' }),
     ];
-    const quota = { callers: 3, references: 0, heritage: 0, impact: 0, definition: 0 };
+    const quota = { callers: 4, references: 0, heritage: 0, impact: 0, definition: 0 };
     const { picked, skipped } = pickQuestionsV2(
       rows,
       (_c, r, tier) => (r.name === 'b' && tier === 1 ? { ok: false, reason: 'key size 3 outside 8..60' } : ok(tier)),
       { seed: SEED_V2, quota, exclusions: [] },
     );
     const byName = new Map(picked.map((p) => [p.row.name, p.tier]));
-    assert.equal(picked.length, 3);
+    assert.equal(picked.length, 4);
     assert.equal(byName.get('a'), 1);
-    assert.ok(byName.has('c') || byName.has('d'));
+    assert.equal(byName.get('c'), 2);
+    assert.equal(byName.get('d'), 2);
     assert.equal(byName.get('b'), 2);
     assert.ok(skipped.some((s) => s.name === 'b' && s.tier === 1));
   });
 
   it('takes one question per name across categories and honours audit exclusions', () => {
-    const rows = [row('a', 'p/a.ts'), row('b', 'p/b.ts'), row('c', 'p/c.ts')];
+    const rows = [row('a', 'p/a.ts'), row('b', 'p/b.ts'), row('c', 'p/c.ts'), row('d', 'p/d.ts')];
     const quota = { callers: 1, references: 1, heritage: 0, impact: 1, definition: 0 };
     const { picked, skipped } = pickQuestionsV2(rows, () => ok(1), {
       seed: SEED_V2,
