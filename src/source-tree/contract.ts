@@ -9,7 +9,14 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { describe, it } from 'node:test';
+import type { IndexDefaultExclude } from './default-excludes.ts';
 import type { SourceTree, SourceTreeWorld } from './types.ts';
+
+// Loaded dynamically so that, while the feature is missing, the cases that need the constant fail on their own
+// instead of taking the whole shared suite down with an import error (the red phase of quick task 261021-re7).
+const defaultsModule = await import('./default-excludes.ts').catch(() => null);
+const DEFAULT_ENTRIES: readonly IndexDefaultExclude[] = defaultsModule?.INDEX_DEFAULT_EXCLUDES ?? [];
+const ATLASIGNORE_CAP: number = defaultsModule?.ATLASIGNORE_MAX_BYTES ?? 64 * 1024;
 
 export interface SourceTreeHarness {
   readonly tree: SourceTree;
@@ -160,6 +167,216 @@ function expectedFiles(world: SourceTreeWorld): Array<[string, string]> {
   }
   return [...out].map(([rel, content]): [string, string] => [rel, blobId(content)]).sort(byPath);
 }
+
+// ---------------------------------------------------------------------------------------------------------------
+// Index exclusions (quick task 261021-re7): the built-in defaults and the repo-level `.atlasignore`.
+// ---------------------------------------------------------------------------------------------------------------
+
+/** Paths built from one default entry: what it removes and what it must leave alone. */
+export interface DefaultSamples {
+  readonly entry: IndexDefaultExclude;
+  /** Untracked paths the entry removes. */
+  readonly untracked: readonly string[];
+  /** Tracked paths under the entry: removed only when `entry.appliesToTracked`. */
+  readonly tracked: readonly string[];
+  /** Untracked paths the entry must keep (a look-alike name, a file named like the directory, a nested anchored path). */
+  readonly keptUntracked: readonly string[];
+  /** Tracked paths the entry must keep. */
+  readonly keptTracked: readonly string[];
+}
+
+/**
+ * Sample paths for one default entry, derived from its pattern only: `name/` (any depth, directories only), `a/b/`
+ * (anchored at the root), `*.ext/` (a directory glob) and `*.ext` (a file glob).
+ */
+export function defaultSamples(entry: IndexDefaultExclude): DefaultSamples {
+  const pattern = entry.pattern;
+  if (pattern.endsWith('/')) {
+    const name = pattern.slice(0, -1);
+    const concrete = name.startsWith('*') ? `sample${name.slice(1)}` : name;
+    const anchored = concrete.includes('/');
+    return {
+      entry,
+      untracked: anchored ? [`${concrete}/u.ts`] : [`${concrete}/u.ts`, `pkg/${concrete}/u.ts`],
+      tracked: anchored ? [`${concrete}/t.ts`] : [`${concrete}/t.ts`, `pkg/${concrete}/t.ts`],
+      keptUntracked: anchored ? [`pkg/${concrete}/u.ts`] : [`${concrete}-not/u.ts`, `plain/${concrete}`],
+      keptTracked: anchored ? [`pkg/${concrete}/t.ts`] : [`${concrete}-not/t.ts`],
+    };
+  }
+  const suffix = pattern.slice(1);
+  return {
+    entry,
+    untracked: [`u-sample${suffix}`, `pkg/u-sample${suffix}`],
+    tracked: [`t-sample${suffix}`, `pkg/t-sample${suffix}`],
+    keptUntracked: [`u-sample${suffix}.keep`],
+    keptTracked: [`t-sample${suffix}.keep`],
+  };
+}
+
+/** Every default as data: tracked and untracked samples of every entry, controls, and an untracked control file. */
+function defaultsWorld(extraCommitted: Readonly<Record<string, string>> = {}): SourceTreeWorld {
+  const committed: Record<string, string> = { 'keep.ts': 'export const keep = 1;\n', ...extraCommitted };
+  const working: Record<string, string | null> = { 'docs/keep.md': '# kept\n' };
+  for (const entry of DEFAULT_ENTRIES) {
+    const s = defaultSamples(entry);
+    for (const rel of [...s.tracked, ...s.keptTracked]) committed[rel] = `tracked ${rel}\n`;
+    for (const rel of [...s.untracked, ...s.keptUntracked]) working[rel] = `untracked ${rel}\n`;
+  }
+  return { committed, working, ignored: [] };
+}
+
+/** What a snapshot of {@link defaultsWorld} must hold, from the entries alone (independent of any matcher). */
+function defaultsExpectation(): { readonly visible: string[]; readonly removedUntracked: string[]; readonly removedTracked: string[] } {
+  const visible = ['keep.ts', 'docs/keep.md'];
+  const removedUntracked: string[] = [];
+  const removedTracked: string[] = [];
+  for (const entry of DEFAULT_ENTRIES) {
+    const s = defaultSamples(entry);
+    visible.push(...s.keptTracked, ...s.keptUntracked);
+    removedUntracked.push(...s.untracked);
+    if (entry.appliesToTracked) removedTracked.push(...s.tracked);
+    else visible.push(...s.tracked);
+  }
+  return { visible: visible.sort(), removedUntracked, removedTracked };
+}
+
+const NOTE_CODES = ['index_excluded_by_defaults', 'index_excluded_by_atlasignore', 'atlasignore_unusable'];
+const notesOf = (diagnostics: ReadonlyArray<{ code: string; subject?: string; severity: string; message: string }>) =>
+  diagnostics.filter((d) => NOTE_CODES.includes(d.code));
+
+/** `first` followed by a comment line so that the whole text is exactly `bytes` ASCII bytes. */
+function paddedRules(first: string, bytes: number): string {
+  const head = `${first}\n`;
+  return `${head}${'#'.repeat(bytes - head.length - 1)}\n`;
+}
+
+/**
+ * A world for the `.atlasignore` cases within the subset both implementations evaluate: a root file with a directory rule,
+ * a glob, a negation, an anchored rule and a negated default; a nested file with a name rule, an anchored rule and a negation
+ * that overrides the root; tracked and untracked files on both sides of every rule; a gitignored file and directory that a
+ * negation must not re-include; a default directory; and a tracked directory the untracked-only `dist/` entry leaves alone.
+ */
+const ATLAS_WORLD: SourceTreeWorld = {
+  committed: {
+    '.atlasignore': [
+      '# generated documentation and snapshots',
+      'docs/generated/',
+      '*.snap',
+      '!keep.snap',
+      '/root-only.txt',
+      'scratch.tmp',
+      '!node_modules/',
+      '!dist/',
+      '!secret.log',
+      '!ignored-dir/',
+      '',
+    ].join('\n'),
+    'sub/.atlasignore': 'local.txt\n/anchored-in-sub.txt\n!a.snap\n',
+    'src/a.ts': 'export const a = 1;\n',
+    'docs/guide.md': '# guide\n',
+    'docs/generated/api.md': '# generated\n',
+    'a.snap': 'snapshot\n',
+    'keep.snap': 'kept snapshot\n',
+    'root-only.txt': 'root only\n',
+    'sub/root-only.txt': 'not at the root\n',
+    'scratch.tmp': 'scratch\n',
+    'sub/local.txt': 'local\n',
+    'sub/deeper/local.txt': 'local deeper\n',
+    'sub/anchored-in-sub.txt': 'anchored\n',
+    'sub/other/anchored-in-sub.txt': 'not anchored here\n',
+    'sub/a.snap': 're-included by the nested negation\n',
+    'dist/built.js': 'tracked output\n',
+  },
+  working: {
+    'docs/generated/new.md': 'untracked generated\n',
+    'new.snap': 'untracked snapshot\n',
+    'fresh.ts': 'export const fresh = 1;\n',
+    'lib/root-only.txt': 'not at the root\n',
+    'tmp/scratch.tmp': 'untracked scratch\n',
+    'sub/deeper/new/local.txt': 'untracked local\n',
+    'sub/new.snap': 'the nested negation names a.snap only\n',
+    'node_modules/pkg/i.js': 'installed\n',
+    'secret.log': 'gitignored\n',
+    'ignored-dir/x.ts': 'gitignored directory\n',
+  },
+  ignored: ['secret.log', 'ignored-dir/'],
+};
+
+/** The snapshot keys of {@link ATLAS_WORLD}, written out by hand. */
+const ATLAS_VISIBLE = [
+  '.atlasignore',
+  'dist/built.js',
+  'docs/guide.md',
+  'fresh.ts',
+  'keep.snap',
+  'lib/root-only.txt',
+  'src/a.ts',
+  'sub/.atlasignore',
+  'sub/a.snap',
+  'sub/other/anchored-in-sub.txt',
+  'sub/root-only.txt',
+];
+const ATLAS_BY_ATLASIGNORE_TRACKED = [
+  'a.snap',
+  'docs/generated/api.md',
+  'root-only.txt',
+  'scratch.tmp',
+  'sub/anchored-in-sub.txt',
+  'sub/deeper/local.txt',
+  'sub/local.txt',
+];
+const ATLAS_BY_ATLASIGNORE_UNTRACKED = [
+  'docs/generated/new.md',
+  'new.snap',
+  'sub/deeper/new/local.txt',
+  'sub/new.snap',
+  'tmp/scratch.tmp',
+];
+const ATLAS_BY_DEFAULTS = ['node_modules/pkg/i.js'];
+const ATLAS_NEVER = ['secret.log', 'ignored-dir/x.ts'];
+
+/** A repository whose `.atlasignore` cannot be used, each in its own way; `hidden.txt` is what the rules would hide. */
+const UNUSABLE_FILES = { 'visible.ts': 'export const v = 1;\n', 'hidden.txt': 'hidden\n' };
+const UNUSABLE_WORLDS: ReadonlyArray<readonly [string, SourceTreeWorld]> = [
+  [
+    'larger than 64 KiB',
+    { committed: { ...UNUSABLE_FILES, '.atlasignore': paddedRules('hidden.txt', ATLASIGNORE_CAP + 1) }, working: { 'untracked.txt': 'u\n' }, ignored: [] },
+  ],
+  [
+    'holding a NUL byte',
+    { committed: { ...UNUSABLE_FILES, '.atlasignore': 'hidden.txt\n\0\n' }, working: { 'untracked.txt': 'u\n' }, ignored: [] },
+  ],
+  [
+    'two files that together exceed 64 KiB',
+    {
+      committed: {
+        ...UNUSABLE_FILES,
+        '.atlasignore': paddedRules('hidden.txt', 40000),
+        'sub/.atlasignore': paddedRules('sub-hidden.txt', 40000),
+        'sub/sub-hidden.txt': 'hidden in sub\n',
+      },
+      working: { 'untracked.txt': 'u\n' },
+      ignored: [],
+    },
+  ],
+  [
+    'a directory named .atlasignore',
+    {
+      committed: { ...UNUSABLE_FILES, 'sub/.atlasignore': 'hidden.txt\n', 'sub/hidden.txt': 'hidden in sub\n' },
+      working: { '.atlasignore/inner.txt': 'inside the directory\n', 'untracked.txt': 'u\n' },
+      ignored: [],
+    },
+  ],
+];
+
+/** A repository where `.atlasignore` is a tracked link (a mode, so the real harness needs no link privileges). */
+const LINK_WORLD: SourceTreeWorld = {
+  committed: { 'a.txt': 'a\n', '.atlasignore': 'hidden.txt\n', 'hidden.txt': 'hidden\n' },
+  working: {},
+  ignored: [],
+  commits: [{ 'a.txt': 'a\n' }, { 'a.txt': 'a\n', '.atlasignore': 'hidden.txt\n', 'hidden.txt': 'hidden\n' }],
+  modes: { '.atlasignore': 'symlink' },
+};
 
 /** The attribute map of `paths` as the tree answers it (an entry for each regular file it asked about). */
 async function attributesFor(tree: SourceTree, worktree: string, paths: readonly string[]): Promise<Map<string, { generated: boolean; vendored: boolean }>> {
@@ -661,6 +878,211 @@ export function defineSourceTreeContract(label: string, make: MakeSourceTree): v
             await assert.rejects(() => tree.unignoredPaths(worktree, ['a.txt', bad]), { code: 'invalid_argument' }, JSON.stringify(bad));
           }
         }),
+      );
+    });
+
+    describe('built-in default exclusions (quick task 261021-re7, D-01)', () => {
+      it('the constant is present and non-empty', () => {
+        assert.ok(DEFAULT_ENTRIES.length > 0, 'src/source-tree/default-excludes.ts must export INDEX_DEFAULT_EXCLUDES');
+      });
+
+      it(
+        'snapshot leaves out every untracked sample at any depth and the tracked samples of the applies-to-tracked entries, and keeps all controls',
+        withTree(defaultsWorld(), async ({ tree, worktree }) => {
+          assert.ok(DEFAULT_ENTRIES.length > 0);
+          const expected = defaultsExpectation();
+          const { files } = await tree.snapshot(worktree);
+          assert.deepEqual([...files.keys()].sort(), expected.visible);
+          for (const rel of [...expected.removedUntracked, ...expected.removedTracked]) assert.ok(!files.has(rel), rel);
+          // Hashes are the working-tree content's blob ids.
+          assert.equal(files.get('keep.ts'), blobId('export const keep = 1;\n'));
+        }),
+      );
+
+      it(
+        'unignoredPaths gives the same verdict as the snapshot on every sample and control',
+        withTree(defaultsWorld(), async ({ tree, worktree }) => {
+          assert.ok(DEFAULT_ENTRIES.length > 0);
+          const expected = defaultsExpectation();
+          const asked = [...expected.visible, ...expected.removedUntracked, ...expected.removedTracked];
+          const listed = await tree.unignoredPaths(worktree, asked);
+          assert.deepEqual([...listed].sort(), expected.visible);
+        }),
+      );
+
+      it(
+        'readText still reads an excluded path: the exclusions decide which files are indexed, not what can be read',
+        withTree(defaultsWorld(), async ({ tree, worktree }) => {
+          const entry = DEFAULT_ENTRIES[0];
+          assert.ok(entry !== undefined);
+          const sample = defaultSamples(entry).untracked[0] as string;
+          const read = await tree.readText(worktree, sample);
+          assert.deepEqual(read, { kind: 'ok', text: `untracked ${sample}\n` });
+        }),
+      );
+
+      it(
+        'snapshot counts the removed files in excluded.byDefaults and in one pathless info note, and no .atlasignore note',
+        withTree(defaultsWorld(), async ({ tree, worktree }) => {
+          assert.ok(DEFAULT_ENTRIES.length > 0);
+          const expected = defaultsExpectation();
+          const removed = expected.removedUntracked.length + expected.removedTracked.length;
+          const result = await tree.snapshot(worktree);
+          assert.deepEqual(result.excluded, { byDefaults: removed, byAtlasignore: 0 });
+          const notes = notesOf(result.diagnostics);
+          assert.equal(notes.length, 1);
+          const [note] = notes;
+          assert.equal(note?.code, 'index_excluded_by_defaults');
+          assert.equal(note?.severity, 'info');
+          assert.equal(note?.subject, undefined);
+          assert.match(note?.message ?? '', new RegExp(`\\b${String(removed)} files\\b`));
+          for (const rel of Object.keys({ ...defaultsWorld().committed, ...defaultsWorld().working })) {
+            assert.ok(!(note?.message ?? '').includes(rel), `the note must not name ${rel}`);
+          }
+        }),
+      );
+
+      it(
+        'a repository with nothing to exclude reports zero counts and no exclusion note',
+        withTree(CONTRACT_WORLD, async ({ tree, worktree }) => {
+          const result = await tree.snapshot(worktree);
+          assert.deepEqual(result.excluded, { byDefaults: 0, byAtlasignore: 0 });
+          assert.deepEqual(notesOf(result.diagnostics), []);
+        }),
+      );
+
+      it(
+        'a negation of every default in .atlasignore re-includes nothing, for untracked and tracked paths',
+        withTree(
+          defaultsWorld({ '.atlasignore': `${DEFAULT_ENTRIES.map((e) => `!${e.pattern}`).join('\n')}\n` }),
+          async ({ tree, worktree }) => {
+            assert.ok(DEFAULT_ENTRIES.length > 0);
+            const expected = defaultsExpectation();
+            const result = await tree.snapshot(worktree);
+            assert.deepEqual([...result.files.keys()].sort(), [...expected.visible, '.atlasignore'].sort());
+            assert.equal(result.excluded.byAtlasignore, 0);
+            assert.equal(result.excluded.byDefaults, expected.removedUntracked.length + expected.removedTracked.length);
+            assert.deepEqual(notesOf(result.diagnostics).map((d) => d.code), ['index_excluded_by_defaults']);
+            const listed = await tree.unignoredPaths(worktree, [...expected.visible, ...expected.removedUntracked, ...expected.removedTracked]);
+            assert.deepEqual([...listed].sort(), expected.visible);
+          },
+        ),
+      );
+    });
+
+    describe('.atlasignore (quick task 261021-re7, D-02)', () => {
+      it(
+        'a root file and a nested file exclude tracked and untracked paths; a nested negation overrides the root; a negation re-includes within the file',
+        withTree(ATLAS_WORLD, async ({ tree, worktree }) => {
+          const { files } = await tree.snapshot(worktree);
+          assert.deepEqual([...files.keys()].sort(), ATLAS_VISIBLE);
+          for (const rel of [...ATLAS_BY_ATLASIGNORE_TRACKED, ...ATLAS_BY_ATLASIGNORE_UNTRACKED, ...ATLAS_BY_DEFAULTS, ...ATLAS_NEVER]) {
+            assert.ok(!files.has(rel), rel);
+          }
+        }),
+      );
+
+      it(
+        'counts the removed files by cause: .atlasignore and defaults, in two pathless info notes with fixed wording',
+        withTree(ATLAS_WORLD, async ({ tree, worktree }) => {
+          const result = await tree.snapshot(worktree);
+          const byAtlasignore = ATLAS_BY_ATLASIGNORE_TRACKED.length + ATLAS_BY_ATLASIGNORE_UNTRACKED.length;
+          assert.deepEqual(result.excluded, { byDefaults: ATLAS_BY_DEFAULTS.length, byAtlasignore });
+          const notes = notesOf(result.diagnostics);
+          assert.deepEqual(notes.map((d) => d.code), ['index_excluded_by_defaults', 'index_excluded_by_atlasignore']);
+          for (const note of notes) {
+            assert.equal(note.severity, 'info');
+            assert.equal(note.subject, undefined);
+            for (const rel of Object.keys({ ...ATLAS_WORLD.committed, ...ATLAS_WORLD.working })) {
+              if (rel === '.atlasignore') continue;
+              assert.ok(!note.message.includes(rel), `the note must not name ${rel}`);
+            }
+          }
+          assert.match(notes[0]?.message ?? '', /\b1 file\b/);
+          assert.match(notes[1]?.message ?? '', new RegExp(`\\b${String(byAtlasignore)} files\\b`));
+        }),
+      );
+
+      it(
+        'unignoredPaths gives the same verdicts as the snapshot',
+        withTree(ATLAS_WORLD, async ({ tree, worktree }) => {
+          const asked = [
+            ...ATLAS_VISIBLE,
+            ...ATLAS_BY_ATLASIGNORE_TRACKED,
+            ...ATLAS_BY_ATLASIGNORE_UNTRACKED,
+            ...ATLAS_BY_DEFAULTS,
+            ...ATLAS_NEVER,
+          ];
+          const listed = await tree.unignoredPaths(worktree, asked);
+          assert.deepEqual([...listed].sort(), ATLAS_VISIBLE);
+        }),
+      );
+
+      it(
+        '.atlasignore never adds a path: a negation does not re-include a gitignored file or directory, nor a default',
+        withTree(ATLAS_WORLD, async ({ tree, worktree }) => {
+          const { files } = await tree.snapshot(worktree);
+          for (const rel of [...ATLAS_NEVER, ...ATLAS_BY_DEFAULTS]) assert.ok(!files.has(rel), rel);
+          const git = new Set([...Object.keys(ATLAS_WORLD.committed), ...Object.keys(ATLAS_WORLD.working)]);
+          for (const rel of files.keys()) assert.ok(git.has(rel), `${rel} is not in git's own list`);
+          // The tracked file under the untracked-only `dist/` default stays: a negation or not, that entry never touches tracked files.
+          const dist = DEFAULT_ENTRIES.find((e) => e.pattern === 'dist/');
+          assert.equal(dist?.appliesToTracked, false);
+          assert.ok(files.has('dist/built.js'));
+        }),
+      );
+
+      it(
+        'a repository without any .atlasignore reports no .atlasignore note',
+        withTree(CONTRACT_WORLD, async ({ tree, worktree }) => {
+          const { diagnostics, excluded } = await tree.snapshot(worktree);
+          assert.equal(excluded.byAtlasignore, 0);
+          assert.deepEqual(diagnostics.filter((d) => d.code === 'atlasignore_unusable'), []);
+        }),
+      );
+
+      for (const [label, world] of UNUSABLE_WORLDS) {
+        it(
+          `a .atlasignore ${label} is not used: no rule applies, one fixed warning, the snapshot still succeeds`,
+          withTree(world, async ({ tree, worktree }) => {
+            const result = await tree.snapshot(worktree);
+            const expected = [...new Set([...Object.keys(world.committed), ...Object.keys(world.working)])].sort();
+            assert.deepEqual([...result.files.keys()].sort(), expected, 'every file of git\'s own list is indexed');
+            const warnings = result.diagnostics.filter((d) => d.code === 'atlasignore_unusable');
+            assert.equal(warnings.length, 1, 'exactly one warning');
+            assert.equal(warnings[0]?.severity, 'warning');
+            assert.equal(warnings[0]?.subject, undefined);
+            assert.deepEqual(result.excluded, { byDefaults: 0, byAtlasignore: 0 });
+            assert.deepEqual(result.diagnostics.filter((d) => d.code === 'index_excluded_by_atlasignore'), []);
+            const listed = await tree.unignoredPaths(worktree, ['visible.ts', 'hidden.txt', 'untracked.txt']);
+            assert.deepEqual([...listed].sort(), ['hidden.txt', 'untracked.txt', 'visible.ts']);
+          }),
+        );
+      }
+
+      it(
+        'a tracked .atlasignore that is a link (by mode) is not used: one warning, nothing hidden',
+        withTree(LINK_WORLD, async ({ tree, worktree }) => {
+          const result = await tree.snapshot(worktree);
+          assert.ok(result.files.has('hidden.txt'));
+          assert.ok(result.files.has('a.txt'));
+          assert.equal(result.diagnostics.filter((d) => d.code === 'atlasignore_unusable').length, 1);
+          assert.deepEqual(result.excluded, { byDefaults: 0, byAtlasignore: 0 });
+        }),
+      );
+
+      it(
+        'a file of exactly 64 KiB is still used',
+        withTree(
+          { committed: { ...UNUSABLE_FILES, '.atlasignore': paddedRules('hidden.txt', ATLASIGNORE_CAP) }, working: { 'untracked.txt': 'u\n' }, ignored: [] },
+          async ({ tree, worktree }) => {
+            const result = await tree.snapshot(worktree);
+            assert.ok(!result.files.has('hidden.txt'));
+            assert.ok(result.files.has('visible.ts'));
+            assert.deepEqual(result.diagnostics.filter((d) => d.code === 'atlasignore_unusable'), []);
+            assert.deepEqual(result.excluded, { byDefaults: 0, byAtlasignore: 1 });
+          },
+        ),
       );
     });
 

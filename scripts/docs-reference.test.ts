@@ -11,6 +11,7 @@ import type { Command } from '../src/cli/tool-commands.ts';
 import { DEGRADED_CODES } from '../src/facts/degraded.ts';
 import { RATING_FEATURES, RATING_VALUES } from '../src/host-client/index.ts';
 import { TOOL_NAMES } from '../src/query/tools.ts';
+import { INDEX_DEFAULT_EXCLUDES, SOURCE_TREE_CODES } from '../src/source-tree/index.ts';
 import { checkRelativeLinks } from './adr.ts';
 
 // The user documentation under docs/tutorials, docs/how-to, docs/reference and docs/explanation, and the README, are
@@ -776,6 +777,22 @@ test('release pages: the channels in the reference are the ones the checker and 
   if (!/^ {4}environment:\s*npm-publish\s*$/m.test(workflow)) problems.push('release.yml no longer uses the npm-publish environment');
   for (const file of ['docs/reference/release-channels.md', 'docs/how-to/release-an-alpha.md']) {
     if (!read(file).includes('npm-publish')) problems.push(`${file}: does not name the npm-publish environment`);
+  }
+  assert.deepEqual(problems, []);
+});
+
+test('the index exclusions reference lists every built-in pattern and the three codes', () => {
+  const page = read('docs/reference/index-exclusions.md');
+  const problems: string[] = [];
+  for (const entry of INDEX_DEFAULT_EXCLUDES) {
+    const row = `| \`${entry.pattern}\` | ${entry.ecosystem} | ${entry.appliesToTracked ? 'tracked and untracked files' : 'untracked files only'} | ${entry.rationale} |`;
+    if (!page.includes(row)) problems.push(`docs/reference/index-exclusions.md has no row for ${entry.pattern} with its scope and rationale`);
+  }
+  const codes = [SOURCE_TREE_CODES.excludedByDefaults, SOURCE_TREE_CODES.excludedByAtlasignore, SOURCE_TREE_CODES.atlasignoreUnusable];
+  const cli = read('docs/reference/cli.md');
+  for (const code of codes) {
+    if (!new RegExp(`^\\|\\s*\`${code}\`\\s*\\|`, 'm').test(page)) problems.push(`docs/reference/index-exclusions.md has no table row for ${code}`);
+    if (!new RegExp(`^\\|\\s*\`${code}\`\\s*\\|`, 'm').test(cli)) problems.push(`the diagnostic-code table of docs/reference/cli.md has no row for ${code}`);
   }
   assert.deepEqual(problems, []);
 });

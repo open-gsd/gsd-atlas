@@ -53,10 +53,18 @@ export function leaseHeldEnvelope(holder: LeaseHolderName | undefined): Envelope
 
 /**
  * The codes of the notes of `BuildResult.skipped` that may reach the envelope of a build (amendment of 2026-10-18, SEC-01):
- * the two aggregated, pathless notes the Indexer makes. Anything else the build collected (a source-tree diagnostic names a path
+ * the two aggregated, pathless notes the Indexer makes, and (quick task 261021-re7, amendments of 2026-10-21) the three pathless
+ * notes about the index exclusions: how many files the built-in defaults and `.atlasignore` left out, and that a `.atlasignore`
+ * was not used. Anything else the build collected (a source-tree diagnostic names a path
  * in its subject or its text) is counted in `skipped` and goes no further.
  */
-export const BUILD_NOTE_CODES: readonly string[] = ['emit_output_not_indexed', 'citation_comment_too_long'];
+export const BUILD_NOTE_CODES: readonly string[] = [
+  'emit_output_not_indexed',
+  'citation_comment_too_long',
+  'index_excluded_by_defaults',
+  'index_excluded_by_atlasignore',
+  'atlasignore_unusable',
+];
 
 /** The Tenant's own note when the eager pass after a build ran out of its bound. Fixed words: nothing from the repository. */
 const RESOLVER_TIMEOUT_NOTE =

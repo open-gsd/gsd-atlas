@@ -26,6 +26,12 @@ export const SOURCE_TREE_CODES = {
   sourceTooLarge: 'source_too_large',
   /** History (STO-09): the commit, or an object it needs, is not in this repository (an unknown revision, a shallow clone). */
   commitNotFound: 'commit_not_found',
+  /** Index exclusions (quick task 261021-re7): files left out by the built-in tooling and build-output defaults. One pathless info note with a count. */
+  excludedByDefaults: 'index_excluded_by_defaults',
+  /** Index exclusions: files left out by the repository's `.atlasignore`. One pathless info note with a count. */
+  excludedByAtlasignore: 'index_excluded_by_atlasignore',
+  /** Index exclusions: a `.atlasignore` was not used (too large in total, not valid text, or not a regular file). One pathless warning. */
+  atlasignoreUnusable: 'atlasignore_unusable',
 } as const;
 
 /** Thrown for failures that make a result untrustworthy (a failed git command, a hash batch that does not line up). */
@@ -40,6 +46,17 @@ export class SourceTreeError extends Error {
   }
 }
 
+/**
+ * How many files the index exclusions removed from git's own list (quick task 261021-re7). A file both rules would remove
+ * counts as removed by the defaults. Counts only: no path is ever kept.
+ */
+export interface ExclusionCounts {
+  /** Files (tracked or untracked) left out by the built-in tooling and build-output defaults. */
+  readonly byDefaults: number;
+  /** Files left out by the repository's `.atlasignore` and by nothing else. */
+  readonly byAtlasignore: number;
+}
+
 /** What a snapshot found. */
 export interface SnapshotResult {
   /**
@@ -48,8 +65,14 @@ export interface SnapshotResult {
    * conversion, so it equals the blob id git would store for that file.
    */
   readonly files: ReadonlyMap<string, string>;
-  /** One entry per path that was skipped, with a {@link SOURCE_TREE_CODES} code and the path as subject. */
+  /**
+   * One entry per path that was skipped, with a {@link SOURCE_TREE_CODES} code and the path as subject; then, without a
+   * subject, at most the three exclusion notes (`index_excluded_by_defaults`, `index_excluded_by_atlasignore` when their
+   * count is above zero, `atlasignore_unusable` when a `.atlasignore` could not be used), in that order.
+   */
   readonly diagnostics: Diagnostic[];
+  /** The files the built-in defaults and `.atlasignore` left out of `files`. */
+  readonly excluded: ExclusionCounts;
 }
 
 /** What {@link SourceTree.hashPaths} found: the same shape as a snapshot, for only the paths asked for. */
@@ -189,7 +212,13 @@ export interface SourceTreeIdentity {
  * {@link SourceTreeError} with code `invalid_argument`.
  */
 export interface SourceTree {
-  /** Hashes the tracked and untracked-not-ignored files of `worktree` with one batched git call. */
+  /**
+   * Hashes the files of `worktree` that git lists (tracked, plus untracked and not ignored), less what the index
+   * exclusions remove (quick task 261021-re7): the built-in tooling and build-output defaults (`INDEX_DEFAULT_EXCLUDES`,
+   * untracked files always, tracked files only for the entries measured safe) and the repository's `.atlasignore`
+   * (evaluated by git apart from `.gitignore` and intersected with it, so it can only shrink the list). The result
+   * counts what was removed by each cause (`excluded`) and says so in pathless notes. One batched hash call.
+   */
   snapshot(worktree: string): Promise<SnapshotResult>;
   /**
    * Hashes only `paths` (repo-relative POSIX) of `worktree`: duplicates are hashed once, the clean filters and
@@ -202,14 +231,17 @@ export interface SourceTree {
   hashPaths(worktree: string, paths: readonly string[]): Promise<HashPathsResult>;
   /**
    * The subset of `paths` (repo-relative POSIX), by exact name, that git lists as tracked or as untracked and not
-   * ignored: the one thing the Indexer needs to know before it hashes a watcher path (T-02-14). The real tree runs
-   * ONE `git ls-files -z --cached --others --exclude-standard` with no pathspec and nothing on stdin, and filters
-   * the listing in process by string equality, so no name a repository or a watcher supplied ever reaches git (a
-   * name can never be read as an option, a pattern or a magic pathspec). It says nothing about whether the file
-   * exists or what kind it is: a gitlink is named by the listing, and so is a nested repository (as `dir/`, which
-   * no file is named), so the caller tests that the path is a regular file. At most one git run, none for an empty
-   * list. A path that is not repo-relative (absolute, a `..` segment, NUL, empty) rejects with `invalid_argument`
-   * before git starts. A failed listing rejects with `git_failed`.
+   * ignored, less what the index exclusions remove: the one thing the Indexer needs to know before it hashes a watcher
+   * path (T-02-14), with the same verdicts as {@link SourceTree.snapshot}. The real tree runs two concurrent `git
+   * ls-files` listings (git's own list with the built-in defaults as constant `--exclude` values, and the tracked paths
+   * the tracked defaults remove) and, only when a usable `.atlasignore` is listed, two more that apply it. None has a
+   * pathspec or anything on stdin, and the listings are filtered in process by string equality, so no name a repository
+   * or a watcher supplied ever reaches git (a name can never be read as an option, a pattern or a magic pathspec). It
+   * says nothing about whether the file exists or what kind it is: a gitlink is named by the listing, and so is a
+   * nested repository (as `dir/`, which no file is named), so the caller tests that the path is a regular file. No git
+   * at all for an empty list. A path that is not repo-relative (absolute, a `..` segment, NUL, empty) rejects with
+   * `invalid_argument` before git starts. A failed first-stage listing rejects with `git_failed`; a failed second
+   * stage falls back to the first stage's answer.
    */
   unignoredPaths(worktree: string, paths: readonly string[]): Promise<ReadonlySet<string>>;
   /**

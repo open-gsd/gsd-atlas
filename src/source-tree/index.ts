@@ -7,9 +7,12 @@ export { createSourceTree } from './real.ts';
 export type { SourceTreeOptions } from './real.ts';
 export { createFakeSourceTree } from './fake.ts';
 export { SOURCE_TREE_CODES, SourceTreeError } from './types.ts';
+export { ATLASIGNORE_FILE, ATLASIGNORE_MAX_BYTES, INDEX_DEFAULT_EXCLUDES, defaultPatterns } from './default-excludes.ts';
+export type { IndexDefaultEcosystem, IndexDefaultExclude } from './default-excludes.ts';
 export type {
   DirectoryListing,
   DirectoryStatus,
+  ExclusionCounts,
   HashPathsResult,
   ListDirectoryOptions,
   ListTreeResult,

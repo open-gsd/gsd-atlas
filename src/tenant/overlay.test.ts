@@ -711,3 +711,58 @@ describe('follower overlay: adjacency', () => {
     }
   });
 });
+
+describe('follower overlay: paths the index excludes (quick task 261021-re7, D-03)', () => {
+  const putFile = (world: TenantWorld, rel: string, text: string): void => {
+    fs.mkdirSync(path.dirname(path.join(world.repo.dir, rel)), { recursive: true });
+    write(world, rel, text);
+  };
+
+  it('a fresh path under a built-in default indexes nothing and is not stale', async (t) => {
+    const { world, follower } = await leaderAndFollower(t);
+    const dir = world.repo.dir;
+    putFile(world, 'node_modules/pkg/dep.toy', 'fn dependencyFn {\n}\n');
+
+    const found = await follower.handle(find('dependencyFn', dir, { fresh: ['node_modules/pkg/dep.toy'] }), dir);
+
+    assert.equal(found.ok, true, JSON.stringify(found.diagnostics));
+    assert.equal(resultsOf(found).length, 0, 'the follower treats the path exactly as the Indexer does');
+    assert.equal(has(found, 'fresh_timeout'), false, 'an excluded path is settled, not stale');
+  });
+
+  it('a fresh path that .atlasignore names hides the facts the store holds for it, and is not stale', async (t) => {
+    const { world, follower } = await leaderAndFollower(t);
+    const dir = world.repo.dir;
+    assert.equal(resultsOf(await follower.handle(find('helper', dir), dir)).length, 1, 'the leader indexed b.toy');
+    putFile(world, '.atlasignore', 'b.toy\n');
+
+    const found = await follower.handle(find('helper', dir, { fresh: ['b.toy'] }), dir);
+
+    assert.equal(found.ok, true, JSON.stringify(found.diagnostics));
+    assert.equal(resultsOf(found).length, 0, 'the stored facts of an excluded path are hidden');
+    assert.equal(has(found, 'fresh_timeout'), false);
+  });
+
+  it('a fresh path that .gitignore names is dropped too (the same gap, closed on the way)', async (t) => {
+    const { world, follower } = await leaderAndFollower(t);
+    const dir = world.repo.dir;
+    putFile(world, '.gitignore', 'ignored.toy\n');
+    putFile(world, 'ignored.toy', 'fn ignoredFn {\n}\n');
+
+    const found = await follower.handle(find('ignoredFn', dir, { fresh: ['ignored.toy'] }), dir);
+
+    assert.equal(resultsOf(found).length, 0);
+    assert.equal(has(found, 'fresh_timeout'), false);
+  });
+
+  it('a fresh path that nothing excludes is still indexed by the follower', async (t) => {
+    const { world, follower } = await leaderAndFollower(t);
+    const dir = world.repo.dir;
+    putFile(world, '.atlasignore', 'b.toy\n');
+    putFile(world, 'fresh.toy', 'fn freshOneFn {\n}\n');
+
+    const found = await follower.handle(find('freshOneFn', dir, { fresh: ['fresh.toy'] }), dir);
+
+    assert.equal(resultsOf(found).length, 1);
+  });
+});

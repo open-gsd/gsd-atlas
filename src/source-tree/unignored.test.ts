@@ -12,6 +12,7 @@ import type { RecordingRunner, ScriptedResult } from '../command-runner/index.ts
 import { diagnostic } from '../facts/index.ts';
 import { createTempGitRepo, makeTempDir, realPath } from '../test-kit/index.ts';
 import type { TempGitRepo } from '../test-kit/index.ts';
+import { defaultPatterns } from './default-excludes.ts';
 import { createSourceTree } from './index.ts';
 import type { SourceTree } from './index.ts';
 
@@ -203,23 +204,34 @@ describe('unignoredPaths against real git', () => {
     const patterns = ['a?.ts', 'a[0-9].ts', '**/*.ts', ':(top)tracked.ts', ':(glob)dir/*.ts', ':(literal)tracked.ts', '[tracked].ts', 'dir/**'];
     assert.equal((await tree.unignoredPaths(repo.dir, patterns)).size, 0);
 
-    // The spec that reaches git is the same fixed list of tokens for every request, with nothing on stdin.
+    // The specs that reach git are the same fixed lists of tokens for every request, with nothing on stdin. Changed on
+    // purpose by quick task 261021-re7: a request is two concurrent listings (the list of the tree without the built-in
+    // defaults, and the tracked paths the tracked defaults remove), never a name of the request.
     const listings = recorder.starts.filter((s) => subcommandOf(s) === 'ls-files');
-    assert.equal(listings.length, recorder.starts.length, 'only the listing was started');
-    const [first] = listings;
-    assert.ok(first !== undefined);
+    assert.equal(listings.length, recorder.starts.length, 'only the listings were started');
+    const asked = listings.filter((s) => s.args.includes('--others'));
+    const dropped = listings.filter((s) => s.args.includes('--ignored'));
+    assert.equal(asked.length + dropped.length, listings.length);
+    assert.equal(asked.length, dropped.length, 'two listings per request');
+    const [first] = asked;
+    const [firstDropped] = dropped;
+    assert.ok(first !== undefined && firstDropped !== undefined);
+    for (const each of asked) assert.deepEqual(each.args, first.args);
+    for (const each of dropped) assert.deepEqual(each.args, firstDropped.args);
     for (const each of listings) {
-      assert.deepEqual(each.args, first.args);
       assert.deepEqual(each.env, first.env);
       assert.equal(each.stdin, undefined, 'no name on stdin');
     }
-    const tokens = first.args.slice(first.args.indexOf('ls-files'));
-    assert.deepEqual(tokens, ['ls-files', '-z', '--cached', '--others', '--exclude-standard']);
+    const excludes = (scope: 'all' | 'tracked'): string[] => defaultPatterns(scope).flatMap((p) => ['--exclude', p]);
+    assert.deepEqual(first.args.slice(first.args.indexOf('ls-files')), ['ls-files', '-z', '--cached', '--others', '--exclude-standard', ...excludes('all')]);
+    assert.deepEqual(firstDropped.args.slice(firstDropped.args.indexOf('ls-files')), ['ls-files', '-z', '--cached', '--ignored', ...excludes('tracked')]);
     for (const name of [...weird, ...patterns]) {
-      assert.ok(
-        first.args.every((arg) => arg !== name && !arg.includes(name)),
-        `${name} must not appear in an argument`,
-      );
+      for (const each of listings) {
+        assert.ok(
+          each.args.every((arg) => arg !== name && !arg.includes(name)),
+          `${name} must not appear in an argument`,
+        );
+      }
     }
   });
 
@@ -247,12 +259,14 @@ describe('unignoredPaths against real git', () => {
     const root = realPath(tmp.path);
     fs.mkdirSync(path.join(root, 'src'));
     fs.writeFileSync(path.join(root, 'src', 'foo.ts'), 'export const foo = 1;\n');
-    const runner = scripted((s) => (s.args.includes('--cached') ? { stdout: 'src/Foo.ts\0' } : undefined));
+    // Changed on purpose by quick task 261021-re7: the request is two listings; only the one that lists untracked files too
+    // names the path, the one that lists the tracked paths the defaults remove names none.
+    const runner = scripted((s) => (s.args.includes('--others') ? { stdout: 'src/Foo.ts\0' } : undefined));
     const tree = createSourceTree({ runner, repoDir: root });
 
     const listed = await tree.unignoredPaths(root, ['src/foo.ts', 'src/Foo.ts']);
     assert.deepEqual(sorted(listed), ['src/Foo.ts']);
-    assert.equal(runner.starts.length, 1);
+    assert.equal(runner.starts.length, 2);
   });
 
   it('refused paths start no git', async (t) => {

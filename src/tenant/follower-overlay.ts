@@ -26,7 +26,7 @@ import type {
 } from '../fact-store/index.ts';
 import { symbolKey } from '../facts/index.ts';
 import type { Answer, Clock, DegradedCode, FileFacts, LocalSymbol, RefKind, SymbolIdentity, Watermark } from '../facts/index.ts';
-import { DEFAULT_INDEXER_CONFIG, isRepoRelative, realRoot, staysInside } from '../indexer/index.ts';
+import { DEFAULT_INDEXER_CONFIG, createPathFilter, isRepoRelative, realRoot, staysInside } from '../indexer/index.ts';
 import type { ModuleHost } from '../indexer/index.ts';
 import type { FreshPort, FreshReport } from '../query/index.ts';
 import { SOURCE_TREE_CODES } from '../source-tree/index.ts';
@@ -620,6 +620,10 @@ export function createFollowerFresh(deps: FollowerFreshDeps): FreshPort {
       if (sorted.length === 0) return { complete: true, stalePaths: [], invalid };
 
       const base = deps.store.at(worktree);
+      // The Indexer's own ignore filter, made for this request alone (a follower keeps no memory between requests): a path
+      // the Indexer would not index is not indexed here either (quick task 261021-re7; this also closes the same gap for
+      // `.gitignore`, which the follower never consulted).
+      const filter = createPathFilter(deps.tree);
       // `patch` and `settled` are what the work has decided so far; `closed` stops a late finisher from touching them.
       const patch = new Map<string, FileFacts | null>();
       const settled = new Set<string>();
@@ -636,8 +640,13 @@ export function createFollowerFresh(deps: FollowerFreshDeps): FreshPort {
       /** One pass over `rels`; returns those whose file changed under the read (to be read again). */
       const attempt = async (rels: readonly string[]): Promise<string[]> => {
         const claimed = new Set(deps.modules.extensions());
-        const wanted = rels.filter((rel) => claimed.has(extensionOf(rel)));
+        const ofModules = rels.filter((rel) => claimed.has(extensionOf(rel)));
         for (const rel of rels) if (!claimed.has(extensionOf(rel))) await hide(rel);
+        // A path under a built-in default, named by `.atlasignore` or `.gitignore`, or that is not a regular file takes the
+        // route of a path that stopped being source: the store's facts for it are hidden and it is settled.
+        const verdict = ofModules.length === 0 ? { kept: [] as string[], dropped: [] as string[] } : await filter.keep(worktree, ofModules);
+        for (const rel of verdict.dropped) await hide(rel);
+        const wanted = [...verdict.kept].sort(compareCodeUnits);
         if (wanted.length === 0) return [];
 
         const stamps = new Map<string, Stamp | undefined>();

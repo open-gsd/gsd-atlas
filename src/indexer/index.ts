@@ -17,6 +17,8 @@ export type {
   WatchProblem,
 } from './event-source.ts';
 export { gitDirNameOf, isInside } from './git-dir.ts';
+export { createPathFilter } from './ignore.ts';
+export type { PathFilter } from './ignore.ts';
 export { createIndexer } from './indexer.ts';
 export { createModuleHost } from './modules.ts';
 export type { ExtractOutcome, ModuleHost, ModuleHostOptions } from './modules.ts';

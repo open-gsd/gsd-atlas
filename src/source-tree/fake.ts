@@ -6,12 +6,20 @@
  * Blob ids are real git ids (sha1 over `blob <length>\0` plus the bytes), so a snapshot from the fake
  * equals a snapshot of the realised repository. `ignored` entries are exact repo-relative paths, or
  * directory prefixes ending in `/`; like git's own ignore rules they apply to untracked files only.
+ *
+ * The index exclusions (quick task 261021-re7) are evaluated with the small rule set of `fake-rules.ts`: the built-in
+ * defaults, and the `.atlasignore` files found in the world's own files, vetted exactly as the real tree vets them
+ * (size, text, link mode, a directory of that name). Syntax outside the subset makes the world fail to build.
  */
 import { createHash } from 'node:crypto';
 import { diagnostic } from '../facts/index.ts';
 import type { Diagnostic } from '../facts/index.ts';
 import { SOURCE_TREE_CODES, SourceTreeError } from './types.ts';
 import { isListableName, resolveMaxEntries, trimDirectory } from './list-directory.ts';
+import { ATLASIGNORE_FILE, ATLASIGNORE_MAX_BYTES } from './default-excludes.ts';
+import { exclusionNotes, hasAtlasignoreDirectory, isAtlasignorePath, isMalformedRuleText } from './atlasignore.ts';
+import { defaultsExclude, ignoredByRuleFiles, parseRuleFile } from './fake-rules.ts';
+import type { RuleFile } from './fake-rules.ts';
 import { DEFAULT_READ_TEXT_BYTES } from './read-text.ts';
 import { filterSourceSet, SOURCE_PEEK_BYTES } from './source-set.ts';
 import type { PathAttributes, PeekResult } from './source-set.ts';
@@ -107,6 +115,29 @@ export function createFakeSourceTree(world: Partial<SourceTreeWorld> = {}): Sour
     return [...new Set([...committedPaths, ...Object.keys(working)])].some((p) => p.startsWith(prefix) && onDisk(p) !== null);
   };
 
+  // The index exclusions. `listed` is what the real tree's first-stage listings name: every committed path, and every
+  // untracked file that is not gitignored and not removed by a default. The vetting reads the world's `.atlasignore` files.
+  const isUntrackedFile = (rel: string): boolean => !Object.hasOwn(committed, rel) && typeof working[rel] === 'string';
+  const listed = [...committedPaths, ...Object.keys(working).filter((rel) => isUntrackedFile(rel) && !isIgnored(rel) && !defaultsExclude(rel, 'all'))];
+  const atlas = ((): { readonly unusable: boolean; readonly files: readonly RuleFile[] } => {
+    const found: Array<{ readonly rel: string; readonly text: string }> = [];
+    for (const rel of listed) {
+      if (hasAtlasignoreDirectory(rel)) return { unusable: true, files: [] };
+      if (!isAtlasignorePath(rel)) continue;
+      const mode = modes[rel];
+      if (mode === 'symlink' || mode === 'gitlink') return { unusable: true, files: [] };
+      const text = onDisk(rel);
+      if (text !== null) found.push({ rel, text });
+    }
+    const bytes = found.reduce((sum, file) => sum + Buffer.byteLength(file.text), 0);
+    if (bytes > ATLASIGNORE_MAX_BYTES || found.some((file) => isMalformedRuleText(file.text))) return { unusable: true, files: [] };
+    return {
+      unusable: false,
+      files: found.map(({ rel, text }) => parseRuleFile(text, rel === ATLASIGNORE_FILE ? '' : rel.slice(0, -(ATLASIGNORE_FILE.length + 1)))),
+    };
+  })();
+  const atlasignoreHides = (rel: string): boolean => atlas.files.length > 0 && ignoredByRuleFiles(atlas.files, rel);
+
   return {
     worktrees(): Promise<readonly WorktreeInfo[]> {
       return Promise.resolve(
@@ -189,13 +220,14 @@ export function createFakeSourceTree(world: Partial<SourceTreeWorld> = {}): Sour
       const found = new Set<string>();
       for (const rel of new Set(paths)) {
         // Tracked paths are listed whatever the ignore rules say (and whether or not the file is still on disk, as
-        // `--cached` does); untracked ones only when they exist and no rule ignores them.
+        // `--cached` does), less what a tracked default or `.atlasignore` removes; untracked ones only when they exist
+        // and no rule, default or `.atlasignore` removes them.
         if (Object.hasOwn(committed, rel)) {
-          found.add(rel);
+          if (!defaultsExclude(rel, 'tracked') && !atlasignoreHides(rel)) found.add(rel);
           continue;
         }
         const edit = Object.hasOwn(working, rel) ? working[rel] : undefined;
-        if (typeof edit === 'string' && !isIgnored(rel)) found.add(rel);
+        if (typeof edit === 'string' && !isIgnored(rel) && !defaultsExclude(rel, 'all') && !atlasignoreHides(rel)) found.add(rel);
       }
       return found;
     },
@@ -224,20 +256,46 @@ export function createFakeSourceTree(world: Partial<SourceTreeWorld> = {}): Sour
       const diagnostics: Diagnostic[] = [];
       const paths = new Set([...committedPaths, ...Object.keys(working)]);
       const files = new Map<string, string>();
+      let byDefaults = 0;
+      let byAtlasignore = 0;
       for (const rel of [...paths].sort(compareCodeUnits)) {
         const tracked = Object.hasOwn(committed, rel);
         const edit = Object.hasOwn(working, rel) ? working[rel] : undefined;
         const content = edit === undefined ? committed[rel] : edit;
+        // Like the real tree, a tracked path is removed by a tracked default or by `.atlasignore` before anything looks at
+        // the disk; an untracked file only when it exists, git does not ignore it, and a default or the file removes it.
+        if (tracked) {
+          if (defaultsExclude(rel, 'tracked')) {
+            byDefaults += 1;
+            continue;
+          }
+          if (atlasignoreHides(rel)) {
+            byAtlasignore += 1;
+            continue;
+          }
+        }
         if (content === null || content === undefined) {
           if (tracked) {
             diagnostics.push(diagnostic(SOURCE_TREE_CODES.missingOnDisk, 'info', 'git lists this path but it is not on disk (deleted or sparse)', rel));
           }
           continue;
         }
-        if (!tracked && isIgnored(rel)) continue;
+        if (!tracked) {
+          if (isIgnored(rel)) continue;
+          if (defaultsExclude(rel, 'all')) {
+            byDefaults += 1;
+            continue;
+          }
+          if (atlasignoreHides(rel)) {
+            byAtlasignore += 1;
+            continue;
+          }
+        }
         files.set(rel, blobId(content));
       }
-      return Promise.resolve({ files, diagnostics });
+      const excluded = { byDefaults, byAtlasignore };
+      diagnostics.push(...exclusionNotes(excluded, atlas.unusable));
+      return Promise.resolve({ files, diagnostics, excluded });
     },
 
     hasObject(hash: string): Promise<boolean> {

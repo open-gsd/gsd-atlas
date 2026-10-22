@@ -4,7 +4,7 @@
  * deterministic thing to hold: a counting runner over a real temporary repository and the real Indexer.
  *
  * An edit of a file the filter already knows starts 3 git processes (the clean-filter enumeration, the hash and the
- * attribute query); a new file starts 4 (one ignore listing first); a deleted file starts none.
+ * attribute query); a new file starts 5 (two ignore listings first); a deleted file starts none.
  */
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
@@ -53,15 +53,17 @@ describe('git spawns per save (plan 02-46)', () => {
     assert.equal((await world.reader.find('edited_one')).data.length, 1, 'the facts were committed');
   });
 
-  it('new file: 4 spawns', async (t) => {
+  it('new file: 5 spawns', async (t) => {
     const { world, runner } = await countedWorld(t);
     world.repo.write('d.toy', 'fn brand_new {\n}\n');
     const result = await world.indexer.ensureFresh(world.dir, ['d.toy']);
     assert.deepEqual(result, { complete: true, stalePaths: [], invalid: [] });
-    assert.equal(runner.starts.length, 4, sequence(runner).join(','));
-    assert.equal(sequence(runner)[0], 'ls-files', 'the ignore listing comes first');
-    assert.deepEqual(sequence(runner).slice(1, 3).sort(), ['check-attr', 'config']);
-    assert.equal(sequence(runner)[3], 'hash-object');
+    // Changed on purpose by quick task 261021-re7: the ignore verdict is two listings (the tree's own list without the
+    // built-in defaults, and the tracked paths the tracked defaults remove), so a new file starts 5 processes.
+    assert.equal(runner.starts.length, 5, sequence(runner).join(','));
+    assert.deepEqual(sequence(runner).slice(0, 2), ['ls-files', 'ls-files'], 'the ignore listings come first');
+    assert.deepEqual(sequence(runner).slice(2, 4).sort(), ['check-attr', 'config']);
+    assert.equal(sequence(runner)[4], 'hash-object');
     assert.equal(runner.denials.length, 0);
     assert.equal((await world.reader.find('brand_new')).data.length, 1, 'the facts were committed');
   });
