@@ -5967,6 +5967,9 @@
           "file": "packages/forms/signals/src/field/proxy.ts"
         },
         {
+          "file": "packages/forms/signals/src/field/state.ts"
+        },
+        {
           "file": "packages/forms/signals/src/field/structure.ts"
         },
         {
@@ -5985,6 +5988,9 @@
           "file": "packages/forms/signals/test/node/compat/compat.spec.ts"
         },
         {
+          "file": "packages/forms/signals/test/node/logic_node.spec.ts"
+        },
+        {
           "file": "packages/forms/signals/test/node/submit.spec.ts"
         }
       ],
@@ -5997,7 +6003,7 @@
       "notes": {
         "depth": 2,
         "direct": 8,
-        "viaCallers": 9,
+        "viaCallers": 11,
         "riskSites": 0,
         "tier": 2
       },
