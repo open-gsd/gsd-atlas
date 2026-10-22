@@ -32,6 +32,7 @@ import {
   authOk,
   buildSchedule,
   calibrationBatch,
+  calibrationJobsFor,
   calibrationSummary,
   chunkCheck,
   chunkSchedule,
@@ -47,6 +48,21 @@ import {
 } from './pilot-plan.ts';
 
 const DOCS = path.resolve(import.meta.dirname, '..', '..', 'docs', 'eval', 'angular-pilot');
+
+/** Question and answer file of a docs directory (default: the v1 directory). */
+export function docsPaths(dir?: string): { questions: string; answers: string } {
+  const base = dir ?? DOCS;
+  return { questions: path.join(base, 'pilot-questions.json'), answers: path.join(base, 'pilot-answers.json') };
+}
+
+/** `only` is a comma-separated id list; the result keeps `all` order. Without `only`, every id. */
+export function selectQuestionIds(all: readonly string[], only: string | undefined): string[] {
+  if (only === undefined) return [...all];
+  const wanted = only.split(',').map((s) => s.trim()).filter((s) => s !== '');
+  if (wanted.length === 0) throw new Error('--only holds no question ids');
+  for (const id of wanted) if (!all.includes(id)) throw new Error(`--only: unknown question id ${id}`);
+  return all.filter((id) => wanted.includes(id));
+}
 
 export interface RunChunksOptions {
   chunks: readonly (readonly PilotJob[])[];
@@ -163,8 +179,11 @@ async function launch(values: Record<string, string | boolean | undefined>): Pro
   const ledger = need('ledger');
   const repo = need('repo');
   for (const name of Object.keys(process.env)) if (!(name in scrubbedEnv({ [name]: process.env[name] }))) delete process.env[name];
-  const qf = JSON.parse(fs.readFileSync(typeof values['questions'] === 'string' ? values['questions'] : path.join(DOCS, 'pilot-questions.json'), 'utf8')) as QuestionFile;
-  const af = JSON.parse(fs.readFileSync(typeof values['answers'] === 'string' ? values['answers'] : path.join(DOCS, 'pilot-answers.json'), 'utf8')) as AnswerFile;
+  const docs = docsPaths(typeof values['docs'] === 'string' ? values['docs'] : undefined);
+  const qf = JSON.parse(fs.readFileSync(typeof values['questions'] === 'string' ? values['questions'] : docs.questions, 'utf8')) as QuestionFile;
+  const af = JSON.parse(fs.readFileSync(typeof values['answers'] === 'string' ? values['answers'] : docs.answers, 'utf8')) as AnswerFile;
+  const only = typeof values['only'] === 'string' ? values['only'] : undefined;
+  if (only !== undefined && stage !== 'calibration') throw new Error('--only applies to --stage calibration only');
   const keys = new Map(af.answers.map((a) => [a.questionId, a] as const));
   const questions = new Map(qf.questions.map((q) => [q.id, q as unknown as ProbeQuestion] as const));
   const keyFiles = new Map(af.answers.map((a) => [a.questionId, [...new Set(a.items.map((i) => i.file ?? ''))].sort()] as const));
@@ -220,7 +239,7 @@ async function launch(values: Record<string, string | boolean | undefined>): Pro
       executablePrefix: ['-n', '10', 'claude'],
       nice: true,
     };
-    chunks = stage === 'pilot' ? chunkSchedule(buildSchedule(ids), 16) : [calibrationBatch(qf.questions).jobs];
+    chunks = stage === 'pilot' ? chunkSchedule(buildSchedule(ids), 16) : [only === undefined ? calibrationBatch(qf.questions).jobs : calibrationJobsFor(selectQuestionIds(ids, only))];
     runOne = async (job) => {
       const j: Job = { jobId: job.jobId, probe: `angular-${stage}`, config: job.config, questionId: job.questionId, run: job.run, maxBudgetUsd: SESSION_BUDGET_USD };
       const { record, rawStream } = await runJob(j, deps);
@@ -268,6 +287,8 @@ async function main(): Promise<void> {
       repo: { type: 'string' },
       questions: { type: 'string' },
       answers: { type: 'string' },
+      docs: { type: 'string' },
+      only: { type: 'string' },
       'cap-usd': { type: 'string' },
       concurrency: { type: 'string', default: '1' },
     },
@@ -276,7 +297,7 @@ async function main(): Promise<void> {
   const concurrency = Number(values.concurrency);
   if (concurrency !== 1 && concurrency !== 2) throw new Error('--concurrency must be 1 or 2');
   if (values['dry-run']) {
-    const qf = JSON.parse(fs.readFileSync(values.questions ?? path.join(DOCS, 'pilot-questions.json'), 'utf8')) as QuestionFile;
+    const qf = JSON.parse(fs.readFileSync(values.questions ?? docsPaths(values.docs).questions, 'utf8')) as QuestionFile;
     process.stdout.write(renderDryRun({ questions: qf.questions, capUsd, concurrency, model: MODEL, claudeVersion: CLAUDE_VERSION }));
     return;
   }
