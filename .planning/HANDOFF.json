@@ -1,6 +1,6 @@
 {
   "version": "1.0",
-  "timestamp": "2026-10-19T04:22:09.451Z",
+  "timestamp": "2026-10-23T03:11:36Z",
   "phase": "03",
   "phase_name": "typescript-module-and-mvp-eval",
   "phase_dir": ".planning/phases/03-typescript-module-and-mvp-eval",
@@ -9,38 +9,91 @@
   "total_tasks": 11,
   "status": "paused",
   "completed_tasks": [
-    {"id": "03-01..03-38", "name": "38 of 39 Phase 3 plans executed, merged, gated and tracked (last gate: 4722 tests, 0 failures, 2 skipped; verify-prereg ok)", "status": "done", "commit": "7fc9105"},
-    {"id": "03-35", "name": "Scored eval run complete (450/450 cells) and registered analysis committed: OVERALL: MVP not met (accuracy met; tokens not met; citations not met)", "status": "done", "commit": "053c4ed"},
-    {"id": "03-37", "name": "ADR numbering and ratification pass: PR #17 merged, issues #2-#9 #11-#16 closed, no draft ADR remains", "status": "done", "commit": "a57c748"},
-    {"id": "release-pipeline", "name": "npm release pipeline (release.yml, release-check, CHANGELOG, version 0.1.0-alpha.0) built and verified locally; nothing published to npm", "status": "done", "commit": "eaf18e7"},
-    {"id": "github-prerelease", "name": "GitHub prerelease v0.0.1-alpha published (tag at facb447, tarball opengsd-gsd-atlas-0.1.0-alpha.0.tgz sha256 2cde1571398a1417256cd7fcdb7fc5114e7dd642d925a060443fd705b8b2032d)", "status": "done", "commit": "7fc9105"}
+    {
+      "id": 1,
+      "name": "Angular v2 pilot, audit, priced-cost, design probe, offline confirmation, evidence and Cortex notes",
+      "status": "done",
+      "commit": "250fb06"
+    },
+    {
+      "id": 2,
+      "name": "Gate proposal with owner decisions 2,5,7,8 and claim = cited exact facts",
+      "status": "done",
+      "commit": "7de9cc7"
+    },
+    {
+      "id": 3,
+      "name": "REQUIREMENTS.md amended (EVL-03 note, EVL-04, EVL-05, EVL-06)",
+      "status": "done",
+      "commit": "ae9117b"
+    },
+    {
+      "id": 4,
+      "name": "Edge-sample human confirmation recorded",
+      "status": "done",
+      "commit": "cb33674"
+    }
   ],
   "remaining_tasks": [
-    {"id": "03-39", "name": "Clean-room replication of the scored run on holodeck.nomorestars.com (11 tasks; deferred by the user; Tasks 1-2 offline, Task 3 onward needs the user)", "status": "not_started"},
-    {"id": "phase-verify", "name": "Phase 3 verification (gsd-verifier), regression gate, phase.complete, transition; waits for 03-39 or an explicit user decision to close without it", "status": "not_started"},
-    {"id": "npm-publish", "name": "First npm publish of @opengsd/gsd-atlas by the user via the Release workflow (manual setup checklist in .planning/quick/261018-npm-release-pipeline/261018-npm-release-pipeline-SUMMARY.md)", "status": "not_started"},
-    {"id": "requirements", "name": "Mark EVL/SEC/SKL requirement IDs complete in REQUIREMENTS.md at phase end (agents declined to)", "status": "not_started"}
+    {
+      "id": 5,
+      "name": "Decide gate items 3, 4, 6",
+      "status": "not_started"
+    },
+    {
+      "id": 6,
+      "name": "ADR 13 dated amendment and build plan for frozen fixes",
+      "status": "not_started"
+    },
+    {
+      "id": 7,
+      "name": "Amend PROJECT.md, DESIGN.md A32, ADR 14, AGT-05 (owner approval)",
+      "status": "not_started"
+    },
+    {
+      "id": 8,
+      "name": "Fresh question draw, key audit, register gate, run",
+      "status": "not_started"
+    }
   ],
   "blockers": [
-    {"description": "Registered verdict is MVP not met; Phase 4 is blocked until a new registered run meets the gate (D-04). Diagnosis proposals are in docs/eval/diagnosis.md section 9, none applied.", "type": "technical", "workaround": "Decide whether to open an iteration (reduce per-turn tool/skill overhead, raise tool uptake) as a new registered run, or close Phase 3 as goal-not-met with the diagnosis attached."},
-    {"description": "Open question: is the first npm version 0.1.0-alpha.0 (package.json/CHANGELOG today) or a plain 0.1.0? A plain 0.1.0 goes to latest and the release-check channel rules reject it on the alpha channel.", "type": "human_action", "workaround": "User answers before running the Release workflow."}
+    {
+      "description": "Phase 4 blocked by D-04 pending decision 3; no engineering fix built",
+      "type": "human_action",
+      "workaround": "owner decision 3"
+    }
   ],
   "async_jobs": [],
   "human_actions_pending": [
-    {"action": "Confirm the 20 rows (multiples of 5) in docs/eval/edge-sample.md (Status: pending)", "context": "EVL precision-sample criterion; table was regenerated after the mapTarget fix", "blocking": false},
-    {"action": "npm first publish checklist: make open-gsd/gsd-atlas public; confirm publish rights under @opengsd; create GitHub environment npm-publish with reviewers; add granular token as environment secret NPM_TOKEN; run Release (channel alpha, dry_run on, auth token) then off; then add the trusted publisher within 2 days and switch to auth oidc", "context": "alpha publish tonight/soon", "blocking": false},
-    {"action": "Decide when to schedule 03-39 (clean-room replication); user must confirm container set-up, log in to Claude Code inside the container, and give go per chunk. Best after the Max seven-day window resets (Tue 2026-10-20 19:00 EDT per the original run's rate_limit_event, unverified).", "context": "Node 24.22.0 image; unique gsd-atlas-cleanroom* names on a shared Docker host", "blocking": true},
-    {"action": "Check claude.ai usage settings that 'extra usage' (pay-as-you-go) is OFF before any further eval run", "context": "user does not want to spend money; Max subscription only", "blocking": true},
-    {"action": "Fix docs/reference/alpha-limitations.md claim 'published on the alpha channel of npm' before the repo goes public if the npm publish has not happened", "context": "stated install command works only after first publish", "blocking": false}
+    {
+      "action": "Decide gate items 3, 4, 6",
+      "context": "gate-redefinition-proposal.md section 5",
+      "blocking": true
+    },
+    {
+      "action": "Approve amendments to PROJECT.md, DESIGN.md A32, ADR 13/14, AGT-05",
+      "context": "they say atlas must be the cheaper path",
+      "blocking": false
+    },
+    {
+      "action": "Choose first npm version (0.1.0-alpha.0 or 0.1.0)",
+      "context": "publish checklist",
+      "blocking": false
+    }
   ],
   "decisions": [
-    {"decision": "Stage A reopened and re-frozen (revision 1) so the atlas arm carries the Skill tool; Stage B frozen at atlasCommit 37b12e32bf84f9ca1a4052c7d574ebc1aa0fe207, skill sha256 00ce2dc7ab33fe087a5ace67409a161c557c99a658f5c2a4527c7efc60bc48cb", "rationale": "Under --tools Bash,Read the skill was invisible to the model (probes); no scored session had run", "phase": "03"},
-    {"decision": "OQ4 point_estimate; token criterion stricter upper-bound; strict build ceiling raised 30s->60s after build optimisation (user: B and C); Windows postponed past the initial alpha", "rationale": "user replies recorded verbatim in 03-DECISIONS.md and 03-CONSTANTS.md", "phase": "03"},
-    {"decision": "Comment text bound adr.maxCommentUnits = 32,768 UTF-16 units (skip, never clip), early exit at 200 citations", "rationale": ".planning/research/COMMENT-BOUND.md and COMMENT-BOUND-FOLLOWUP.md", "phase": "03"},
-    {"decision": "Scored run executed on the user's claude.ai Max subscription in chunks with no API key; verdict recorded honestly (MVP not met)", "rationale": "user will not pay API costs", "phase": "03"},
-    {"decision": "All ADRs ratified together at the end of Phase 3 and numbered (issues #15/#16 etc.); GitHub release is v0.0.1-alpha while the package is 0.1.0-alpha.0", "rationale": "user instructions 2026-10-18/19", "phase": "03"}
+    {
+      "decision": "Claim is cited exact facts at bounded cost",
+      "rationale": "offline and pilot evidence does not support a token win",
+      "phase": "03"
+    },
+    {
+      "decision": "N4 pass condition; freeze fixes before draw; R_max 1.5; code-fact gate first, SDK gate separate",
+      "rationale": "attribution and cost 1.51 vs 1.5; SDK tools not built",
+      "phase": "03"
+    }
   ],
-  "uncommitted_files": ["?? .codegraph/", "?? .planning/milestone.lock", "?? .planning/state.json"],
-  "next_action": "Read .planning/phases/03-typescript-module-and-mvp-eval/.continue-here.md, then ask the user: (1) first npm version question, (2) when to schedule 03-39 or whether to close Phase 3 without it as goal-not-met, (3) whether to open a new registered iteration for the token/citation shortfall.",
-  "context_notes": "Orchestrator session for /gsd-execute-phase 3. All work is merged on main and pushed (origin/main == HEAD 7fc9105; tag v0.0.1-alpha on facb447). Executors run in worktrees; the orchestrator merges via worktree.cleanup-wave or git merge --no-ff, runs the gate (npm ci --ignore-scripts, typecheck, lint, build, npm test, verify-prereg) and updates tracking with gsd_run query roadmap.update-plan-progress and gsd_run query commit."
+  "uncommitted_files": [],
+  "next_action": "Read .planning/phases/03-typescript-module-and-mvp-eval/.continue-here.md and gate-redefinition-proposal.md sections 5a and 5b, then ask the user for decisions 3, 4 and 6, or start the ADR 13 amendment draft and build plan.",
+  "context_notes": "Main clean and pushed through 7de9cc7. Ban on touching other ~/projects directories is in force. Scratchpad run dirs kept pending user answer."
 }
