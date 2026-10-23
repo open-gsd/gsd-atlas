@@ -19,7 +19,7 @@ Supplementary to `memory-tools-evidence-2026-10.md`. Unregistered, not scored. S
 | Governing rules per file | `governing_contracts`, `why_is_this_here` | None. |
 | History | Episodes per decision (`get_arc`). | Not in the 1.0 scope of the map. |
 | Noise control | Learned gate, local model, about 1.2 GB resident. | Not applicable: atlas does not capture conversation. |
-| "Dreaming" | Idle pass that filters candidates. | No such feature in this repo. The only "dream" in gsd-core is the questioning philosophy for project initialisation, unrelated. |
+| "Dreaming" | Idle pass that filters candidates. | No such feature in this repo. |
 | Trust boundary | Local sidecar, no network for inference. | Repo text is untrusted and fenced (trust-boundaries ADR). Returning ADR text would need the same fencing. |
 
 ## What this means for the project
