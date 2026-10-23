@@ -22,6 +22,8 @@ import {
   splitHalfPoints,
   weightedTokens,
   type Arm,
+  olsLogLog,
+  type Fit,
   type Interval,
   type Metric,
   type Point,
@@ -131,15 +133,25 @@ function range(v: readonly number[]): [number, number] {
 
 function intervalText(i: Interval, fmt: (v: number) => string): string {
   if (i.usableDraws === 0 || !Number.isFinite(i.est)) return `none (${i.usableDraws} usable draws)`;
+  const plain = fmt;
+  fmt = (v: number): string => (Math.abs(v) >= 1e6 ? '>1e6' : plain(v));
   const partial = i.usableDraws < BOOTSTRAP.draws ? `; ${i.usableDraws} of ${BOOTSTRAP.draws} draws usable` : '';
   return `${fmt(i.est)} (${fmt(i.lo)} to ${fmt(i.hi)}${partial})`;
 }
 
-function breakText(i: Interval, xs: readonly number[], fmt: (v: number) => string): string {
+/** A break-even needs a falling fit; below 95% of draws with one, no interval is printed (it would be conditional on the draws that agree). */
+export function breakText(i: Interval, xs: readonly number[], fmt: (v: number) => string): string {
+  if (i.usableDraws < 0.95 * BOOTSTRAP.draws) {
+    return `not identified (fit falls in only ${i.usableDraws} of ${BOOTSTRAP.draws} draws)`;
+  }
   const base = intervalText(i, fmt);
-  if (!Number.isFinite(i.est)) return base;
   const [lo, hi] = range(xs);
   return i.est < lo || i.est > hi ? `${base}, EXTRAPOLATION (observed ${fmt(lo)} to ${fmt(hi)})` : base;
+}
+
+/** The fitted ratio at x. */
+export function fittedAt(f: Fit, x: number): number {
+  return Math.exp(f.intercept + f.slope * Math.log(x));
 }
 
 interface Setup {
@@ -165,9 +177,14 @@ function sectionB(setup: Setup): string {
   const byCalls = (m: Metric): Point[] => pointsFor(d.sessions, 'G', arm, d.questionIds, m);
   out.push(regressionRows(byCalls(cost), 'G calls', 'priced cost', f2));
   out.push(regressionRows(byCalls(billable), 'G calls', 'billable tokens', f2));
+  const fitText = (m: Metric): string => {
+    const f = olsLogLog(gCalls, byCalls(m).map((p) => p.ratio));
+    return [cLo, 3, cHi].map((x) => `${f2(fittedAt(f, x))} at ${f2(x)}`).join(', ');
+  };
   const gCost = questionMeans(d.sessions, 'G', d.questionIds, cost);
   out.push(regressionRows(byCalls(cost).map((p, i) => ({ ...p, x: gCost[i]! })), 'G priced cost (USD)', 'priced cost', usd));
   out.push(regressionRows(byCalls(billable).map((p, i) => ({ ...p, x: gCost[i]! })), 'G priced cost (USD)', 'billable tokens', usd));
+  out.push('', `Fitted ratio (A over G) against G calls, read off the all-runs log-log line: priced cost ${fitText(cost)}; billable tokens ${fitText(billable)}.`);
   out.push('', 'Regression-to-the-mean check (split half). x = G tool calls in ONE run; the denominator = G in the OTHER runs; the numerator = A over all its runs. G noise in x and in the denominator are independent. One row per choice of the x run:', '');
   out.push(head(['x run', 'ratio of', 'n', 'Spearman (90%)', 'slope of ln(ratio) on ln(x) (90%)', 'break-even ratio 1.0', 'break-even ratio 1.5']));
   const runs = [...new Set(d.sessions.filter((s) => s.arm === 'G').map((s) => s.run))].sort();
