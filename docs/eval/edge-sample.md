@@ -195,11 +195,13 @@ The audits exist to test the verifiers, not to choose a sample: their results ar
 
 ## Human confirmation
 
-Status: pending
+Status: confirmed by Tom Boucher on 2026-10-22
 
 PRD criterion 1 asks for a hand-verified sample. A person opens the twenty rows whose # is a multiple of five (5, 10, ..., 100), reads the cited file at the cited line in the prepared checkout, and confirms that the stated fact is true. Record the person, the date and the result here.
 
-The table was regenerated on 2026-10-18 with the code after the `mapTarget` fix, so the rows to review are those of the table above. The twenty rows are # 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90, 95 and 100; three of them differ from the first committed version of the table: # 60 (`cmdTddRedEvidence`, src/check-command-router.cts:199:7; was `cmdUiSafetyGate` at 202:7), # 70 (`argValue`, src/quick-batch-command-router.cts:188:25; was 189:25) and # 75 (`STATE_CONTRACT_FLAVOR`, src/state-contract.cts:335:15; was `STATE_CONTRACT_VERSION` at 334:17). The executor's own read of these twenty rows (above) is not a confirmation. Nobody has confirmed them yet.
+The table was regenerated on 2026-10-18 with the code after the `mapTarget` fix, so the rows to review are those of the table above. The twenty rows are # 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90, 95 and 100; three of them differ from the first committed version of the table: # 60 (`cmdTddRedEvidence`, src/check-command-router.cts:199:7; was `cmdUiSafetyGate` at 202:7), # 70 (`argValue`, src/quick-batch-command-router.cts:188:25; was 189:25) and # 75 (`STATE_CONTRACT_FLAVOR`, src/state-contract.cts:335:15; was `STATE_CONTRACT_VERSION` at 334:17). The executor's own read of these twenty rows (above) is not a confirmation. Nobody had confirmed them when this paragraph was written.
+
+**Confirmation (2026-10-22).** Tom Boucher reviewed the twenty rows (# 5, 10, ..., 100) against the pinned checkout (gsd-core at 10ac3a7a947903ba50f538a907af036744d759d5) and confirmed them; he reported no row as wrong. Recorded from his message in the working session ("reviewed by Tom Boucher confirmed"), which gave no per-row detail. Before his review an independent model read of the same rows (a haiku-class subagent, 14 true, 6 undecided from the cited line alone, 0 false) was done, and the six undecided rows (# 15, 50, 60, 65, 70, 75) were checked by the assistant against the declarations in the checkout; that read is not the confirmation. The Human column of the generated table above is generated and was left blank.
 
 ## Re-audit after the mapTarget fix (2026-10-18)
 
