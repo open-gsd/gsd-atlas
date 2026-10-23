@@ -71,6 +71,16 @@ Consequences for the frozen-fix list: options 1 (compact rendering) and 4 (trimm
 6. **Multi-question arm.** Whether it is included, and whether its priced ratio is only reported or a fifth condition (N5: multi-question priced ratio upper bound at most R_max). Recommendation: report only in the first registered run, because N1-N4 are already four conditions to meet, and its design has not been piloted.
 7. **Fix freeze and N3 margin.** Because the registered configuration sits at 1.51 against R_max 1.5, either the engineering fixes are completed and confirmed offline before the draw (recommended, this section 4), or the owner accepts a likely N3 failure as a documented second miss. R_max stays 1.5 either way; it is not reopened after seeing data.
 
+## 5a. Owner decision on the claim (2026-10-22)
+
+Asked whether atlas's claim is cheaper structural answers or cited exact facts, the owner chose **cited exact facts**. Recorded here before any new data. Consequences for this proposal (drafting, not yet registered):
+
+- **Headline condition.** The claim is that an agent gets exact, cited, current facts. N1 (correctness superiority) and N2 (citation rate, registered H3 definition) carry it. N3 stays as a bound on what the claim may cost, not as a goal; the product is no longer positioned as the cheaper path.
+- **Question set must test the claim.** Structural questions grep answers from names do not test it. The fresh set should weight questions where exactness and completeness with a cited line are the point (full caller or reference sets, heritage, impact beyond a name match, ADR citations) and, if the owner includes it, platform-SDK facts (introduced/deprecated OS versions), where grep has no counterpart. The SDK-pack half has not been evaluated at all; whether it belongs in the first registered run is open decision 8.
+- **Attribution.** Because only 64% of cited lines equal a row atlas returned, a correctness gain needs an attribution check: report correctness and citation rate separately for sessions that called atlas and sessions that did not, and treat N4 (atlas used) as required for the claim to be about atlas.
+- **Documents that currently say the opposite** and would need dated amendments, not silent edits (none made yet): `.planning/PROJECT.md` key decision "Beats grep = fewer tokens", `.planning/REQUIREMENTS.md` EVL-03 and the "beats grep" definition at its top, `docs/DESIGN.md` A32 "Atlas must be the cheaper path", ADR 13 (MCP contract: "cheaper than grep") and ADR 14 (value dashboard premise). ADRs are append-only with dated amendments; this proposal does not amend them.
+- **Open decision 8.** Include the platform-SDK facts in the first registered run, or run the code-fact gate first and the SDK gate separately.
+
 ## 6. What this does not do
 
 - It does not change the registered verdict, the replication, the pilot, or any frozen file.
