@@ -3,7 +3,7 @@
 **Defined:** 2026-10-15
 **Core Value:** Agents get correct, cited, current answers about the code and the platform they are building against, instead of guessing from stale training data or sweeping the repo with grep.
 
-Source of truth for behaviour: `docs/PRD.md`, `docs/DESIGN.md`, `docs/adr/`. Research adjustments are in `.planning/research/SUMMARY.md`. "Beats grep" means fewer tokens consumed at non-inferior accuracy, not speed.
+Source of truth for behaviour: `docs/PRD.md`, `docs/DESIGN.md`, `docs/adr/`. Research adjustments are in `.planning/research/SUMMARY.md`. "Beats grep" means fewer tokens consumed at non-inferior accuracy, not speed. *(Superseded 2026-10-22 by owner decision: atlas's claim is cited exact facts at bounded cost, see EVL-05; tokens are reported, not a goal. The original definition is kept as the basis of the registered EVL-03 result.)*
 
 ## v1 Requirements
 
@@ -91,8 +91,10 @@ Scope is the full PRD 1.0 (M0-M6), with M4 split into SDK facts, agent integrati
 
 - [ ] **EVL-01**: A free-alternatives evaluation (LSP-wrapping MCP servers, agent repo-maps, colbymchenry/codegraph, Claude Code LSP, Memtrace) records the gap each leaves, done before the M2 eval
 - [ ] **EVL-02**: The eval design is pre-registered: >= 50 questions per corpus including abstain cases, >= 3 runs per configuration, an independent oracle, paired analysis pooled across corpora, accuracy non-inferiority margin, and tool-call rate logged
-- [ ] **EVL-03**: On gsd-core, agents using atlas consume fewer tokens than the grep-only baseline at non-inferior accuracy, with verifiable file:line citations >= 80% of the time
-- [ ] **EVL-04**: The pooled eval beats the grep-only baseline on tokens at non-inferior accuracy across gsd-core, gsd-pi, gsd-path and the Swift reference app (PRD M5 gate)
+- [ ] **EVL-03**: On gsd-core, agents using atlas consume fewer tokens than the grep-only baseline at non-inferior accuracy, with verifiable file:line citations >= 80% of the time *(Not met: registered verdict "MVP not met", H2 tokens and H3 citations, 2026-10. Text unchanged; superseded as the 1.0 claim by EVL-05 on 2026-10-22 by owner decision. The registered result is never edited.)*
+- [ ] **EVL-04**: The pooled eval shows that atlas gives more correct answers with verifiable file:line citations than the grep-only baseline, at a cost no higher than the bound registered for EVL-05, across gsd-core, gsd-pi, gsd-path and the Swift reference app (PRD M5 gate). *(Amended 2026-10-22 by owner decision. Previous text: "The pooled eval beats the grep-only baseline on tokens at non-inferior accuracy across gsd-core, gsd-pi, gsd-path and the Swift reference app (PRD M5 gate)".)*
+- [ ] **EVL-05**: On a corpus and a fresh question set (at least 40 questions) fixed before any data, atlas with its registered tools and skill is compared with a grep-only arm over 3 runs, and all four hold: N1, correctness exceeds grep, with the lower bound of the 90% paired interval above 0; N2, the citation rate by the registered H3 definition is at least 0.80 and at least grep's; N3, the priced-cost ratio's upper bound is at most 1.5; N4, atlas is called in at least 50% of atlas sessions on caller, reference and impact questions. The gate is registered in its own document before the first session and is never changed after data. Added 2026-10-22; draft in `docs/eval/gate-redefinition-proposal.md` (unregistered).
+- [ ] **EVL-06**: The platform-SDK facts have a gate drafted and registered before the first measured session of the Phase 6 tools, with ground truth from the installed SDK and questions grep cannot answer from names. Added 2026-10-22.
 
 ### Skill, Ratings and Diagnostics (SKL)
 
@@ -250,7 +252,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | TSM-07 | Phase 3 | Pending |
 | EVL-01 | Phase 3 | Pending |
 | EVL-02 | Phase 3 | Pending |
-| EVL-03 | Phase 3 | Pending |
+| EVL-03 | Phase 3 | Not met (registered 2026-10; superseded by EVL-05) |
+| EVL-05 | Phase 3 | Pending (draft gate, unregistered) |
 | SKL-01 | Phase 3 | Pending |
 | SKL-02 | Phase 3 | Pending |
 | SKL-03 | Phase 3 | Pending |
@@ -295,13 +298,14 @@ Which phases cover which requirements. Updated during roadmap creation.
 | REL-02 | Phase 9 | Pending |
 | REL-03 | Phase 9 | Pending |
 | EVL-04 | Phase 9 | Pending |
+| EVL-06 | Phase 6 | Pending |
 | REL-04 | Phase 9 | Pending |
 
 **Coverage:**
-- v1 requirements: 102 total
-- Mapped to phases: 102
+- v1 requirements: 104 total
+- Mapped to phases: 104
 - Unmapped: 0
 
 ---
 *Requirements defined: 2026-10-15*
-*Last updated: 2026-10-15 after phase 1 plan revision (FND-10 split: three amendments stay in Phase 1, two move to FND-12 in Phase 2)*
+*Last updated: 2026-10-22 (EVL-03 note, EVL-04 amended, EVL-05 and EVL-06 added by owner decision; previously: 2026-10-15 after phase 1 plan revision (FND-10 split: three amendments stay in Phase 1, two move to FND-12 in Phase 2))*
