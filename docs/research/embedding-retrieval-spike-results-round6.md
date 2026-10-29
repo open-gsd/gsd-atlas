@@ -69,3 +69,17 @@ A quiet machine (load below 1.5) was not available: after an unrelated ffmpeg jo
 Components: embed p50 9.4 to 10.5 ms (p95 20.0 to 25.7), int8 scan p50 about 22 ms (p95 about 24), map lookup under 0.1 ms, trigram search p50 0.8 ms (p95 2.3 to 2.5). The trigger rate is 14.5%. Recall tables are unchanged.
 
 Reading: all three non-trigger p95 values are under 50 ms, and the median is 46.0 ms, even though the host was busy. Load can only inflate these figures, so the lexical-free path very likely fits the budget on a quiet machine, but that is an inference and not a certified result. The first pass (48.9 ms) is close to the limit. Certification still needs three passes at load below 1.5.
+
+## Amendment A6: second latency run on a working machine (by user decision, not a registered result)
+
+The user decided not to wait for load below 1.0, since a machine in ordinary use does not reach it. A second run of three passes over 722 queries was taken at a 1-minute load of 4.1 to 4.5 with the CPU mostly idle. By the frozen rule these passes are not valid, so S8 stays formally not evaluable.
+
+| Pass | Load at start | Non-trigger p95 (ms) | Trigger path p95 (ms) | Overall p95 (ms) |
+|---|---|---|---|---|
+| 1 | 4.38 | 39.3 | 40.6 | 39.4 |
+| 2 | 4.51 | 37.4 | 39.0 | 37.7 |
+| 3 | 4.49 | 36.9 | 36.7 | 36.9 |
+
+Components: embed p95 14.7 to 16.9 ms, int8 scan p95 about 22.5 ms, trigram search p95 2.3 to 2.5 ms. The trigger rate is 14.5%.
+
+Reading: at roughly half the load of the A5 run, the non-trigger p95 is 37 to 39 ms, a margin of 11 to 13 ms under the 50 ms budget, and the trend across all runs is that p95 falls as load falls. This is the best available estimate of the lexical-free path on a machine in ordinary use (about 37 to 39 ms p95, M-series Mac, EmbeddingGemma 2 Q8_0 on Metal). It is not a certified result under the protocol.
