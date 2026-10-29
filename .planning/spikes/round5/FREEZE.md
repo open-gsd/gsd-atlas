@@ -15,5 +15,15 @@ Sampler dry run (output kept outside the repo, a deterministic draw by seed; it 
 
 Next steps (not started): run the sampler into the scratchpad, copy the targets into `queries/`, brief four fresh authors with the task contexts written in the target files, check with `check-m4.mjs`, freeze M5 and I5 hashes here, write and hash `lists5.mjs` and `score5.mjs` as amendments, then run.
 
+## M5 and I5 frozen (2026-10-29, before any arm was scored on them)
+Targets drawn by the frozen sampler (hashes match the dry run): queries/m5-targets.json 8d3df41b…8780, queries/gold-i5.json 738b69e1…691d (120 queries, 20 per rule). Four fresh AI authors (two on the small tier, two on the mid tier), 46 targets each, task contexts as in plan 14.3. `round4/check-m4.mjs` (unchanged) accepted 171 of 184 submitted, rejected 13 (dropped, not repaired). Plan 14.3 required at least 120. Strata of the accepted set: A 63, B 16, C 60, D 32; test half 125 queries.
+
+| Set | n | sha256 |
+|---|---|---|
+| queries/gold-m5.json | 171 | 12cf5bcb7527b2e60f5a62e12df388a3984ce73cc30be2849c7977b3de5dfa4c |
+| queries/gold-i5.json | 120 | 738b69e1c964f33208b22c5a5307c67f85bccb9baf1026eb4c8a563072e8691d |
+
+Harness written and hashed before the first arm was scored: lists5.mjs dab68913fe31d96e5ce957c7bda0f869c33f14c5ac07ea1fe06e7b09d59efa6e, score5.mjs 36b70675d1b1a919fd8fecf3fe4a131049132d426c1a4d15e6cb01ce7216ffb4, rerank5.mjs 6adaac12016f022071a744209d84e860b2f1927734f34fcef902f263aac76dff. Raw author files and target files are in queries/.
+
 ## Amendments
 (none yet)

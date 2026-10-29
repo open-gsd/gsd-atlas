@@ -1,0 +1,686 @@
+[
+ [
+  "a:swift:MetricKit::678:TotalWiFiUploadMetric",
+  "Which MetricKit struct reports total Wi-Fi upload data for my app's daily metrics payload?"
+ ],
+ [
+  "a:objc:Foundation:NSArray.h:108:NSArray.objectAtIndex:",
+  "In Foundation, how do I fetch the element at a given index from an array in Objective-C?"
+ ],
+ [
+  "a:objc:MetalFX:MTLFXTemporalScaler.h:257:MTLFXTemporalScalerBase.reactiveMaskContentOffsetY",
+  "In MetalFX, which temporal scaler base property sets the vertical pixel offset of the reactive mask input region?"
+ ],
+ [
+  "a:swift:SwiftUI::1798:WritableDocument",
+  "In SwiftUI, which protocol should my reference-type document class adopt so it can be edited and saved?"
+ ],
+ [
+  "a:swift:Foundation::9283:Foundation.fula",
+  "In Foundation, which Locale language code constant identifies the Fulah language?"
+ ],
+ [
+  "a:swift:USDKit::1264:USDPrim.hasAPISchema",
+  "In USDKit, how do I check whether a USDPrim already has a particular schema applied?"
+ ],
+ [
+  "a:objc:CoreImage:CIFilterBuiltins.h:714:CISystemToneMap.preferredDynamicRange",
+  "In CoreImage, how do I set the dynamic range that a CISystemToneMap filter should target?"
+ ],
+ [
+  "a:objc:CoreMedia:CMTime.h:76:CMTimeFlags",
+  "Which CoreMedia enum holds the bit flags that mark a CMTime as valid or rounded?"
+ ],
+ [
+  "a:swift:CompositorServices::230:LayerRendererConfigurationError",
+  "Which CompositorServices error type describes why a layer renderer configuration failed?"
+ ],
+ [
+  "a:objc:MetalFX:MTLFXTemporalScaler.h:240:MTLFXTemporalScalerBase.colorContentOffsetX",
+  "In MetalFX, how do I set the horizontal pixel offset of the color texture region used as scaler input?"
+ ],
+ [
+  "a:swift:ComputeGraph::651:ComputeGraph.ArrayDefinition",
+  "In ComputeGraph, what type describes the shape and element type of an array a graph node consumes?"
+ ],
+ [
+  "a:swift:NetworkExtension::105:NEURLFilterManager.ParsingConfiguration.DomainOptions.stripWWW",
+  "In NetworkExtension, how do I make a URL filter's domain parsing remove the www prefix from hostnames?"
+ ],
+ [
+  "a:objc:AppKit:NSWritingToolsCoordinator.h:161:NSWritingToolsCoordinatorTextUpdateReason.NSWritingToolsCoordinatorTextReplacementReasonRejected",
+  "In AppKit, which writing tools coordinator reason code tells the system a grammar suggestion was rejected by the user?"
+ ],
+ [
+  "a:swift:AppKit::2969:Foundation.didChangeScreenProfile",
+  "In AppKit, which notification name do I observe to learn when a window's screen color profile changes?"
+ ],
+ [
+  "a:swift:RealityFoundation::5848:RealityFoundation.SubsurfaceRadiusScale",
+  "In RealityFoundation, which struct scales the radius of subsurface scattering for a material?"
+ ],
+ [
+  "a:objc:Metal:MTLDataType.h:138:MTLDataType.MTLDataTypeUChar4",
+  "In Metal, which data type enum case represents a four-component unsigned char vector for a shader argument?"
+ ],
+ [
+  "a:objc:Foundation:NSCharacterSet.h:317:NSMutableCharacterSet.characterSetWithContentsOfFile:",
+  "In Foundation, how do I load a mutable character set from a bitmap file on disk using NSMutableCharacterSet?"
+ ],
+ [
+  "a:swift:AppKit::120:AppKit.DidBeginEditingMessage",
+  "In AppKit, which message struct would I subscribe to in order to react when editing starts in a text control?"
+ ],
+ [
+  "a:swift:CoreGraphics::1325:CoreGraphics.Attributes.expansionText",
+  "In CoreGraphics, which attributes property sets the expansion text used for a text run?"
+ ],
+ [
+  "a:objc:PhotosUI:PHSharedAlbumCreationViewController.h:35:PHSharedAlbumCreationConfiguration.initWithPhotoLibrary:",
+  "In PhotosUI, how do I create a shared album creation configuration tied to a specific photo library?"
+ ],
+ [
+  "a:swift:RealityFoundation::8433:__REAssetBundle.LoadOptions.ContentRequest",
+  "In RealityFoundation, which load option enum lets me request specific content when loading an asset bundle?"
+ ],
+ [
+  "a:swift:RealityFoundation::16270:RealityFoundation.AttributeCompressionType",
+  "In RealityFoundation, which enum lists the compression types available for mesh vertex attributes?"
+ ],
+ [
+  "a:swift:AppKit::2661:AppKit.DidExposeMessage.exposedRect",
+  "In AppKit, how do I read which rectangle of a window became newly exposed from a window expose notification?"
+ ],
+ [
+  "a:swift:CreateMLComponents::1032:UpdatableSupervisedTabularEstimator",
+  "In CreateMLComponents, which protocol lets a supervised tabular estimator be updated incrementally with new training data?"
+ ],
+ [
+  "a:swift:USDKit::1557:USDKit.ValueType.color4d",
+  "In USDKit, which attribute value type constant describes a four-component double color?"
+ ],
+ [
+  "a:objc:Foundation:NSCharacterSet.h:99:NSCharacterSet.symbolCharacterSet",
+  "In Foundation, how do I get the built-in character set of symbol characters such as dollar and plus signs?"
+ ],
+ [
+  "a:objc:OpenDirectory:ODNode.h:143:ODNode.setCredentialsWithRecordType:authenticationType:authenticationItems:continueItems:context:error:",
+  "In OpenDirectory, how do I authenticate an ODNode with a multi-step authentication type that needs response loops?"
+ ],
+ [
+  "a:swift:StoreKit::2361:StoreKit.groupLevel",
+  "In StoreKit, which subscription property gives the level of a subscription within its group for upgrade logic?"
+ ],
+ [
+  "a:swift:CoreMedia::2719:CoreMedia.outputSampleTimingInfos",
+  "In CoreMedia, how do I retrieve the timing info for each sample in a sample buffer as an array?"
+ ],
+ [
+  "a:objc:InstallerPlugins:InstallerState.h:55:InstallerState.licenseAgreedLanguage",
+  "In InstallerPlugins, which InstallerState property records the language the license was last agreed in?"
+ ],
+ [
+  "a:objc:Foundation:NSCalendar.h:519:NSCalendar.isDateInWeekend:",
+  "In Foundation, how do I check whether a given date falls on a weekend according to the calendar's locale using NSCalendar?"
+ ],
+ [
+  "a:objc:Tcl:tclCompile.h:855:TclEvalObjvInternal",
+  "In Tcl, which internal engine function evaluates an objv array of command objects within the interpreter?"
+ ],
+ [
+  "a:swift:USDKit::5722:USDKit.ChangeList.Entry.Flags.didRemoveProperty",
+  "In USDKit, how do I check whether a change list entry flag indicates a property was removed?"
+ ],
+ [
+  "a:swift:Foundation::21091:Foundation.script",
+  "In Foundation, how do I read the writing system of a Locale, such as Latin or Cyrillic?"
+ ],
+ [
+  "a:objc:AppKit:NSWritingToolsCoordinator.h:44:NSWritingToolsCoordinatorTextUpdateReason.NSWritingToolsCoordinatorTextUpdateReasonTyping",
+  "In AppKit, which writing tools text update reason marks changes that came from the user typing?"
+ ],
+ [
+  "a:objc:Metal:MTLResource.h:30:MTLPurgeableState",
+  "In Metal, which enum describes whether the system may discard a resource's contents?"
+ ],
+ [
+  "a:swift:Foundation::22611:Swift.canBeConverted",
+  "In Foundation, how do I check whether a String can be losslessly converted to a given text encoding?"
+ ],
+ [
+  "a:swift:Foundation::7856:Foundation.EWOULDBLOCK",
+  "In Foundation, which POSIX error code means a non-blocking operation would have blocked?"
+ ],
+ [
+  "a:objc:MetalFX:MTLFXTemporalScaler.h:262:MTLFXTemporalScalerBase.outputOffsetY",
+  "In MetalFX, what property sets the vertical pixel offset of the region where the temporal scaler writes its output?"
+ ],
+ [
+  "a:swift:Vision::2922:DetectContoursRequest",
+  "In Vision, which request type finds contours in an image so I can trace shapes?"
+ ],
+ [
+  "a:swift:WebKit::452:WebKit.NavigationPreferences.overrideReferrer",
+  "In WebKit, how do I set a custom referrer for a navigation through NavigationPreferences?"
+ ],
+ [
+  "a:objc:ARKit:shared_coordinate_space.h:203:ar_shared_coordinate_space_provider_is_supported",
+  "In ARKit on visionOS, how can I check whether this device supports the shared coordinate space provider before starting a session?"
+ ],
+ [
+  "a:objc:Foundation:NSGeometry.h:174:NSAlignmentOptions.NSAlignMaxXOutward",
+  "In Foundation, which NSAlignmentOptions flag rounds the maximum X edge outward to an integral value when aligning a rect?"
+ ],
+ [
+  "a:objc:SecurityInterface:SFAuthorizationPluginView.h:201:SFAuthorizationPluginView.setButton:enabled:",
+  "In SecurityInterface, how do I turn off a single button in my authorization plugin UI while it is busy?"
+ ],
+ [
+  "a:swift:Foundation::10988:Foundation.build_Remainder",
+  "In Foundation, how do I write a remainder operation between two operands inside a Predicate expression?"
+ ],
+ [
+  "a:objc:FSKit:FSVolume.h:362:FSStatFSResult.totalFiles",
+  "In FSKit, which property on FSStatFSResult tells me the total number of file entries on a volume?"
+ ],
+ [
+  "a:objc:IOKit:IOPMLib.h:49:IOPMFindPowerManagement",
+  "In IOKit, how can I get a connection handle to the power management service given a master device port?"
+ ],
+ [
+  "a:swift:SwiftUI::12130:NSHostingView.firstTextLineCenter",
+  "In SwiftUI, how can an NSHostingView expose the center point of its first text line for alignment?"
+ ],
+ [
+  "a:swift:AppKit::2578:AppKit.DidChangeMessage.collectionName",
+  "In AppKit, how do I read the collection name from a DidChangeMessage when an observer receives a change notification?"
+ ],
+ [
+  "a:swift:RealityFoundation::15977:PhysicsSimulationComponent.SolverIterations",
+  "In RealityFoundation, how do I set how many solver iterations a PhysicsSimulationComponent runs per simulation step?"
+ ],
+ [
+  "a:objc:AVFoundation:AVAssetWriter.h:523:AVAssetWriter.usesProVideoStorage",
+  "In AVFoundation, how do I opt an AVAssetWriter into reserved ProVideo storage before starting a writing session?"
+ ],
+ [
+  "a:swift:ManagedAppDistribution::40:ManagedApp.licenseAgreementText",
+  "In ManagedAppDistribution, how can I read the license agreement text of a ManagedApp as an attributed string?"
+ ],
+ [
+  "a:swift:USDKit::2416:USDKit.TimeCode.isPreTime",
+  "In USDKit, how do I test whether a TimeCode value is marked as pre-time?"
+ ],
+ [
+  "a:swift:Foundation::22677:Swift.getBytes",
+  "In Foundation, how do I copy a String's encoded bytes into a fixed-size UInt8 buffer while getting back how many bytes were used?"
+ ],
+ [
+  "a:objc:FSKit:FSResource.h:512:FSProbeResult.usableButLimitedProbeResult",
+  "In FSKit, which probe result should a filesystem return when it recognizes a volume but cannot offer full support?"
+ ],
+ [
+  "a:swift:CoreTransferable::43:CoreTransferable.suggestedFilename",
+  "In CoreTransferable, how do I provide a default file name when a transferable item is exported as a file?"
+ ],
+ [
+  "a:objc:CFNetwork:CFHTTPAuthentication.h:35:CFHTTPAuthenticationRef",
+  "In CFNetwork, what opaque reference type holds HTTP authentication details in Core Foundation code?"
+ ],
+ [
+  "a:objc:Foundation:NSCalendar.h:767:NSDateComponents.NSDateComponents",
+  "In Foundation, which Objective-C class holds date components like year, month and day with reference semantics, rather than the Swift value type?"
+ ],
+ [
+  "a:swift:PaperKit::967:MarkupAdornment",
+  "In PaperKit, which struct represents a decorative adornment on a markup element that is identifiable and hashable?"
+ ],
+ [
+  "a:swift:USDKit::2036:USDTransformOperation.isDefined",
+  "In USDKit, how do I check whether a transform operation actually has a value defined on it?"
+ ],
+ [
+  "a:objc:FSKit:FSResource.h:455:FSManageableResourceMaintenanceOperations.startFormatWithTask:options:error:",
+  "In FSKit, how do I kick off formatting of a manageable resource with a task object and format options, getting progress back?"
+ ],
+ [
+  "a:swift:USDKit::5671:USDKit.ChangeList.Entry.Flags.didRename",
+  "In USDKit, which flag on a change list entry tells me that a prim was renamed?"
+ ],
+ [
+  "a:objc:Foundation:NSNumberFormatter.h:265:NSNumberFormatter.negativePrefix",
+  "In Foundation, how do I set the text placed before negative numbers when formatting with NSNumberFormatter?"
+ ],
+ [
+  "a:swift:SwiftUICore::25274:GestureInputKinds",
+  "In SwiftUICore, which option set describes the input kinds, like pointer or touch, that a gesture responds to?"
+ ],
+ [
+  "a:swift:Network::1522:DTLS",
+  "In Network, what protocol type do I stack on a UDP connection to get encrypted datagram transport?"
+ ],
+ [
+  "a:objc:Foundation:NSRunLoop.h:60:NSRunLoop.addTimer:forMode:",
+  "In Foundation, how do I attach a timer to a run loop so it fires only during tracking-related event handling?"
+ ],
+ [
+  "a:swift:Foundation::9730:Foundation.egypt",
+  "In Foundation, how do I get the static Locale region constant for the country with ISO code EG?"
+ ],
+ [
+  "a:swift:AppKit::3690:AppKit.WillAddItemMessage",
+  "In AppKit, how do I subscribe to the notification that fires just before an item gets added to a collection?"
+ ],
+ [
+  "a:objc:Foundation:NSScanner.h:224:NSScanner.scanUpToCharactersFromSet:intoString:",
+  "In Foundation, how can I use NSScanner to read text up to the first character from a given set, returning it by reference?"
+ ],
+ [
+  "a:swift:PaperKit::358:PaperKit.Shape.ChatBubble.tailLocation",
+  "In PaperKit, how do I read or move where the tail point sits on a chat bubble shape?"
+ ],
+ [
+  "a:swift:Foundation::12161:PropertyListDecoder",
+  "In Foundation, which decoder class turns property list data back into my Codable types?"
+ ],
+ [
+  "a:swift:RealityFoundation::16151:BehaviorTreeActionHandler.actionTerminatedWithResult",
+  "In RealityFoundation, how do I tell a behavior tree action handler that its action has finished and report the result?"
+ ],
+ [
+  "a:swift:CreateMLComponents::1633:TemporalSegmentIdentifier",
+  "In CreateMLComponents, which hashable identifier type labels one temporal segment in a sequence of video frames?"
+ ],
+ [
+  "a:swift:CoreVideo::48:CVAttachmentModePreferenceShouldNotPropagate",
+  "In CoreVideo, which attachment propagation preference tells the system not to carry an attachment forward on a buffer?"
+ ],
+ [
+  "a:objc:NetworkExtension:NEDNSProxyManager.h:41:NEDNSProxyManagerError.NEDNSProxyManagerErrorConfigurationCannotBeRemoved",
+  "In NetworkExtension, which DNS proxy manager error code means the configuration cannot be removed?"
+ ],
+ [
+  "a:objc:Foundation:NSIndexPath.h:53:NSIndexPath.initWithIndex:",
+  "In Foundation, how do I create an index path that holds a single index value using the Objective-C constructor?"
+ ],
+ [
+  "a:objc:CoreMedia:CMSampleBuffer.h:1390:CMSampleBufferGetSampleTimingInfo",
+  "In CoreMedia, how do I retrieve the timing info for one particular sample inside a CMSampleBuffer?"
+ ],
+ [
+  "a:objc:UniformTypeIdentifiers:UTCoreTypes.h:498:UTTypePropertyList",
+  "In UniformTypeIdentifiers, which predefined UTType constant identifies property list files?"
+ ],
+ [
+  "a:objc:CoreImage:CIFilterBuiltins.h:2029:CILineOverlay.CILineOverlay",
+  "In CoreImage, which filter protocol draws black sketch-like outlines of an image's edges and leaves the rest transparent?"
+ ],
+ [
+  "a:objc:Foundation:NSURL.h:1218:NSURL.percentEncodedUser",
+  "In Foundation, how do I read or set the percent-encoded user component of an NSURL?"
+ ],
+ [
+  "a:swift:MetricKit::144:CallStackTree.BinaryInfo",
+  "In MetricKit, what struct describes a binary image referenced in a call stack tree?"
+ ],
+ [
+  "a:objc:AudioToolbox:MusicPlayer.h:964:MusicSequenceFileCreate",
+  "In AudioToolbox, how do I write a MusicSequence out to a MIDI file on disk?"
+ ],
+ [
+  "a:objc:CoreAudio:AudioHardware.h:1505:AudioDeviceTranslateTime",
+  "In CoreAudio, how do I convert a timestamp between host time and an audio device's own clock?"
+ ],
+ [
+  "a:swift:NowPlaying::458:TVShowContent",
+  "In NowPlaying, which content representable struct should I use to describe a TV series episode for Now Playing?"
+ ],
+ [
+  "a:objc:Security:SecStaticCode.h:79:SecStaticCodeCreateWithPath",
+  "In Security, how do I create a static code object from a file path so I can inspect a bundle's signature without running it?"
+ ],
+ [
+  "a:objc:Hypervisor:hv_gic.h:214:hv_gic_get_icv_reg",
+  "Porting a KVM guest GIC state dump to Hypervisor framework: how do I read a virtual CPU interface system register for a vcpu?"
+ ],
+ [
+  "a:objc:CoreMedia:CMSampleBuffer.h:1314:CMSampleBufferGetOutputDecodeTimeStamp",
+  "Migrating from FFmpeg packet dts handling to CoreMedia: get the output decode time of a sample buffer after speed scaling"
+ ],
+ [
+  "a:swift:CompositorServices::58:CompositorServices.supportsFoveation",
+  "Porting a VR renderer to CompositorServices on visionOS-style layers, how do I check whether foveation is supported by the device?"
+ ],
+ [
+  "a:objc:CoreImage:CIFilterBuiltins.h:422:CIDisintegrateWithMaskTransition.CIDisintegrateWithMaskTransition",
+  "Moving a mask-based dissolve transition from another graphics library to CoreImage, which typed filter protocol disintegrates one image into another using a mask?"
+ ],
+ [
+  "a:objc:GameController:GCControllerHomeButtonSettingsManager.h:27:GCControllerHomeButtonSettingSystemAction.GCControllerHomeButtonSettingSystemActionOther",
+  "Porting gamepad home button handling to GameController: which controller home button system action value means some other unspecified action?"
+ ],
+ [
+  "a:swift:NowPlaying::64:MediaCommand.togglePlayPause",
+  "Replacing MPRemoteCommandCenter handlers with the new NowPlaying framework, how do I register an async handler for the play pause toggle media command?"
+ ],
+ [
+  "a:objc:ImageIO:CGImageAnimation.h:100:CGAnimateImageDataWithBlock",
+  "Porting animated GIF playback from another platform to ImageIO: play a GIF or APNG from in-memory data with a per-frame block callback"
+ ],
+ [
+  "a:objc:Foundation:NSXPCConnection.h:36:NSXPCProxyCreating.remoteObjectProxyWithErrorHandler:",
+  "Migrating from raw Mach messaging to XPC in Foundation: get a remote proxy object that calls an error block if the connection fails"
+ ],
+ [
+  "a:swift:AppIntents::4211:EntityQuery.displayRepresentations",
+  "Updating an old EntityQuery in AppIntents, how do I supply display representations for a list of entity identifiers asynchronously?"
+ ],
+ [
+  "a:swift:AppKit::1256:AppKit.DidUnhideMessage",
+  "Migrating NSApplicationDidUnhide notification observers to the new typed AppKit message, which struct represents the app having been unhidden?"
+ ],
+ [
+  "a:swift:RealityFoundation::11613:__RKEntityAudioAction.spatialMode",
+  "Porting spatial audio settings from Unity to RealityFoundation: which property on the entity audio action selects the spatial mode?"
+ ],
+ [
+  "a:objc:Metal:MTLPixelFormat.h:190:MTLPixelFormat.MTLPixelFormatRGB32Uint",
+  "Porting a Vulkan three-channel 32-bit unsigned integer texture format to Metal, which MTLPixelFormat value matches R32G32B32 uint for texture buffers?"
+ ],
+ [
+  "a:objc:ColorSync:ColorSyncCMM.h:83:ColorSyncIterateInstalledCMMs",
+  "Migrating from the old ColorSync color matching module listing code: enumerate every installed CMM with a callback"
+ ],
+ [
+  "a:swift:NowPlaying::525:MediaDuration",
+  "Moving from MPMediaItemPropertyPlaybackDuration to the NowPlaying framework, what type describes the duration of media, such as known or live?"
+ ],
+ [
+  "a:objc:AppKit:NSWritingToolsCoordinator.h:151:NSWritingToolsCoordinatorTextUpdateReason.NSWritingToolsCoordinatorTextReplacementReasonAccepted",
+  "Adopting AppKit writing tools coordinator in an old text editor, which text replacement reason signals that a grammar suggestion was accepted?"
+ ],
+ [
+  "a:objc:Foundation:NSString.h:1196:NSMutableString.setString:",
+  "Porting StringBuilder code to Foundation: how do I overwrite the entire contents of an NSMutableString with another string?"
+ ],
+ [
+  "a:objc:AudioToolbox:AudioQueue.h:1208:AudioQueueEnqueueBufferWithParameters",
+  "Migrating from OpenAL buffer queueing to AudioToolbox audio queue: enqueue a buffer with start time and trim parameters"
+ ],
+ [
+  "a:swift:PaperKit::482:LinkMarkup",
+  "Porting a drawing canvas annotation feature to PaperKit, what markup struct represents a hyperlink element?"
+ ],
+ [
+  "a:swift:BackgroundAssets::327:AssetPackManifest.assetPack",
+  "Migrating from on-demand resources to BackgroundAssets, how do I look up an asset pack in the manifest by its identifier string?"
+ ],
+ [
+  "a:swift:TabularData::216:AnyColumnPrototype",
+  "Porting pandas-style dataframe code to TabularData: what type-erased protocol do untyped column prototypes conform to?"
+ ],
+ [
+  "a:swift:FoundationModels::249:FoundationModels.LimitIncreaseSuggestion",
+  "Migrating a cloud LLM client to the FoundationModels framework, what struct suggests a usage limit increase when limits are hit?"
+ ],
+ [
+  "a:objc:Foundation:NSDecimalNumber.h:107:NSDecimalNumber.initWithString:locale:",
+  "Porting BigDecimal parsing from Java to Foundation: create an NSDecimalNumber from a numeric string using a specific locale's decimal separator"
+ ],
+ [
+  "a:swift:ExtensionFoundation::27:AppExtension.Implementing",
+  "Updating an old app extension to the ExtensionFoundation AppExtension protocol, what typealias gives the capabilities the extension point implements?"
+ ],
+ [
+  "a:swift:Charts::2856:PlotDimensionScaleRange",
+  "Porting a D3 chart scale range to Swift Charts, which struct sets the scale range based on the plot dimension?"
+ ],
+ [
+  "a:swift:GameController::482:GCInputButtonMenu",
+  "Migrating from legacy GCController profiles to GameController input names, which string constant names the menu button input?"
+ ],
+ [
+  "a:swift:ComputeGraph::645:ComputeGraph.PointerDefinition",
+  "Porting CUDA kernel pointer arguments to ComputeGraph, what struct defines a pointer parameter in the graph?"
+ ],
+ [
+  "a:swift:AppIntents::223:ShortcutTileColor",
+  "Migrating from SiriKit to AppIntents shortcuts, which enum lists the colors available for a shortcut tile?"
+ ],
+ [
+  "a:objc:AppKit:NSWritingToolsCoordinator.h:143:NSWritingToolsCoordinatorTextUpdateReason.NSWritingToolsCoordinatorTextReplacementReasonNoninteractive",
+  "Adopting the AppKit writing tools coordinator, which text replacement reason means an unanimated noninteractive replacement such as a reverted rewrite?"
+ ],
+ [
+  "a:objc:Photos:PhotosTypes.h:49:PHCollectionListSubtype.PHCollectionListSubtypeRootFolder",
+  "Porting photo library folder handling from another platform to Photos: which collection list subtype identifies the single root folder?"
+ ],
+ [
+  "a:swift:ComputeGraph::691:AdvanceParams.worldToLocal",
+  "Porting a particle simulation to ComputeGraph, which AdvanceParams property holds the world to local transform matrix?"
+ ],
+ [
+  "a:objc:ARKit:object_tracking.h:952:ar_object_tracking_provider_is_supported",
+  "Migrating object detection from ARCore-style code to ARKit on visionOS: check whether this device supports the object tracking provider"
+ ],
+ [
+  "a:objc:Foundation:NSLocale.h:82:NSLocale.displayNameForKey:value:",
+  "Porting Java Locale display name code to NSLocale: get the localized display name for a locale component such as a language code"
+ ],
+ [
+  "a:objc:AppKit:NSTextView.h:500:NSTextView.registerTextAttachmentViewProviderReusePolicy:forTextAttachmentViewProviderType:",
+  "Porting custom inline attachment views to NSTextView, how do I set the reuse policy for all instances of a view provider subclass?"
+ ],
+ [
+  "a:objc:CoreImage:CIFilterBuiltins.h:1727:CIRoundedQRCodeGenerator.roundedData",
+  "Migrating QR code generation to CoreImage's rounded QR code generator, which property makes the data points look rounded?"
+ ],
+ [
+  "a:objc:SpriteKit:SKAction.h:229:SKAction.setTexture:",
+  "Porting Cocos2d sprite frame swapping to SpriteKit: create an SKAction that changes a sprite's texture"
+ ],
+ [
+  "a:objc:CoreMIDI:MIDISetup.h:143:MIDISetupGetCurrent",
+  "Migrating legacy CoreMIDI code that fetched the system's current MIDI setup object, which old function returns it?"
+ ],
+ [
+  "a:swift:ColorSync::35:ColorSync.HeadroomAdaptiveGainCurve.ColorVolumeTransform.customHDRReferenceWhite",
+  "Porting HDR tone mapping to ColorSync, which optional property on the color volume transform overrides the HDR reference white?"
+ ],
+ [
+  "a:swift:MusicUnderstanding::48:StructureResult",
+  "Porting music structure analysis from librosa to MusicUnderstanding, which codable struct returns the song structure result?"
+ ],
+ [
+  "a:objc:AppKit:NSWritingToolsCoordinator.h:200:NSWritingToolsCoordinatorTextUpdateReason.NSWritingToolsCoordinatorContextScopeVisibleArea",
+  "Adopting the AppKit writing tools coordinator, which context scope covers inline editing on only the visible area of the text?"
+ ],
+ [
+  "a:swift:AppKit::3733:AppKit.SelectedAlternativeStringMessage.textAlternatives",
+  "Migrating the old selected alternative string notification to AppKit's typed message, which property carries the NSTextAlternatives?"
+ ],
+ [
+  "a:swift:PencilKit::35:PKStrokePath.bezierRepresentation",
+  "Porting ink stroke rendering from Android to PencilKit: convert a PKStrokePath into a CGPath bezier curve"
+ ],
+ [
+  "a:swift:AppKit::452:AppKit.DidChangeAutomaticTextReplacementMessage",
+  "Migrating NSText notification observers to AppKit typed messages, which struct signals that automatic text replacement was toggled?"
+ ],
+ [
+  "a:objc:ARKit:barcode_detection.h:217:ar_barcode_anchor_get_origin_from_anchor_transform",
+  "In ARKit, how do I get the pose of a barcode anchor expressed relative to the world origin on visionOS?"
+ ],
+ [
+  "a:objc:ARKit:camera_frame_provider.h:159:ar_camera_video_format_get_frame_size",
+  "How do I read the pixel dimensions of a camera video format in ARKit's camera frame provider?"
+ ],
+ [
+  "a:swift:CoreVideo::318:CVImageCleanAperture.horizontalOffset",
+  "What is the horizontal shift of the clean aperture rectangle in CoreVideo's image clean aperture struct?"
+ ],
+ [
+  "a:swift:FoundationModels::1542:FoundationModels.ContextSizeExceeded.contextSize",
+  "In FoundationModels, when the context size exceeded error is thrown, how do I read how large the context was?"
+ ],
+ [
+  "a:swift:AppKit::1296:AppKit.WillResignActiveMessage",
+  "In AppKit, which notification message type fires when the application is about to resign being the active app?"
+ ],
+ [
+  "a:swift:MetricKit::952:SignpostIntervalMetric",
+  "In MetricKit, which metric type reports data about signpost intervals in my app?"
+ ],
+ [
+  "a:objc:AccessoryAccess:AAUSBAccessoryMatchingCriteria.h:15:AAUSBAccessoryMatchingCriteriaInterfaceMatchingOption",
+  "In AccessoryAccess, which enum chooses whether every criterion must match a USB interface when matching accessories?"
+ ],
+ [
+  "a:swift:USDKit::2137:USDStage.OpenOptions.createNew",
+  "In USDKit, which stage open option makes it create a brand new file instead of loading an existing one?"
+ ],
+ [
+  "a:objc:Security:SecCertificate.h:395:SecCertificateCopyPreference",
+  "With the Security framework, how do I look up the preferred certificate saved for an email address and key usage?"
+ ],
+ [
+  "a:swift:RealityFoundation::13610:AccessibilityComponent.SupportedActions",
+  "In RealityFoundation, which option set lists the actions an entity's accessibility component supports?"
+ ],
+ [
+  "a:objc:AppKit:NSTextView.h:506:NSTextView.viewportBoundsForTextViewportLayoutController:",
+  "On an NSTextView, how do I supply the current viewport rectangle to the text layout controller delegate?"
+ ],
+ [
+  "a:swift:Foundation::14729:Foundation.memoryDataMoved",
+  "In Foundation, which Mach error code means memory data was moved while I was accessing it?"
+ ],
+ [
+  "a:objc:IOKit:IOCDTypes.h:172:CDConvertTrackNumberToMSF",
+  "In IOKit, how can I convert a CD track number into a minute second frame address using the table of contents?"
+ ],
+ [
+  "a:objc:FileProvider:NSFileProviderActions.h:106:NSFileProviderExtension.createDirectoryWithName:inParentItemIdentifier:completionHandler:",
+  "In a FileProvider extension, how do I handle the request to create a new folder inside a parent item?"
+ ],
+ [
+  "a:swift:SwiftUI::12942:ReorderDifference.Destination.collectionID",
+  "In SwiftUI, how do I find which collection a reorder difference destination points to?"
+ ],
+ [
+  "a:objc:Matter:MTRBaseClusters.h:16279:MTRBaseClusterAudioControl.increaseVolumeWithParams:completion:",
+  "In Matter, how do I send a command to an audio control cluster asking it to increase the volume?"
+ ],
+ [
+  "a:swift:MetricKit::872:HangTimeMetric",
+  "In MetricKit, which metric measures how much time my app spent hanging?"
+ ],
+ [
+  "a:swift:AppKit::2761:AppKit.DidChangeBackingPropertiesMessage.oldColorSpace",
+  "In AppKit, after a window's backing properties change, how do I get the previous color space?"
+ ],
+ [
+  "a:objc:Foundation:NSURLHandle.h:140:NSURLHandle.cancelLoadInBackground",
+  "How do I cancel a background load that is in progress on an NSURLHandle subclass in Foundation?"
+ ],
+ [
+  "a:swift:Foundation::12075:Foundation.Properties.EstimatedTimeRemaining",
+  "In Foundation's progress manager, which property type tracks the estimated time remaining for a task?"
+ ],
+ [
+  "a:swift:AppKit::3244:AppKit.DidSendActionMessage",
+  "In AppKit, which message is delivered after a control has sent its action to the target?"
+ ],
+ [
+  "a:swift:Foundation::13041:URL.stopAccessingSecurityScopedResource",
+  "On a Foundation URL, how do I release access to a security-scoped resource when I'm done with it?"
+ ],
+ [
+  "a:objc:CoreImage:CIFilterBuiltins.h:1953:CIEdges.CIEdges",
+  "In CoreImage, which built-in filter protocol do I use to type a filter for detecting edges?"
+ ],
+ [
+  "a:objc:QuickLook:QLGenerator.h:326:QLPreviewRequestSetDocumentObject",
+  "In QuickLook generators, how do I attach a document object with retain callbacks to a preview request?"
+ ],
+ [
+  "a:objc:IOUSBHost:AppleUSBDescriptorParsing.h:154:IOUSBGetSuperSpeedPlusDeviceCapabilityDescriptor",
+  "In IOUSBHost, how do I find the SuperSpeedPlus device capability descriptor inside a BOS descriptor?"
+ ],
+ [
+  "a:objc:JavaScriptCore:JSValueRef.h:328:JSValueMakeUndefined",
+  "In JavaScriptCore, how do I create an undefined value from C for a given script context?"
+ ],
+ [
+  "a:objc:WebKit:WKScriptMessageHandlerWithReply.h:91:WKScriptMessageHandlerWithReply.userContentController:didReceiveScriptMessage:replyHandler:",
+  "In WebKit, how do I answer a JavaScript message from a web page by sending back an asynchronous reply?"
+ ],
+ [
+  "a:swift:RealityFoundation::16171:BehaviorTreeAction",
+  "In RealityFoundation, which protocol represents an entity action that is driven by a behavior tree?"
+ ],
+ [
+  "a:swift:RealityFoundation::3378:RealityFoundation.sessionID",
+  "In RealityFoundation, how do I get the optional UUID that identifies the current session?"
+ ],
+ [
+  "a:swift:AppKit::2437:Foundation.contextHelpModeDidActivate",
+  "In AppKit, how do I observe the notification posted when the help manager turns on context help mode?"
+ ],
+ [
+  "a:swift:MetricKit::115:HangDiagnostic",
+  "In MetricKit, which diagnostic type describes a hang that my app experienced?"
+ ],
+ [
+  "a:swift:USDKit::2073:USDKit.VariantSet.blockSelection",
+  "In USDKit, how do I block the selection on a variant set so that no variant is chosen?"
+ ],
+ [
+  "a:swift:USDKit::1503:USDKit.ValueType.float4",
+  "In USDKit, which attribute value type represents a four-component float vector?"
+ ],
+ [
+  "a:swift:CreateML::3641:CreateML.FeatureExtractionParameters",
+  "In CreateML, what holds the settings for feature extraction when training a model?"
+ ],
+ [
+  "a:swift:USDKit::1569:USDKit.ValueType.textureCoordinate2d",
+  "In USDKit, which attribute value type stores two-dimensional texture coordinates?"
+ ],
+ [
+  "a:swift:RealityFoundation::1543:SceneUnderstandingComponent.EntityType",
+  "In RealityFoundation, what are the entity types a scene understanding component can assign?"
+ ],
+ [
+  "a:swift:SwiftUICore::11541:SwiftUICore.Resolved.isItalic",
+  "In SwiftUICore, how do I check whether a resolved font is italic?"
+ ],
+ [
+  "a:objc:SceneKit:SceneKitDeprecated.h:46:SCNLight.attributeForKey:",
+  "In SceneKit, how do I read a light attribute by key from an SCNLight using the old deprecated way?"
+ ],
+ [
+  "a:objc:vecLib:bnns_graph.h:592:BNNSGraphContextDestroy",
+  "In vecLib, how do I destroy a BNNS graph context once I am finished with it?"
+ ],
+ [
+  "a:objc:Metal:MTLPixelFormat.h:74:MTLPixelFormat.MTLPixelFormatRGB8Uint",
+  "In Metal, which pixel format stores three-channel 8-bit unsigned integer color?"
+ ],
+ [
+  "a:swift:AccessoryAccess::28:AccessoryAccess.DeviceMatchingCriteria.deviceSubClass",
+  "In AccessoryAccess, how do I set the device subclass number in the device matching criteria?"
+ ],
+ [
+  "a:swift:MetricKit::542:OptimizedTimeToFirstDrawMetric",
+  "In MetricKit, which metric reports the optimized time to first draw of my app?"
+ ],
+ [
+  "a:objc:Speech:SFSpeechRecognitionTaskHint.h:24:SFSpeechRecognitionTaskHint.SFSpeechRecognitionTaskHintSearch",
+  "In the Speech framework, which recognition task hint suits transcribing someone dictating web search queries?"
+ ],
+ [
+  "a:objc:CoreMedia:CMTimeRange.h:364:CMTimeMappingMake",
+  "In CoreMedia, how do I build a time mapping from a source time range and a target time range?"
+ ]
+]
