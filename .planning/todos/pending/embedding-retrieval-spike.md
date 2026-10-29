@@ -74,3 +74,13 @@ Round 4: `docs/research/embedding-retrieval-spike-results-round4.md`, frozen pla
 - [ ] Pack scoping rule that keeps identifiers reachable (lexical lane full, dense lane scoped did not recover them).
 - [ ] Budget: 24 min embed and 118 ms added query p95 remain the blockers.
 - [ ] Decide whether to draft the ADR and requirement text for the opt-in lane.
+
+## Update 2026-10-29 (round 5, fresh sets, Mac only)
+
+Round 5: `docs/research/embedding-retrieval-spike-results-round5.md`, frozen plan section 14 and records in `.planning/spikes/round5/`. On fresh mixed-intent (171) and identifier (120) queries the exact-name shortcut plus dense only equals dense only (the I3 identifier gain did not replicate); both beat the lexical arms on mixed queries (0.920 vs 0.832) and the finding holds with Qwen3 vectors. The single-token fallback (R5) gains 7.9 points on fresh identifiers but the registered tuning rule did not recommend it. The reranker is not confirmed (+1.9 pooled, p5 -0.9). The int8 256-dimension path measures 61.7 ms p95 on a quiet machine.
+
+- [x] Register and test the exact-name plus dense router on fresh sets.
+- [ ] Confirm R5 (single-token trigram fallback) on another fresh identifier set, or fold the rule into the proposal as an unconfirmed option.
+- [ ] Query path under 50 ms: drop the F2 search (embed plus int8 scan measured 45 to 49 ms) and re-measure the whole path.
+- [ ] Budget: 24 min full-pack embed is still the other blocker.
+- [ ] Decide whether to draft the ADR and requirement text for the opt-in lane.
