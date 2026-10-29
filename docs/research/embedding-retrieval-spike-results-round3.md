@@ -52,7 +52,7 @@ By part: objc 0.239 (D 0.283), Swift 0.108 (D 0.129). The macOS 27 strata (B, C)
 | F | 0.803 |
 | F2 (= L) | 0.656 |
 | D | 0.836 |
-| Primary | 0.918 |
+| Primary | 0.902 |
 
 By rule (primary / L): exact 0.889 / 1.0 (the one miss is a name collision), qualified 1.0 / 1.0, fragment 0.5 / 0.0, lowercase-joined 1.0 / 1.0, misspelled 1.0 / 0.083, module member 1.0 / 1.0. The misspelled and fragment rules are where dense retrieval helps; exact names are already solved lexically. `R1` (syntactic identifier test) is inferior again (0.656 with `F2` as L).
 
@@ -62,7 +62,7 @@ By rule (primary / L): exact 0.889 / 1.0 (the one miss is a name collision), qua
 |---|---|---|
 | C1 | V3 primary − L ≥ +5 pts, p5 > 0 | **Met**: +17.5, p5 +13.1 |
 | C2 | Each stratum non-negative | **Met**: A +27.9, B +15.6, C +10.7, D +10.8 (all p5 > 0; C and D have n 56 and 37) |
-| C3 | I3 primary within 1 pt of L | **Met**: 0.918 vs L 0.656. Caveat below |
+| C3 | I3 primary within 1 pt of L | **Met**: 0.902 vs L 0.656. Caveat below |
 | C4 | Two Metal runs identical | **Met**: dense and primary top-10 identical for all 375 queries (document vectors reused, query vectors recomputed) |
 | C5 | Network-denied run identical | **Met**: on a 5,375-document sub-pool (all gold plus 5,000 random), document vectors rebuilt inside `sandbox-exec` with network denied, 375 of 375 top-10 lists identical |
 | C6 | ONNX CPU within 1 pt, overlap ≥ 0.9 | **Met**: 20,496-document sub-pool (gold, union of Metal dense top-50 lists, 5,000 random), ONNX q8 CPU: dense recall identical (V3 0.214, I3 0.836), primary V3 0.175 vs 0.180, mean top-10 overlap 0.968 (98 of 375 lists identical) |
@@ -71,7 +71,9 @@ By rule (primary / L): exact 0.889 / 1.0 (the one miss is a name collision), qua
 
 Under section 12.6, C1 to C3 are met, so the lane is confirmed on a real SDK pack; C7 is a named blocker for the product phase, and the scoping measurements below show how it can be approached.
 
-**Caveat on C3.** `L` is whichever lexical arm is better on V3 tuning, where both score about zero, and `F2` won by one query (0.013 vs 0.000). `F2` is much worse than `F` on identifiers (0.656 vs 0.803). Against `F` the primary arm gains +9.8 points on I3 (p5 0.0), so non-inferiority holds either way, but the +26 points against `L` overstates it.
+**Caveat on C3.** `L` is whichever lexical arm is better on V3 tuning, where both score about zero, and `F2` won by one query (0.013 vs 0.000). `F2` is much worse than `F` on identifiers (0.656 vs 0.803). Against `F` the primary arm gains +9.8 points on I3 (p5 0.0), so non-inferiority holds either way, but the +25 points against `L` overstates it.
+
+**Correction (2026-10-29, found in round 4):** this note first reported the I3 primary value as 0.918. That is the value of the weight 1 and 2 variants (R2w1, R2w2); the registered primary was R2w3, whose I3 test recall in `results/r3-eg2-metal.json` is 0.902 (55 of 61). The table, C3 row and this caveat are corrected. The V3 numbers, the pass conditions and the verdict are unchanged (the +9.8 against `F` came from the result file and was correct).
 
 ## Budget, scale and storage (C7, C8)
 

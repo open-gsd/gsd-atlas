@@ -56,10 +56,21 @@ Round 2 ran: results in `docs/research/embedding-retrieval-spike-results-round2.
 
 ## Update 2026-10-29 (round 3 run, real macOS 27 SDK, Mac only)
 
-Round 3 ran on the installed MacOSX27.0.sdk (146,554 declarations): results in `docs/research/embedding-retrieval-spike-results-round3.md`, frozen plan section 12 and records in `.planning/spikes/round3/`. EmbeddingGemma 2 meets effect conditions C1 to C3 (V3 test recall@10: lexical 0.005, dense only 0.214, primary 0.180; identifiers 0.918 vs 0.803 for the better lexical arm) and the determinism, network-denied and ONNX CPU portability checks; it fails the budget condition (24 min full-pack embed on Metal, 118 ms added query p95). Remaining before an adoption decision:
+Round 3 ran on the installed MacOSX27.0.sdk (146,554 declarations): results in `docs/research/embedding-retrieval-spike-results-round3.md`, frozen plan section 12 and records in `.planning/spikes/round3/`. EmbeddingGemma 2 meets effect conditions C1 to C3 (V3 test recall@10: lexical 0.005, dense only 0.214, primary 0.180; identifiers 0.902 vs 0.803 for the better lexical arm (corrected from 0.918 in round 4)) and the determinism, network-denied and ONNX CPU portability checks; it fails the budget condition (24 min full-pack embed on Metal, 118 ms added query p95). Remaining before an adoption decision:
 
 - [ ] Register a dense-only fallback router (the registered primary is 3.4 pts below dense only on V3) and re-score on the frozen sets.
 - [ ] Decide pack scoping (Pool-lite is 25 percent of the pack, about 6 min on Metal) and 256-dim int8 storage (37.5 MB for the full pack).
 - [ ] Prose for Swift declarations (stratum C has none) and a reranker over the top 50.
 - [ ] Human-written query sample; Windows and Node 24 via CI; the product's own SDK pack after Phase 6.
+- [ ] Decide whether to draft the ADR and requirement text for the opt-in lane.
+
+## Update 2026-10-29 (round 4, real macOS 27 SDK, Mac only)
+
+Round 4: `docs/research/embedding-retrieval-spike-results-round4.md`, frozen plan section 13 and records in `.planning/spikes/round4/`. The registered router missed P1 and P3; the unselected candidate (exact-name hit to lexical, otherwise dense only) equals dense only on V3 and M4 and adds 6.6 points on identifiers. The reranker adds 3.9 points on V3 (p5 0.0) at 620 ms per query. Scoping the dense lane to Pool-lite loses identifiers. Symbol-graph prose lifts macOS 27 Swift declarations. Windows, Node 24 and human-written queries were dropped from scope by decision.
+
+- [x] Dense-fallback router registered and scored (round 4). Next: register the exact-name shortcut plus dense only and re-score on a fresh tuning set.
+- [x] Reranker over the top 50 measured: optional and slow.
+- [x] Swift prose from symbol graphs measured: helps macOS 27 Swift.
+- [ ] Pack scoping rule that keeps identifiers reachable (lexical lane full, dense lane scoped did not recover them).
+- [ ] Budget: 24 min embed and 118 ms added query p95 remain the blockers.
 - [ ] Decide whether to draft the ADR and requirement text for the opt-in lane.

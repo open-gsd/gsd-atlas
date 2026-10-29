@@ -16,7 +16,7 @@ Recorded before any round 4 arm is scored and before any M4 query is written.
 Feasibility probe before the freeze (no query set or arm involved): `swift-symbolgraph-extract` on Foundation returned 13,342 symbols, 5,079 with doc comments, so Part D is possible. The 169 Swift modules of the pack were queued for extraction right after the freeze; extraction output does not depend on any query.
 
 ## Amendments
-(none yet)
+- **A1 (2026-10-29, found by the reproduction gate, before any new-arm result was read):** plan 13.2 listed the round 3 I3 test value of R2w3 as 0.918. The gate reproduced V3 D 0.214, V3 R2w3 0.180 and I3 D 0.836 exactly, and I3 R2w3 as 0.902 (55 of 61). `round3/results/r3-eg2-metal.json` itself says 0.902: 0.918 is the R2w1/R2w2 value, which the round 3 note had misquoted as the primary. The round 3 note and the todo were corrected (dated correction paragraph). The gate expectation changes to 0.902 and the gate then passes. The round 3 lists are reproduced exactly (I3 test top-10 lists identical to the saved ones). No condition, arm or threshold changes.
 
 ## M4 frozen (2026-10-29, before any arm was scored on it)
 Three fresh AI authors (one on the small model tier, two on the mid tier, so not one model family), 36 targets each (30 main + 6 reserve each, all authored). Checker `check-m4.mjs` accepted 99 of 108, rejected 9 (dropped, not repaired): 4 for no name/owner/framework piece, 4 for containing the full name, 1 for an unknown id typed by the author. Plan 13.3 asked for at least 60 accepted. Raw author files and target files are in `queries/`.
