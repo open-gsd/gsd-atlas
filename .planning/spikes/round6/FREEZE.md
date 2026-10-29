@@ -22,3 +22,6 @@ queries/gold-i6.json sha256 e81ad62f4add57c0b1397acc552d84da9c29f2c397adf5c30572
 
 ### A3 (2026-10-29, before any arm was scored)
 score6.mjs sha256 68daa1b0fc4940896f52182cb220d3fbfecfa649964f924dfd25df3a9e899dc2. I6 lists built (embeddinggemma-2-Q8_0, same command as round 5). Latency passes are taken from latency6.mjs runs whose recorded load1 at pass start is below 1.5; passes above are discarded and reported, and the run is repeated (up to four runs) until three valid passes exist.
+
+### A4 (2026-10-29, results)
+Scored with score6.mjs (unchanged, hash in A3). Latency: six passes recorded, none with load1 below 1.5 (host load 3 to 12 throughout); runs 3 and 4 were stopped, so S8 is reported as not evaluable and the loaded-machine figures as informational. S4 failed on one query (USDKit.arrayCount). Results: results/r6-score.json; note: docs/research/embedding-retrieval-spike-results-round6.md.
