@@ -282,13 +282,16 @@ Plans:
 **Goal:** An agent building for an Apple or Node target is told the installed SDK version, the real declaration and availability of an API, and which uses are missing or too new for the deployment target, even on a Linux CI machine with no SDK installed.
 **Mode:** mvp
 **Depends on:** Phase 4, Phase 5
-**Requirements:** SDK-01, SDK-02, SDK-03, SDK-04, SDK-05, SDK-06, SDK-07, SDK-08
+**Requirements:** SDK-01, SDK-02, SDK-03, SDK-04, SDK-05, SDK-06, SDK-07, SDK-08, EMB-01, EMB-02, EMB-03, EMB-04
 **Success Criteria** (what must be TRUE):
   1. The Apple provider detects installed SDKs and extracts symbols with availability per SDK id, keeping earlier versions side by side, and the Node provider reads versions and APIs from `engines`, `.nvmrc`, `@types/node` and the TypeScript `lib`.
   2. `sdk export` on a Mac and `sdk import` on Linux or CI move an SDK pack with nothing downloaded, and lookups against the imported pack answer with networking disabled.
   3. `platform_card` and `sdk_lookup` name the installed SDK version, declaration, availability and project deployment target; with Xcode 27 `platform_card` reports iOS SDK 27.0 and the project's deployment target (on the `xcode-27` CI runner where available, otherwise as a documented local gate).
   4. `sdk_check` flags 100% of symbols missing from the installed SDK and of uses above the deployment target without a guard on the 50-use fixture, and `syntax_check` flags syntax newer than the project's language level.
   5. `sdk_diff` compares two SDK versions, defaulting to frameworks the project imports and summarising by framework, and stays under the server-side output ceiling.
+  6. An opt-in local retrieval lane (EMB-01..04) is off by default and adds dense candidates to the same cited-fact path. On the registered retrieval eval (EVL-06 slices a, b, c1, c2, run against real SDK packs) it lifts recall@10 on natural-language-intent slices by at least 5 points with the paired-bootstrap 5th-percentile bound above zero, loses less than 1 point on identifier-like queries, makes zero network calls after the explicit model fetch, and keeps vector storage within A18.
+
+**Embedding lane (folded in 2026-10-29 by owner decision, option 2 of `.planning/proposals/post-phase-3-embedding-retrieval.md`).** Plan the lane as its own plans inside this phase, after the SDK pack and `sdk_lookup` plans, so the dense candidates are designed against `sdk_lookup` and measured on real packs. It must not block SDK-01..08 or change the "cited exact facts" claim, and a failed criterion 6 does not fail SDK-01..08. Planning inputs from the spike (rounds 1 to 8, `docs/research/embedding-retrieval-spike-results-round*.md`): the recommended arm is the exact-name hit, then dense, with a single-token trigram rescue that is skipped when the query contains a dot; first-phase scope is a smaller pack (256-dim int8). Open at plan time: search latency (S8) was never certified under a registered protocol (working-machine p95 was 37 to 47 ms, not evaluable), and the full-pack embed is only a projection (693 s with 4 concurrent contexts against a 600 s target). Amendments to A15 and A18, and any move away from `loadExtension` off, need separate owner approval.
 
 **Plans:** TBD
 

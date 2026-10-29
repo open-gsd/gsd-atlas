@@ -133,6 +133,15 @@ Scope is the full PRD 1.0 (M0-M6), with M4 split into SDK facts, agent integrati
 - [ ] **SDK-07**: `syntax_check` flags syntax newer than the project's language level
 - [ ] **SDK-08**: With Xcode 27, `platform_card` reports iOS SDK 27.0 and the project's deployment target; CI uses the `xcode-27` runner where available, otherwise the gate is local
 
+### Opt-in Local Retrieval (EMB)
+
+Folded into Phase 6 on 2026-10-29 (see `.planning/proposals/post-phase-3-embedding-retrieval.md`). Off by default; a candidate lane only, never a fact source.
+
+- [ ] **EMB-01**: Opt-in local embedding search feeds dense candidates into the same cited-fact path, fused by a fixed recorded rule (RRF), off by default, with no network at query time; a `sqlite-vec` extension is used only if a JS BLOB scan misses the latency budget, and `loadExtension` stays off in default builds
+- [ ] **EMB-02**: The vector store is per-symbol and content-hash keyed, records model, revision, quantization, backend, pooling, prefix and dimension, treats any mismatch as stale and re-embeds, and stays within A18
+- [ ] **EMB-03**: Model fetch is a separate explicit user action that shows the size first; backends sit behind one interface, and an optional OpenAI-compatible `/v1/embeddings` endpoint (loopback or LAN allowlist) is read from user-level config only
+- [ ] **EMB-04**: Retrieval eval slices a, b, c1 and c2 report per slice with a paired bootstrap and non-inferiority on identifier queries, and run on real SDK packs (builds on EVL-06)
+
 ### Agent Integration (AGT)
 
 - [ ] **AGT-01**: A pure Policy module decides hook behaviour from the session ledger, with block counters persisted and absent state treated as allow
@@ -174,7 +183,6 @@ Deferred; tracked but not in the current roadmap.
 ### Post-1.0
 
 - **OKF-01**: `gsd-atlas export --format okf` writes a module-level markdown bundle (gated on spec license and maturity check)
-- **EMB-01**: Opt-in local embedding search with `sqlite-vec`
 - **LNG2-01**: SDK/language-level providers for Python, Go, Java, Rust, C#, C/C++, then installed package facts
 - **NET-01**: Network sharing after privacy review
 
@@ -279,6 +287,10 @@ Which phases cover which requirements. Updated during roadmap creation.
 | SDK-06 | Phase 6 | Pending |
 | SDK-07 | Phase 6 | Pending |
 | SDK-08 | Phase 6 | Pending |
+| EMB-01 | Phase 6 | Pending |
+| EMB-02 | Phase 6 | Pending |
+| EMB-03 | Phase 6 | Pending |
+| EMB-04 | Phase 6 | Pending |
 | AGT-01 | Phase 7 | Pending |
 | AGT-02 | Phase 7 | Pending |
 | AGT-03 | Phase 7 | Pending |
@@ -302,10 +314,10 @@ Which phases cover which requirements. Updated during roadmap creation.
 | REL-04 | Phase 9 | Pending |
 
 **Coverage:**
-- v1 requirements: 104 total
-- Mapped to phases: 104
+- v1 requirements: 108 total
+- Mapped to phases: 108
 - Unmapped: 0
 
 ---
 *Requirements defined: 2026-10-15*
-*Last updated: 2026-10-22 (EVL-03 note, EVL-04 amended, EVL-05 and EVL-06 added by owner decision; previously: 2026-10-15 after phase 1 plan revision (FND-10 split: three amendments stay in Phase 1, two move to FND-12 in Phase 2))*
+*Last updated: 2026-10-29 (EMB-01 promoted from v2 and EMB-02..04 added to Phase 6 by owner decision; previously: 2026-10-22 (EVL-03 note, EVL-04 amended, EVL-05 and EVL-06 added by owner decision; previously: 2026-10-15 after phase 1 plan revision (FND-10 split: three amendments stay in Phase 1, two move to FND-12 in Phase 2)))*

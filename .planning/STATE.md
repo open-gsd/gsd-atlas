@@ -185,6 +185,7 @@ None yet.
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
 | 261017-slg | Diataxis restructure of user documentation for Phase 2 | 2026-10-17 | 9f23c7f | [261017-slg-diataxis-restructure-of-user-documentati](./quick/261017-slg-diataxis-restructure-of-user-documentati/) |
+| 261029-pww | Fold embedding proposal into Phase 6 (EMB-01..04) | 2026-10-29 | pending | [261029-pww-fold-embedding-proposal-into-phase-6](./quick/261029-pww-fold-embedding-proposal-into-phase-6/) |
 
 ## Deferred Items
 
