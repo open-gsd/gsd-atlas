@@ -23,3 +23,6 @@ Sampler (sample-v3.mjs) sha256 recorded at draw time in the amendments section.
 | queries/gold-i3.json (I3, mechanical, seed 42) | 90 | 608b02f7ae39c451030b58d869ff64478dfe6427dd868a807a6797a6f467c179 |
 
 Raw author files and both target draws are in queries/. Checker: check-v3.mjs (unchanged). Accepted 285 of 383 submitted (98 rejected, dropped not repaired). No retrieval arm has seen these sets before this record.
+
+## Amendment A3 (2026-10-29, after EmbeddingGemma 2 and Qwen3 were scored, before bge-small was scored)
+The bge-small GGUF run crashed at about 25,000 documents (`GGML_ASSERT` in llama.cpp) because its training context is 512 tokens and some declaration texts exceed it. bge-small is re-run with document text truncated to 700 characters and `contextSize` 512 (flags `--maxchars 700 --ctx 512` added to run-round3.mjs; the cache key changes only when `--maxchars` is set, so the EmbeddingGemma 2 and Qwen3 vectors were not re-embedded). Applies to bge-small only; its results are labelled accordingly. The primary model for the registered conditions is EmbeddingGemma 2, so this does not affect any pass condition.

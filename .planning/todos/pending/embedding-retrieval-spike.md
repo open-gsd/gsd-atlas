@@ -53,3 +53,13 @@ Round 2 ran: results in `docs/research/embedding-retrieval-spike-results-round2.
 - [ ] Stronger lexical baseline and a small human-written query sample (all V2 queries are AI-written by one model family).
 - [ ] Repeat on a real SDK pack from Phase 6; Windows and Node 24 via CI; CPU-only machines with a smaller model.
 - [ ] Decide whether to draft the ADR and requirement text for the opt-in lane (see the post-Phase-3 proposal).
+
+## Update 2026-10-29 (round 3 run, real macOS 27 SDK, Mac only)
+
+Round 3 ran on the installed MacOSX27.0.sdk (146,554 declarations): results in `docs/research/embedding-retrieval-spike-results-round3.md`, frozen plan section 12 and records in `.planning/spikes/round3/`. EmbeddingGemma 2 meets effect conditions C1 to C3 (V3 test recall@10: lexical 0.005, dense only 0.214, primary 0.180; identifiers 0.918 vs 0.803 for the better lexical arm) and the determinism, network-denied and ONNX CPU portability checks; it fails the budget condition (24 min full-pack embed on Metal, 118 ms added query p95). Remaining before an adoption decision:
+
+- [ ] Register a dense-only fallback router (the registered primary is 3.4 pts below dense only on V3) and re-score on the frozen sets.
+- [ ] Decide pack scoping (Pool-lite is 25 percent of the pack, about 6 min on Metal) and 256-dim int8 storage (37.5 MB for the full pack).
+- [ ] Prose for Swift declarations (stratum C has none) and a reranker over the top 50.
+- [ ] Human-written query sample; Windows and Node 24 via CI; the product's own SDK pack after Phase 6.
+- [ ] Decide whether to draft the ADR and requirement text for the opt-in lane.

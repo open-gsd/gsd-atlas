@@ -7,7 +7,7 @@ import { buildFts, overlaps, tokens } from '../001-fts5-baseline-and-gold-querie
 const A = Object.fromEntries(process.argv.slice(2).reduce((acc, x, i, arr) => (x.startsWith('--') ? [...acc, [x.slice(2), arr[i + 1]]] : acc), []));
 const qPrefix = A.qprefix ?? ''; const dPrefix = A.dprefix ?? '';
 // amendment A1: dense text includes qualified owner and declaration/availability, as the lexical index does
-const docText3 = (d) => `${d.name}. ${d.nameSplit}. ${d.qual}. ${d.sig.slice(0, 240)}. ${d.doc}`.slice(0, 1200);
+const docText3 = (d) => `${d.name}. ${d.nameSplit}. ${d.qual}. ${d.sig.slice(0, 240)}. ${d.doc}`.slice(0, Number(A.maxchars ?? 1200));
 const { docs: all } = JSON.parse(fs.readFileSync(path.join(A.data, 'docs.json'), 'utf8')); const fullPool = all.filter((d) => d.slice === 'a');
 const sub = A.subpool ? new Set(JSON.parse(fs.readFileSync(A.subpool, 'utf8'))) : null;
 const pool = sub ? fullPool.filter((d) => sub.has(d.id)) : fullPool; const byId = new Map(fullPool.map((d) => [d.id, d]));
@@ -23,7 +23,7 @@ const norm = (v) => { let s = 0; for (const x of v) s += x * x; s = Math.sqrt(s)
 let embed;
 if (A.backend === 'llama') {
   const { getLlama } = await import('../002b-runtime-llamacpp/node_modules/node-llama-cpp/dist/index.js');
-  const llama = await getLlama(); const ctx = await (await llama.loadModel({ modelPath: A.model })).createEmbeddingContext({ contextSize: 1024 });
+  const llama = await getLlama(); const ctx = await (await llama.loadModel({ modelPath: A.model })).createEmbeddingContext({ contextSize: Number(A.ctx ?? 1024) });
   embed = async (t) => norm((await ctx.getEmbeddingFor(t)).vector);
 } else {
   const { pipeline, env } = await import('../002a-runtime-onnx-transformersjs/node_modules/@huggingface/transformers/dist/transformers.node.mjs');
@@ -33,7 +33,7 @@ if (A.backend === 'llama') {
 }
 // ---- document vectors (cached)
 fs.mkdirSync(A.cache, { recursive: true });
-const tag = A.tag ?? 'run'; const sig = createHash('sha256').update(JSON.stringify([A.backend, A.model, A.dtype, dPrefix, 'docText3', pool.length, pool[0].id, pool.at(-1).id])).digest('hex').slice(0, 12);
+const tag = A.tag ?? 'run'; const sig = createHash('sha256').update(JSON.stringify([A.backend, A.model, A.dtype, dPrefix, 'docText3', ...(A.maxchars ? [A.maxchars] : []), pool.length, pool[0].id, pool.at(-1).id])).digest('hex').slice(0, 12);
 const vfile = path.join(A.cache, `${tag}-${sig}.f32`); let dim, dv, docsPerSec;
 if (fs.existsSync(vfile)) { const b = fs.readFileSync(vfile); const f = new Float32Array(b.buffer, b.byteOffset, b.length / 4); dim = f.length / pool.length; dv = pool.map((_, i) => f.subarray(i * dim, (i + 1) * dim)); docsPerSec = Number(fs.readFileSync(`${vfile}.txt`, 'utf8')); }
 else {
