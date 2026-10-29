@@ -18,3 +18,4 @@ Test whether an opt-in local embedding lane (plus optional reranker) over FTS5 r
 | # | Idea | Name | Type | Validates | Verdict | Tags |
 |---|------|------|------|-----------|---------|------|
 | 001 | embedding-retrieval-lane | fts5-baseline-and-gold-queries | standard | FTS5 baseline recall shows headroom | VALIDATED (SDK vocabulary-gap set: FTS5 recall@10 0.536; ADR and code slices at ceiling) | fts5, baseline |
+| 002a | embedding-retrieval-lane | runtime-onnx-transformersjs | comparison | ONNX via transformers.js under --ignore-scripts; dense lane vs FTS5 on SDK slice | VALIDATED (EmbeddingGemma 300M q8 hybrid +21.4 pts on a2; bge-small +7.1) | onnx, embeddinggemma |
