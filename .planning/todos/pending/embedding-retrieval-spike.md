@@ -20,3 +20,12 @@ Phase proposal: `.planning/proposals/post-phase-3-embedding-retrieval.md`.
 - [ ] Write `docs/research/embedding-retrieval-spike-results.md` and apply the decision rule.
 
 Not blocking Phase 3 closure or plan 03-39. Do not start before the owner freezes the plan.
+
+## Update 2026-10-28 (spike run, SDK slice)
+
+Spikes 001 to 006 ran on this Mac and are committed under `.planning/spikes/`; results in `docs/research/embedding-retrieval-spike-results.md`. Scope was narrowed to SDK intent because FTS5 was at ceiling on ADR and code slices. Provisional pass: on 56 vocabulary-gap queries FTS5 recall@10 0.536 vs hybrid 0.607 to 0.804. Remaining before any adoption decision:
+
+- [ ] SDK identifier-query set and larger second-author gold set; weighted fusion and router arms (pre-registered).
+- [ ] Linux A2000 CUDA run, CPU-only run, Windows and Node 24 via CI.
+- [ ] Network-denied run after model fetch.
+- [ ] Re-run on a real SDK pack from Phase 6.

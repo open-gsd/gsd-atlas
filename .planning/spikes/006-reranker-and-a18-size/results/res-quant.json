@@ -1,0 +1,86 @@
+[
+ {
+  "dim": 768,
+  "mode": "f32",
+  "r10": 0.893,
+  "bytesPerVector": 3072,
+  "mbPer100kSymbols": 307.2
+ },
+ {
+  "dim": 768,
+  "mode": "int8",
+  "r10": 0.857,
+  "bytesPerVector": 768,
+  "mbPer100kSymbols": 76.8
+ },
+ {
+  "dim": 768,
+  "mode": "binary",
+  "r10": 0.804,
+  "bytesPerVector": 96,
+  "mbPer100kSymbols": 9.6
+ },
+ {
+  "dim": 512,
+  "mode": "f32",
+  "r10": 0.875,
+  "bytesPerVector": 2048,
+  "mbPer100kSymbols": 204.8
+ },
+ {
+  "dim": 512,
+  "mode": "int8",
+  "r10": 0.875,
+  "bytesPerVector": 512,
+  "mbPer100kSymbols": 51.2
+ },
+ {
+  "dim": 512,
+  "mode": "binary",
+  "r10": 0.679,
+  "bytesPerVector": 64,
+  "mbPer100kSymbols": 6.4
+ },
+ {
+  "dim": 256,
+  "mode": "f32",
+  "r10": 0.893,
+  "bytesPerVector": 1024,
+  "mbPer100kSymbols": 102.4
+ },
+ {
+  "dim": 256,
+  "mode": "int8",
+  "r10": 0.875,
+  "bytesPerVector": 256,
+  "mbPer100kSymbols": 25.6
+ },
+ {
+  "dim": 256,
+  "mode": "binary",
+  "r10": 0.625,
+  "bytesPerVector": 32,
+  "mbPer100kSymbols": 3.2
+ },
+ {
+  "dim": 128,
+  "mode": "f32",
+  "r10": 0.804,
+  "bytesPerVector": 512,
+  "mbPer100kSymbols": 51.2
+ },
+ {
+  "dim": 128,
+  "mode": "int8",
+  "r10": 0.804,
+  "bytesPerVector": 128,
+  "mbPer100kSymbols": 12.8
+ },
+ {
+  "dim": 128,
+  "mode": "binary",
+  "r10": 0.446,
+  "bytesPerVector": 16,
+  "mbPer100kSymbols": 1.6
+ }
+]

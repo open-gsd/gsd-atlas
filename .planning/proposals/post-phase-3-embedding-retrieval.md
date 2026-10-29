@@ -2,6 +2,7 @@
 
 **Date:** 2026-10-28
 **Status:** Proposal only. Not in ROADMAP.md, not a registered phase, no requirement IDs changed. The owner decides after the spike.
+**Spike status (2026-10-28):** provisional pass on SDK intent only (see `docs/research/embedding-retrieval-spike-results.md`); a confirmation round is still required.
 **Gate:** Opens only if the offline spike (`docs/research/embedding-retrieval-spike-plan.md`) passes the pre-frozen thresholds. If it fails, EMB-01 stays post-1.0 and the negative result is recorded.
 
 ## Why
