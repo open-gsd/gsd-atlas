@@ -55,3 +55,17 @@ Reading: the lexical-free path is plausibly about 40 to 45 ms p95 under moderate
 - To close S4 cheaply, the fallback could skip queries containing a dot (qualified names), which the map already handles; this is a post hoc suggestion and not tested.
 - The 50 ms budget is likely met by this path; certification needs a quiet-machine run (load below 1.5), which this round could not obtain.
 - The 24-minute full-pack embed remains the open budget blocker.
+
+## Amendment A5: latency rerun at the observed load (not a registered result)
+
+A quiet machine (load below 1.5) was not available: after an unrelated ffmpeg job ended, system work still held the 1-minute load average at 8 to 14 with the CPU 65 to 75% idle. One run of three passes over 722 queries was taken anyway. Pass-start load was 13.8, 10.8 and 9.4, so by the frozen rule no pass is valid and S8 remains not evaluable.
+
+| Pass | Load at start | Non-trigger p95 (ms) | Trigger path p95 (ms) | Overall p95 (ms) |
+|---|---|---|---|---|
+| 1 | 13.8 | 48.9 | 40.4 | 48.2 |
+| 2 | 10.8 | 46.0 | 41.6 | 44.4 |
+| 3 | 9.4 | 43.1 | 38.9 | 42.0 |
+
+Components: embed p50 9.4 to 10.5 ms (p95 20.0 to 25.7), int8 scan p50 about 22 ms (p95 about 24), map lookup under 0.1 ms, trigram search p50 0.8 ms (p95 2.3 to 2.5). The trigger rate is 14.5%. Recall tables are unchanged.
+
+Reading: all three non-trigger p95 values are under 50 ms, and the median is 46.0 ms, even though the host was busy. Load can only inflate these figures, so the lexical-free path very likely fits the budget on a quiet machine, but that is an inference and not a certified result. The first pass (48.9 ms) is close to the limit. Certification still needs three passes at load below 1.5.
