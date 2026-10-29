@@ -1,0 +1,138 @@
+[
+ [
+  "a:util.d.ts:1915:isBigUint64Array",
+  "check whether something is an unsigned 64-bit integer typed collection of large numbers"
+ ],
+ [
+  "a:tslib:lib.dom.d.ts:21638:HTMLTrackElement.srclang",
+  "get the language code of subtitles attached to a video"
+ ],
+ [
+  "a:tslib:lib.es2020.bigint.d.ts:239:BigInt64Array.includes",
+  "test if a signed 64-bit integer typed collection holds a given large number"
+ ],
+ [
+  "a:tslib:lib.dom.d.ts:13060:Document.execCommand",
+  "run a rich text editing action like bold or copy on the page"
+ ],
+ [
+  "a:timers.d.ts:260:clearTimeout",
+  "stop a scheduled delayed callback before it fires"
+ ],
+ [
+  "a:tslib:lib.dom.d.ts:4008:AudioContext.AudioContext",
+  "main object for building and playing a graph of sound processing nodes in the browser"
+ ],
+ [
+  "a:v8.d.ts:814:Init",
+  "hook invoked when a new promise is created for async tracking"
+ ],
+ [
+  "a:tslib:lib.dom.d.ts:43840:MathMLElementTagNameMap.onclick",
+  "global handler run when the user presses the mouse button on the window"
+ ],
+ [
+  "a:tslib:lib.dom.d.ts:26966:PannerNode.maxDistance",
+  "farthest range from a sound emitter beyond which loudness stops dropping"
+ ],
+ [
+  "a:net.d.ts:1130:isIPv4",
+  "validate that a string looks like a four-number internet address"
+ ],
+ [
+  "a:tslib:lib.dom.d.ts:12880:Document.caretRangeFromPoint",
+  "find the text selection position at given screen coordinates"
+ ],
+ [
+  "a:tslib:lib.dom.d.ts:36709:TextTrack.addCue",
+  "insert a new caption entry into a video's subtitle list"
+ ],
+ [
+  "a:tslib:lib.dom.d.ts:16520:Geolocation.watchPosition",
+  "get notified continuously whenever the user's device moves to a new place"
+ ],
+ [
+  "a:tslib:lib.dom.d.ts:32621:SVGFilterPrimitiveStandardAttributes.height",
+  "vertical extent of a graphic effect region in vector images"
+ ],
+ [
+  "a:tslib:lib.dom.d.ts:17018:HTMLAllCollection.namedItem",
+  "look up a page element by its identifier within the legacy full list of elements"
+ ],
+ [
+  "a:tslib:lib.dom.d.ts:41684:WindowEventHandlers.onrejectionhandled",
+  "callback when a previously failed async operation later gets a catch attached"
+ ],
+ [
+  "a:util.d.ts:1173:parseEnv",
+  "read dotenv file text into a key value object"
+ ],
+ [
+  "a:crypto.d.ts:1242:generateKey",
+  "make a fresh random symmetric secret of chosen size without blocking"
+ ],
+ [
+  "a:tslib:lib.dom.d.ts:9217:CSSStyleProperties.transitionTimingFunction",
+  "set the easing curve used when animating style changes"
+ ],
+ [
+  "a:tslib:lib.dom.d.ts:4891:BaseAudioContext.createDelay",
+  "make a node that postpones incoming sound by some seconds"
+ ],
+ [
+  "a:tslib:lib.dom.d.ts:4630:AudioWorklet.AudioWorklet",
+  "load custom sound processing code that runs off the main thread with minimal delay"
+ ],
+ [
+  "a:tslib:lib.dom.d.ts:44046:MathMLElementTagNameMap.ongamepaddisconnected",
+  "callback when a game controller is unplugged"
+ ],
+ [
+  "a:util.d.ts:2094:isInt16Array",
+  "check whether a value is a typed collection of signed two-byte numbers"
+ ],
+ [
+  "a:tslib:lib.dom.d.ts:42341:XSLTProcessor.transformToFragment",
+  "apply a stylesheet to a node and get a lightweight tree of results"
+ ],
+ [
+  "a:tslib:lib.dom.d.ts:8508:CSSStyleProperties.pageBreakBefore",
+  "force printing to start a new sheet ahead of this element"
+ ],
+ [
+  "a:zlib.d.ts:380:createZstdDecompress",
+  "make a stream that expands data compressed with the Facebook-originated algorithm"
+ ],
+ [
+  "a:util.d.ts:348:setTraceSigInt",
+  "print where the program was when the user presses Ctrl+C"
+ ],
+ [
+  "a:fs.d.ts:1507:linkSync",
+  "make a second directory entry pointing at the same file contents, blocking"
+ ],
+ [
+  "a:tslib:lib.dom.d.ts:5330:CSSCounterStyleRule.speakAs",
+  "how screen readers should pronounce custom list numbering markers"
+ ],
+ [
+  "a:v8.d.ts:993:addDeserializeCallback",
+  "run code to restore resources when an app starts from a saved heap image"
+ ],
+ [
+  "a:fs.d.ts:2651:fsync",
+  "force buffered writes for an open file handle out to the physical drive"
+ ],
+ [
+  "a:v8.d.ts:668:stopCoverage",
+  "turn off code execution tracking started through an environment variable to free memory"
+ ],
+ [
+  "a:tslib:lib.dom.d.ts:18937:HTMLInputElement.selectionDirection",
+  "whether highlighted text in a textbox was dragged forwards or backwards"
+ ],
+ [
+  "a:fs/promises.d.ts:1063:mkdtempDisposable",
+  "make a scratch folder with random name that cleans itself up automatically after use"
+ ]
+]

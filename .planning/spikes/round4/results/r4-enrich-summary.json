@@ -1,0 +1,71 @@
+{
+ "graphs": 380,
+ "symbols": 113488,
+ "withDoc": 51773,
+ "distinctKeys": 39535,
+ "swiftRecordsWithoutProse": 67651,
+ "enriched": 25698,
+ "share": 0.38,
+ "topModules": [
+  [
+   "SwiftUI",
+   2875
+  ],
+  [
+   "Foundation",
+   2455
+  ],
+  [
+   "RealityFoundation",
+   2440
+  ],
+  [
+   "SwiftUICore",
+   1741
+  ],
+  [
+   "CreateMLComponents",
+   1669
+  ],
+  [
+   "CreateML",
+   1045
+  ],
+  [
+   "MusicKit",
+   983
+  ],
+  [
+   "Vision",
+   979
+  ],
+  [
+   "AppIntents",
+   873
+  ],
+  [
+   "Combine",
+   645
+  ],
+  [
+   "WeatherKit",
+   479
+  ],
+  [
+   "USDKit",
+   472
+  ],
+  [
+   "Network",
+   465
+  ],
+  [
+   "CoreMedia",
+   462
+  ],
+  [
+   "CryptoKit",
+   461
+  ]
+ ]
+}

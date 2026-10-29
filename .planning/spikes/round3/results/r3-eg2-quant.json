@@ -1,0 +1,38 @@
+[
+ {
+  "mode": "f32",
+  "dim": 768,
+  "bytesPerVector": 3072,
+  "fullPoolMB": 450.2,
+  "scanP50ms": 64.9,
+  "scanP95ms": 67.5,
+  "V3test_denseR10": 0.214,
+  "I3test_denseR10": 0.836,
+  "nV3": 206,
+  "nI3": 61
+ },
+ {
+  "mode": "int8",
+  "dim": 768,
+  "bytesPerVector": 768,
+  "fullPoolMB": 112.6,
+  "scanP50ms": 98.4,
+  "scanP95ms": 101.9,
+  "V3test_denseR10": 0.214,
+  "I3test_denseR10": 0.836,
+  "nV3": 206,
+  "nI3": 61
+ },
+ {
+  "mode": "int8",
+  "dim": 256,
+  "bytesPerVector": 256,
+  "fullPoolMB": 37.5,
+  "scanP50ms": 38.2,
+  "scanP95ms": 39.3,
+  "V3test_denseR10": 0.209,
+  "I3test_denseR10": 0.885,
+  "nV3": 206,
+  "nI3": 61
+ }
+]

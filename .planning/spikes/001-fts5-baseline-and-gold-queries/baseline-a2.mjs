@@ -1,0 +1,14 @@
+import fs from 'node:fs'; import path from 'node:path';
+import { loadDocs, resolveGold, buildFts, metrics, tokens } from './lib.mjs';
+const dataDir = process.argv[2]; const here = import.meta.dirname;
+const docs = loadDocs(dataDir); const byId = new Map(docs.map((d) => [d.id, d]));
+const golds = resolveGold(docs, 'a', JSON.parse(fs.readFileSync(path.join(here, 'gold-a2.json'), 'utf8')));
+const prior = new Set(JSON.parse(fs.readFileSync(path.join(here, 'gold-a.json'), 'utf8')).map((x) => x[0]));
+const fts = buildFts(docs, 'a');
+const shares = golds.map((g) => { const d = byId.get(g.gold); const text = `${d.name} ${d.nameSplit} ${d.doc} ${d.sig}`.toLowerCase(); const qt = tokens(g.q); return qt.filter((t) => text.includes(t)).length / qt.length; });
+const m = metrics(golds, (g) => fts.search(g.q, 50));
+const misses = m.rows.map((r, i) => ({ ...r, name: golds[i].name, share: shares[i] })).filter((r) => r.pos < 0 || r.pos >= 10);
+const f = (x) => +x.toFixed(3);
+console.log(JSON.stringify({ n: m.all.n, overlapWithEarlierSet: golds.filter((g) => prior.has(g.name)).length, meanShare: f(shares.reduce((a, b) => a + b, 0) / shares.length), lowShare: shares.filter((s) => s <= 0.34).length, r5: f(m.all.r5), r10: f(m.all.r10), mrr: f(m.all.mrr), nameOverlapN: m.overlap.n, nameOverlapR10: f(m.overlap.r10), noNameOverlapN: m.noOverlap.n, noNameOverlapR10: f(m.noOverlap.r10) }));
+console.log('misses@10:', misses.map((r) => `${r.name}(pos ${r.pos}, share ${r.share.toFixed(2)})`).join('; '));
+fs.writeFileSync(path.join(here, 'baseline-a2-results.json'), JSON.stringify({ date: '2026-10-28', n: m.all.n, all: m.all, overlap: m.overlap, noOverlap: m.noOverlap, misses }, null, 1));

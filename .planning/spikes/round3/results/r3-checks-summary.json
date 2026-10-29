@@ -1,0 +1,68 @@
+{
+ "C4_repeat": {
+  "dense": {
+   "n": 375,
+   "identicalLists": 375,
+   "meanTop10Overlap": 1
+  },
+  "primary": {
+   "n": 375,
+   "identicalLists": 375,
+   "meanTop10Overlap": 1
+  }
+ },
+ "C5_sandbox_vs_plain_sub5375": {
+  "dense": {
+   "n": 375,
+   "identicalLists": 375,
+   "meanTop10Overlap": 1
+  },
+  "primary": {
+   "n": 375,
+   "identicalLists": 375,
+   "meanTop10Overlap": 1
+  },
+  "docsPerSec": [
+   102.9,
+   102.3
+  ]
+ },
+ "C6_onnxq8_vs_metal_sub20496": {
+  "dense": {
+   "n": 375,
+   "identicalLists": 98,
+   "meanTop10Overlap": 0.968
+  },
+  "V3test": {
+   "metal": {
+    "D": 0.214,
+    "primary": 0.18
+   },
+   "onnx": {
+    "D": 0.214,
+    "primary": 0.175
+   }
+  },
+  "I3test": {
+   "metal": {
+    "D": 0.836,
+    "primary": 0.902
+   },
+   "onnx": {
+    "D": 0.836,
+    "primary": 0.902
+   }
+  },
+  "docsPerSec": {
+   "metal": 107.3,
+   "onnx": 22.4
+  },
+  "latencyOnnx": {
+   "embedP50": 29.9,
+   "embedP95": 32.5,
+   "scanP95": 10.5,
+   "ftsP95": 36.5,
+   "addedP95": 78.3
+  }
+ }
+}
