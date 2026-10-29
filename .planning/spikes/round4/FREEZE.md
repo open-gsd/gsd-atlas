@@ -17,3 +17,14 @@ Feasibility probe before the freeze (no query set or arm involved): `swift-symbo
 
 ## Amendments
 (none yet)
+
+## M4 frozen (2026-10-29, before any arm was scored on it)
+Three fresh AI authors (one on the small model tier, two on the mid tier, so not one model family), 36 targets each (30 main + 6 reserve each, all authored). Checker `check-m4.mjs` accepted 99 of 108, rejected 9 (dropped, not repaired): 4 for no name/owner/framework piece, 4 for containing the full name, 1 for an unknown id typed by the author. Plan 13.3 asked for at least 60 accepted. Raw author files and target files are in `queries/`.
+
+| Set | n | sha256 |
+|---|---|---|
+| queries/gold-m4.json (A 34, B 18, C 34, D 13) | 99 | 94e801f87a4ec94506a9d6dd6815d3e98904fb8cac3ad21c794f2ec44cd6c38b |
+
+lists4.mjs sha256 at freeze: e7d4ccd5e0eb30b401058f86ef1720c08939ba39e6bd7c0458da02f23f13996a.
+
+Swift enrichment (Part D input, built from symbol graphs before any arm was scored): `enrich-swift.mjs` over 169 modules, 380 graphs, 113,488 symbols; 25,698 of 67,651 Swift records without prose gained a doc comment (38.0 percent). Enriched docs.json sha256 d8466fbe337b6b7d01af05d6148b9cf1a5e15d9d1373661d19973d1857a4e90d; enrich-swift.mjs sha256 62fe46166eb4286180dd59986ab5b48fe6aca2b47338805b54f0053d8ad5d572.
