@@ -8,7 +8,7 @@
 ## What was run
 
 - **Pool B:** 9,558 declarations: 833 from `@types/node` 24.19.2 and 8,725 from TypeScript 6.0.3 `lib.*.d.ts` (`lib.dom` 5,719, `lib.webworker` 1,970, ECMAScript libraries about 1,000).
-- **V2 vocabulary-gap set:** 156 queries that passed the text-overlap checker, written blind by three separate fresh AI agents (agent 1: 74, agent 2: 34, agent 3: 48; 30 further agent queries were rejected by the checker and dropped, not repaired). 36 tuning, 120 test. No human-written queries exist in V2 (amendment A3).
+- **V2 vocabulary-gap set:** 156 queries that passed the text-overlap checker, written blind by three separate fresh AI agents (agent 1: 74, agent 2: 34, agent 3: 48; a further 39 agent queries (9 + 21 + 9) were rejected by the checker and dropped, not repaired). 36 tuning, 120 test. No human-written queries exist in V2 (amendment A3).
 - **I1 identifier set:** 84 mechanically generated queries (exact name, qualified name, fragment, lower-case run-together, one-character misspelling, module plus member). 16 tuning, 68 test.
 - **Models and backends:** EmbeddingGemma 2 Q8_0, Qwen3-Embedding-0.6B Q8_0, bge-small-en-v1.5 Q8_0 on llama.cpp Metal (reference); ONNX Runtime CPU through transformers.js for portability (EmbeddingGemma 2 q8, Qwen3 q8 and fp16, bge-small q8).
 - **Arms:** F (FTS5), D (dense), E (equal RRF), W2/W3 (weighted RRF), R1/R2 (routers). **Pre-registered primary: R1 with the tuned weight.** R1 sends identifier-shaped queries to F and the rest to the weighted hybrid; R2 sends a query to F only when FTS5's top hit equals the query as an exact name.
