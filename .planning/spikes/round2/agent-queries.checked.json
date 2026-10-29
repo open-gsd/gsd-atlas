@@ -1,0 +1,298 @@
+[
+ [
+  "a:os.d.ts:257:userInfo",
+  "get login name, home folder and default shell of the account running the program"
+ ],
+ [
+  "a:tslib:lib.esnext.disposable.d.ts:128:AsyncDisposableStack.disposeAsync",
+  "await teardown of every tracked resource, latest registered first"
+ ],
+ [
+  "a:tslib:lib.dom.d.ts:32634:SVGFitToViewBox.preserveAspectRatio",
+  "how vector graphic content stays undistorted when its drawing area is resized"
+ ],
+ [
+  "a:tslib:lib.scripthost.d.ts:74:TextStreamReader.Read",
+  "grab a fixed count of letters typed by the user in a Windows script host"
+ ],
+ [
+  "a:crypto.d.ts:1985:randomInt",
+  "pick a secure unpredictable whole number between two bounds without skew"
+ ],
+ [
+  "a:test.d.ts:1717:afterEach",
+  "register teardown code that runs following every individual spec in a group, even failing ones"
+ ],
+ [
+  "a:fs.d.ts:1833:unlinkSync",
+  "remove a file from disk and block until finished"
+ ],
+ [
+  "a:tslib:lib.dom.d.ts:18643:HTMLImageElement.loading",
+  "hint browser to postpone downloading a picture until it is near the visible area"
+ ],
+ [
+  "a:fs.d.ts:801:renameSync",
+  "give a file a different name or relocate it, blocking until done"
+ ],
+ [
+  "a:tslib:lib.scripthost.d.ts:238:Enumerator.atEnd",
+  "check whether iteration over a legacy Windows collection has reached the final item"
+ ],
+ [
+  "a:perf_hooks.d.ts:63:PerformanceEntry",
+  "base class for high-resolution timeline records such as marks and measures"
+ ],
+ [
+  "a:tslib:lib.es2015.iterable.d.ts:81:Array.entries",
+  "iterate over position and item pairs of a list"
+ ],
+ [
+  "a:fs.d.ts:3855:existsSync",
+  "check if a path is present on disk without throwing"
+ ],
+ [
+  "a:vm.d.ts:897:SourceTextModule",
+  "ECMAScript unit compiled from a code string inside a sandbox, behind an experimental switch"
+ ],
+ [
+  "a:tslib:lib.dom.d.ts:31647:SVGFEColorMatrixElement.type",
+  "which kind of hue, saturation or alpha transformation the filter applies"
+ ],
+ [
+  "a:util.d.ts:1870:isArrayBufferView",
+  "check whether a value is any typed numeric container over raw bytes"
+ ],
+ [
+  "a:readline.d.ts:596:moveCursor",
+  "shift the terminal caret horizontally and vertically by an offset from its present spot"
+ ],
+ [
+  "a:util.d.ts:2114:isMap",
+  "check whether a value is a native dictionary-like collection of key-value pairs"
+ ],
+ [
+  "a:fs.d.ts:981:lchownSync",
+  "change owner of a symlink itself rather than what it points to, blocking"
+ ],
+ [
+  "a:tslib:lib.dom.d.ts:7093:CSSStyleProperties.borderInlineWidth",
+  "set start and end edge thickness that adapts to language script direction"
+ ],
+ [
+  "a:tslib:lib.dom.d.ts:24563:MediaSource.isTypeSupported",
+  "find out whether the browser can handle a particular codec and container string"
+ ],
+ [
+  "a:tslib:lib.dom.d.ts:26499:Notification.requestPermission",
+  "ask visitor for consent to show desktop alerts"
+ ],
+ [
+  "a:tslib:lib.dom.d.ts:7472:CSSStyleProperties.cursor",
+  "set the arrow, hand or crosshair shape shown while hovering"
+ ],
+ [
+  "a:tslib:lib.dom.d.ts:13630:Element.scrollWidth",
+  "total horizontal size of content, including parts cut off from view"
+ ],
+ [
+  "a:v8.d.ts:579:DefaultSerializer",
+  "ready-made encoder for the engine's binary clone format that handles Buffers compactly"
+ ],
+ [
+  "a:tslib:lib.dom.d.ts:31703:SVGFECompositeElement.SVGFECompositeElement",
+  "vector filter building block that overlays two inputs using Porter-Duff blend rules"
+ ],
+ [
+  "a:tslib:lib.dom.d.ts:10972:CookieChangeEvent.changed",
+  "the entries newly set or updated, delivered by a browser storage notification"
+ ],
+ [
+  "a:worker_threads.d.ts:773:moveMessagePortToContext",
+  "hand a communication channel endpoint over to a different sandbox global scope"
+ ],
+ [
+  "a:util.d.ts:404:transferableAbortSignal",
+  "make a cancellation token usable when sending between workers"
+ ],
+ [
+  "a:tslib:lib.dom.d.ts:4402:AudioNode.channelCount",
+  "how many sound lanes get used when combining incoming signals"
+ ],
+ [
+  "a:tslib:lib.dom.d.ts:3314:ARIAMixin.ariaReadOnly",
+  "accessibility attribute marking a widget as viewable but not editable"
+ ],
+ [
+  "a:stream/consumers.d.ts:36:json",
+  "drain a whole readable source into a parsed JavaScript object"
+ ],
+ [
+  "a:tslib:lib.es2024.regexp.d.ts:22:RegExp.unicodeSets",
+  "tells whether a pattern was built with extended character-class set notation"
+ ],
+ [
+  "a:tslib:lib.dom.d.ts:21116:HTMLTableElement.deleteCaption",
+  "drop the heading label attached to a data grid"
+ ],
+ [
+  "a:crypto.d.ts:1321:createSecretKey",
+  "turn raw bytes into an opaque handle for symmetric encryption or message authentication codes"
+ ],
+ [
+  "a:inspector.generated.d.ts:48:RemoteObject",
+  "debugger protocol description of a live value from the inspected runtime"
+ ],
+ [
+  "a:tslib:lib.dom.d.ts:33895:SVGScriptElement.type",
+  "MIME kind of embedded code in a vector graphic"
+ ],
+ [
+  "a:tslib:lib.dom.d.ts:28400:PluginArray.PluginArray",
+  "collection of installed browser add-ons accessible by index or name"
+ ],
+ [
+  "a:tslib:lib.dom.d.ts:12799:Document.pictureInPictureEnabled",
+  "check whether the page may show video in a floating always-on-top mini window"
+ ],
+ [
+  "a:querystring.d.ts:81:stringify",
+  "turn a plain object into ampersand-joined key=value pairs for a URL"
+ ],
+ [
+  "a:fs.d.ts:347:StatWatcher",
+  "event source returned when polling a file for modification time changes"
+ ],
+ [
+  "a:util.d.ts:1467:parseArgs",
+  "interpret terminal flags and leftover values according to a declared spec"
+ ],
+ [
+  "a:crypto.d.ts:1564:createDiffieHellman",
+  "key agreement object that generates its own prime of requested bit size"
+ ],
+ [
+  "a:fs.d.ts:959:fchownSync",
+  "change user and group owning an already-open file descriptor, blocking"
+ ],
+ [
+  "a:inspector.generated.d.ts:213:InternalPropertyDescriptor",
+  "hidden engine-level attribute entry not exposed to normal scripts"
+ ],
+ [
+  "a:fs.d.ts:2266:mkdtempDisposableSync",
+  "make a uniquely named scratch folder that auto-cleans when leaving the scope"
+ ],
+ [
+  "a:tslib:lib.dom.d.ts:44004:MathMLElementTagNameMap.ontransitionrun",
+  "handler fired when an eased property change is first created, before its delay finishes"
+ ],
+ [
+  "a:vm.d.ts:1098:SyntheticModule",
+  "ECMAScript unit whose exports are populated through a callback, to expose foreign data"
+ ],
+ [
+  "a:readline.d.ts:580:clearScreenDown",
+  "erase everything on the terminal from the caret to the bottom"
+ ],
+ [
+  "a:fs.d.ts:4439:writevSync",
+  "output multiple binary chunks at once to an open descriptor, blocking until done"
+ ],
+ [
+  "a:os.d.ts:152:availableParallelism",
+  "suggest how many worker threads to spawn for this machine"
+ ],
+ [
+  "a:perf_hooks.d.ts:138:PerformanceNodeTiming",
+  "milestones of runtime startup such as bootstrap and event loop start"
+ ],
+ [
+  "a:assert.d.ts:991:rejects",
+  "confirm that an asynchronous operation ends up failing"
+ ],
+ [
+  "a:os.d.ts:71:uptime",
+  "how many seconds the machine has been running since boot"
+ ],
+ [
+  "a:path.d.ts:23:ParsedPath",
+  "object holding root, directory, base name and extension pieces of a file location"
+ ],
+ [
+  "a:test.d.ts:126:test",
+  "register a named spec case in the built-in runner, returning a promise"
+ ],
+ [
+  "a:perf_hooks.d.ts:101:PerformanceMark",
+  "named timestamp record to flag a moment in your code for later measurement"
+ ],
+ [
+  "a:tslib:lib.dom.d.ts:28447:PointerEvent.isPrimary",
+  "tell if the touch or pen contact is the lead one among several simultaneous contacts"
+ ],
+ [
+  "a:diagnostics_channel.d.ts:98:unsubscribe",
+  "detach a previously attached handler from a named topic feed"
+ ],
+ [
+  "a:tslib:lib.dom.d.ts:21532:HTMLTextAreaElement.setRangeText",
+  "replace the highlighted part of a multi-line input with new content"
+ ],
+ [
+  "a:fs.d.ts:4308:fdatasyncSync",
+  "flush queued file data to disk without forcing metadata, blocking"
+ ],
+ [
+  "a:util.d.ts:647:isArray",
+  "check whether a given value is an ordered list"
+ ],
+ [
+  "a:tslib:lib.es5.d.ts:2163:Uint8Array.Uint8Array",
+  "fixed-length sequence of byte-sized unsigned numbers from zero to 255"
+ ],
+ [
+  "a:tslib:lib.dom.d.ts:23720:MIDIPort.version",
+  "revision string of a musical instrument hardware connection"
+ ],
+ [
+  "a:net.d.ts:1096:getDefaultAutoSelectFamilyAttemptTimeout",
+  "read how many milliseconds to wait before trying the next address on dual-stack connection"
+ ],
+ [
+  "a:tslib:lib.es5.d.ts:4174:Float64Array.every",
+  "check that all values in a double-precision numeric sequence pass a condition"
+ ],
+ [
+  "a:tslib:lib.webworker.d.ts:9069:RTCRtpScriptTransformer.options",
+  "read the extra data supplied at creation of a worker-side frame processing hook"
+ ],
+ [
+  "a:tslib:lib.dom.d.ts:3320:ARIAMixin.ariaRoleDescription",
+  "accessibility attribute supplying custom spoken label for what kind of widget this is"
+ ],
+ [
+  "a:tslib:lib.dom.d.ts:7225:CSSStyleProperties.boxDecorationBreak",
+  "choose whether each fragment gets its own padding and background when content splits"
+ ],
+ [
+  "a:tslib:lib.dom.d.ts:43820:MathMLElementTagNameMap.onanimationstart",
+  "handler fired when a keyframe effect first begins playing"
+ ],
+ [
+  "a:events.d.ts:100:EventEmitter",
+  "base class implementing publish and listen pattern with custom named occurrences"
+ ],
+ [
+  "a:url.d.ts:339:domainToUnicode",
+  "convert punycode hostname back to readable international characters"
+ ],
+ [
+  "a:tslib:lib.dom.d.ts:33160:SVGMarkerElement.refX",
+  "horizontal anchor coordinate of a line-end decoration shape"
+ ],
+ [
+  "a:tslib:lib.dom.d.ts:8899:CSSStyleProperties.stopOpacity",
+  "transparency of a gradient color transition point in vector graphics"
+ ]
+]
