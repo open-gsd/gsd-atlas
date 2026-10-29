@@ -21,11 +21,27 @@ Phase proposal: `.planning/proposals/post-phase-3-embedding-retrieval.md`.
 
 Not blocking Phase 3 closure or plan 03-39. Do not start before the owner freezes the plan.
 
-## Update 2026-10-28 (spike run, SDK slice)
+## Update 2026-10-28 (round 1 run, SDK slice)
 
-Spikes 001 to 006 ran on this Mac and are committed under `.planning/spikes/`; results in `docs/research/embedding-retrieval-spike-results.md`. Scope was narrowed to SDK intent because FTS5 was at ceiling on ADR and code slices. Provisional pass: on 56 vocabulary-gap queries FTS5 recall@10 0.536 vs hybrid 0.607 to 0.804. Remaining before any adoption decision:
+Spikes 001 to 006 ran on this Mac and are committed under `.planning/spikes/`; results in `docs/research/embedding-retrieval-spike-results.md`. Scope was narrowed to SDK intent because FTS5 was at ceiling on ADR and code slices. Provisional pass: on 56 vocabulary-gap queries FTS5 recall@10 0.536 vs hybrid 0.607 to 0.804.
 
-- [ ] SDK identifier-query set and larger second-author gold set; weighted fusion and router arms (pre-registered).
-- [ ] Linux A2000 CUDA run, CPU-only run, Windows and Node 24 via CI.
-- [ ] Network-denied run after model fetch.
-- [ ] Re-run on a real SDK pack from Phase 6.
+## Round 2: confirmation round (planned 2026-10-28, not started)
+
+Full design, pre-registered rules and pass conditions: `docs/research/embedding-retrieval-spike-plan.md` section 11. Summary: V2 (at least 120 vocabulary-gap queries, two authors, Pool B of 3,000+ declarations), I1 (at least 80 identifier queries), arms F, D, E, W2, W3, R1, R2 with tuning/test split and a primary arm fixed in advance (router R1 plus tuned weight), 8 pass conditions, network-denied run, A2000 CUDA and CPU-only arms.
+
+Owner inputs needed before anything starts:
+- [ ] Freeze plan section 11 (record its sha256).
+- [ ] Name the second author (owner and/or an independent fresh agent that has seen no results).
+- [ ] A2000 endpoint details: host, port, models and quantisations served, `--pooling`, key.
+- [ ] Approve Pool B (TypeScript `lib.*.d.ts` plus `@types/node`) and the network-denied tooling (`sandbox-exec`, `docker run --network none`).
+
+Work, in order:
+- [ ] Build Pool B and its extraction; record counts and package versions.
+- [ ] Author V2 blind, generate I1, run the overlap checker, freeze sets (sha256).
+- [ ] Baseline F on tuning and test; embed on backend 1; tune weight on tuning only.
+- [ ] Score test halves once; then backends 2 to 5 (Metal, llama.cpp CPU, ONNX CPU, A2000 CUDA, optional Linux CPU container); Qwen3 ONNX fp16 portability check.
+- [ ] Network-denied end-to-end run; size check on Pool B.
+- [ ] Write `docs/research/embedding-retrieval-spike-results-round2.md` and apply section 11.8.
+- [ ] Windows and Node 24 via a throwaway CI job (after the owner decides; see the Windows todo for the pattern).
+
+Not blocking Phase 3 closure or plan 03-39.
