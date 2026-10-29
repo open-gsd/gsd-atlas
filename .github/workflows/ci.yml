@@ -51,18 +51,13 @@ jobs:
   test:
     name: Test (${{ matrix.os }}, Node ${{ matrix.node }})
     runs-on: ${{ matrix.os }}
-    # Windows is capped at 20 minutes so that a hang (src/bin/compose.test.ts held run 1 of ci/phase3-precise to the 30 minute
-    # limit) ends 10 minutes sooner and frees the runner; the Windows suite has not yet completed on a hosted runner, so 20 is
-    # a cap on a hang, not a measured run time. Ubuntu and macOS keep 30.
-    timeout-minutes: ${{ matrix.os == 'windows-latest' && 20 || 30 }}
-    # Decision 2026-10-18 (Decision 2): Windows is postponed past the initial alpha. The Windows leg still runs so its
-    # results stay visible, but it cannot fail the workflow; Ubuntu and macOS stay blocking. Windows work is tracked in
-    # .planning/todos/pending/windows-support-post-alpha.md; remove this line when it is done.
-    continue-on-error: ${{ matrix.os == 'windows-latest' }}
+    timeout-minutes: 30
+    # Windows is postponed past the initial alpha (Decision 2026-10-18, Decision 2) and is not run here; windows-latest is
+    # re-added to the matrix when .planning/todos/pending/windows-support-post-alpha.md is done.
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        os: [ubuntu-latest, macos-latest]
         node: ["24.16.0", "26"]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -72,17 +67,11 @@ jobs:
         with:
           node-version: ${{ matrix.node }}
           cache: npm
-      # Hosted Windows only (.planning/debug/windows-ci-diag.md): the default temp folder is on the C: virtual disk, where
-      # fsync-bearing file operations take 3 to 6 ms, 13 to 14 times the Linux figure; the runner temp folder is on D:, which
-      # is within 1.2 to 1.7 times Linux. This suite creates and syncs thousands of files in the temp folder, so every later
-      # step of the job is pointed at the runner temp folder. (Defender real-time scanning is already off on the image and
-      # git launcher layers cost nothing measurable, so neither is touched.)
-      - name: Use the fast runner disk for temporary files (Windows only)
-        if: runner.os == 'Windows'
+      # scripts/corpus-survey/survey.test.ts shells out to ripgrep, which neither hosted image ships.
+      - name: Install ripgrep
         run: |
-          echo "TEMP=$RUNNER_TEMP" >> "$GITHUB_ENV"
-          echo "TMP=$RUNNER_TEMP" >> "$GITHUB_ENV"
-          echo "TMPDIR=$RUNNER_TEMP" >> "$GITHUB_ENV"
+          if [ "$RUNNER_OS" = "macOS" ]; then brew install ripgrep; else sudo apt-get install -y ripgrep; fi
+          rg --version
       - name: Print toolchain versions
         run: |
           node --version
@@ -97,14 +86,12 @@ jobs:
     name: Grammar rebuild (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
-    # Decision 2026-10-18 (Decision 2): Windows is postponed past the initial alpha. The Windows leg still runs so its
-    # results stay visible, but it cannot fail the workflow; Ubuntu and macOS stay blocking. Windows work is tracked in
-    # .planning/todos/pending/windows-support-post-alpha.md; remove this line when it is done.
-    continue-on-error: ${{ matrix.os == 'windows-latest' }}
+    # Windows is postponed past the initial alpha (Decision 2026-10-18, Decision 2) and is not run here; windows-latest is
+    # re-added to the matrix when .planning/todos/pending/windows-support-post-alpha.md is done.
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        os: [ubuntu-latest, macos-latest]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -113,17 +100,6 @@ jobs:
         with:
           node-version: "24.16.0"
           cache: npm
-      # Hosted Windows only (.planning/debug/windows-ci-diag.md): the default temp folder is on the C: virtual disk, where
-      # fsync-bearing file operations take 3 to 6 ms, 13 to 14 times the Linux figure; the runner temp folder is on D:, which
-      # is within 1.2 to 1.7 times Linux. This suite creates and syncs thousands of files in the temp folder, so every later
-      # step of the job is pointed at the runner temp folder. (Defender real-time scanning is already off on the image and
-      # git launcher layers cost nothing measurable, so neither is touched.)
-      - name: Use the fast runner disk for temporary files (Windows only)
-        if: runner.os == 'Windows'
-        run: |
-          echo "TEMP=$RUNNER_TEMP" >> "$GITHUB_ENV"
-          echo "TMP=$RUNNER_TEMP" >> "$GITHUB_ENV"
-          echo "TMPDIR=$RUNNER_TEMP" >> "$GITHUB_ENV"
       - run: npm ci --ignore-scripts
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
@@ -145,14 +121,12 @@ jobs:
     name: Gates (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
-    # Decision 2026-10-18 (Decision 2): Windows is postponed past the initial alpha. The Windows leg still runs so its
-    # results stay visible, but it cannot fail the workflow; Ubuntu and macOS stay blocking. Windows work is tracked in
-    # .planning/todos/pending/windows-support-post-alpha.md; remove this line when it is done.
-    continue-on-error: ${{ matrix.os == 'windows-latest' }}
+    # Windows is postponed past the initial alpha (Decision 2026-10-18, Decision 2) and is not run here; windows-latest is
+    # re-added to the matrix when .planning/todos/pending/windows-support-post-alpha.md is done.
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        os: [ubuntu-latest, macos-latest]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -161,17 +135,6 @@ jobs:
         with:
           node-version: "24.16.0"
           cache: npm
-      # Hosted Windows only (.planning/debug/windows-ci-diag.md): the default temp folder is on the C: virtual disk, where
-      # fsync-bearing file operations take 3 to 6 ms, 13 to 14 times the Linux figure; the runner temp folder is on D:, which
-      # is within 1.2 to 1.7 times Linux. This suite creates and syncs thousands of files in the temp folder, so every later
-      # step of the job is pointed at the runner temp folder. (Defender real-time scanning is already off on the image and
-      # git launcher layers cost nothing measurable, so neither is touched.)
-      - name: Use the fast runner disk for temporary files (Windows only)
-        if: runner.os == 'Windows'
-        run: |
-          echo "TEMP=$RUNNER_TEMP" >> "$GITHUB_ENV"
-          echo "TMP=$RUNNER_TEMP" >> "$GITHUB_ENV"
-          echo "TMPDIR=$RUNNER_TEMP" >> "$GITHUB_ENV"
       - run: npm ci --ignore-scripts
       - run: npm run build
       - name: Recall on the pinned corpus
@@ -188,27 +151,3 @@ jobs:
       # nightly (nightly.yml). The ceilings are constants of the script, not flags.
       - name: Precise tier gate (pull request ceilings)
         run: node scripts/precise-gate.ts --pr --corpus gsd-core
-      # Diagnostic only (plan 02-46, .planning/debug/windows-freshness.md). The three steps below run on the hosted Windows
-      # job alone, after every normal gate, and cannot fail the job: they run the freshness gate once more with the opt-in
-      # spawn trace (the gate's own bound, unchanged) so the next hosted Windows run shows the per-spawn cost, the event
-      # delay and the commit time as numbers, in the log and as an artifact. No normal step loads the trace.
-      - name: Freshness trace (Windows diagnostic)
-        if: always() && matrix.os == 'windows-latest'
-        continue-on-error: true
-        env:
-          GSD_ATLAS_TRACE_FILE: ${{ runner.temp }}/freshness-trace.log
-        run: node --import ./scripts/diagnostics/trace-spawns.mjs scripts/freshness-gate.ts --saves 30 --max-ms 3000
-      - name: Freshness trace summary
-        if: always() && matrix.os == 'windows-latest'
-        continue-on-error: true
-        env:
-          GSD_ATLAS_TRACE_FILE: ${{ runner.temp }}/freshness-trace.log
-        run: node scripts/diagnostics/trace-summary.ts "$GSD_ATLAS_TRACE_FILE"
-      - name: Freshness trace artifact
-        if: always() && matrix.os == 'windows-latest'
-        continue-on-error: true
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: freshness-trace-windows
-          path: ${{ runner.temp }}/freshness-trace.log
-          if-no-files-found: ignore

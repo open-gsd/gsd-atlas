@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -12,7 +13,10 @@ function write(root: string, rel: string, text: string): void {
   fs.writeFileSync(full, text);
 }
 
-test('surveyDirectory measures a small synthetic tree', async () => {
+// The survey counts whole-word matches with ripgrep, so the test needs `rg` on the PATH (CI installs it).
+const hasRipgrep = spawnSync('rg', ['--version'], { stdio: 'ignore' }).status === 0;
+
+test('surveyDirectory measures a small synthetic tree', { skip: hasRipgrep ? false : 'ripgrep (rg) is not installed' }, async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'corpus-survey-'));
   try {
     write(root, 'LICENSE', 'MIT License\n\nPermission is hereby granted, free of charge, to any person');

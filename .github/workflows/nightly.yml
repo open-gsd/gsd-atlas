@@ -23,14 +23,12 @@ jobs:
     name: Strict gates (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
-    # Decision 2026-10-18 (Decision 2): Windows is postponed past the initial alpha. The Windows leg still runs so its
-    # results stay visible, but it cannot fail the workflow; Ubuntu and macOS stay blocking. Windows work is tracked in
-    # .planning/todos/pending/windows-support-post-alpha.md; remove this line when it is done.
-    continue-on-error: ${{ matrix.os == 'windows-latest' }}
+    # Windows is postponed past the initial alpha (Decision 2026-10-18, Decision 2) and is not run here; windows-latest is
+    # re-added to the matrix when .planning/todos/pending/windows-support-post-alpha.md is done.
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        os: [ubuntu-latest, macos-latest]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -39,16 +37,6 @@ jobs:
         with:
           node-version: "24.16.0"
           cache: npm
-      # Hosted Windows only (.planning/debug/windows-ci-diag.md): the default temp folder is on the C: virtual disk, where
-      # fsync-bearing file operations take 3 to 6 ms, 13 to 14 times the Linux figure; the runner temp folder is on D:, which
-      # is within 1.2 to 1.7 times Linux. The gates create and sync many files in the temp folder, so every later step of the
-      # job is pointed at the runner temp folder, as in ci.yml.
-      - name: Use the fast runner disk for temporary files (Windows only)
-        if: runner.os == 'Windows'
-        run: |
-          echo "TEMP=$RUNNER_TEMP" >> "$GITHUB_ENV"
-          echo "TMP=$RUNNER_TEMP" >> "$GITHUB_ENV"
-          echo "TMPDIR=$RUNNER_TEMP" >> "$GITHUB_ENV"
       - run: npm ci --ignore-scripts
       - run: npm run build
       - name: Freshness gate (strict p99)
