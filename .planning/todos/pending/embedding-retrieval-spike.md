@@ -44,3 +44,12 @@ Work, in order:
 - [ ] Windows and Node 24 via a throwaway CI job (after the owner decides; see the Windows todo for the pattern).
 
 Not blocking Phase 3 closure or plan 03-39.
+
+## Update 2026-10-28 (round 2 run, Mac only)
+
+Round 2 ran: results in `docs/research/embedding-retrieval-spike-results-round2.md`, frozen records and raw results in `.planning/spikes/round2/`. EmbeddingGemma 2 meets all eight conditions on this Mac (V2 test recall@10: FTS5 0.050, primary router 0.483; identifiers unchanged; deterministic; network-denied pass). Remaining before an adoption decision:
+
+- [ ] Register router R2 (exact-name gate) or a dense-fallback rule; R1 loses the misspelled-identifier recoveries.
+- [ ] Stronger lexical baseline and a small human-written query sample (all V2 queries are AI-written by one model family).
+- [ ] Repeat on a real SDK pack from Phase 6; Windows and Node 24 via CI; CPU-only machines with a smaller model.
+- [ ] Decide whether to draft the ADR and requirement text for the opt-in lane (see the post-Phase-3 proposal).

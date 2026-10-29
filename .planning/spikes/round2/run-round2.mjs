@@ -23,7 +23,7 @@ if (A.backend === 'llama') {
   const llama = await getLlama(); const ctx = await (await llama.loadModel({ modelPath: A.model })).createEmbeddingContext({ contextSize: 1024 });
   embed = async (t) => norm((await ctx.getEmbeddingFor(t)).vector);
 } else {
-  const { pipeline, env } = await import('../002a-runtime-onnx-transformersjs/node_modules/@huggingface/transformers/src/transformers.js');
+  const { pipeline, env } = await import('../002a-runtime-onnx-transformersjs/node_modules/@huggingface/transformers/dist/transformers.node.mjs');
   env.cacheDir = process.env.SPIKE_MODEL_CACHE; env.allowRemoteModels = process.env.ALLOW_REMOTE === '1';
   const ex = await pipeline('feature-extraction', A.model, { dtype: A.dtype ?? 'q8' });
   embed = async (t) => norm((await ex([t], { pooling: A.pooling ?? 'mean', normalize: true })).tolist()[0]);

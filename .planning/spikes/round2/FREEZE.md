@@ -30,3 +30,6 @@ At freeze, the authoring split was recorded as "owner writes 50, independent age
 - gold-v2.authors.json (query id to author): sha256 f10f2d1c6b47b8cc6c246ac046e7c9e2f63424b2e677253b985e7f9fea4273fa
 - Harness run-round2.mjs sha256 166b8b67a74ca5c96903bd01cec35f5e4480a65b1c16b7dff76baa3c352b343a; checker check-v2.mjs sha256 78c37edf5f74f5bbcea78809cd1879238721df209c1ab89d1b7f2e675925ffeb
 - Split rule: fnv1a(kind|id) mod 10 < 3 is tuning, else test (harness). Primary arm: R1 with tuned weight. Test halves are scored once per model.
+
+### A5 (2026-10-28): harness import path for the ONNX branch
+After the three Metal runs (made with the harness hash recorded above), the ONNX branch of `run-round2.mjs` was found to point at a source path that does not exist in the installed package; its import was changed to `dist/transformers.node.mjs`. Nothing else changed: arms, split, tuning, bootstrap and metrics are untouched, and the llama branch is not affected. New harness sha256: 766ae78b41ba03f8a522b89a348c05e04521c1ec167d0671774d8d4d8a3afade. The Metal results are valid under the frozen logic.
