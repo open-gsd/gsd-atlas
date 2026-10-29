@@ -1,0 +1,206 @@
+{
+ "date": "2026-10-28",
+ "n": 56,
+ "all": {
+  "n": 56,
+  "r5": 0.44642857142857145,
+  "r10": 0.5357142857142857,
+  "mrr": 0.290141002163285
+ },
+ "overlap": {
+  "n": 14,
+  "r5": 0.7142857142857143,
+  "r10": 0.7142857142857143,
+  "mrr": 0.4662698412698412
+ },
+ "noOverlap": {
+  "n": 42,
+  "r5": 0.35714285714285715,
+  "r10": 0.47619047619047616,
+  "mrr": 0.23143138912776623
+ },
+ "misses": [
+  {
+   "q": "sandboxed system interface for running compiled WebAssembly programs",
+   "overlap": false,
+   "pos": 38,
+   "name": "WASI",
+   "share": 0.14285714285714285
+  },
+  {
+   "q": "make a transform stream that squeezes data using the Zstandard format",
+   "overlap": false,
+   "pos": -1,
+   "name": "createZstdCompress",
+   "share": 0
+  },
+  {
+   "q": "listen for multiplexed web requests over an encrypted connection",
+   "overlap": false,
+   "pos": -1,
+   "name": "createSecureServer",
+   "share": 0
+  },
+  {
+   "q": "check whether something is a calendar timestamp object",
+   "overlap": false,
+   "pos": -1,
+   "name": "isDate",
+   "share": 0.16666666666666666
+  },
+  {
+   "q": "find free and total disk space of the volume holding a path, blocking the caller",
+   "overlap": false,
+   "pos": -1,
+   "name": "statfsSync",
+   "share": 0.1
+  },
+  {
+   "q": "detect wrapper objects around primitive text values",
+   "overlap": true,
+   "pos": -1,
+   "name": "isStringObject",
+   "share": 0
+  },
+  {
+   "q": "verify that a function was invoked the expected number of times",
+   "overlap": false,
+   "pos": -1,
+   "name": "CallTracker",
+   "share": 0.16666666666666666
+  },
+  {
+   "q": "convert JavaScript strings into UTF-8 bytes",
+   "overlap": false,
+   "pos": -1,
+   "name": "TextEncoder",
+   "share": 0.2
+  },
+  {
+   "q": "cancel a callback scheduled to run right after the current poll phase",
+   "overlap": false,
+   "pos": 18,
+   "name": "clearImmediate",
+   "share": 0.125
+  },
+  {
+   "q": "fail unless some text satisfies a pattern",
+   "overlap": false,
+   "pos": -1,
+   "name": "match",
+   "share": 0
+  },
+  {
+   "q": "open an outgoing TCP link to a host and port",
+   "overlap": false,
+   "pos": 23,
+   "name": "createConnection",
+   "share": 0.3333333333333333
+  },
+  {
+   "q": "find out whether the program is running on Windows, Mac or Linux",
+   "overlap": false,
+   "pos": -1,
+   "name": "platform",
+   "share": 0.14285714285714285
+  },
+  {
+   "q": "check that bytes contain only seven-bit characters",
+   "overlap": false,
+   "pos": -1,
+   "name": "isAscii",
+   "share": 0.16666666666666666
+  },
+  {
+   "q": "object used to write the reply back to a web client",
+   "overlap": false,
+   "pos": -1,
+   "name": "ServerResponse",
+   "share": 0.16666666666666666
+  },
+  {
+   "q": "detect functions that can pause and resume with yield",
+   "overlap": true,
+   "pos": -1,
+   "name": "isGeneratorFunction",
+   "share": 0
+  },
+  {
+   "q": "find the current account's personal folder",
+   "overlap": false,
+   "pos": 14,
+   "name": "homedir",
+   "share": 0.2
+  },
+  {
+   "q": "detect objects that intercept property access through traps",
+   "overlap": false,
+   "pos": -1,
+   "name": "isProxy",
+   "share": 0.14285714285714285
+  },
+  {
+   "q": "handle that lets the sink signal an error to the writing side",
+   "overlap": false,
+   "pos": 20,
+   "name": "WritableStreamDefaultController",
+   "share": 0.14285714285714285
+  },
+  {
+   "q": "build a stream that decompresses zlib-formatted data",
+   "overlap": false,
+   "pos": 28,
+   "name": "createInflate",
+   "share": 0.16666666666666666
+  },
+  {
+   "q": "compare nested objects property by property in tests and fail on any difference",
+   "overlap": false,
+   "pos": 12,
+   "name": "deepStrictEqual",
+   "share": 0.2857142857142857
+  },
+  {
+   "q": "get the address of the debugger endpoint if one is attached",
+   "overlap": false,
+   "pos": -1,
+   "name": "url",
+   "share": 0
+  },
+  {
+   "q": "split one stream into two independent readers",
+   "overlap": true,
+   "pos": 17,
+   "name": "ReadableStreamTee",
+   "share": 0.25
+  },
+  {
+   "q": "entry in a folder listing that knows whether it is a file or a subfolder",
+   "overlap": false,
+   "pos": 10,
+   "name": "Dirent",
+   "share": 0.2857142857142857
+  },
+  {
+   "q": "write file contents from a chosen byte offset as a stream",
+   "overlap": true,
+   "pos": 17,
+   "name": "createWriteStream",
+   "share": 0.42857142857142855
+  },
+  {
+   "q": "collect everything from a stream into raw binary memory",
+   "overlap": false,
+   "pos": 47,
+   "name": "arrayBuffer",
+   "share": 0.16666666666666666
+  },
+  {
+   "q": "gather an entire stream into an immutable binary object",
+   "overlap": false,
+   "pos": 33,
+   "name": "blob",
+   "share": 0.16666666666666666
+  }
+ ]
+}
