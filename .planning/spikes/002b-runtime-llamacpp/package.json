@@ -1,1 +1,1 @@
-{"name":"spike-002b","private":true,"type":"module","dependencies":{"node-llama-cpp":"^3.22.2"}}
+{"name":"spike-002b","private":true,"type":"module","dependencies":{"node-llama-cpp":"^3.22.2"},"overrides":{"simple-git":"4.0.2"}}
