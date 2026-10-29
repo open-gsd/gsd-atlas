@@ -1,0 +1,310 @@
+{
+ "sample": 3000,
+ "dim": 768,
+ "maxTokens": 550,
+ "host0": {
+  "load1": 3.85,
+  "cpuIdle": 87.51
+ },
+ "variants": [
+  {
+   "name": "T0",
+   "n": 1,
+   "ctx": 1024,
+   "docsPerSec": 96,
+   "runs": [
+    {
+     "docsPerSec": 96,
+     "h0": {
+      "load1": 3.85,
+      "cpuIdle": 86.56
+     },
+     "h1": {
+      "load1": 3.96,
+      "cpuIdle": 87.92
+     }
+    },
+    {
+     "docsPerSec": 102.2,
+     "h0": {
+      "load1": 3.96,
+      "cpuIdle": 84.45
+     },
+     "h1": {
+      "load1": 4.95,
+      "cpuIdle": 75.27
+     }
+    },
+    {
+     "docsPerSec": 81.5,
+     "h0": {
+      "load1": 4.95,
+      "cpuIdle": 77.28
+     },
+     "h1": {
+      "load1": 4.42,
+      "cpuIdle": 84.42
+     }
+    }
+   ],
+   "fidelity": {
+    "mean": 1,
+    "min": 1,
+    "n": 3000
+   },
+   "fidelityPass": true
+  },
+  {
+   "name": "T1",
+   "n": 1,
+   "ctx": 1024,
+   "batch": 2048,
+   "docsPerSec": 86.6,
+   "runs": [
+    {
+     "docsPerSec": 95.9,
+     "h0": {
+      "load1": 4.22,
+      "cpuIdle": 77.74
+     },
+     "h1": {
+      "load1": 3.53,
+      "cpuIdle": 84.14
+     }
+    },
+    {
+     "docsPerSec": 86.6,
+     "h0": {
+      "load1": 3.53,
+      "cpuIdle": 87.61
+     },
+     "h1": {
+      "load1": 3.58,
+      "cpuIdle": 80.28
+     }
+    },
+    {
+     "docsPerSec": 74.5,
+     "h0": {
+      "load1": 3.58,
+      "cpuIdle": 83.95
+     },
+     "h1": {
+      "load1": 3.18,
+      "cpuIdle": 82.92
+     }
+    }
+   ],
+   "fidelity": {
+    "mean": 1,
+    "min": 1,
+    "n": 3000
+   },
+   "fidelityPass": true
+  },
+  {
+   "name": "T2-n2",
+   "n": 2,
+   "ctx": 1024,
+   "docsPerSec": 177.2,
+   "runs": [
+    {
+     "docsPerSec": 167.7,
+     "h0": {
+      "load1": 3.18,
+      "cpuIdle": 85.16
+     },
+     "h1": {
+      "load1": 2.86,
+      "cpuIdle": 76.25
+     }
+    },
+    {
+     "docsPerSec": 179.4,
+     "h0": {
+      "load1": 2.86,
+      "cpuIdle": 86.2
+     },
+     "h1": {
+      "load1": 2.69,
+      "cpuIdle": 89.18
+     }
+    },
+    {
+     "docsPerSec": 177.2,
+     "h0": {
+      "load1": 2.69,
+      "cpuIdle": 85.69
+     },
+     "h1": {
+      "load1": 2.75,
+      "cpuIdle": 89.93
+     }
+    }
+   ],
+   "fidelity": {
+    "mean": 1,
+    "min": 1,
+    "n": 3000
+   },
+   "fidelityPass": true
+  },
+  {
+   "name": "T2-n4",
+   "n": 4,
+   "ctx": 1024,
+   "docsPerSec": 211.6,
+   "runs": [
+    {
+     "docsPerSec": 211.6,
+     "h0": {
+      "load1": 2.75,
+      "cpuIdle": 82.89
+     },
+     "h1": {
+      "load1": 2.51,
+      "cpuIdle": 81.15
+     }
+    },
+    {
+     "docsPerSec": 212.2,
+     "h0": {
+      "load1": 2.51,
+      "cpuIdle": 79.68
+     },
+     "h1": {
+      "load1": 2.86,
+      "cpuIdle": 86.11
+     }
+    },
+    {
+     "docsPerSec": 207.1,
+     "h0": {
+      "load1": 2.86,
+      "cpuIdle": 83.74
+     },
+     "h1": {
+      "load1": 4.68,
+      "cpuIdle": 87.21
+     }
+    }
+   ],
+   "fidelity": {
+    "mean": 1,
+    "min": 1,
+    "n": 3000
+   },
+   "fidelityPass": true
+  },
+  {
+   "name": "T2-n8",
+   "n": 8,
+   "ctx": 1024,
+   "docsPerSec": 180.6,
+   "runs": [
+    {
+     "docsPerSec": 179.5,
+     "h0": {
+      "load1": 4.68,
+      "cpuIdle": 86.62
+     },
+     "h1": {
+      "load1": 4.69,
+      "cpuIdle": 72.72
+     }
+    },
+    {
+     "docsPerSec": 180.8,
+     "h0": {
+      "load1": 4.69,
+      "cpuIdle": 54.5
+     },
+     "h1": {
+      "load1": 17.12,
+      "cpuIdle": 28.9
+     }
+    },
+    {
+     "docsPerSec": 180.6,
+     "h0": {
+      "load1": 18.31,
+      "cpuIdle": 35.11
+     },
+     "h1": {
+      "load1": 15.44,
+      "cpuIdle": 73.42
+     }
+    }
+   ],
+   "fidelity": {
+    "mean": 1,
+    "min": 1,
+    "n": 3000
+   },
+   "fidelityPass": true
+  },
+  {
+   "name": "T3-n4",
+   "n": 4,
+   "ctx": 1024,
+   "longestFirst": true,
+   "docsPerSec": 207.9,
+   "runs": [
+    {
+     "docsPerSec": 206.4,
+     "h0": {
+      "load1": 15.44,
+      "cpuIdle": 84.47
+     },
+     "h1": {
+      "load1": 13.02,
+      "cpuIdle": 70.2
+     }
+    },
+    {
+     "docsPerSec": 207.9,
+     "h0": {
+      "load1": 13.02,
+      "cpuIdle": 66.7
+     },
+     "h1": {
+      "load1": 11.19,
+      "cpuIdle": 76.33
+     }
+    },
+    {
+     "docsPerSec": 209.2,
+     "h0": {
+      "load1": 11.19,
+      "cpuIdle": 79.97
+     },
+     "h1": {
+      "load1": 9.76,
+      "cpuIdle": 71.9
+     }
+    }
+   ],
+   "fidelity": {
+    "mean": 1,
+    "min": 1,
+    "n": 3000
+   },
+   "fidelityPass": true
+  }
+ ],
+ "t4": "void: full-pack max tokens 550 exceeds 512",
+ "best": {
+  "name": "T2-n4",
+  "n": 4,
+  "ctx": 1024,
+  "batch": null,
+  "longestFirst": false,
+  "docsPerSec": 211.6,
+  "projectedFullPackSeconds": 693
+ },
+ "e1": false,
+ "hostEnd": {
+  "load1": 9.76,
+  "cpuIdle": 77.69
+ }
+}

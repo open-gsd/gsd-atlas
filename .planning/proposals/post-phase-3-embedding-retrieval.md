@@ -1,7 +1,7 @@
 # Proposal: Embedding-assisted retrieval (EMB-01 pulled forward), post-Phase-3
 
 **Date:** 2026-10-28
-**Status:** Proposal only (round 4 to 6 evidence added 2026-10-29: see docs/research/embedding-retrieval-spike-results-round4.md, ...round5.md and ...round6.md). Not in ROADMAP.md, not a registered phase, no requirement IDs changed. The owner decides after the spike.
+**Status:** Proposal only (round 4 to 7 evidence added 2026-10-29: see docs/research/embedding-retrieval-spike-results-round4.md, ...round5.md and ...round6.md and ...round7.md). Not in ROADMAP.md, not a registered phase, no requirement IDs changed. The owner decides after the spike.
 **Spike status (2026-10-29):** round 1 provisional pass on SDK intent (`docs/research/embedding-retrieval-spike-results.md`); round 2 met all eight conditions on a stand-in pool (`...-round2.md`); round 3 on the real macOS 27 SDK met the effect conditions but not the budget conditions and showed much lower absolute recall (`docs/research/embedding-retrieval-spike-results-round3.md`: vocabulary-gap recall@10 0.18 to 0.21, 24 min full-pack embed on Metal, 118 ms added p95). Scope the first phase around a smaller pack (Pool-lite, 256-dim int8) and a dense-only fallback router.
 **Gate:** Opens only if the offline spike (`docs/research/embedding-retrieval-spike-plan.md`) passes the pre-frozen thresholds. If it fails, EMB-01 stays post-1.0 and the negative result is recorded.
 

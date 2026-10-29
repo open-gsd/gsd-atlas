@@ -88,3 +88,7 @@ Round 5: `docs/research/embedding-retrieval-spike-results-round5.md`, frozen pla
 ## Update 2026-10-29 (round 6, fresh identifiers, Mac only)
 
 Round 6: `docs/research/embedding-retrieval-spike-results-round6.md`, frozen plan section 15 and records in `.planning/spikes/round6/`. On 240 fresh identifier queries the single-token trigram fallback (R5) gains 3.3 points over R3 (22.5 on fragments, p5 +12.5) with no loss on misspellings, but loses one qualified query (strict S4 not met), so it is recorded as a fragment-only fallback. The lexical-free path (name map, int8 256-dimension dense lane, trigram only for single tokens) reaches 0.967 on I6. Latency was not certified: the host never dropped below load 1.5; loaded-machine p95 was 40 to 45 ms. Open: a quiet-machine latency rerun, the 24-minute full-pack embed.
+
+## Update 2026-10-29 (round 7, full-pack embed throughput, Mac only)
+
+Round 7: `docs/research/embedding-retrieval-spike-results-round7.md`, frozen plan section 16 in `.planning/spikes/round7/`. Four concurrent embedding contexts embed 211.6 docs/s against 96 sequential (2.2 times, identical vectors), projecting 693 s for the full pack instead of 24 minutes. The 600 s target (244 docs/s) is not met, so the full-pack run was not performed. The machine was shared; the figure is a lower bound. Round 8 (dot exception for R5 and a working-machine latency check) is planned in `.planning/spikes/round8/`.

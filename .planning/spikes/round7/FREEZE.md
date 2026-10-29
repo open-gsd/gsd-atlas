@@ -9,3 +9,6 @@ Recorded before any variant is timed. Nothing has been run in this round.
 ## Amendments
 ### A1 (2026-10-29, before any variant is timed)
 bench7.mjs sha256 c91c7e9498a93b093133251c600f100b7698086c9164cb216ebeb7eb1a56c0fe. Deviation from plan 16.2, stated before running: each variant runs its 3 repetitions back to back (variants in the fixed order T0, T1, T2-n2/4/8, T3, T4) instead of rotating variant order per repetition, because T3 and T4 depend on the winner of earlier variants. Drift over the run (thermal, load) can therefore favour earlier variants; host load and CPU idle are recorded around each repetition and T0 is not repeated at the end. The full-pack run, if any, is a separate script hashed before it is used.
+
+### A2 (2026-10-29, results)
+Benchmark run once with bench7.mjs (hash in A1). E1 not met (best T2-n4 211.6 docs/s, projected 693 s), so the full-pack run was not performed (plan 16.4). T4 void (full-pack maximum 550 tokens). Load was uncontrolled and is recorded per repetition. results/r7-bench.json sha256 31fcd1cc2b29809444ac7256d1e0f81259c63e34a616dd64669f29a04bd4366d; note: docs/research/embedding-retrieval-spike-results-round7.md.
