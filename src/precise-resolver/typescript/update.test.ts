@@ -405,6 +405,20 @@ async function waitFor(check: () => boolean, what: string, timeoutMs = 15_000): 
   }
 }
 
+/**
+ * `code_refs` until the answer has no `resolver_timeout`. The first precise read after a start may exceed
+ * `query.resolveTimeoutMs` on a slow runner (the worker keeps running and fills the cache), so the answer that matters
+ * is the next one; the same rule as `refsSettled` in resolver.test.ts.
+ */
+async function refsSettled(world: World, args: unknown, maxReads = 12): Promise<Envelope> {
+  let envelope = await world.ask('code_refs', args);
+  for (let reads = 1; reads < maxReads && (envelope.degraded ?? []).includes('resolver_timeout'); reads += 1) {
+    await sleep(300);
+    envelope = await world.ask('code_refs', args);
+  }
+  return envelope;
+}
+
 describe('the warm start (Pitfall 5)', () => {
   const HOST_FILES: Readonly<Record<string, string>> = {
     'tsconfig.json': TSCONFIG,
@@ -422,7 +436,7 @@ describe('the warm start (Pitfall 5)', () => {
     const found = await world.ask('code_find', { name: 'compute' });
     assert.equal(found.ok, true, JSON.stringify(found.diagnostics));
     await waitFor(() => world.runner.workers.length === 1, 'the warm worker to start');
-    const refs = await world.ask('code_refs', { name: 'compute', path: 'src/lib.cts' });
+    const refs = await refsSettled(world, { name: 'compute', path: 'src/lib.cts' });
     assert.equal(refs.ok, true, JSON.stringify(refs.diagnostics));
     assert.equal((refs.degraded ?? []).includes('resolver_timeout'), false, JSON.stringify(refs.degraded));
     assert.equal(refRows(refs).filter((row) => row.path === 'src/user.cts').every((row) => row.tier === 'precise'), true, JSON.stringify(refRows(refs)));

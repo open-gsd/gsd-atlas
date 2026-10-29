@@ -11,7 +11,11 @@ const workflowDir = path.join(root, '.github', 'workflows');
 
 const files = fs.readdirSync(workflowDir).filter((f) => /\.ya?ml$/.test(f)).sort();
 
-const TIMEOUT_LINE = /^ {4}timeout-minutes:\s*(?:\d+|\$\{\{\s*matrix\.os == 'windows-latest' && \d+ \|\| \d+\s*\}\})\s*$/;
+const TIMEOUT_LINE = /^ {4}timeout-minutes:\s*\d+\s*$/;
+
+// Decision 2026-10-18 (Decision 2: Windows postponed past the initial alpha). No workflow runs on Windows: every matrix is
+// Ubuntu and macOS only. windows-latest is re-added when .planning/todos/pending/windows-support-post-alpha.md is done.
+const MATRIX_OS = /os:\s*\[\s*ubuntu-latest\s*,\s*macos-latest\s*\]/;
 
 const indentOf = (line: string): number => line.length - line.trimStart().length;
 const isBlank = (line: string): boolean => line.trim() === '' || line.trim().startsWith('#');
@@ -154,7 +158,6 @@ for (const file of files) {
 
   test(`${file}: every job sets timeout-minutes`, () => {
     for (const [name, body] of jobs(lines)) {
-      // A number, or the one expression the test job uses to cap only its Windows legs (see the Windows decision below).
       assert.ok(body.some((l) => TIMEOUT_LINE.test(l)), `job ${name} has no timeout-minutes`);
     }
   });
@@ -172,17 +175,16 @@ test('ci.yml: triggers are pull_request, push on main and ci/**, and workflow_di
   assert.match(text, /branches:\s*\[\s*main\s*,\s*"ci\/\*\*"\s*\]/);
 });
 
-test('ci.yml: runner labels and Node versions cover three OSes and Node 24.16.0 and 26', () => {
+test('ci.yml: runner labels and Node versions cover Ubuntu and macOS and Node 24.16.0 and 26', () => {
   const lines = readLines('ci.yml');
   const text = lines.join('\n');
-  for (const label of ['ubuntu-latest', 'macos-latest', 'windows-latest']) assert.ok(text.includes(label), label + ' missing');
+  for (const label of ['ubuntu-latest', 'macos-latest']) assert.ok(text.includes(label), label + ' missing');
   const j = jobs(lines);
   assert.match((j.get('static') ?? []).join('\n'), /runs-on:\s*ubuntu-latest/);
   assert.match((j.get('static') ?? []).join('\n'), /node-version:\s*"24\.16\.0"/);
-  const matrixOs = /os:\s*\[\s*ubuntu-latest\s*,\s*macos-latest\s*,\s*windows-latest\s*\]/;
-  assert.match((j.get('test') ?? []).join('\n'), matrixOs);
+  assert.match((j.get('test') ?? []).join('\n'), MATRIX_OS);
   assert.match((j.get('test') ?? []).join('\n'), /node:\s*\[\s*"24\.16\.0"\s*,\s*"26"\s*\]/);
-  assert.match((j.get('grammar') ?? []).join('\n'), matrixOs);
+  assert.match((j.get('grammar') ?? []).join('\n'), MATRIX_OS);
   assert.match((j.get('grammar') ?? []).join('\n'), /node-version:\s*"24\.16\.0"/);
 });
 
@@ -236,10 +238,10 @@ const FRESHNESS_NIGHTLY_P99_MS = 1000;
 
 const maxMsOf = (text: string): number[] => [...text.matchAll(/scripts\/freshness-gate\.ts[^\n]*--max-ms\s+(\d+)/g)].map((match) => Number(match[1]));
 
-test('ci.yml: the gates job runs on three operating systems at the Node floor and runs the four gates in order', () => {
+test('ci.yml: the gates job runs on Ubuntu and macOS at the Node floor and runs the four gates in order', () => {
   const lines = readLines('ci.yml');
   const gates = (jobs(lines).get('gates') ?? []).join('\n');
-  assert.match(gates, /os:\s*\[\s*ubuntu-latest\s*,\s*macos-latest\s*,\s*windows-latest\s*\]/);
+  assert.match(gates, MATRIX_OS);
   assert.match(gates, /node-version:\s*"24\.16\.0"/);
   assert.match(gates, /runs-on:\s*\$\{\{\s*matrix\.os\s*\}\}/);
   const order = ['npm ci --ignore-scripts', 'npm run build', 'scripts/recall.ts --corpus gsd-core', 'scripts/corpus-gates.ts', 'scripts/size-gate.ts', 'scripts/freshness-gate.ts'];
@@ -250,9 +252,8 @@ test('ci.yml: the gates job runs on three operating systems at the Node floor an
     from = at + needle.length;
   }
   assert.ok(!/--edits\b/.test(gates), 'the size gate must run at its full 20,000 edits, not a reduced count');
-  // The normal gate and the Windows-only traced diagnostic run (plan 02-46), both in this job and both at the approved
-  // ceiling. The nightly one-second bound lives in nightly.yml, which the diagnostic does not touch.
-  assert.deepEqual(maxMsOf(gates), [FRESHNESS_PR_CEILING_MS, FRESHNESS_PR_CEILING_MS]);
+  // The freshness gate runs once in this job, at the approved ceiling. The nightly one-second bound lives in nightly.yml.
+  assert.deepEqual(maxMsOf(gates), [FRESHNESS_PR_CEILING_MS]);
   assert.ok(maxMsOf(gates).every((value) => value <= FRESHNESS_PR_CEILING_MS), 'no freshness bound above the approved ceiling');
 });
 
@@ -271,7 +272,7 @@ test('nightly.yml: triggers on one schedule entry and workflow_dispatch, and run
   assert.match(text, /^ {2}workflow_dispatch:/m);
   assert.equal([...text.matchAll(/^\s*-\s+cron:\s*"[^"]+"\s*$/gm)].length, 1, 'exactly one cron entry');
   assert.doesNotMatch(text, /^ {2}(?:pull_request|push):/m, 'nightly runs on a schedule and by hand only');
-  assert.match(text, /os:\s*\[\s*ubuntu-latest\s*,\s*macos-latest\s*,\s*windows-latest\s*\]/);
+  assert.match(text, MATRIX_OS);
   assert.match(text, /node-version:\s*"24\.16\.0"/);
   assert.ok(text.includes('scripts/corpus-gates.ts'));
   assert.deepEqual(maxMsOf(text), [FRESHNESS_NIGHTLY_P99_MS]);
@@ -285,9 +286,8 @@ test('ci.yml: the grammar job prints each module rebuild hash before it judges t
   assert.ok(report < verify, 'the hashes are printed before grammar:verify runs');
 });
 
-// The opt-in spawn trace (plan 02-46, .planning/debug/windows-freshness.md): hosted Windows only, after the normal
-// gates, and unable to fail the job. These tests pin all three properties and that no normal step loads the preload.
-const TRACE_COMMAND = 'node --import ./scripts/diagnostics/trace-spawns.mjs scripts/freshness-gate.ts --saves 30 --max-ms 3000';
+// The opt-in spawn trace (plan 02-46, .planning/debug/windows-freshness.md) was a hosted-Windows diagnostic. It left the
+// workflows with the Windows legs, and these tests pin that no workflow loads the preload or mentions the trace.
 const TRACE_NEEDLES = /trace-spawns|trace-summary|freshness-trace|GSD_ATLAS_TRACE_FILE|--import\b/;
 
 /** A step as text, without the comment lines that sit between steps and so land in the slice of the one before. */
@@ -308,48 +308,11 @@ function traceSteps(lines: string[]): string[][] {
   return steps;
 }
 
-test('ci.yml: diagnostic steps are windows-only', () => {
-  const steps = traceSteps(readLines('ci.yml'));
-  assert.equal(steps.length, 3, 'the trace run, its summary and its artifact upload');
-  for (const step of steps) {
-    assert.match(textOf(step), /^\s*if:.*matrix\.os == 'windows-latest'/m, step[0]);
-  }
-});
-
-test('ci.yml: diagnostic steps are continue-on-error', () => {
-  for (const step of traceSteps(readLines('ci.yml'))) {
-    assert.match(textOf(step), /^\s*continue-on-error:\s*true\s*$/m, step[0]);
-    assert.match(textOf(step), /^\s*if:.*always\(\)/m, `${step[0] ?? ''}: a failed gate must not hide the trace`);
-  }
-});
-
-test('ci.yml: the diagnostic steps come after the normal gates and run the pinned commands', () => {
-  const lines = readLines('ci.yml');
-  const gates = (jobs(lines).get('gates') ?? []).join('\n');
-  const normal = gates.indexOf('run: node scripts/freshness-gate.ts --saves 30 --max-ms 3000');
-  const traced = gates.indexOf(TRACE_COMMAND);
-  const summary = gates.indexOf('node scripts/diagnostics/trace-summary.ts "$GSD_ATLAS_TRACE_FILE"');
-  const upload = gates.indexOf('actions/upload-artifact@');
-  assert.ok(normal >= 0 && traced > normal, 'the traced run follows the normal freshness gate');
-  assert.ok(summary > traced && upload > summary, 'the summary, then the upload');
-  for (const gate of ['scripts/recall.ts', 'scripts/corpus-gates.ts', 'scripts/size-gate.ts']) {
-    assert.ok(gates.indexOf(gate) < traced, `${gate} runs before the diagnostic`);
-  }
-  const run = traceSteps(lines).find((step) => textOf(step).includes(TRACE_COMMAND));
-  assert.ok(run !== undefined, 'the traced run step exists');
-  assert.match(textOf(run), /^\s*GSD_ATLAS_TRACE_FILE:\s*\$\{\{\s*runner\.temp\s*\}\}\/freshness-trace\.log\s*$/m);
-});
-
-test('ci.yml: no normal gate loads the preload', () => {
+test('workflows: no workflow loads the spawn-trace preload, and the normal freshness gate step is plain', () => {
   for (const file of files) {
     const lines = readLines(file);
-    const steps = traceSteps(lines);
-    if (file !== 'ci.yml') {
-      assert.deepEqual(steps, [], `${file} must not mention the trace`);
-      continue;
-    }
-    // Every step that mentions the trace is one of the three diagnostic steps; the normal freshness step is plain.
-    for (const step of steps) assert.match(textOf(step), /continue-on-error:\s*true/);
+    assert.deepEqual(traceSteps(lines), [], `${file} must not mention the trace`);
+    if (file !== 'ci.yml') continue;
     const normal = lines.findIndex((l) => l.includes('run: node scripts/freshness-gate.ts --saves 30 --max-ms 3000'));
     assert.ok(normal >= 0, 'the normal freshness gate is present');
     const normalStep = textOf(stepAround(lines, normal));
@@ -357,32 +320,17 @@ test('ci.yml: no normal gate loads the preload', () => {
   }
 });
 
-test('ci.yml: diagnostic upload is pinned', () => {
-  const lines = readLines('ci.yml');
-  const upload = traceSteps(lines).find((step) => textOf(step).includes('actions/upload-artifact@'));
-  assert.ok(upload !== undefined, 'the upload step exists');
-  const text = textOf(upload);
-  assert.match(text, /uses:\s+actions\/upload-artifact@[0-9a-f]{40}\s+#\s+v7\.0\.2\s*$/m);
-  assert.match(text, /^\s*name:\s*freshness-trace-windows\s*$/m);
-  assert.match(text, /^\s*path:\s*\$\{\{\s*runner\.temp\s*\}\}\/freshness-trace\.log\s*$/m);
-  assert.doesNotMatch(text, /retention-days|timeout-minutes/, 'no retention or timeout setting is added');
-});
-
-test('ci.yml points temporary files at the fast runner disk on hosted Windows only, before the slow steps', () => {
-  const lines = readLines('ci.yml');
-  for (const name of ['test', 'grammar', 'gates']) {
-    const body = jobs(lines).get(name);
-    assert.ok(body !== undefined, `ci.yml has a ${name} job`);
-    const at = body.findIndex((l) => l.includes('name: Use the fast runner disk for temporary files (Windows only)'));
-    assert.ok(at >= 0, `${name}: the temporary-files step exists`);
-    const step = stepAround(body, at).join('\n');
-    assert.match(step, /if: runner\.os == 'Windows'/, `${name}: Windows only`);
-    for (const variable of ['TEMP', 'TMP', 'TMPDIR']) {
-      assert.match(step, new RegExp(`echo "${variable}=\\$RUNNER_TEMP" >> "\\$GITHUB_ENV"`), `${name}: ${variable} points at the runner temp folder`);
+test('workflows: no step is Windows-only, and every matrix job names the Windows decision in a comment', () => {
+  for (const file of files) {
+    const lines = readLines(file);
+    for (const { text, i } of codeLines(lines)) {
+      assert.doesNotMatch(text, /windows/i, `${file} line ${i + 1} mentions Windows outside a comment: ${text.trim()}`);
     }
-    const install = body.findIndex((l) => /npm ci --ignore-scripts/.test(l));
-    assert.ok(at < install, `${name}: the step runs before npm ci`);
-    assert.ok(!body.some((l) => /Set-MpPreference|Add-MpPreference/.test(l)), `${name}: Defender is not touched`);
+  }
+  for (const [file, name] of MATRIX_JOBS) {
+    const text = readLines(file).join('\n');
+    assert.match(text, /Decision 2026-10-18, Decision 2\) and is not run here/, `${file}: ${name}: the comment naming the decision is missing`);
+    assert.ok(text.includes('windows-support-post-alpha.md'), `${file}: the comment names where the Windows work is tracked`);
   }
 });
 
@@ -403,13 +351,12 @@ test('ci.yml: precise gate step in the gates job', () => {
   assert.match(step, /^\s+run:\s*node scripts\/precise-gate\.ts --pr --corpus gsd-core\s*$/m);
   // It judges: it cannot be made optional, conditional or tolerant of failure.
   assert.doesNotMatch(step, /continue-on-error|\bif:/);
-  // After the install, the build and every other normal gate; the freshness gate's diagnostic steps come after it.
+  // After the install, the build and every other normal gate.
   const text = body.join('\n');
   const at = text.indexOf('scripts/precise-gate.ts --pr');
   for (const needle of ['npm ci --ignore-scripts', 'npm run build', 'scripts/recall.ts', 'scripts/corpus-gates.ts', 'scripts/size-gate.ts', 'run: node scripts/freshness-gate.ts --saves 30 --max-ms 3000']) {
     assert.ok(text.indexOf(needle) >= 0 && text.indexOf(needle) < at, `${needle} runs before the precise gate`);
   }
-  assert.ok(at < text.indexOf(TRACE_COMMAND), 'the precise gate runs before the Windows diagnostic');
   // The pull request job takes no strict figure and does not clone gsd-pi; no dependency is installed for the gate.
   assert.doesNotMatch(readLines('ci.yml').join('\n'), /precise-gate\.ts[^\n]*--(?:strict|nobreak)|gsd-pi/);
   assert.doesNotMatch(text, /--prepared|--dir\b/, 'the gate uses the bundled compiler: no install, no prepared checkout');
@@ -418,9 +365,9 @@ test('ci.yml: precise gate step in the gates job', () => {
   }
 });
 
-test('ci.yml: all three operating systems still run the precise gate (Windows is non-blocking, see the Windows decision)', () => {
+test('ci.yml: Ubuntu and macOS both run the precise gate (Windows is postponed, see the Windows decision)', () => {
   const body = (jobs(readLines('ci.yml')).get('gates') ?? []).join('\n');
-  assert.match(body, /os:\s*\[\s*ubuntu-latest\s*,\s*macos-latest\s*,\s*windows-latest\s*\]/);
+  assert.match(body, MATRIX_OS);
   assert.match(body, /runs-on:\s*\$\{\{\s*matrix\.os\s*\}\}/);
   assert.match(body, /fail-fast:\s*false/);
   // Every precise-gate command of any workflow is one of three exact lines: a tier, a corpus and nothing that moves a bound.
@@ -449,24 +396,12 @@ test('nightly.yml: strict and no-break steps in nightly', () => {
   for (const step of [strict, noBreak]) assert.doesNotMatch(step, /continue-on-error|\bif:/);
   const text = strictJob.join('\n');
   for (const needle of ['npm ci --ignore-scripts', 'npm run build']) assert.ok(text.indexOf(needle) < text.indexOf('precise-gate.ts'), `${needle} runs first`);
-  assert.match(text, /os:\s*\[\s*ubuntu-latest\s*,\s*macos-latest\s*,\s*windows-latest\s*\]/);
+  assert.match(text, MATRIX_OS);
   assert.doesNotMatch(text, /--prepared/);
 });
 
-test('nightly.yml: the strict job points temporary files at the fast runner disk on hosted Windows only, before the install', () => {
-  const body = jobs(readLines('nightly.yml')).get('strict') ?? [];
-  const at = body.findIndex((l) => l.includes('name: Use the fast runner disk for temporary files (Windows only)'));
-  assert.ok(at >= 0, 'the temporary-files step exists in the strict job');
-  const step = stepAround(body, at).join('\n');
-  assert.match(step, /if: runner\.os == 'Windows'/);
-  for (const variable of ['TEMP', 'TMP', 'TMPDIR']) assert.match(step, new RegExp(`echo "${variable}=\\$RUNNER_TEMP" >> "\\$GITHUB_ENV"`));
-  assert.ok(at < body.findIndex((l) => /npm ci --ignore-scripts/.test(l)), 'the step runs before npm ci');
-});
-
-// Decision 2026-10-18 (Decision 2: Windows postponed past the initial alpha). The Windows legs still RUN on every
-// workflow, so their results stay visible, but they cannot fail the workflow; Ubuntu and macOS stay blocking. The
-// per-job `continue-on-error` is the only form allowed, and it names Windows and nothing else.
-const WINDOWS_NON_BLOCKING = /^ {4}continue-on-error:\s*\$\{\{\s*matrix\.os == 'windows-latest'\s*\}\}\s*$/;
+// Decision 2026-10-18 (Decision 2: Windows postponed past the initial alpha). No workflow runs a Windows leg, so every
+// matrix job runs on Ubuntu and macOS, both blocking: there is no job-level `continue-on-error` at all.
 const jobLevelContinueOnError = (body: string[]): string[] => body.filter((l) => /^ {4}continue-on-error:/.test(l));
 const MATRIX_JOBS: [string, string][] = [
   ['ci.yml', 'test'],
@@ -476,18 +411,10 @@ const MATRIX_JOBS: [string, string][] = [
 ];
 
 for (const [file, name] of MATRIX_JOBS) {
-  test(`${file}: the ${name} job keeps its Windows leg but only the Windows leg may fail the workflow without blocking`, () => {
-    const lines = readLines(file);
-    const body = jobs(lines).get(name) ?? [];
-    assert.match(body.join('\n'), /os:\s*\[\s*ubuntu-latest\s*,\s*macos-latest\s*,\s*windows-latest\s*\]/, 'the Windows leg still runs');
-    const found = jobLevelContinueOnError(body);
-    assert.equal(found.length, 1, `job ${name} needs exactly one job-level continue-on-error`);
-    assert.match(found[0] as string, WINDOWS_NON_BLOCKING, 'continue-on-error is true for the Windows leg only, never for Ubuntu or macOS');
-    // The reason is written next to the key, with the decision and its date.
-    const at = lines.findIndex((l, i) => l === found[0] && jobs(lines.slice(0, i + 1)).has(name));
-    const above = lines.slice(Math.max(0, at - 6), at).join('\n');
-    assert.match(above, /Decision 2026-10-18/, 'a comment above names the decision and its date');
-    assert.match(above, /Windows/, 'the comment says what is non-blocking');
+  test(`${file}: the ${name} job runs on Ubuntu and macOS only and both are blocking`, () => {
+    const body = jobs(readLines(file)).get(name) ?? [];
+    assert.match(body.join('\n'), MATRIX_OS, 'the matrix is Ubuntu and macOS');
+    assert.deepEqual(jobLevelContinueOnError(body), [], `job ${name} has no job-level continue-on-error`);
   });
 }
 
@@ -502,14 +429,10 @@ test('ci.yml: the static job and every step of the blocking legs are not made op
   }
 });
 
-test('ci.yml: the test job caps a hung Windows suite at 20 minutes and keeps 30 for Ubuntu and macOS', () => {
+test('ci.yml: the test job keeps its 30 minute limit for Ubuntu and macOS', () => {
   const body = jobs(readLines('ci.yml')).get('test') ?? [];
   const line = body.find((l) => /^ {4}timeout-minutes:/.test(l)) ?? '';
-  const m = /^ {4}timeout-minutes:\s*\$\{\{\s*matrix\.os == 'windows-latest' && (\d+) \|\| (\d+)\s*\}\}\s*$/.exec(line);
-  assert.ok(m !== null, `the test job timeout is the Windows-conditional expression: ${line.trim()}`);
-  const [windowsMinutes, otherMinutes] = [Number(m[1]), Number(m[2])];
-  assert.ok(windowsMinutes >= 15 && windowsMinutes <= 25, 'a hang in src/bin/compose.test.ts must not stall the job for 30 minutes');
-  assert.equal(otherMinutes, 30, 'the Ubuntu and macOS limit is unchanged');
+  assert.match(line, /^ {4}timeout-minutes:\s*30\s*$/, `the test job timeout is a plain 30: ${line.trim()}`);
 });
 
 // ---------------------------------------------------------------- the release workflow (quick task 261018-npm-release-pipeline)
