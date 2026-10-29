@@ -1,0 +1,270 @@
+[
+ [
+  "a:swift:AppKit::1775:Foundation.textDidChange",
+  "typed identifier posted when user edits contents of a control field"
+ ],
+ [
+  "a:swift:MetricKit::1325:StateReportingDomain",
+  "string-backed identifier categorizing custom condition snapshots sent in performance telemetry"
+ ],
+ [
+  "a:swift:NetworkExtension::179:NEURLFilterManager.reportEndpoint",
+  "server address string where flagged web address lookups get sent for analysis"
+ ],
+ [
+  "a:objc:CoreImage:CIFilterBuiltins.h:1112:CICircularWrap.CICircularWrap",
+  "effect bending a picture around a transparent ring, stretching more toward the outside"
+ ],
+ [
+  "a:swift:USDKit::2140:USDStage.OpenOptions.loadRule",
+  "pick policy for which payload branches get pulled in first when reading a scene file"
+ ],
+ [
+  "a:objc:CoreMedia:CMBufferQueue.h:533:CMBufferQueueGetDuration",
+  "total time span summed across all waiting sample items, zero if empty"
+ ],
+ [
+  "a:objc:Metal:MTLTensor.h:66:MTLTensorDataType.MTLTensorDataTypeMetalFloat8E5M2",
+  "one-byte reduced precision number format favoring range over precision, ML gradients"
+ ],
+ [
+  "a:swift:FoundationModels::1850:FoundationModels.ArgumentsFragment",
+  "incrementally delivered partial piece of a function call's parameters while language output streams"
+ ],
+ [
+  "a:swift:RealityFoundation::12038:LevelOfDetailComponent.DetailLevel",
+  "list of scene nodes forming one fidelity tier swapped in by distance"
+ ],
+ [
+  "a:swift:TabularData::1761:CSVWritingOptions.nilEncoding",
+  "string emitted in a comma-separated file in place of missing cells"
+ ],
+ [
+  "a:swift:RealityFoundation::10976:VirtualEnvironmentProbeComponent.influence",
+  "region of space over which a reflection capture blends into nearby lighting"
+ ],
+ [
+  "a:swift:USDKit::2188:USDStage.upAxis",
+  "which world direction points skyward in a scene, such as Y or Z"
+ ],
+ [
+  "a:objc:GameController:GCControllerHomeButtonSettingsManager.h:25:GCControllerHomeButtonSettingSystemAction.GCControllerHomeButtonSettingSystemActionUnavailable",
+  "returned when querying what the gamepad's central logo press triggers fails, access not granted"
+ ],
+ [
+  "a:swift:RealityFoundation::12057:LevelOfDetailComponent.SelectionStrategy.screenArea",
+  "choose mesh variants by fraction of display pixels covered, with cutoff floats"
+ ],
+ [
+  "a:swift:TabularData::1205:GroupSummaries",
+  "protocol describing aggregated statistics computed per partition of a frame with printable output"
+ ],
+ [
+  "a:objc:Metal:MTLPixelFormat.h:83:MTLPixelFormat.MTLPixelFormatRGB8Sint",
+  "three-channel signed integer byte texel layout, only for buffer-backed textures"
+ ],
+ [
+  "a:swift:SwiftData::145:DefaultSerialModelExecutor",
+  "ready-made scheduler that runs database actor work one task at a time"
+ ],
+ [
+  "a:swift:FoundationModels::1557:FoundationModels.RateLimited.resetDate",
+  "when quota will be replenished after hitting usage cap"
+ ],
+ [
+  "a:swift:AppIntents::10353:AppEntityUIElement",
+  "onscreen item description letting assistant act on something visible in interface"
+ ],
+ [
+  "a:swift:CoreTransferable::177:ProxyRepresentation",
+  "export by substituting another shareable type that gets serialized in its place"
+ ],
+ [
+  "a:objc:AppKit:NSView.h:493:NSView.beginDraggingSessionWithItems:gesture:source:",
+  "start moving pasteboard content across the screen driven by a recognizer rather than a mouse event"
+ ],
+ [
+  "a:objc:AppKit:NSTextView.h:246:NSTextView.usesAdaptiveColorMappingForDarkAppearance",
+  "whether editor automatically adjusts foreground hues for night theme legibility"
+ ],
+ [
+  "a:swift:ColorSync::42:ColorSync.HeadroomAdaptiveGainCurve.ColorVolumeTransform.ToneMapping.Method",
+  "enumeration of algorithms for compressing HDR luminance range into display capability"
+ ],
+ [
+  "a:objc:AudioToolbox:AUComponent.h:929:AudioUnitParameterValue",
+  "single-precision float alias for knob settings of a plug-in processor"
+ ],
+ [
+  "a:swift:RealityFoundation::11537:LightmapComponent.lightmap",
+  "precomputed baked illumination texture asset attached to a model entity"
+ ],
+ [
+  "a:objc:AudioToolbox:AUAudioUnitImplementation.h:310:AUAudioUnitBus.maximumChannelCount",
+  "upper limit of how many mono tracks a port can carry, default unlimited"
+ ],
+ [
+  "a:objc:LatentSemanticMapping:LatentSemanticMapping.h:324:LSMResultCopyTokenCluster",
+  "grab group of words belonging to nth best classification outcome"
+ ],
+ [
+  "a:swift:MusicUnderstanding::183:InstrumentActivityResult",
+  "codable answer describing which sound sources play when in an analyzed song"
+ ],
+ [
+  "a:objc:AudioVideoBridging:AVBConstants.h:281:AVB17221ADPEntityCapabilities.AVB17221AECPMessageTypeAddressAccessCommand",
+  "enum value for streaming-ethernet entity control packet that reads or writes raw memory ranges"
+ ],
+ [
+  "a:objc:AppKit:NSApplication.h:178:NSApplicationPresentationOptions.NSApplicationPresentationDisableScreenCornerInteractions",
+  "suppress hot spots at display edges that trigger system actions in kiosk mode"
+ ],
+ [
+  "a:objc:Security:SecACL.h:64:SecACLGetTypeID",
+  "retrieve the CoreFoundation registration code for the legacy keychain access control list class"
+ ],
+ [
+  "a:objc:AppKit:NSTextView.h:503:NSTextView.textViewportLayoutController:configureRenderingSurfaceForTextLayoutFragment:",
+  "hook to prepare backing drawing layer for each laid-out paragraph piece"
+ ],
+ [
+  "a:swift:RealityFoundation::7924:RealityFoundation.WillRemoveEntity",
+  "scene notification fired just before a node is detached from hierarchy"
+ ],
+ [
+  "a:objc:AppKit:NSWritingToolsCoordinator.h:186:NSWritingToolsCoordinatorTextUpdateReason.NSWritingToolsCoordinatorContextScopeUserSelection",
+  "AI editing mode where changes happen in place and effects cover just the highlighted words"
+ ],
+ [
+  "a:objc:LatentSemanticMapping:LatentSemanticMapping.h:208:LSMMapSetStopWords",
+  "exclude common filler vocabulary from categorization training; call before adding any samples"
+ ],
+ [
+  "a:swift:SwiftUICore::3498:GlassEffectTransition",
+  "how a frosted translucent surface appears or disappears when views change, like materialize"
+ ],
+ [
+  "a:swift:RealityFoundation::9711:RealityFoundation.SkyboxMode.discard",
+  "choice to drop the panoramic backdrop entirely from the lighting resource"
+ ],
+ [
+  "a:objc:Foundation:NSNotificationQueue.h:43:NSNotificationQueue.NSNotificationQueue",
+  "defers broadcasts and merges repeats, dispatching when the thread has nothing else to do"
+ ],
+ [
+  "a:objc:GameController:GCControllerHomeButtonSettingsManager.h:63:GCControllerHomeButtonSettingSystemAction.GCControllerHomeButtonSettingInAppActionDisabled",
+  "gamepad logo press triggers nothing from the OS, leaving reaction solely to the running program"
+ ],
+ [
+  "a:objc:IOUSBHost:AppleUSBDescriptorParsing.h:170:IOUSBGetPlatformCapabilityDescriptor",
+  "locate first vendor-specific feature record inside binary object store blob"
+ ],
+ [
+  "a:swift:USDKit::1224:USDPrim.allChildren",
+  "every descendant one level below including inactive or abstract ones"
+ ],
+ [
+  "a:objc:Virtualization:VZCustomVirtioDeviceDelegate.h:35:virtqueue",
+  "callback invoked when guest operating system signals pending work on a shared ring of a custom emulated peripheral"
+ ],
+ [
+  "a:swift:AppKit::2443:Foundation.contextHelpModeDidDeactivate",
+  "typed identifier posted when cursor-based tooltip lookup finishes and cursor returns to normal"
+ ],
+ [
+  "a:swift:RealityFoundation::13507:MeshDeformParameterCPU",
+  "alias pairing processor-side input and output arrays for custom vertex morphing"
+ ],
+ [
+  "a:swift:CreateML::1712:CreateML.SimilarityType",
+  "enumeration choosing distance measure like cosine for comparing embeddings"
+ ],
+ [
+  "a:objc:MetalFX:MTLFXTemporalScaler.h:260:MTLFXTemporalScalerBase.outputOffsetX",
+  "left-edge shift of the sub-rectangle where upscaled results land in destination image"
+ ],
+ [
+  "a:swift:ComputeGraph::860:PortReference",
+  "codable handle identifying a specific connection endpoint on a node"
+ ],
+ [
+  "a:swift:NowPlaying::78:MediaPlaybackSnapshot",
+  "immutable capture of what song or video is currently running with timing info"
+ ],
+ [
+  "a:swift:USDKit::1250:USDPrim.hasAttribute",
+  "check whether a scene node defines a property under a given token name"
+ ],
+ [
+  "a:swift:TipKit::33:TipKit.EmptyDonation",
+  "placeholder that records no occurrence for hint eligibility rules"
+ ],
+ [
+  "a:swift:USDKit::861:USDKit.AssetPath",
+  "string-like reference locating a layer file, with optional resolved filesystem location"
+ ],
+ [
+  "a:objc:ARKit:object_tracking.h:181:ar_object_anchor_get_identifier",
+  "write universally unique value of a detected physical-item placement into caller-provided memory"
+ ],
+ [
+  "a:objc:CoreMIDI:MIDIUMPEndpoint.h:171:MIDIUMPEndpoint.productInstanceID",
+  "per-unit string for a music hardware maker's gadget, limited to printable 7-bit characters"
+ ],
+ [
+  "a:swift:USDKit::3686:USDKit.Vec3d",
+  "double-precision triple of coordinates for scene description math"
+ ],
+ [
+  "a:objc:Metal:MTLPixelFormat.h:164:MTLPixelFormat.MTLPixelFormatRGB16Float",
+  "three-channel half-precision texel layout, usable only with buffer-backed textures"
+ ],
+ [
+  "a:swift:WeatherKit::1217:DayPartForecast.cloudCoverByAltitude",
+  "sky obscuration fractions at low, mid and high atmospheric layers for a time slice"
+ ],
+ [
+  "a:swift:SwiftUICore::23264:roundToNearestOrUp",
+  "snap number to closest multiple, ties resolving toward larger"
+ ],
+ [
+  "a:swift:PhotosUI::165:PHPickerConfiguration.metadataOptions",
+  "choose which extra file details such as location come along with selected assets"
+ ],
+ [
+  "a:objc:CoreVideo:CVPixelBuffer.h:491:CVPixelBufferUnlockBaseAddress",
+  "release CPU access to the memory backing a frame after reading or writing"
+ ],
+ [
+  "a:objc:GameplayKit:GKAgent.h:33:GKAgentDelegate.agentDidUpdate:",
+  "callback invoked every frame once steering simulation advances so you can sync sprite"
+ ],
+ [
+  "a:swift:MetricKit::260:SignpostRecord",
+  "codable entry capturing a developer-defined interval marker for performance tracing"
+ ],
+ [
+  "a:objc:Foundation:NSLinguisticTagger.h:417:NSString.linguisticTagsInRange:scheme:options:orthography:tokenRanges:",
+  "returns part-of-speech labels for words in a portion of the receiver, plus their spans out-param"
+ ],
+ [
+  "a:objc:vecLib:BLAS.h:2015:sparse_commit",
+  "finish building a mostly-zero matrix after incremental entry insertion, making it usable"
+ ],
+ [
+  "a:swift:RealityFoundation::12175:CustomMaterial.GeometryModifier",
+  "shader function hook that adjusts vertex positions of a mesh before rendering"
+ ],
+ [
+  "a:swift:USDKit::5129:USDKit.TimeOffset",
+  "struct describing how sample positions in referenced layers shift and stretch"
+ ],
+ [
+  "a:objc:Hypervisor:hv_vcpu.h:297:hv_vcpu_get_serror",
+  "query whether an asynchronous abort is waiting on a guest processor core"
+ ],
+ [
+  "a:swift:AppIntents::4251:IndexedEntityQuery",
+  "resolver protocol for objects stored in on-device search catalog, enabling spotlight-backed lookups"
+ ]
+]
